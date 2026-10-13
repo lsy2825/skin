@@ -19,7 +19,7 @@ const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+
     if (!withCsp) await p.route('**/index.html', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()).replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '') }); });
     if (!withCsp) await p.route(BASE, async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()).replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '') }); });
     // poison the data: product names, a branch name, a source URL, a knowledge-base sentence
-    await p.route('**/data.json', async (r) => { const res = await r.fetch(); const D = await res.json();
+    await p.route('**/data.json', async (r) => { const res = await r.fetch(); const D = require('./rows.js')(await res.json());   // served back as rows (the app reads both forms)
       const rowsX12 = D.rows.filter((row) => D.s[row[7]].split(' ').includes('X12')).slice(0, 4);
       rowsX12.forEach((row, i) => { D.s.push(PAYLOADS[i % PAYLOADS.length] + ' 슈링크'); row[2] = D.s.length - 1; });
       D.s.push(`javascript:${MARK}`);                                                   // source link of every X12 row

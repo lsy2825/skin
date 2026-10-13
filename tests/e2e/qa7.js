@@ -7,7 +7,7 @@ const path = require('path');
 const BASE = process.env.BASE || 'http://localhost:8766/';
 const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요 (예: APP_PIN=xxxx node ' + process.argv[1] + ')'); process.exit(2); }
-const D = require(path.join(__dirname, '../../app/data.json'));
+const D = require('./rows.js')(require(path.join(__dirname, '../../app/data.json')));   // price rows are stored as columns
 const R = []; const ok = (q, name, pass, detail = '') => { R.push([q, name, pass, detail]); console.log(`${pass ? 'PASS' : 'FAIL'} | ${q} | ${name} | ${detail}`); };
 const num = (t) => +String(t).replace(/[^\d]/g, '');
 // rows of one comparison key → their product names

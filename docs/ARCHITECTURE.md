@@ -17,7 +17,7 @@ scrape/sources.py ─▶ data2/sources.json (Source Policy Registry: robots.txt 
                                           │  build2/taxonomy.py 시술 분류표: 제품군·세부 구분·용량·회차가 같은 비교 키 2,384개 (D13)
                                           │  knowledge/treatments.json + build2/knowledge.py  시술 지식 베이스(설명·부작용·근거·검수 상태, D14)
                                           ▼
-                        build2/appdata.py ─▶ app/data.json (앱이 읽는 압축 JSON) + data2/history/<date>.json(.auto.json.gz)
+                        build2/appdata.py ─▶ app/data.json (앱이 읽는 압축 JSON, 가격 줄은 열 단위) + data2/history/<date>.json(.auto.json.gz)
                                           │  급변(±90%/×10) 가격 → data2/review.csv 검토 대기, 승인 data2/review_ok.csv
                                           │  초저가 원본 대조 결과 data2/price_checks.csv → meta.checks (D15)
                                           ▼
@@ -26,9 +26,9 @@ GitHub Actions(weekly.yml) ── 매일 06:00 KST 판단(build2/needs_refresh.p
 GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저가 원본 다시 읽기 → 결과 커밋 → 수집 없이 재빌드(weekly.yml skip_scrape)
                                           ▼
                  app/ (정적 PWA, 프레임워크 없음) ── 휴대폰 홈 화면 앱, 오프라인 캐시(sw.js), 비밀번호 화면(gate.js)
-                 app/domain/ ── pricing.js(가격 계산) · search.js(검색 정규화·해석) · intel.js(이력 통계·알림), node:test로 검증
+                 app/domain/ ── pricing.js(가격 계산) · search.js(검색 정규화·해석·속성) · intel.js(이력 통계·알림) · stats.js(묶음 통계·정렬) · concern.js, node:test로 검증
                                           ▲
-                 app/auth.js + supabase/schema.sql ── 구글·카카오 로그인, 내정보·장바구니 동기화 (키 비어 있어 꺼짐)
+                 app/auth.js + supabase/schema.sql ── 구글·카카오 로그인, 마이(프로필·기록)·장바구니 동기화 (키 비어 있어 꺼짐)
                  build2/export_db.py → supabase/schema_platform.sql ── 같은 데이터를 PostgreSQL 표로 (DB로 옮길 때용, 지금 앱은 안 씀)
 ```
 
@@ -37,7 +37,7 @@ GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저
 | 수집 | Python 3.12, requests, BeautifulSoup | `scrape/` (블리비·쁨·톡스앤필·리엔장, 포에버는 일시 중지) |
 | 정리·정규화 | Python | `build2/clean.py`, `xkeys.py`, `groups.py` |
 | 배포·스케줄 | GitHub Actions, GitHub Pages | `.github/workflows/weekly.yml` |
-| 프런트 | 바닐라 JS(`app.js` 약 2,200줄 + `domain/` 약 450줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
+| 프런트 | 바닐라 JS(`app.js` 약 3,300줄 + `domain/` 약 570줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
 | 사용자 데이터 | 기기 localStorage(`pc:` 접두사). Supabase(Postgres+Auth)는 준비만 | `app/auth.js`, `supabase/schema.sql` |
 | 테스트 | node:test(단위), Python 자체 테스트(xkeys·taxonomy·knowledge), Playwright(E2E·QA·접근성, 로컬 실행) | `tests/`, `tests/e2e/` |
 
@@ -108,7 +108,8 @@ SEO 랜딩 페이지는 Python이 정적 HTML을 미리 만들어 같은 Pages�
   - 원본 대조에서 같은 이름·가격이 다시 확인되면(FOUND) 대표가로 쓸 수 있어요.
 - **중간값:** 대표가와 같은 집합(조건 없는 가격, 지점마다 최저가 하나)으로 계산해요. 그래서 대표가가 중간값보다 비싸게 보이는 일이 없어요. '계산 기준' 버튼이 실제 지점 수와 계산식을 보여줘요.
 - **원본 대조:** `scrape/verify_prices.py`가 초저가(중간값 30% 이하 또는 3,000원 미만)와 요청 예시 가격의 원본 페이지를 다시 읽어요.
-  - 결과(FOUND / NAME_ONLY / NOT_FOUND / FETCH_ERROR)는 이름·가격이 같은 줄에만 붙어요. 21일이 지나면 버려요.
+  - 결과(FOUND / IN_BLOCK / NAME_ONLY / NOT_FOUND / FETCH_ERROR)는 이름·가격이 같은 줄에만 붙어요. 21일이 지나면 버려요.
+  - FOUND = 상품명 뒤 160자 안, IN_BLOCK = 상품명이 든 가장 작은 블록(그 페이지의 다른 상품명은 없는 블록) 안. 페이지 글자는 요소 사이 공백을 남겨서 '49%' '990' '1,950'이 한 숫자로 붙지 않아요.
   - 결과는 가격 근거 시트의 '원본 대조' 줄에 보여요.
 - **가격 이력과 정가 할인율은 따로:** 이력은 실제로 관측한 주간 스냅샷, 할인율은 병원이 적은 정가 기준이에요. 화면에서 다른 카드로 나누고 설명을 붙였어요.
 
@@ -180,12 +181,16 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 - **해시 라우터**
   - 화면: `#home #map #compare #rank #versus #table #search/<q> #cart #import/<data> #me #branch/<i> #change #about #ops`
   - 쿼리는 필터 상태예요.
+- **data.json의 가격 줄은 열 단위(2026-10-13):** `cols[필드][줄]`, `colDelta`의 필드(상품명 번호)는 앞 줄과의 차이로 저장해요. 같은 종류 값이 모여 gzip 뒤 크기가 1,063KB → 781KB(−27%)로 줄었어요. 앱(`rowsOf`)·도구(`rows_of`)·테스트(`tests/e2e/rows.js`)가 줄 배열로 되돌려 써요. 빌드가 되돌린 결과가 원래 줄과 같은지 확인한 뒤에만 파일을 써요. 예전 `rows` 형식도 그대로 읽어요.
+- **가격 파일 미리 받기:** `index.html`의 `<link rel="preload" as="fetch">`로 비밀번호 화면을 그리는 동안 받기 시작해요(요청은 한 번만 가는 것을 확인).
+- **클릭재킹 방지:** `gate.js` 맨 앞. 다른 사이트 프레임 안이면 화면을 숨기고 새 창 링크만 보여줘요.
 - **데이터 인덱스:** `byB`(지점→행), `byKB`(비교 키→지점→행), `byG`(자동 묶음→행), `byName`(이름→행), 검색 인덱스(`Search.buildIndex`, 캐시)
 - **도메인 로직(`app/domain/`, UI 없음, 브라우저·Node 공용)**
   - `pricing.js`: 부가세, 종료일, 방문 조건, 줄 계산, 지점 비교, 첫 방문 중복 방지, 패키지 판정
-  - `search.js`: 별칭, 정규화, 오타, 자동완성, 단위, 자연어 해석
+  - `search.js`: 별칭, 정규화, 오타, 자동완성, 단위, 자연어 해석, 시술 속성(원산지·성별·부위·등급 — 전체 가격표 '세부 구분')
   - `intel.js`: 이력 통계, 알림 판정
-  - 묶음 통계(`gstat`, `rowPos`)와 지점 순위(`branchRanks`)는 아직 `app.js` 안에 있어요(다음 분리 대상).
+  - `stats.js`: 묶음 통계(지점별 최저가·중간값), 가격의 위치, 지점 수준 순서, 목록 정렬(지역·이름 / 가까운 / 최근 확인 / 낮은·높은 가격). `app.js`의 `gstat`·`rowPos`·`branchRanks`·`ranking`이 이걸 불러요(`tests/stats.test.js`)
+  - `concern.js`: 피부 고민 분류
 - **공용 화면 조각**
   - `sheet`, `nameSheet`, `undoToast`, `copyText`, `favBtn`, `switchEl`
   - `priceTable`(필터·칩·결과 수·범위·프리셋), `noResults`(대안 제안)

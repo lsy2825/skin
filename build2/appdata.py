@@ -3,7 +3,10 @@
 usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
   meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
-  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s, url s, vat, review, parts s]
+  cols      the price rows, stored one list per field (cols[f][row]); like values sit together, so gzip makes the file about
+            a quarter smaller than row arrays. Fields in colDelta are stored as differences from the row before (the app and
+            the tools add them back up). A row = [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s,
+            url s, vat, review, parts s]
             keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
             group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
             url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
@@ -249,6 +252,31 @@ def price_checks(rows, date):
     return out
 
 
+ROW_FIELDS = 15
+COL_DELTA = [2]   # product name string ids: a branch's rows list names in order, so the differences are small numbers
+
+
+def columns(rows):
+    """price rows → one list per field (data.json "cols"), COL_DELTA fields as differences; rows_of() turns them back"""
+    cols = [[r[f] for r in rows] for f in range(ROW_FIELDS)]
+    for f in COL_DELTA:
+        cols[f] = [v - (cols[f][j - 1] if j else 0) for j, v in enumerate(cols[f])]
+    return cols
+
+
+def rows_of(data):
+    """data.json → price rows (accepts the older "rows" form too)"""
+    if "rows" in data:
+        return data["rows"]
+    cols = [list(c) for c in data["cols"]]
+    for f in data.get("colDelta", []):
+        acc = 0
+        for j, d in enumerate(cols[f]):
+            acc += d
+            cols[f][j] = acc
+    return [list(r) for r in zip(*cols)]
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=datetime.date.today().isoformat())
@@ -326,13 +354,14 @@ def main():
         "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks},
-        "branches": branches, "rows": out_rows, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
+        "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, a.date, rows),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     txt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    assert rows_of(json.loads(txt)) == out_rows, "price columns do not turn back into the same rows"
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
     nogeo = [s[b[1]] for b in branches if b[3] is None]
     print(f"wrote {a.out}: {len(txt) / 1e6:.2f} MB | rows {len(out_rows)} | branches {len(branches)} (no map position: {len(nogeo)})"

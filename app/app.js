@@ -1,6 +1,7 @@
 // 윤실장 (피부과 가격비교) — app logic. Data: data.json (built by build2/appdata.py). No framework.
 (function () {
   "use strict";
+  if (document.documentElement.hasAttribute("data-framed")) return;   // shown inside another site's frame (gate.js clickjacking guard)
   const $ = (s, el = document) => el.querySelector(s);
   const h = (tag, attrs, ...kids) => {
     const e = document.createElement(tag);
@@ -82,6 +83,7 @@
     me: store.get("me", { nick: "", gender: "", age: "" }), recs: store.get("recs", []), allRecs: false, tcat: null,
     loc: null, locName: "",
     sort: store.get("sort", null) || "region", cat: 0, key: null, mapKey: null, bcat: -1, region: "",
+    cview: store.get("cmpView", "list") === "cards" ? "cards" : "list",   // compare: clinic list as rows or as swipe cards
   };
   let CHK = new Map();
   let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, concernText = "", concernPick = null;
@@ -99,9 +101,19 @@
   }
 
   // ---------------- data
+  // data.json keeps the price rows as columns (one list per field: a quarter smaller once gzipped); fields in colDelta
+  // are differences from the row before. → the row arrays the rest of the app reads (build2/appdata.py rows_of)
+  function rowsOf(d) {
+    if (d.rows) return d.rows;
+    const c = d.cols, n = c[0].length, rows = new Array(n);
+    for (const f of d.colDelta || []) { let a = 0; const x = c[f]; for (let j = 0; j < n; j++) x[j] = a += x[j]; }
+    for (let j = 0; j < n; j++) { const r = new Array(c.length); for (let f = 0; f < c.length; f++) r[f] = c[f][j]; rows[j] = r; }
+    return rows;
+  }
   async function loadData() {
     const r = await fetch("data.json", { cache: "no-cache" });
     D = await r.json();
+    D.rows = rowsOf(D); delete D.cols;
     S = D.s;
     BR = D.branches.map((b, i) => ({ i, brand: b[0], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], region: S[b[5]], site: S[b[6]], geo: b[9] ?? 0 }));
     KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label }));
@@ -218,31 +230,14 @@
       const i = bestAt(k, b);
       if (i >= 0) out.push({ b, i, p: ROWS[i][3], d: dist(b) });
     }
-    // equal prices: newer verification first, then nearer
-    const cmp = {
-      near: (x, y) => (st.loc ? (x.d ?? 1e9) - (y.d ?? 1e9) : 0) || regionCmp(x.b, y.b),
-      region: (x, y) => regionCmp(x.b, y.b),
-      recent: (x, y) => verified(y.b).localeCompare(verified(x.b)) || regionCmp(x.b, y.b),
-      priceDesc: (x, y) => y.p - x.p || regionCmp(x.b, y.b),
-    }[sort] || ((x, y) => x.p - y.p || verified(y.b).localeCompare(verified(x.b)) || (x.d ?? 1e9) - (y.d ?? 1e9));
-    out.sort(cmp);
-    return out;
+    return Stats.order(out, sort, { regionCmp, verified, hasLoc: !!st.loc });   // domain/stats.js (equal prices: newer check, then nearer)
   }
   // ---------------- auto groups (same option at several branches): per-branch lowest price, median, rank
   // gstat(g) → { per: Map(branch → {p, i}), sorted prices, med }  (respects 특가 포함; brand filter is applied by callers)
   function gstat(g, special = st.special) {
     const ck = g * 2 + (special ? 1 : 0);
     if (gcache.has(ck)) return gcache.get(ck);
-    const per = new Map();
-    for (const i of byG[g]) {
-      const r = ROWS[i];
-      if (!live(i) || (!special && isSpecial(r))) continue;
-      const cur = per.get(r[0]);
-      if (!cur || r[3] < cur.p) per.set(r[0], { p: r[3], i });
-    }
-    const prices = [...per.values()].map((x) => x.p).sort((a, b) => a - b);
-    const n = prices.length;
-    const out = { per, prices, med: n ? (n % 2 ? prices[n >> 1] : (prices[n / 2 - 1] + prices[n / 2]) / 2) : 0 };
+    const out = Stats.groupStat(byG[g], (i) => ROWS[i], (i) => live(i) && (special || !isSpecial(ROWS[i])));
     gcache.set(ck, out);
     return out;
   }
@@ -250,9 +245,7 @@
   function rowPos(i) {
     const r = ROWS[i];
     if (r[9] == null || r[9] < 0) return null;
-    const g = gstat(r[9], true);
-    if (g.prices.length < 3) return null;
-    return { rank: g.prices.filter((p) => p < r[3]).length + 1, n: g.prices.length, vsMed: g.med ? r[3] / g.med - 1 : 0 };
+    return Stats.position(r[3], gstat(r[9], true));
   }
   const lvText = (x) => x == null ? "-" : Math.abs(1 - x) < 0.005 ? "중간 수준" : x < 1 ? `${Math.round((1 - x) * 100)}% 싸요` : `${Math.round((x - 1) * 100)}% 비싸요`;
   const lvClass = (x) => x == null || Math.abs(1 - x) < 0.005 ? "" : x < 1 ? "down" : "up";
@@ -261,15 +254,14 @@
   const divBar = (x) => { const v = Math.max(-0.4, Math.min(0.4, (x ?? 1) - 1)); const w = Math.abs(v) / 0.4 * 50;
     return h("span", { class: "dbar", "aria-hidden": "true" }, h("i", { class: v < 0 ? "neg" : "pos", style: v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%` })); };
   const levelOf = (b, cat = -1) => { const s = (D.bstat || [])[b]; if (!s) return null; if (cat >= 0) return s[5] ? s[5][cat] ?? null : null; return st.special ? s[1] : s[0]; };
-  function branchRanks(cat = -1) {
-    const list = BR.filter((x) => brandOn(x.i) && regionOk(x.i)).map((x) => ({ b: x.i, lv: levelOf(x.i, cat) })).filter((x) => x.lv != null);
-    list.sort((a, c) => a.lv - c.lv);
-    return list;
-  }
+  const branchRanks = (cat = -1) => Stats.byLevel(BR.filter((x) => brandOn(x.i) && regionOk(x.i)).map((x) => ({ b: x.i, lv: levelOf(x.i, cat) })));
   const brSelect = (val, set, label) => h("select", { class: "pick", "aria-label": label, onchange: (e) => set(+e.target.value) },
     D.meta.brands.map((bb, bi) => !BR.some((x) => x.brand === bi) ? null : h("optgroup", { label: bb[0] }, BR.filter((x) => x.brand === bi).sort((a, c) => a.name.localeCompare(c.name, "ko"))
       .map((x) => h("option", { value: x.i, selected: x.i === val }, `${bb[0]} ${x.name}`)))));
 
+  // the clinic's struck-through list price next to a price reads as a discount pitch: only with flags.discountEmphasis
+  // (otherwise 정가 is in the price evidence sheet, docs/OBJECTIVE_DISPLAY_POLICY.md)
+  const listS = (r) => FLAGS.discountEmphasis && r[4] ? h("s", {}, won(r[4])) : null;
   const md2 = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const kindBadge = (r) => {
     const out = [];
@@ -623,7 +615,7 @@
       const box = h("div", {});
       const paint = () => fill(box,
         h("div", { class: "item", style: "padding:10px 0" }, h("span", { class: "t" }, n), h("span", { class: "p num" }, won(r[3])),
-          h("span", { class: "m" }, bdot(r[0]), bname(r[0]), r[4] ? h("s", {}, won(r[4])) : null, kindBadge(r), sessOf(i) > 1 ? h("span", { class: "k k4" }, sessOf(i) >= 99 ? "이용권" : `${sessOf(i)}회 가격`) : null)),
+          h("span", { class: "m" }, bdot(r[0]), bname(r[0]), listS(r), kindBadge(r), sessOf(i) > 1 ? h("span", { class: "k k4" }, sessOf(i) >= 99 ? "이용권" : `${sessOf(i)}회 가격`) : null)),
         h("div", { class: "opts" },
           h("button", { class: "opt", type: "button", "aria-pressed": s.how === "row" ? "true" : "false", onclick: () => { s.how = "row"; paint(); } },
             h("b", {}, "이 옵션 그대로"), h("span", {}, `같은 이름 상품이 있는 ${same}개 지점끼리 비교`)),
@@ -1153,7 +1145,8 @@
     const popular = [...KEYS].sort((a, b) => byKB[b.i].size - byKB[a.i].size).slice(0, 6);
     // a category tab: the main variant of its most-sold families (not every variant — 톡신 alone has 250+)
     const keys = st.hcat ? famsIn(st.hcat).slice(0, 6).map((f) => KEYS[f.main]) : popular;
-    box.append(secHead(st.loc ? "내 주변 인기 시술" : "인기 시술", st.loc ? "10km 안 · 최저가" : `${regionName()} · 최저가`));
+    const basisL = FLAGS.lowestHighlight ? "최저가" : "중간값·가격 범위";
+    box.append(secHead(st.loc ? "내 주변 인기 시술" : "인기 시술", st.loc ? `10km 안 · ${basisL}` : `${regionName()} · ${basisL}`));
     box.append(h("div", { class: "chips" }, h("button", { class: "chip", type: "button", "aria-pressed": !st.hcat ? "true" : "false", onclick: () => { st.hcat = null; render(); } }, "인기"),
       cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": st.hcat === c ? "true" : "false", onclick: () => { st.hcat = c; render(); } }, catIcon(c, "sm"), c))));
     const grid = h("div", { class: "grid" });
@@ -1427,12 +1420,20 @@
     ...(FLAGS.discountEmphasis ? [["disc", "할인율 큰 순"], ["pos", "중간보다 싼 순"]] : [])];
   const SESS_L = { "1": "1회 가격", pkg: "2회 이상 패키지", pass: "이용권·무제한" }, COND_L = { plain: "조건 없는 가격만", special: "체험가·한정가·시간 조건만" };
   const amtOf = (i) => { const u = Search.unitOf(S[ROWS[i][2]]); return u && !/\+/.test(S[ROWS[i][2]]) ? `${u.qty}${u.unit}` : ""; };
+  // treatment attributes (origin · sex · area · grade) of a price, from the labels of its comparison keys (Search.attrsOf);
+  // cached per key set — many prices share one
+  const attrCache = new Map();
+  const attrsOfRow = (i) => { const ks = ROWS[i][7]; let a = attrCache.get(ks);
+    if (!a) { a = Search.attrsOf(S[ks].split(" ").filter(Boolean).map((k) => KI[k] != null ? KEYS[KI[k]].label : "")); attrCache.set(ks, a); } return a; };
+  // selected attributes: one per group (원산지 · 성별 · 부위 · 등급), all of them must hold
+  const attOk = (i, atts, skipGroup = "") => { if (!atts.length) return true; const a = attrsOfRow(i); return atts.every((x) => Search.attrGroup(x) === skipGroup || a.includes(x)); };
   const areaOk = (b, area) => !area || BR[b].name.includes(area) || (BR[b].addr || "").includes(area);
   const regOk = (b, reg) => !reg ? regionOk(b) : reg === "수도권" ? CAPITAL.includes(BR[b].region) : reg === "전국" ? true : BR[b].region === reg;
   function readFilters(params, q) {
     const P = (k, d = "") => params.get(k) ?? d;
     return { q: q ?? P("q"), cat: +P("cat", -1), brand: +P("brand", -1), b: +P("b", -1), kind: +P("kind", -1), sort: (() => { const v = P("sort", "") || store.get("tableSort", "region"); return SORTS().some(([k]) => k === v) ? v : "region"; })(),
       min: +P("min", 0) || 0, max: +P("max", 0) || 0, sess: P("sess", ""), cond: P("cond", ""), unit: P("unit", ""), amt: P("amt", ""), area: P("area", ""), reg: P("reg", ""),
+      atts: P("att", "").split(",").filter((x) => Search.attrGroup(x)),
       exact: P("exact") === "1", n: +P("n", 100) };
   }
   // every filter as a predicate; skip = one dimension to ignore (for 'how many results would this option give')
@@ -1449,8 +1450,19 @@
     if (skip !== "sess") { const ss = sessOf(i); if ((f.sess === "1" && ss !== 1) || (f.sess === "pkg" && (ss < 2 || ss >= 99)) || (f.sess === "pass" && ss < 99)) return false; }
     if (skip !== "cond" && ((f.cond === "plain" && isSpecial(r)) || (f.cond === "special" && !isSpecial(r)))) return false;
     if (skip !== "amt" && f.amt && amtOf(i) !== f.amt) return false;
+    if (skip !== "att" && !attOk(i, f.atts || [])) return false;
     if (skip !== "q" && tokens.length && !Search.matches(normBySid.get(r[2]), tokens)) return false;
     return true;
+  }
+  // 세부 구분 chips (원산지 · 성별 · 부위 · 등급) for the price table; picking one in a group replaces that group's pick
+  function attFacet(f, cnt, go) {
+    const groups = Search.ATTRS.map(([g, list]) => [g, list.map(([n]) => n).filter((n) => cnt[n] || f.atts.includes(n)).sort((a, b) => (cnt[b] || 0) - (cnt[a] || 0)).slice(0, 12)]).filter(([, l]) => l.length);
+    if (groups.reduce((s, [, l]) => s + l.length, 0) < 2 && !f.atts.length) return null;
+    const pick = (n) => { const g = Search.attrGroup(n), rest = f.atts.filter((x) => Search.attrGroup(x) !== g); go({ att: (f.atts.includes(n) ? rest : [...rest, n]).join(",") }); };
+    return h("div", { class: "attf" }, h("div", { class: "sub", style: "margin:8px 0 2px" }, "세부 구분"),
+      groups.map(([g, l]) => h("div", { class: "chips", role: "group", "aria-label": g, style: "margin-top:6px" }, h("span", { class: "sub", style: "align-self:center;flex:none;min-width:44px" }, g),
+        l.map((n) => h("button", { class: "chip", type: "button", "aria-pressed": f.atts.includes(n) ? "true" : "false", onclick: () => pick(n) }, `${n} (${(cnt[n] || 0).toLocaleString()})`)))),
+      h("div", { class: "sub", style: "margin-top:6px" }, "시술 분류표가 상품명에서 읽은 구분이에요. 분류되지 않은 가격은 이 필터를 고르면 빠져요."));
   }
   function priceTable(route, params, opt = {}) {
     const f = readFilters(params, opt.q);
@@ -1469,7 +1481,8 @@
     const toks = parsed.tokens;
     // results + per-option counts (each count ignores its own filter)
     let hits = [];
-    const cnt = { cat: {}, brand: {}, kind: {}, sess: {}, cond: {}, amt: {} };
+    const cnt = { cat: {}, brand: {}, kind: {}, sess: {}, cond: {}, amt: {}, att: {} };
+    const attOn = toks.length > 0 || f.cat >= 0 || f.atts.length > 0;   // the whole table's attributes say little; shown once narrowed
     const pr = [];
     for (let i = 0; i < ROWS.length; i++) {
       if (!live(i) || !brandOn(ROWS[i][0])) continue;
@@ -1482,6 +1495,8 @@
       if (rowPasses(i, f, toks, "sess")) { const ss = sessOf(i), k = ss >= 99 ? "pass" : ss >= 2 ? "pkg" : "1"; cnt.sess[k] = (cnt.sess[k] || 0) + 1; }
       if (rowPasses(i, f, toks, "cond")) { const k = isSpecial(r) ? "special" : "plain"; cnt.cond[k] = (cnt.cond[k] || 0) + 1; }
       if (toks.length && rowPasses(i, f, toks, "amt")) { const a = amtOf(i); if (a) cnt.amt[a] = (cnt.amt[a] || 0) + 1; }
+      // each attribute's count = results if it were picked (the pick in its own group is swapped, other groups still hold)
+      if (attOn && rowPasses(i, f, toks, "att")) for (const a of attrsOfRow(i)) if (attOk(i, f.atts, Search.attrGroup(a))) cnt.att[a] = (cnt.att[a] || 0) + 1;
       if (rowPasses(i, f, toks, "range")) pr.push(r[3]);
     }
     const box = h("div", { class: "view", style: "animation:none" });
@@ -1519,6 +1534,7 @@
     if (f.sess) act.push([SESS_L[f.sess], { sess: "" }]);
     if (f.cond) act.push([COND_L[f.cond], { cond: "" }]);
     if (f.amt) act.push([f.amt, { amt: "" }]);
+    for (const a of f.atts) act.push([a, { att: f.atts.filter((x) => x !== a).join(",") }]);
     if (f.min || f.max) act.push([`${f.min ? won(f.min) : "0원"} ~ ${f.max ? won(f.max) : "제한 없음"}`, { min: "", max: "" }]);
     const presets = store.get("presets", []);
     const curQs = (() => { const np = new URLSearchParams(params); np.delete("n"); return np.toString(); })();
@@ -1527,7 +1543,7 @@
         h("button", { type: "button", class: "plink", onclick: () => nav(`${x.route}${x.qs ? "?" + x.qs : ""}`) }, x.name),
         h("button", { type: "button", class: "px", "aria-label": `${x.name} 필터 지우기`, onclick: () => { const before = store.get("presets", []); store.set("presets", before.filter((y) => y.id !== x.id)); render(); undoToast(`'${x.name}' 필터를 지웠어요`, () => { store.set("presets", before); render(); }); } }, icon("x", "xs"))))) : null,
       act.length ? h("div", { class: "chips", style: "margin-top:10px" }, act.map(([l, patch]) => h("button", { class: "chip on", type: "button", "aria-label": `${l} 해제`, onclick: () => go(patch) }, l, icon("x", "xs"))),
-        h("button", { class: "chip", type: "button", onclick: () => go({ reg: "", area: "", cat: -1, brand: -1, b: -1, kind: -1, sess: "", cond: "", amt: "", min: "", max: "" }) }, "모두 해제")) : null,
+        h("button", { class: "chip", type: "button", onclick: () => go({ reg: "", area: "", cat: -1, brand: -1, b: -1, kind: -1, sess: "", cond: "", amt: "", att: "", min: "", max: "" }) }, "모두 해제")) : null,
       h("div", { class: "fgrid" },
         sel("카테고리", "cat", f.cat, [[-1, "전체", null], ...D.meta.cats.map((c, i) => [i, c, cnt.cat[i] || 0])]),
         sel("브랜드", "brand", f.brand, [[-1, "전체", null], ...D.meta.brands.map((b, i) => BR.some((x) => x.brand === i) ? [i, b[0], cnt.brand[i] || 0] : null).filter(Boolean)], { b: "" }),
@@ -1539,6 +1555,7 @@
         h("div", { class: "flabel wide" }, `가격 범위(원) · 최대 ${won(smax)}까지`, rangeBox, h("div", { class: "sliders" }, minR, maxR), err)),
       Object.keys(cnt.amt).length > 1 ? h("div", {}, h("div", { class: "sub", style: "margin:8px 0 6px" }, "용량·샷 수"), h("div", { class: "chips" },
         Object.entries(cnt.amt).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([a, n]) => h("button", { class: "chip", type: "button", "aria-pressed": f.amt === a ? "true" : "false", onclick: () => go({ amt: f.amt === a ? "" : a }) }, `${a} (${n})`)))) : null,
+      attFacet(f, cnt.att, go),
       h("div", { class: "row", style: "margin-top:4px" }, switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }), whenChip(),
         h("span", { class: "sp" }), curQs ? h("button", { class: "btn sm gray", type: "button", onclick: () => presetSheet(route, curQs) }, "조건 저장") : null)));
     // sort (equal prices: newer verification first, then regular before special)
@@ -1581,7 +1598,7 @@
     if (!hits.length) { box.append(noResults(f, toks, go)); return box; }
     box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, hits.slice(0, f.n).map((i) => { const r = ROWS[i], x = rowPos(i), u = Search.unitPrice(S[r[2]], r[3]);
       return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
-        h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${r[0]}`) }, bdot(r[0]), bname(r[0])), r[4] ? h("s", {}, won(r[4])) : null,
+        h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${r[0]}`) }, bdot(r[0]), bname(r[0])), listS(r),
           r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round(disc(i) * 100)}%↓`) : null, kindBadge(r),
           u ? h("span", { class: "unitp" }, `${u.unit === "샷" ? "100샷" : u.unit === "U" ? "10U" : "1" + u.unit}당 ${won(u.price)}`) : null,
           x && FLAGS.lowestHighlight ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위`) : null,
@@ -2131,17 +2148,38 @@
       list.append(h("li", { class: "rk" }, h("button", { class: "rank" + (FLAGS.lowestHighlight ? (n < 3 && st.sort === "price" ? " top" : "") : " nonum"), type: "button", onclick: () => nav(`branch/${x.b}`) },
         h("span", { class: "n num" }, n + 1), h("span", { class: "b" }, bdot(x.b), h("span", {}, bname(x.b))),
         h("span", { class: "p num" }, won(x.p)),
-        h("span", { class: "m" }, S[r[2]], r[4] ? h("s", {}, won(r[4])) : null, low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx", title: `중간값 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%` }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
+        h("span", { class: "m" }, S[r[2]], listS(r), low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx", title: `중간값 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%` }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
           kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, FLAGS.lowestHighlight && x.p > min0 ? h("span", { class: "gap" }, `최저 +${won(x.p - min0)}`) : null, x.d != null ? h("b", {}, km(x.d)) : null)),
         h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info"))));
     });
+    // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date)
+    const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
+    rk.slice(0, 300).forEach((x, n) => {
+      const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
+      cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${Math.min(rk.length, 300)}: ${bname(x.b)}` },
+        h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${Math.min(rk.length, 300)}`)),
+        h("div", { class: "ccard-p num" }, won(x.p), listS(r)),
+        h("div", { class: "ccard-n" }, S[r[2]]),
+        h("div", { class: "m" }, low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx" }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
+          kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, x.d != null ? h("b", {}, km(x.d)) : null),
+        h("div", { class: "tiny" }, `${BR[x.b].region || ""} · 가격 확인 ${verified(x.b)}`),
+        h("div", { class: "row ccard-a" }, h("button", { class: "btn sm gray", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info", "sm"), "가격 근거"),
+          h("button", { class: "btn sm gray", type: "button", onclick: () => nav(`branch/${x.b}`) }, "지점 보기"))));
+    });
+    const step = (d) => { const c = cards.querySelector(".ccard"); if (c) cards.scrollBy({ left: d * (c.offsetWidth + 10), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); };
+    const cardBox = h("div", { class: "ccwrap" }, cards, rk.length > 1 ? h("div", { class: "row ccnav" }, h("span", { class: "tiny" }, "옆으로 넘겨 보세요"), h("span", { class: "sp" }),
+      h("button", { class: "tbtn-i", type: "button", "aria-label": "이전 지점", onclick: () => step(-1) }, icon("chevron-left")),
+      h("button", { class: "tbtn-i", type: "button", "aria-label": "다음 지점", onclick: () => step(1) }, icon("chevron-right"))) : null);
+    const setView = (v) => { st.cview = v; store.set("cmpView", v); render(); };
+    const viewSw = h("div", { class: "seg vsw", role: "group", "aria-label": "보기 방식" }, [["list", "목록"], ["cards", "카드"]].map(([v, l]) =>
+      h("button", { type: "button", "aria-pressed": st.cview === v ? "true" : "false", onclick: () => { if (st.cview !== v) setView(v); } }, l)));
     const have = new Set(rk.map((y) => y.b));
     const none = BR.filter((y) => brandOn(y.i) && regionOk(y.i) && !have.has(y.i));
     const setSort = (v) => { if (v === "near" && !st.loc) locSheet(); st.sort = v; store.set("sort", v); render(); };
-    box.append(h("div", { class: "card flush", id: "clinics" }, h("div", { style: "padding:14px 14px 6px" }, h("h3", {}, `지점별 가격 ${rk.length}곳`),
+    box.append(h("div", { class: "card flush", id: "clinics" }, h("div", { style: "padding:14px 14px 6px" }, h("div", { class: "row" }, h("h3", {}, `지점별 가격 ${rk.length}곳`), h("span", { class: "sp" }), rk.length > 1 ? viewSw : null),
       h("div", { style: "margin-top:10px" }, sortChips(st.sort, setSort)),
       h("p", { class: "tiny", style: "margin-top:8px" }, `${SORT_L[st.sort] || "정렬"}으로 보여줘요${st.sort === "near" && !st.loc ? "(기준 위치를 정하면 가까운 순)" : ""}. 기본은 지역·이름순이고, 광고·제휴로 순서가 바뀌지 않아요. 같은 용량·회차의 1회 가격끼리예요.`)),
-      rk.length ? list : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("search")), h("b", {}, "조건에 맞는 지점이 없어요"), "브랜드나 특가 설정을 바꿔 보세요."),
+      rk.length ? (st.cview === "cards" && rk.length > 1 ? cardBox : list) : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("search")), h("b", {}, "조건에 맞는 지점이 없어요"), "브랜드나 특가 설정을 바꿔 보세요."),
       none.length ? h("details", { class: "fold small", style: "padding:0 12px" }, h("summary", {}, `이 시술 가격이 없는 지점 ${none.length}곳`),
         h("div", { class: "sub", style: "padding:0 2px 12px" }, none.map((y) => bname(y.i)).join(", "), " — 같은 시술을 팔지 않거나, 용량·회차가 달라 묶지 않은 곳이에요.")) : null));
     box.append(h("p", { class: "foot" }, `${vatNote()} 같은 시술로 묶는 기준: 용량·샷 수·회차·원산지가 같은 1회 가격. 다른 시술과 묶인 패키지, 추가 옵션, 구독권은 빠져요. 종료일이 지난 이벤트와 확인 중인 급변 가격도 빠져요.`));
@@ -2305,7 +2343,8 @@
     m.bindPopup(pop);
     m.bi = b.i;
     // marker → list: highlight and scroll to the same branch below the map
-    m.on("click", () => { st.mapSel = b.i; markListSel(true); });
+    // (a marker outside the area the list was drawn for — the map moved since — redraws the list first)
+    m.on("click", () => { st.mapSel = b.i; if (!document.querySelector(`#near li[data-b="${b.i}"]`)) paintNear(); markListSel(true); });
     return m;
   }
   function markListSel(scroll) {
@@ -2333,7 +2372,8 @@
       .sort((x, y) => st.loc ? (x.d - y.d) : price && FLAGS.lowestHighlight ? x.p - y.p : regionCmp(x.b.i, y.b.i));
     el.replaceChildren(h("div", { style: "padding:12px 12px 4px" }, h("h3", {}, st.loc ? `가까운 지점${st.locName ? ` · ${st.locName} 기준` : ""}` : "지도에 보이는 지점"),
       h("div", { class: "sub" }, `${list.length}곳 · 지도를 옮긴 뒤 '이 지역 재검색'을 누르면 목록이 바뀌어요${st.loc ? "" : " · 위치나 동네를 정하면 거리순"}`)),
-      list.length ? h("ul", { class: "list" }, list.slice(0, 40).map((x) => h("li", { class: "rk" + (x.b.i === st.mapSel ? " sel" : ""), "data-b": x.b.i },
+      list.length ? h("ul", { class: "list" }, (() => { const top = list.slice(0, 40), sel = list.findIndex((x) => x.b.i === st.mapSel);   // the chosen marker's branch is always listed
+        return sel >= 40 ? [...top, list[sel]] : top; })().map((x) => h("li", { class: "rk" + (x.b.i === st.mapSel ? " sel" : ""), "data-b": x.b.i },
         h("button", { class: "item", type: "button", onclick: () => nav(`branch/${x.b.i}`) },
           h("span", { class: "t row" }, bdot(x.b.i), bname(x.b.i)), h("span", { class: "p num" }, x.p != null ? won(x.p) : km(x.d)),
           h("span", { class: "m" }, x.b.addr, x.p != null && x.d != null ? h("b", {}, km(x.d)) : null)),
@@ -2401,7 +2441,7 @@
       const shown = rows.filter((i) => (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort((a, c) => (ROWS[a][15] ? 1 : 0) - (ROWS[c][15] ? 1 : 0) || so(a, c));
       list.replaceChildren(...shown.slice(0, 400).map((i) => { const r = ROWS[i];
         return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
-          h("span", { class: "m" }, D.meta.cats[r[1]], r[4] ? h("s", {}, won(r[4])) : null, r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round((r[4] - r[3]) / r[4] * 100)}%↓`) : null, kindBadge(r),
+          h("span", { class: "m" }, D.meta.cats[r[1]], listS(r), r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round((r[4] - r[3]) / r[4] * 100)}%↓`) : null, kindBadge(r),
             sessOf(i) > 1 ? h("span", {}, sessOf(i) >= 99 ? "이용권" : `${sessOf(i)}회`) : null,
             (() => { const x = r[15] ? null : rowPos(i); if (!FLAGS.lowestHighlight) return h("button", { class: "linkbtn", type: "button", onclick: () => priceSheet(i) }, icon("info", "xs"), "가격 근거");
               return x ? h("button", { class: `linkbtn ${x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : ""}`, type: "button", title: "계산 기준·조건·원본 보기", onclick: () => priceSheet(i) }, `${x.n}곳 중 ${x.rank}위 · ${pctTxt(x.vsMed)}`, icon("info", "xs")) : null; })(),
@@ -2745,7 +2785,7 @@
         : l.rows.length > 1 ? `첫 회 ${won(r[3])} + ${(it.q || 1) - 1}회 × ${won(ROWS[l.rows[1]][3])}` : (it.q || 1) > 1 ? `${won(r[3])} × ${it.q}` : "";
       body.append(h("div", { class: "qline" },
         h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, won(l.total))),
-        h("div", { class: "m" }, h("span", {}, S[r[2]]), r[4] ? h("s", {}, won(r[4])) : null, pct > 0 ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
+        h("div", { class: "m" }, h("span", {}, S[r[2]]), listS(r), pct > 0 && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
           l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, l.restacked ? h("span", { class: "k kx" }, "첫 방문가 중복 안 함") : null, l.stackWarn ? h("span", { class: "k kx" }, "첫 방문가 중복 확인") : null,
           detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0])),
         alts.length > 1 || l.ov ? h("div", { style: "margin-top:6px" }, sel) : null));
@@ -3226,7 +3266,10 @@
   function boot() {
     const slow = setTimeout(() => { const m = $("#load-msg"); if (!m || D) return; m.textContent = J.lines.slow || "평소보다 오래 걸리고 있어요.";
       m.parentElement.append(h("button", { class: "btn sm gray", type: "button", onclick: () => location.reload() }, icon("refresh-cw", "sm"), "새로고침")); }, 12000);
-    loadData().then(() => { clearTimeout(slow); if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => {
+    loadData().then(() => { clearTimeout(slow);
+      // a stored region no branch has (an old version's value, a typo) would empty every list: back to the default
+      if (st.region && st.region !== "수도권" && !BR.some((b) => b.region === st.region)) { st.region = "수도권"; store.set("region", st.region); paintRegion(); }
+      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => {
       clearTimeout(slow); D = null; console.error(e);
       const main = $("#main"); main.removeAttribute("aria-busy");
       main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", J.lines.error || "문제가 생겼어요",

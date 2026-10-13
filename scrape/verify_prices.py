@@ -28,6 +28,19 @@ from common import Fetcher, ROOT, now_iso  # noqa: E402
 CONDS = re.compile(r"첫\s*방문|신규|1\s*인\s*1\s*회|체험가?|한정가?|선착순|평일|이상\s*(결제|구매|시)|단독\s*불가|추가|옵션|부가세\s*(별도|포함)|VAT")
 
 
+def rows_of(data):
+    """app/data.json → price rows (stored as columns, colDelta fields as differences; same as build2/appdata.py rows_of)"""
+    if "rows" in data:
+        return data["rows"]
+    cols = [list(c) for c in data["cols"]]
+    for f in data.get("colDelta", []):
+        acc = 0
+        for j, d in enumerate(cols[f]):
+            acc += d
+            cols[f][j] = acc
+    return [list(r) for r in zip(*cols)]
+
+
 def squash(s):
     return re.sub(r"\s+", "", s or "")
 
@@ -88,7 +101,7 @@ def main():
     ap.add_argument("--dry", action="store_true", help="list the targets only, read nothing")
     a = ap.parse_args()
     D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
-    S, rows, br = D["s"], D["rows"], D["branches"]
+    S, rows, br = D["s"], rows_of(D), D["branches"]
     brands = [b[0] for b in D["meta"]["brands"]]
     src = json.load(open(os.path.join(ROOT, "data2", "sources.json"), encoding="utf-8")) if os.path.exists(os.path.join(ROOT, "data2", "sources.json")) else {"brands": {}}
     ok_hosts = {h["host"] for v in src.get("brands", {}).values() if v.get("allowed") for h in v.get("hosts", []) if not h.get("crawl_delay")}

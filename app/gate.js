@@ -3,8 +3,35 @@
 // paste it below and bump VER in sw.js (gate.js is served cache-first). A 4-digit PIN hash is easy to brute-force: this
 // only keeps casual viewers out; data.json and the repo stay public.
 // 5th wrong try locks 5 min, each further wrong try doubles it (cap 24 h). Unlock lasts for this tab (sessionStorage).
+
+// Clickjacking guard, before anything else. GitHub Pages cannot send X-Frame-Options or a CSP frame-ancestors header (and
+// frame-ancestors is ignored in a <meta> tag), so another site could show this app inside an invisible frame and trick
+// taps on the PIN pad or buttons. Inside another site's frame the page hides itself and offers to open on its own; a
+// same-site frame is left alone. It lives here, not in its own file in <head>, so it costs no extra blocking request
+// before the first paint. A stopgap until a domain + proxy can send the header (docs/SECURITY_REMEDIATION.md R-open-4).
 (function () {
   "use strict";
+  if (window.top === window.self) return;
+  var sameSite = false;
+  try { sameSite = window.top.location.origin === window.location.origin; } catch (e) { /* cross-origin parent */ }
+  if (sameSite) return;
+  var root = document.documentElement;
+  root.setAttribute("data-framed", "");
+  root.style.setProperty("display", "none", "important");
+  // top-level navigation from a cross-site frame needs a user tap in current browsers, so give one button to tap
+  document.addEventListener("DOMContentLoaded", function () {
+    var a = document.createElement("a");
+    a.href = window.location.href; a.target = "_blank"; a.rel = "noopener";
+    a.textContent = "윤실장은 다른 사이트 안에서 열 수 없어요. 새 창에서 열기";
+    a.setAttribute("style", "display:block;margin:40px 16px;font:16px/1.5 sans-serif;color:#1f1d1a");
+    document.body.replaceChildren(a);
+    root.style.removeProperty("display");
+  });
+})();
+
+(function () {
+  "use strict";
+  if (document.documentElement.hasAttribute("data-framed")) return;   // no PIN pad inside another site's frame (above)
   const HASH = "e836cf70b3fa90a7ecdbcbd417ffa1e25e181af957c2a68a58dd1f5e0a355671", FREE = 5, BASE = 5 * 60 * 1000, CAP = 24 * 60 * 60 * 1000;
   const root = document.documentElement;
   const ss = { get(k) { try { return sessionStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { sessionStorage.setItem(k, v); } catch (e) {} } };

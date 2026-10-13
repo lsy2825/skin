@@ -1,7 +1,7 @@
 // Objective price display (docs/OBJECTIVE_DISPLAY_POLICY.md) in a real browser: lists don't open in 'cheapest first'
 // order, no clinic is pinned on top as 'the lowest', several sorts exist and work, no invented review/recommendation sort,
 // each price comes with its conditions, genuine-product claim status, who-treats note, side effects and cautions; clinic
-// rankings and discount emphasis stay off by default — and come back when their flags are switched on.
+// rankings and discount emphasis (N% badges, struck-through list prices) stay off by default — and come back when their flags are switched on.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/objective.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -42,6 +42,7 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     ok('부작용·조건 카드가 가격 요약 바로 다음', order);
     ok('분포 그래프에 최저가 강조 점 없음', await p.locator('.lcsvg .dot.best').count() === 0 && !/현재 최저가/.test(await p.locator('.lclegend').first().innerText()));
     ok('정가 대비 할인율 카드 없음(할인 강조 끔)', !/정가 대비 할인율/.test(await p.locator('#main').innerText()));
+    ok('목록에 줄 그은 정가 없음(정가·할인율은 가격 근거 안에만)', await p.locator('#clinics li.rk s').count() === 0);
     await p.locator('#clinics li.rk .infob').first().click(); await p.waitForTimeout(300);
     const sh = await p.locator('.sheet').innerText();
     ok('가격 근거에도 정품 표기·의료진·부작용 줄', /정품 표기/.test(sh) && /시술 의료진/.test(sh) && /부작용·주의사항/.test(sh));
@@ -50,6 +51,7 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     const so = await p.$$eval('label.flabel', (ls) => { const l = ls.find((x) => x.firstChild.textContent === '정렬'); return l ? [...l.querySelectorAll('option')].map((o) => [o.textContent, o.selected]) : []; });
     ok('전체 가격표: 기본 지역·이름순, 할인율 정렬 없음', so.length > 0 && so.find((x) => x[1])[0] === '지역·이름순' && !so.some((x) => /할인|중간보다/.test(x[0])), so.map((x) => x[0]).join(','));
     ok('전체 가격표: 가격만으로 고르지 말라는 안내', /가격만으로 고르지 마세요/.test(await p.locator('#main').innerText()));
+    ok('전체 가격표: 줄 그은 정가·N%↓ 없음', await p.locator('#main .card.flush li s').count() === 0 && !/\d%↓/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#home'); await p.waitForTimeout(400);
     const home = await p.locator('#main').innerText();
     ok('홈 카드: 중간값·범위, "N% 싸요"·병원 이름 없음', /중간값/.test(home) && !/% 싸요/.test(home) && await p.locator('.pc .w').count() === 0);
@@ -64,6 +66,9 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     const cart = await p.locator('.cartsum').innerText();
     ok('장바구니 요약: 범위, 최저가 지점 이름 없음', /원\s*~\s*[\d,]+원/.test(await p.locator('.cartsum .hp').textContent()) && !/최저가 지점/.test(cart), cart.split('\n').slice(0, 2).join(' / '));
     await p.click('.cartsum .btn'); await p.waitForTimeout(300);
+    for (let n = 0; n < 8; n++) { const btn = p.locator('li.qrow > button[aria-expanded="false"]').first(); if (!(await btn.count())) break; await btn.click(); await p.waitForTimeout(150); }   // open the clinics' quotes
+    const ql = await p.locator('.qline').count();
+    ok('장바구니 견적: 할인율(N%↓)·줄 그은 정가 없음', ql > 0 && !/\d%↓/.test(await p.locator('#main').innerText()) && await p.locator('.qline s').count() === 0, `견적 줄 ${ql}개`);
     ok('병원별 비교: 기본 지역·이름순, "가장 싼 곳" 없음', (await p.locator('.sortchips .chip[aria-checked="true"]').textContent()).includes('지역·이름순') && !/가장 싼 곳|1위보다/.test(await p.locator('#main').innerText()));
     ok('스크립트 오류 없음', !p.errs.length, p.errs.join(' '));
     await ctx.close(); }
@@ -72,6 +77,7 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
   { const { ctx, p } = await page(['lowestHighlight', 'branchRanking', 'discountEmphasis']);
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);
     ok('플래그 켜면: 최저가 지점 헤드라인', /현재 최저가/.test(await p.locator('.pricecard').innerText()));
+    ok('플래그 켜면: 줄 그은 정가', await p.locator('#clinics li.rk s').count() > 0);
     await p.goto(BASE + '#explore'); await p.waitForTimeout(400);
     ok('플래그 켜면: 지점 순위·TOP 5', /지점 순위/.test(await p.locator('#main').innerText()) && /TOP 5/.test(await p.locator('#main').innerText()));
     ok('스크립트 오류 없음(플래그 켬)', !p.errs.length, p.errs.join(' '));

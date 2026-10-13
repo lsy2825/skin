@@ -199,5 +199,26 @@
     return out;
   }
 
-  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret };
+  // ---- treatment attributes for the price table filter (origin · sex · area · grade), read from comparison key labels
+  // (build2/xkeys.py, build2/taxonomy.py — already checked against mismatches), not from raw product names. A word counts
+  // only as a whole word: '팔' never matches inside '팔자', '목' never inside '목주름'.
+  const ATTRS = [
+    ["원산지", [["국산", "국산"], ["수입", "수입"], ["독일산", "독일산"], ["미국산", "미국산"]]],
+    ["성별", [["여성", "여성|\\(여자\\)"], ["남성", "남성|\\(남자\\)"]]],
+    ["부위", [["얼굴전체", "얼굴전체"], ["이마", "이마"], ["미간", "미간"], ["눈가", "눈가"], ["눈밑", "눈밑"], ["눈썹", "눈썹"], ["아이라인", "아이라인"],
+      ["콧볼", "콧볼"], ["광대", "광대"], ["팔자", "팔자"], ["입술", "입술"], ["인중", "인중"], ["턱끝", "턱끝"], ["턱라인", "턱라인"], ["사각턱", "사각턱"],
+      ["이중턱", "이중턱"], ["목", "목"], ["승모근", "승모근"], ["겨드랑이", "겨드랑이"], ["팔뚝", "팔뚝"], ["손·발", "손·발|손|발"], ["가슴", "가슴"],
+      ["복부", "복부"], ["옆구리", "옆구리"], ["등", "등"], ["엉덩이", "엉덩이"], ["브라질리언", "브라질리언"], ["비키니", "비키니"], ["허벅지", "허벅지"],
+      ["무릎", "무릎"], ["종아리", "종아리"], ["바디", "바디"], ["두피", "두피"]]],
+    ["등급", [["프리미엄", "프리미엄"]]],
+  ].map(([group, list]) => [group, list.map(([name, rx]) => [name, new RegExp(`(?:^|[\\s()·/+,\\[\\]])(?:${rx})(?=$|[\\s()·/+,\\[\\]])`)])]);
+  // label(s) of one price's comparison keys → attribute names it has, e.g. ['국산', '사각턱'] (each at most once)
+  function attrsOf(labels) {
+    const t = [].concat(labels).join(" | "), out = [];
+    for (const [, list] of ATTRS) for (const [name, rx] of list) if (rx.test(t)) out.push(name);
+    return out;
+  }
+  const attrGroup = (name) => (ATTRS.find(([, list]) => list.some(([n]) => n === name)) || [""])[0];
+
+  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup };
 });
