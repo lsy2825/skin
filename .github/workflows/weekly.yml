@@ -4,6 +4,9 @@ on:
   schedule:
     - cron: "0 21 * * 0"      # every Monday 06:00 KST (Sunday 21:00 UTC)
   workflow_dispatch: {}        # "Run workflow" button for a manual update
+  push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
+    branches: [main]
+    paths: ["app/**", "build2/**", ".github/workflows/weekly.yml"]
 
 permissions:
   contents: write
@@ -25,7 +28,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Scrape, check, build
-        run: python build2/weekly.py
+        run: python build2/weekly.py ${{ github.event_name == 'push' && '--skip-scrape' || '' }}
         env:
           PYTHONUTF8: "1"
       - name: Save accepted data, snapshots and report
@@ -33,7 +36,7 @@ jobs:
           git config user.name "weekly-prices bot"
           git config user.email "actions@users.noreply.github.com"
           git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json
-          git diff --cached --quiet || git commit -m "Weekly prices $(date -u +%F)"
+          git diff --cached --quiet || git commit -m "${{ github.event_name == 'push' && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
           git push
       - name: Summary
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"

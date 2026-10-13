@@ -4,7 +4,9 @@ usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
   meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
   branches  [brand, name s, address s, lat, lng, region s, site s]
-  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s]  (keys = comparison ids, space separated)
+  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess]  (keys = comparison ids, space separated;
+            sess = sessions in the price, 1 = single, 99 = 이용권/무제한)
+  meta.fam  procedure families for the option picker: [name, regex for related rows at a branch, [[key id, variant label]...]]
   keys      [id, cat, label]
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
@@ -23,6 +25,26 @@ BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카
           ("리엔장", "#e0902a", "지점별 비급여 진료비 고시표(정가). 이벤트가가 아니며 표의 최종변경일이 오래됐을 수 있어요"),
           ("포에버", "#3a7bd5", "지점별 '시술 안내'의 시술 상세 옵션(할인가, 없으면 정가). 부가세(VAT) 별도 가격")]
 KINDS = ["일반", "체험가", "한정가", "구독권", "고시가"]
+# keys grouped into one procedure with selectable variants (cart / compare option picker). The regex finds a branch's
+# related rows (packages, other doses) when the user switches the option for one branch.
+FAM = [("국산 보톡스", r"톡신|보톡스|보툴|스킨보톡|다한증", [("X01", "사각턱 50U"), ("X02", "주름 1부위"), ("X03", "얼굴전체 스킨보톡스"), ("X06", "바디 100U"), ("X07", "겨드랑이 다한증 50U")]),
+       ("독일산(제오민) 보톡스", r"제오민|독일", [("X04", "사각턱 50U"), ("X05", "주름 1부위")]),
+       ("윤곽주사", r"윤곽", [("X08", "1회 (3cc)")]),
+       ("필러", r"필러|벨로테로|쥬비덤|레스틸렌", [("X09", "국산 1cc"), ("X10", "수입 1cc")]),
+       ("슈링크 유니버스", r"슈링크", [("X11", "100샷"), ("X12", "300샷")]),
+       ("울쎄라", r"울쎄라", [("X13", "100샷"), ("X14", "300샷")]),
+       ("써마지 FLX", r"써마지", [("X15", "300샷"), ("X16", "600샷")]),
+       ("인모드", r"인모드", [("X19", "1부위"), ("X17", "얼굴전체 1가지 모드"), ("X18", "얼굴전체 2가지 모드"), ("X36", "바디 1부위")]),
+       ("온다 리프팅", r"온다", [("X20", "얼굴 10KJ")]),
+       ("올리지오", r"올리지오", [("X21", "100샷")]),
+       ("볼뉴머", r"볼뉴머", [("X22", "100샷")]),
+       ("티타늄 리프팅", r"티타늄", [("X23", "40KJ")]),
+       ("리쥬란", r"리쥬란", [("X24", "힐러 2cc"), ("X25", "HB 플러스 1cc")]),
+       ("쥬베룩", r"쥬베룩", [("X26", "스킨 1cc"), ("X27", "볼륨 1cc")]),
+       ("피코토닝", r"피코", [("X28", "1회")]), ("레이저토닝", r"토닝", [("X29", "1회")]), ("제네시스", r"제네시스", [("X30", "1회")]),
+       ("아쿠아필", r"아쿠아필", [("X31", "1회")]), ("포텐자", r"포텐자", [("X32", "1회")]),
+       ("점 빼기", r"점\s*빼|점제거|^점|\s점", [("X33", "1개 (2mm 이하)")]), ("염증주사", r"염증", [("X34", "1개")]),
+       ("겨드랑이 제모", r"제모", [("X35", "(여) 1회")])]
 CATS = ["보톡스·필러", "리프팅", "스킨부스터", "피부·레이저", "제모", "바디", "기타"]
 SIDO = [("전남광주", "광주"), ("서울", "서울"), ("경기", "경기"), ("인천", "인천"), ("부산", "부산"), ("대구", "대구"), ("대전", "대전"), ("광주", "광주"),
         ("울산", "울산"), ("세종", "세종"), ("강원", "강원"), ("충청북|충북", "충북"), ("충청남|충남", "충남"), ("전라북|전북", "전북"),
@@ -69,7 +91,7 @@ def main():
         b = bi[(r["brand"], r["branch"])]
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
-                         kind, S(r["tags"]), S(r["keys"])])
+                         kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1)])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
@@ -91,7 +113,8 @@ def main():
                 changes.append([kid[k], bi[(brand, branch)], before, after])
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "rows": len(out_rows), "branches": len(branches),
-                 "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS},
+                 "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
+                 "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
         "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
     }
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
