@@ -140,7 +140,9 @@
       const i = bestAt(k, b);
       if (i >= 0) out.push({ b, i, p: ROWS[i][3], d: dist(b) });
     }
-    out.sort(sort === "near" && st.loc ? (x, y) => (x.d ?? 1e9) - (y.d ?? 1e9) || x.p - y.p : (x, y) => x.p - y.p || (x.d ?? 1e9) - (y.d ?? 1e9));
+    // equal prices: newer verification first, then nearer
+    out.sort(sort === "near" && st.loc ? (x, y) => (x.d ?? 1e9) - (y.d ?? 1e9) || x.p - y.p
+      : (x, y) => x.p - y.p || verified(y.b).localeCompare(verified(x.b)) || (x.d ?? 1e9) - (y.d ?? 1e9));
     return out;
   }
   // ---------------- auto groups (same option at several branches): per-branch lowest price, median, rank
@@ -587,7 +589,8 @@
     const q = h("input", { type: "search", placeholder: "시술 검색 (예: 슈링크 300샷, 리쥬란)", "aria-label": "시술 검색", enterkeyhint: "search" });
     const go = () => { if (q.value.trim()) nav(`search/${encodeURIComponent(q.value.trim())}`); };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
-    box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }), q, h("button", { type: "button", onclick: go }, "검색")));
+    box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }),
+      withSuggest(q, (v) => nav(`search/${encodeURIComponent(v)}`)), h("button", { type: "button", onclick: go }, "검색")));
     // shortcuts
     const ch = changeItems(), dn = ch.filter((x) => x.t === "down").length, up = ch.filter((x) => x.t === "up").length;
     const top1 = branchRanks()[0];
@@ -692,48 +695,143 @@
     return box;
   };
 
-  // ---------------- 전체 가격표: every price with filters
-  views.table = () => {
-    const box = h("div", { class: "view" });
-    box.append(cmpNav("table"));
-    const f = st.tf || (st.tf = { q: "", cat: -1, brand: -1, b: -1, kind: -1, sort: "price", n: 100 });
-    const sel = (label, val, opts, set) => h("label", { class: "flabel" }, label, h("select", { class: "pick", onchange: (e) => { set(+e.target.value); f.n = 100; render(); } },
-      opts.map(([v, l]) => h("option", { value: v, selected: v === val }, l))));
+  // ---------------- search index (aliases, typo correction, autocomplete — app/domain/search.js), built on first use
+  let SIDX = null, normBySid = null;
+  function searchIndex() {
+    if (SIDX) return SIDX;
+    const sids = [...new Set(ROWS.map((r) => r[2]))];
+    SIDX = Search.buildIndex(sids.map((i) => S[i]), [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)]);
+    normBySid = new Map(sids.map((sid, n) => [sid, SIDX.normNames[n]]));
+    return SIDX;
+  }
+  const suggestTerms = () => [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)];
+  // autocomplete dropdown under a search input; pick(text) runs the search
+  function withSuggest(input, pick) {
+    const list = h("ul", { class: "suggest", role: "listbox", hidden: true });
+    let n = -1;
+    const show = () => {
+      const v = input.value.trim();
+      const items = v ? Search.suggest(v, searchIndex(), suggestTerms()) : [];
+      n = -1;
+      list.replaceChildren(...items.map((x) => h("li", { role: "option" }, h("button", { type: "button", onmousedown: (e) => e.preventDefault(), onclick: () => { input.value = x; list.hidden = true; pick(x); } }, x))));
+      list.hidden = !items.length;
+    };
+    input.setAttribute("autocomplete", "off");
+    input.addEventListener("input", show);
+    input.addEventListener("blur", () => setTimeout(() => { list.hidden = true; }, 150));
+    input.addEventListener("keydown", (e) => {
+      const bs = [...list.querySelectorAll("button")];
+      if (e.key === "ArrowDown" && bs.length) { n = Math.min(bs.length - 1, n + 1); bs[n].focus(); e.preventDefault(); }
+    });
+    list.addEventListener("keydown", (e) => {
+      const bs = [...list.querySelectorAll("button")], k = bs.indexOf(document.activeElement);
+      if (e.key === "ArrowDown" && k < bs.length - 1) { bs[k + 1].focus(); e.preventDefault(); }
+      if (e.key === "ArrowUp") { (k > 0 ? bs[k - 1] : input).focus(); e.preventDefault(); }
+      if (e.key === "Escape") { list.hidden = true; input.focus(); }
+    });
+    return h("div", { class: "sugwrap" }, input, list);
+  }
+
+  // ---------------- price list with filters, shared by 전체 가격표 (#table) and search (#search/<q>); filter state lives in the URL
+  const SORTS = [["price", "싼 순"], ["unit", "단위당 가격"], ["recent", "최근 확인순"], ["near", "가까운 순"], ["disc", "할인율 큰 순"], ["pos", "중간보다 싼 순"], ["name", "이름순"]];
+  function priceTable(route, params, opt = {}) {
+    const P = (k, d = "") => params.get(k) ?? d;
+    const f = { q: opt.q ?? P("q"), cat: +P("cat", -1), brand: +P("brand", -1), b: +P("b", -1), kind: +P("kind", -1), sort: P("sort", "price"),
+      min: +P("min", 0) || 0, max: +P("max", 0) || 0, sess: P("sess", ""), cond: P("cond", ""), unit: P("unit", ""), exact: P("exact") === "1", n: +P("n", 100) };
+    const go = (patch) => {
+      const np = new URLSearchParams(params);
+      for (const [k, v] of Object.entries(patch)) { if (v === "" || v == null || v === -1 || v === false || (k === "n" && v === 100)) np.delete(k); else np.set(k, v === true ? "1" : v); }
+      if (!("n" in patch)) np.delete("n");
+      const s = np.toString();
+      history.replaceState(null, "", `#${route}${s ? "?" + s : ""}`);    // filter change: same page, keep the scroll position
+      render();
+    };
+    const box = h("div", { class: "view", style: "animation:none" });
+    const sel = (label, val, opts, key, extra = {}) => h("label", { class: "flabel" }, label, h("select", { class: "pick", onchange: (e) => go({ [key]: e.target.value, ...extra }) },
+      opts.map(([v, l]) => h("option", { value: v, selected: String(v) === String(val) }, l))));
     const brs = BR.filter((x) => (f.brand < 0 || x.brand === f.brand) && regionOk(x.i)).sort((a, b) => a.brand - b.brand || a.name.localeCompare(b.name, "ko"));
-    if (f.b >= 0 && !brs.some((x) => x.i === f.b)) f.b = -1;
-    const q = h("input", { type: "search", value: f.q, placeholder: "이름에 들어간 말 (예: 리쥬란 2cc)", "aria-label": "가격 검색" });
-    q.addEventListener("change", () => { f.q = q.value.trim(); f.n = 100; render(); });
-    box.append(h("div", { class: "card" }, h("h2", {}, "전체 가격표"), h("div", { class: "sub", style: "margin-top:4px" }, `모든 지점의 모든 가격 · ${regionName()} · ${vatNote()}`),
-      h("div", { class: "search", style: "margin-top:10px;box-shadow:none;background:var(--fill)" }, q),
+    const minIn = h("input", { class: "pick", type: "number", inputmode: "numeric", min: "0", step: "1000", value: f.min || "", placeholder: "최소", "aria-label": "최소 가격" });
+    const maxIn = h("input", { class: "pick", type: "number", inputmode: "numeric", min: "0", step: "1000", value: f.max || "", placeholder: "최대", "aria-label": "최대 가격" });
+    const applyRange = () => setTimeout(() => go({ min: Math.max(0, Math.round(+minIn.value || 0)) || "", max: Math.max(0, Math.round(+maxIn.value || 0)) || "" }), 0);
+    minIn.addEventListener("change", applyRange); maxIn.addEventListener("change", applyRange);
+    box.append(h("div", { class: "card" }, opt.head || null,
       h("div", { class: "fgrid" },
-        sel("카테고리", f.cat, [[-1, "전체"], ...D.meta.cats.map((c, i) => [i, c])], (v) => { f.cat = v; }),
-        sel("브랜드", f.brand, [[-1, "전체"], ...D.meta.brands.map((b, i) => BR.some((x) => x.brand === i) ? [i, b[0]] : null).filter(Boolean)], (v) => { f.brand = v; f.b = -1; }),
-        sel("지점", f.b, [[-1, "전체"], ...brs.map((x) => [x.i, bname(x.i)])], (v) => { f.b = v; }),
-        sel("가격 종류", f.kind, [[-1, "전체"], ...D.meta.kinds.map((k, i) => [i, k])], (v) => { f.kind = v; }),
-        sel("정렬", ["price", "disc", "name", "pos"].indexOf(f.sort), [[0, "싼 순"], [1, "할인율 큰 순"], [2, "이름순"], [3, "중간보다 싼 순"]], (v) => { f.sort = ["price", "disc", "name", "pos"][v]; })),
+        sel("카테고리", f.cat, [[-1, "전체"], ...D.meta.cats.map((c, i) => [i, c])], "cat"),
+        sel("브랜드", f.brand, [[-1, "전체"], ...D.meta.brands.map((b, i) => BR.some((x) => x.brand === i) ? [i, b[0]] : null).filter(Boolean)], "brand", { b: "" }),
+        sel("지점", f.b, [[-1, "전체"], ...brs.map((x) => [x.i, bname(x.i)])], "b"),
+        sel("가격 종류", f.kind, [[-1, "전체"], ...D.meta.kinds.map((k, i) => [i, k])], "kind"),
+        sel("회차", f.sess, [["", "전체"], ["1", "1회 가격"], ["pkg", "2회 이상 패키지"], ["pass", "이용권·무제한"]], "sess"),
+        sel("조건", f.cond, [["", "전체"], ["plain", "조건 없는 가격만"], ["special", "체험가·한정가·시간 조건만"]], "cond"),
+        sel("정렬", f.sort, SORTS, "sort", { unit: "" }),
+        h("div", { class: "flabel wide" }, "가격 범위(원)", h("div", { class: "range" }, minIn, h("span", {}, "~"), maxIn))),
       h("div", { class: "row" }, switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }), whenChip())));
-    const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
-    const compact = (s) => s.toLowerCase().replace(/\s+/g, "");
-    const hits = [];
+    // filter
+    const idx = f.q ? searchIndex() : null;
+    const parsed = f.q ? (f.exact ? { tokens: f.q.split(/\s+/).map(Search.norm).filter(Boolean), fixes: [] } : Search.parse(f.q, idx)) : { tokens: [], fixes: [] };
+    let hits = [];
     for (let i = 0; i < ROWS.length; i++) {
       const r = ROWS[i];
       if (!live(i) || !brandOn(r[0]) || !regionOk(r[0]) || (!st.special && isSpecial(r))) continue;
       if ((f.cat >= 0 && r[1] !== f.cat) || (f.brand >= 0 && BR[r[0]].brand !== f.brand) || (f.b >= 0 && r[0] !== f.b) || (f.kind >= 0 && r[5] !== f.kind)) continue;
-      if (words.length) { const n = compact(S[r[2]]); if (!words.every((w) => n.includes(compact(w)))) continue; }
+      if ((f.min && r[3] < f.min) || (f.max && r[3] > f.max)) continue;
+      const ss = sessOf(i);
+      if ((f.sess === "1" && ss !== 1) || (f.sess === "pkg" && (ss < 2 || ss >= 99)) || (f.sess === "pass" && ss < 99)) continue;
+      if ((f.cond === "plain" && isSpecial(r)) || (f.cond === "special" && !isSpecial(r))) continue;
+      if (parsed.tokens.length && !Search.matches(normBySid.get(r[2]), parsed.tokens)) continue;
       hits.push(i);
     }
+    // sort (equal prices: newer verification first, then regular before special)
     const disc = (i) => ROWS[i][4] ? (ROWS[i][4] - ROWS[i][3]) / ROWS[i][4] : 0;
-    const pos = new Map(), vm = (i) => { if (!pos.has(i)) { const x = rowPos(i); pos.set(i, x ? x.vsMed : 9); } return pos.get(i); };
-    hits.sort({ price: (a, b) => ROWS[a][3] - ROWS[b][3], disc: (a, b) => disc(b) - disc(a), name: (a, b) => S[ROWS[a][2]].localeCompare(S[ROWS[b][2]], "ko") || ROWS[a][3] - ROWS[b][3], pos: (a, b) => vm(a) - vm(b) }[f.sort]);
+    const ver = (i) => verified(ROWS[i][0]);
+    const tie = (a, b) => ver(b).localeCompare(ver(a)) || (isSpecial(ROWS[a]) ? 1 : 0) - (isSpecial(ROWS[b]) ? 1 : 0);
+    const notes = [];
+    let unitInfo = null;
+    if (f.sort === "unit") {
+      const up = new Map(hits.map((i) => [i, Search.unitPrice(S[ROWS[i][2]], ROWS[i][3])]));
+      const counts = {};
+      for (const u of up.values()) if (u) counts[u.unit] = (counts[u.unit] || 0) + 1;
+      const units = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+      const unit = f.unit && counts[f.unit] ? f.unit : units[0] ? units[0][0] : "";
+      const without = hits.filter((i) => !up.get(i)).length, other = hits.filter((i) => up.get(i) && up.get(i).unit !== unit).length;
+      hits = hits.filter((i) => up.get(i) && up.get(i).unit === unit).sort((a, b) => up.get(a).price - up.get(b).price || tie(a, b));
+      unitInfo = { units, unit, up };
+      notes.push(`단위당 가격은 참고용이에요. 샷 수·용량이 다르면 시술 구성이 달라요.${other ? ` 단위가 다른 ${other}개는 '조건 상이'라 빠졌어요.` : ""}${without ? ` 수량이 적혀 있지 않거나 묶음(+)인 ${without}개도 빠졌어요.` : ""}`);
+    } else if (f.sort === "disc") {
+      const before = hits.length;
+      hits = hits.filter((i) => ROWS[i][4]).sort((a, b) => disc(b) - disc(a) || ROWS[a][3] - ROWS[b][3]);
+      if (before > hits.length) notes.push(`할인율은 병원이 정가를 적은 가격만 계산해요(${(before - hits.length).toLocaleString()}개는 정가가 없어 빠짐).`);
+    } else if (f.sort === "near") {
+      if (!st.loc) notes.push("거리순은 내 위치가 필요해요. 화면 위 '내 위치'를 눌러 주세요.");
+      hits.sort((a, b) => (dist(ROWS[a][0]) ?? 1e9) - (dist(ROWS[b][0]) ?? 1e9) || ROWS[a][3] - ROWS[b][3]);
+    } else if (f.sort === "recent") hits.sort((a, b) => ver(b).localeCompare(ver(a)) || ROWS[a][3] - ROWS[b][3]);
+    else if (f.sort === "name") hits.sort((a, b) => S[ROWS[a][2]].localeCompare(S[ROWS[b][2]], "ko") || ROWS[a][3] - ROWS[b][3]);
+    else if (f.sort === "pos") { const pos = new Map(); const vm = (i) => { if (!pos.has(i)) { const x = rowPos(i); pos.set(i, x ? x.vsMed : 9); } return pos.get(i); }; hits.sort((a, b) => vm(a) - vm(b) || ROWS[a][3] - ROWS[b][3]); }
+    else hits.sort((a, b) => ROWS[a][3] - ROWS[b][3] || tie(a, b));
+    if (parsed.fixes.length) box.append(h("div", { class: "note" }, parsed.fixes.map(([a, b]) => `‘${a}’ 대신 ‘${b}’로 찾았어요. `), h("button", { class: "linkbtn", type: "button", onclick: () => go({ exact: true }) }, "입력한 그대로 찾기")));
+    if (unitInfo && unitInfo.units.length > 1) box.append(h("div", { class: "chips" }, unitInfo.units.map(([u, n]) => h("button", { class: "chip", type: "button", "aria-pressed": u === unitInfo.unit ? "true" : "false", onclick: () => go({ unit: u, sort: "unit" }) }, `${u === "샷" ? "100샷" : u === "U" ? "10U" : "1" + u}당 · ${n}개`))));
+    for (const n of notes) box.append(h("div", { class: "note" }, n));
     const minP = hits.length ? Math.min(...hits.map((i) => ROWS[i][3])) : 0;
-    const atMin = hits.filter((i) => ROWS[i][3] === minP);
-    box.append(h("div", { class: "searchstat" }, hits.length ? `가격 ${hits.length.toLocaleString()}개 · 가장 싼 ${won(minP)} (${new Set(atMin.map((i) => ROWS[i][0])).size}개 지점)` : "조건에 맞는 가격이 없어요"));
-    if (hits.length) box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, hits.slice(0, f.n).map((i) => { const r = ROWS[i], x = rowPos(i);
+    box.append(h("div", { class: "searchstat" }, hits.length ? `가격 ${hits.length.toLocaleString()}개 · 가장 싼 ${won(minP)} (${new Set(hits.filter((i) => ROWS[i][3] === minP).map((i) => ROWS[i][0])).size}개 지점)` : "조건에 맞는 가격이 없어요"));
+    if (!hits.length) { box.append(h("div", { class: "card empty" }, f.q ? "검색 결과가 없어요. 짧게 써 보거나(예: 슈링크) 필터를 풀어 보세요." : "필터를 풀어 보세요.")); return box; }
+    box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, hits.slice(0, f.n).map((i) => { const r = ROWS[i], x = rowPos(i), u = Search.unitPrice(S[r[2]], r[3]);
       return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
         h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${r[0]}`) }, bdot(r[0]), bname(r[0])), r[4] ? h("s", {}, won(r[4])) : null,
           r[4] ? h("span", { class: "k kt" }, `${Math.round(disc(i) * 100)}%↓`) : null, kindBadge(r),
-          x ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위`) : null, srcLink(i), h("span", { class: "sp" }), rowAddBtn(i)))); })),
-      hits.length > f.n ? h("button", { class: "more-link", type: "button", onclick: () => { f.n += 200; render(); } }, `더 보기 (${(hits.length - f.n).toLocaleString()}개 남음)`) : null));
+          u ? h("span", { class: "unitp" }, `${u.unit === "샷" ? "100샷" : u.unit === "U" ? "10U" : "1" + u.unit}당 ${won(u.price)}`) : null,
+          x ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위`) : null,
+          f.sort === "recent" ? h("span", {}, `${ver(i)} 확인`) : null, dist(r[0]) != null ? h("b", {}, km(dist(r[0]))) : null,
+          srcLink(i), h("span", { class: "sp" }), rowAddBtn(i)))); })),
+      hits.length > f.n ? h("button", { class: "more-link", type: "button", onclick: () => go({ n: f.n + 200 }) }, `더 보기 (${(hits.length - f.n).toLocaleString()}개 남음)`) : null));
+    return box;
+  }
+  views.table = (arg, params) => {
+    const box = h("div", { class: "view" });
+    box.append(cmpNav("table"));
+    const q = h("input", { type: "search", value: params.get("q") || "", placeholder: "이름에 들어간 말 (예: 리쥬란 2cc, rejuran)", "aria-label": "가격 검색", enterkeyhint: "search" });
+    const run = (v) => { const np = new URLSearchParams(params); if (v) np.set("q", v); else np.delete("q"); np.delete("exact"); np.delete("n"); nav(`table?${np}`, true); };
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter") run(q.value.trim()); });
+    box.append(priceTable("table", params, { head: [h("h2", {}, "전체 가격표"), h("div", { class: "sub", style: "margin-top:4px" }, `모든 지점의 모든 가격 · ${regionName()} · ${vatNote()}`),
+      h("div", { class: "search", style: "margin-top:10px;box-shadow:none;background:var(--fill)" }, withSuggest(q, run))] }));
     return box;
   };
 
@@ -777,8 +875,11 @@
   // 비교 tab sub-navigation: 시술별 / 지점 순위 / 지점 비교 / 전체 가격표
   const cmpNav = (cur) => h("div", { class: "seg seg4", role: "tablist" }, [["compare", "시술별"], ["rank", "지점 순위"], ["versus", "지점 비교"], ["table", "전체 가격표"]].map(([v, l]) =>
     h("button", { type: "button", role: "tab", "aria-selected": cur === v ? "true" : "false", onclick: () => nav(v) }, l)));
-  views.compare = () => {
+  views.compare = (arg, params) => {
     const box = h("div", { class: "view" });
+    if (params && params.get("k") && KI[params.get("k")] != null) st.key = KI[params.get("k")];
+    if (st.key == null) st.key = 0;
+    if (KEYS[st.key] && (!params || params.get("k") !== KEYS[st.key].id)) history.replaceState(null, "", `#compare?k=${KEYS[st.key].id}`);
     if (st.key != null && KEYS[st.key]) remember("k", KEYS[st.key].id);
     box.append(cmpNav("compare"));
     if (st.key == null) st.key = 0;
@@ -1086,37 +1187,22 @@
   };
 
   // ---------------- search over every price
-  views.search = (arg) => {
+  views.search = (arg, params) => {
     const qs = decodeURIComponent(arg || "");
     const box = h("div", { class: "view" });
-    const q = h("input", { type: "search", value: qs, "aria-label": "시술 검색", enterkeyhint: "search" });
-    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && q.value.trim()) nav(`search/${encodeURIComponent(q.value.trim())}`, true); });
-    box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }), q));
-    const words = qs.toLowerCase().replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-    const compact = (s) => s.toLowerCase().replace(/\s+/g, "");
-    // matching comparison keys first
-    const keys = KEYS.filter((k) => words.every((w) => compact(k.label + k.cat).includes(compact(w))));
-    if (keys.length) box.append(h("div", { class: "card" }, h("h3", {}, "브랜드 비교 가능한 시술"),
+    const q = h("input", { type: "search", value: qs, "aria-label": "시술 검색", enterkeyhint: "search", placeholder: "시술 검색 (예: 슈링크 300샷, rejuran)" });
+    const run = (v) => { if (v) nav(`search/${encodeURIComponent(v)}`, true); };
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter") run(q.value.trim()); });
+    box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }), withSuggest(q, run)));
+    // comparison keys whose label matches (same normalization as prices)
+    const { tokens } = Search.parse(qs, searchIndex());
+    const keys = KEYS.filter((k) => tokens.length && Search.matches(Search.norm(`${k.label} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`), tokens));
+    if (keys.length) box.append(h("div", { class: "card" }, h("h3", {}, "브랜드끼리 비교할 수 있는 시술"),
       h("ul", { class: "list", style: "margin-top:4px" }, keys.map((k) => { const top = ranking(k.i, "price")[0];
         return h("li", {}, h("button", { class: "item", type: "button", onclick: () => { st.key = k.i; nav("compare"); } }, h("span", { class: "t" }, k.label),
           h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, k.cat, top ? `최저 ${bname(top.b)}` : ""))); }))));
-    // every row whose name has all words
-    const hits = [];
-    for (let i = 0; i < ROWS.length; i++) {
-      const r = ROWS[i];
-      if (!live(i) || !brandOn(r[0]) || !regionOk(r[0]) || (!st.special && isSpecial(r))) continue;
-      const n = compact(S[r[2]]);
-      if (words.every((w) => n.includes(compact(w)))) hits.push(i);
-    }
-    hits.sort((a, b) => (st.sort === "near" && st.loc ? (dist(ROWS[a][0]) ?? 1e9) - (dist(ROWS[b][0]) ?? 1e9) : 0) || ROWS[a][3] - ROWS[b][3]);
-    box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, `가격 ${hits.length.toLocaleString()}개`),
-      h("div", { class: "sub" }, "이름에 검색어가 들어간 모든 가격, 싼 순")),
-      hits.length ? h("ul", { class: "list" }, hits.slice(0, 200).map((i) => { const r = ROWS[i];
-        return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]),
-          h("span", { class: "p num" }, won(r[3])), h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${r[0]}`) }, bdot(r[0]), bname(r[0])),
-            r[4] ? h("s", {}, won(r[4])) : null, kindBadge(r), dist(r[0]) != null ? h("b", {}, km(dist(r[0]))) : null, h("span", { class: "sp" }), rowAddBtn(i)))); })) : h("div", { class: "empty" }, "검색 결과가 없어요. 짧게 써 보세요(예: 슈링크)")));
-    if (hits.length > 200) box.append(h("div", { class: "sub", style: "text-align:center" }, "싼 순으로 200개까지 보여요. 검색어를 더 넣어 좁혀 보세요."));
-    setTimeout(() => q.focus(), 0);
+    box.append(priceTable(`search/${encodeURIComponent(qs)}`, params, { q: params.get("exact") === "1" ? qs : qs, head: h("h3", {}, "이름에 검색어가 들어간 모든 가격") }));
+    if (!params.toString()) setTimeout(() => q.focus(), 0);
     return box;
   };
 
@@ -1530,14 +1616,23 @@
     el.textContent = `🛒 ${items.length}개 · ${best ? `한 곳 ${won(best.total)}부터` : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`}`;
     el.hidden = false;
   }
+  // removing a focused input can fire change/blur handlers that render again: never nest renders
+  let rendering = false;
   function render() {
     if (!D) return;
-    const [name, ...rest] = (location.hash.replace(/^#/, "") || "home").split("/");
+    if (rendering) { setTimeout(render, 0); return; }
+    rendering = true;
+    try { renderNow(); } finally { rendering = false; }
+  }
+  function renderNow() {
+    const [path, qs] = (location.hash.replace(/^#/, "") || "home").split("?");
+    const [name, ...rest] = path.split("/");
+    const params = new URLSearchParams(qs || "");
     const view = views[name] ? name : name === "more" ? "me" : "home";
     current = view;
     const tab = { branch: null, search: "home", import: "cart", more: "me", rank: "compare", versus: "compare", change: "home", table: "compare", about: "me" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
-    $("#main").replaceChildren(views[view](rest.join("/")));
+    $("#main").replaceChildren(views[view](rest.join("/"), params));
     paintFloatCart(view);
   }
   window.addEventListener("popstate", render);

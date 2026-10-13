@@ -209,6 +209,13 @@ select.mini { border: 0; background: var(--fill); border-radius: 10px; padding: 
 @media (min-width: 900px) { .fcart { bottom: 24px; } }
 .chip.mini-chip { padding: 3px 10px; font-size: 12px; }
 pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: var(--fill); border-radius: 12px; padding: 10px 12px; margin: 0; color: var(--ink-2); }
+/* autocomplete */
+.sugwrap { position: relative; flex: 1; min-width: 0; display: flex; }
+.sugwrap > input { flex: 1; min-width: 0; border: 0; background: none; padding: 12px 0; font-size: 16px; outline: none; }
+.suggest { position: absolute; left: -10px; right: -10px; top: calc(100% + 6px); z-index: 40; list-style: none; margin: 0; padding: 6px; background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); }
+.suggest button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 10px 12px; border-radius: 10px; font-size: 15px; }
+.suggest button:hover, .suggest button:focus { background: var(--fill); outline: none; }
+.unitp { color: var(--ink-2); font-weight: 600; }
 /* home extras */
 .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .qbtn { display: grid; justify-items: center; gap: 1px; border: 0; background: var(--surface); border-radius: 18px; padding: 12px 4px 10px; min-width: 0; }
@@ -238,6 +245,9 @@ pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; back
 .fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; margin-bottom: 10px; }
 @media (min-width: 640px) { .fgrid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .fgrid .pick { padding: 10px 12px; font-size: 14px; }
+.fgrid .wide { grid-column: 1 / -1; }
+.range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
+.range .pick { width: 100%; min-width: 0; border: 0; background: var(--fill); border-radius: 12px; color: var(--ink); }
 .searchstat { font-size: 14px; font-weight: 700; background: var(--accent-soft); color: var(--accent); border-radius: 14px; padding: 12px 14px; }
 ul.plain { margin: 6px 0 0; padding-left: 18px; font-size: 14px; color: var(--ink-2); display: grid; gap: 6px; }
 /* rank / versus / branch level */
@@ -367,6 +377,7 @@ html:not(.locked) .gate { display: none; }
 <script src="config.js"></script>
 <script src="auth.js"></script>
 <script src="domain/pricing.js"></script>
+<script src="domain/search.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
