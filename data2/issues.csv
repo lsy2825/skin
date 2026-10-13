@@ -1,0 +1,117 @@
+﻿action,reason,brand,branch,category,group,option,sale,orig,url
+정가 삭제,정가가 판매가의 10배 이상(사이트 오기 의심),블리비,구미점,기획전,메가세일 페스타,♥️메가세일♥️레이저토닝(화이트닝 레이저) + 진정관리 체험가,3000,59000,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B5%AC%EB%AF%B8%EC%A0%90&sField=1
+정가 삭제,정가가 판매가의 10배 이상(사이트 오기 의심),블리비,김포점,기획전,메가세일 페스타,♥️메가세일♥️슈링크 유니버스 리프팅(고강도 집속 초음파) 울트라F 300샷 체험가,79000,1500000,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%8F%AC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,김해점,비만,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%95%B4%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,김해점,비만,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%95%B4%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,김해점,비만,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%95%B4%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,김해점,비만,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%95%B4%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,김해점,비만,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B9%80%ED%95%B4%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,발산점,비만,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B0%9C%EC%82%B0%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,발산점,비만,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B0%9C%EC%82%B0%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,발산점,비만,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B0%9C%EC%82%B0%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,발산점,비만,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B0%9C%EC%82%B0%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,발산점,비만,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B0%9C%EC%82%B0%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,부산 덕천점,기획전,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EB%8D%95%EC%B2%9C%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,부산 덕천점,기획전,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EB%8D%95%EC%B2%9C%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,부산 덕천점,기획전,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EB%8D%95%EC%B2%9C%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,부산 덕천점,기획전,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EB%8D%95%EC%B2%9C%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,부산 덕천점,기획전,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EB%8D%95%EC%B2%9C%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,제주점,기획전,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A0%9C%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,제주점,기획전,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A0%9C%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,제주점,기획전,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A0%9C%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,제주점,기획전,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A0%9C%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,제주점,기획전,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A0%9C%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,진주점,기획전,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A7%84%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,진주점,기획전,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A7%84%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,진주점,기획전,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A7%84%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,진주점,기획전,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A7%84%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,진주점,기획전,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%A7%84%EC%A3%BC%EC%A0%90&sField=1
+제외,서류 발급비(시술 아님),블리비,청량리점,비만,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EB%9F%89%EB%A6%AC%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,청량리점,비만,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EB%9F%89%EB%A6%AC%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,청량리점,비만,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EB%9F%89%EB%A6%AC%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,청량리점,비만,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EB%9F%89%EB%A6%AC%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,청량리점,비만,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EB%9F%89%EB%A6%AC%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,포항점,비만,제증명 발급 수수료,일반진단서,20000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%ED%8F%AC%ED%95%AD%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,포항점,비만,제증명 발급 수수료,진료확인서,3000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%ED%8F%AC%ED%95%AD%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,포항점,비만,제증명 발급 수수료,진료기록 사본(1~5매) - 1매 당,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%ED%8F%AC%ED%95%AD%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,포항점,비만,제증명 발급 수수료,진료기록 사본(6매 이상) - 1매 당,100,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%ED%8F%AC%ED%95%AD%EC%A0%90&sField=7
+제외,서류 발급비(시술 아님),블리비,포항점,비만,제증명 발급 수수료,제증명서 사본,1000,,https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%ED%8F%AC%ED%95%AD%EC%A0%90&sField=7
+제외,가격 없음(0원),쁨,분당점,분당점_생일10%쿠폰,,10% 할인 생일쿠폰,0,,https://event.ppeum.com/v1/event/reserve?branch=ppeum10&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,범계점,PPEUM 스킨부스터,,★한정★ 레빅스 1병(3CC)+리쥬란® 1회(2CC),640000,1260000,https://event.ppeum.com/v1/event/reserve?branch=ppeum12&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,초음파,■리프팅파티■ 올리지오 300샷 + 슈링크 유니버스 울트라 300샷,390000,620000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,초음파,■리프팅파티■ 슈링크 유니버스 울트라 300샷 + 리프테라2 3000샷,220000,326000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,초음파,■리프팅파티■ 슈링크 유니버스 울트라 300샷 + 인모드FX(풀페이스),203000,319000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,고주파/프리미엄,"■리프팅파티■ 온다리프팅 80,000J + 올리지오 300샷",770000,1190000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,안티에이징,■리프팅파티■ 슈링크 유니버스 울트라 300샷 + 인모드FX(풀페이스),203000,319000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,안티에이징,"■리프팅파티■ 온다리프팅 80,000J + 올리지오 300샷",770000,1190000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,안티에이징,■리프팅파티■ 슈링크 유니버스 울트라 300샷 + 리프테라2 3000샷,220000,326000,https://bupyeong.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,부평점,리프팅/안티에이징,안티에이징,■리프팅파티■ 올리지오 300샷 + 슈링크 유니버스 울트라 300샷,390000,620000,https://bupyeong.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,부평점,색소/모공/여드름,모공/여드름 레이저,시카레이저,190000,140000,https://bupyeong.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,부평점,피부관리/영양주사,여드름/미백/보습,LDM(재생모드) + E.G.F앰플 / 5회,290000,70000,https://bupyeong.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,부평점,남성제모,하체 제모,[남성] 항문 5회,420000,400000,https://bupyeong.ppeum.com/selectSurgery
+제외,가격 없음(0원),쁨,안산점,색소/홍조 레이저,,한관종(아그네스),0,,https://event.ppeum.com/v1/event/reserve?branch=ppeum18&type=homepage&directLink=onlineReserve
+제외,서류 발급비(시술 아님),쁨,안산점,피부관리/영양주사,,[시술옵션] 의사소견서,20000,,https://event.ppeum.com/v1/event/reserve?branch=ppeum18&type=homepage&directLink=onlineReserve
+제외,서류 발급비(시술 아님),쁨,안산점,피부관리/영양주사,,[시술옵션] 일반진단서,20000,,https://event.ppeum.com/v1/event/reserve?branch=ppeum18&type=homepage&directLink=onlineReserve
+제외,가격 없음(0원),쁨,수원역점,이달의 이벤트,,☆쁨 VIP 회원권 상담☆,0,,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 쥬베룩 스킨부스터4cc 1회 *더마샤인팁 3.5만 별도,290000,500000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 풀페이스 리투오 6cc 1회,600000,900000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 풀페이스 셀르디엠 6cc 1회 *더마샤인팁 3.5만 별도,490000,900000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 국산 프리미엄 턱보톡스 50유닛,55000,70000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 국산 프리미엄 주름보톡스 2부위,69000,80000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 국산 프리미엄 풀페이스스킨보톡스 3cc,145000,250000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 수입 독일산 턱보톡스 50유닛,99000,150000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 수입 독일산 주름보톡스 2부위,89000,120000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 수입 독일산 풀페이스 스킨보톡스 3cc,199000,300000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 피코토닝+수분팩 5회,250000,300000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 듀얼토닝+수분팩 5회,390000,600000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 듀얼톤업패키지[피코토닝10회+제네시스5회+미백or수분관리10회+수분팩],750000,1300000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 홍조레이저+진정관리+수분팩 3회,250000,400000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 실펌X(모공)+엑소좀+크라이오+수분팩 3회 *실펌팁 3.5만 별도,490000,900000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 내맘대로 피부관리 5회,99000,190000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 여드름스케일링+압출+엑소좀+크라이오+수분팩 1회,99000,190000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 원데이 골드PTT [스팀+압출+골드PTT+크라이오+제네시스+LED재생],159000,290000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 인텐스울트라12분+LED+수분팩 3회,169000,300000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 풀페이스인모드FX or FORMA,99000,135000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 슈링크유니버스울트라300샷,99000,137000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 땅콩얼굴패키지[엔코어+리프테라2 펜2000샷],290000,390000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 브이로3300샷,350000,500000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 덴서티클래식300샷+티타늄30kJ,750000,11500000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 덴서티알파300샷+티타늄30kJ,990000,1500000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 울쎄라프라임300샷+인텐스울트라10분(마취침투),990000,1600000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] 대용량PS주사9cc,99000,150000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] V쉐딩주사 20cc,159000,250000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,수원역점,이달의 이벤트,,★이달의 이벤트[10월이벤트(~10.31 까지)] DCA이중턱 파괴주사[벨라콜린1Vial],190000,290000,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,가격 없음(0원),쁨,수원역점,10월 할인 이벤트,,☆쁨 VIP 회원권 상담☆,0,,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+제외,가격 없음(0원),쁨,수원역점,어텀꿀세일,,☆쁨 VIP 회원권 상담☆,0,,https://event.ppeum.com/v1/event/reserve?branch=ppeum24&type=homepage&directLink=onlineReserve
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,보톡스/윤곽주사,국산 보톡스,국산 턱보톡스 50U,35000,19000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,필러/실리프팅,국산 필러,국산필러 1cc,100000,90000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,리프팅/안티에이징,고주파/프리미엄,볼뉴머 100샷,190000,150000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,리프팅/안티에이징,고주파/프리미엄,아이 볼뉴머 100샷,195000,170000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,색소/모공/여드름,착색토닝/문신제거,착색토닝 비키니라인,70000,60000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,색소/모공/여드름,착색토닝/문신제거,(단색) 피코문신제거 500원,80000,50000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,색소/모공/여드름,착색토닝/문신제거,(단색) 피코문신제거 명함 1장,150000,80000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,색소/모공/여드름,착색토닝/문신제거,(단색) 피코문신제거 명함 2장,200000,140000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,스킨부스터,스킨부스트(앰플),내맘대로스킨부스터10회,900000,130000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,스킨부스터,스킨부스터,눈밑동안주사,190000,110000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,여성제모,얼굴 제모,[여성]인중 5회,55000,30000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,여성제모,얼굴 제모,[여성]미간 5회,55000,30000,https://jamsil.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,잠실점,여성제모,상체 제모,[여성]겨드랑이 5회,55000,50000,https://jamsil.ppeum.com/selectSurgery
+제외,안내 문구(가격 아님),쁨,하남미사점,리프팅/안티에이징,,★스탠다드 패키지★ 리프테라2 펜타입 3000샷 + 수입 목주름 텐션 필러 2CC + 목주름 텐션주사,590000,850000,https://event.ppeum.com/v1/event/reserve?branch=ppeum32&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,하남미사점,리프팅/안티에이징,,★프리미엄 패키지★ 리프테라2 펜타입 4000샷 + 수입 목주름 텐션 필러 2CC + 목주름 텐션주사 + 리쥬란힐러 2CC 1회,750000,1100000,https://event.ppeum.com/v1/event/reserve?branch=ppeum32&type=homepage&directLink=onlineReserve
+제외,안내 문구(가격 아님),쁨,하남미사점,리프팅/안티에이징,,★올인원 패키지★ 리프테라2 펜타입 5000샷 + 수입 목주름 텐션 필러 2CC + 목주름 텐션주사 + 리쥬란힐러 2CC 3회,1990000,2900000,https://event.ppeum.com/v1/event/reserve?branch=ppeum32&type=homepage&directLink=onlineReserve
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,부천점,리프팅/안티에이징,고주파/프리미엄,티타늄 20KJ,350000,340000,https://bucheon.ppeum.com/selectSurgery
+정가 삭제,정가가 판매가보다 낮음(사이트 표기 오류),쁨,창원점,필러/실리프팅,국산 필러,엘라비에 프리미어 필러 1cc,200000,150000,https://changwon.ppeum.com/selectSurgery
+제외,서류 발급비(시술 아님),톡스앤필,천안신부점,항노화수액/기타,서류발급,"[EVENT] 진단서, 진료확인서, 진료기록부사본 등 서류발급/ 서류 당",10000,,https://www.toxnfill20.com/detail.php?c=785&i=29663
+제외,서류 발급비(시술 아님),톡스앤필,제주점,서류발급비용,서류 및 진료비용,진단서,20000,,https://www.toxnfill46.com/detail.php?c=2987&i=17394
+제외,서류 발급비(시술 아님),톡스앤필,제주점,서류발급비용,서류 및 진료비용,소견서,10000,,https://www.toxnfill46.com/detail.php?c=2987&i=17394
+제외,서류 발급비(시술 아님),톡스앤필,제주점,서류발급비용,서류 및 진료비용,추가서류발급(차트/세부내역서)1장,1000,,https://www.toxnfill46.com/detail.php?c=2987&i=17394
+제외,서류 발급비(시술 아님),리엔장,인천점,제모,제모,진단서,20000,,https://incheon.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,인천점,제모,제모,소견서,10000,,https://incheon.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,명동점,제모,제모,진단서,20000,,https://myeongdong.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,명동점,제모,제모,소견서,10000,,https://myeongdong.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,목동점,제모,제모,진단서,20000,,https://mokdong.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,목동점,제모,제모,소견서,10000,,https://mokdong.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,홍대점,제모,제모,진단서,20000,,https://hongdae.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,홍대점,제모,제모,소견서,10000,,https://hongdae.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,하남점,제모,제모,진단서,20000,,https://hanam.lienjang.net/agree/info
+제외,서류 발급비(시술 아님),리엔장,하남점,제모,제모,소견서,10000,,https://hanam.lienjang.net/agree/info
