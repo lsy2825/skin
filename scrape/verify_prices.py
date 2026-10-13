@@ -9,10 +9,13 @@ are shared by many rows), 1.5 s apart. Nothing is changed in the app data — th
 Writes data2/price_checks.csv and data2/price_checks.md (also to $GITHUB_STEP_SUMMARY when set). The next app build
 (build2/appdata.py) reads the csv: a FOUND price counts as checked against its source and may be a headline price again.
 Status per row:
-  FOUND         the option name and the price (as written on the site, e.g. '100원' / '2,500') are close together
-  NAME_ONLY     the option name is on the page but that price is not next to it (changed? shown differently?)
+  FOUND         the price (as written on the site, e.g. '100원' / '2,500') comes within 160 characters after the option name
+  IN_BLOCK      not that close, but in the same page block as the name: the smallest block holding the name and the
+                price holds no other product name of that page (e.g. a long description sits between them)
+  NAME_ONLY     the option name is on the page but that price is not near it (changed? shown differently?)
   NOT_FOUND     the option name is not on the page (event over or renamed since the weekly scrape)
   FETCH_ERROR   the page could not be read
+Page text keeps a space between elements, so '49%' '990' '1,950' in three tags never reads as one number '49%9901,950'.
 """
 import argparse, csv, json, os, re, statistics, sys
 from collections import defaultdict
@@ -27,6 +30,55 @@ CONDS = re.compile(r"첫\s*방문|신규|1\s*인\s*1\s*회|체험가?|한정가?
 
 def squash(s):
     return re.sub(r"\s+", "", s or "")
+
+
+def spaced(s):
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def name_re(name):
+    """the name with its spaces taken out, allowing any spaces between its characters (tags may split it)"""
+    return re.compile(r"\s*".join(map(re.escape, squash(name))))
+
+
+def price_re(price):
+    return re.compile(rf"(?<![\d,]){re.escape(f'{price:,}')}(?![\d,])|(?<![\d,]){price}(?![\d,])")
+
+
+def after(text, start, n=160):
+    """text from start on, up to n characters that are not spaces"""
+    seen, i = 0, start
+    while i < len(text) and seen < n:
+        seen += not text[i].isspace()
+        i += 1
+    return text[start:i]
+
+
+def check(soup, text, name, price, others):
+    """→ (status, snippet). text = spaced page text; others = the other product names read from the same page."""
+    names = [name, re.sub(r"\s*(체험가|한정가)\s*$", "", name)]
+    m = next((m for m in (name_re(c).search(text) for c in names if squash(c)) if m), None)
+    if not m:
+        return "NOT_FOUND", ""
+    win, pat = after(text, m.end()), price_re(price)
+    if pat.search(win):
+        return "FOUND", win
+    # the smallest element holding the name whose text also holds the price after the name, with no other product in it
+    rx = name_re(m.group(0))
+    oth = [name_re(o) for o in others if squash(o) and squash(o) not in squash(name) and squash(name) not in squash(o)]
+    for el in soup.find_all(True):
+        if not rx.search(spaced(el.get_text(" "))):
+            continue
+        if any(rx.search(spaced(c.get_text(" "))) for c in el.find_all(True, recursive=False)):
+            continue                            # a child already holds the whole name: look deeper
+        for anc in [el, *el.parents][:8]:
+            t = spaced(anc.get_text(" "))
+            if len(rx.findall(t)) != 1 or any(o.search(t) for o in oth) or len(t) > 3000:
+                break                           # reached a block with another product (or the name twice): stop
+            nm = rx.search(t)
+            if pat.search(t[nm.end():]):
+                return "IN_BLOCK", after(t, nm.end())
+    return "NAME_ONLY", win
 
 
 def main():
@@ -68,6 +120,9 @@ def main():
             r = rows[i]
             print(reason, f"{share:.0%}" if share != 1 else "-", r[3], brands[br[r[0]][0]], S[br[r[0]][1]], S[r[2]][:50], S[r[11]][:60])
         return
+    on_page = defaultdict(set)                   # url → product names the weekly scrape read there
+    for r in rows:
+        on_page[S[r[11]]].add(S[r[2]])
     f = Fetcher(gap=1.5)
     pages, out = {}, []
     for _, share, i, reason in picked:
@@ -75,19 +130,12 @@ def main():
         url, name, price = S[r[11]], S[r[2]], r[3]
         if url not in pages:
             resp = f.get(url)
-            pages[url] = squash(BeautifulSoup(resp.text, "html.parser").get_text(" ")) if resp else None
-        text = pages[url]
+            soup = BeautifulSoup(resp.text, "html.parser") if resp else None
+            pages[url] = (soup, spaced(soup.get_text(" "))) if soup else None
         status, snippet = "FETCH_ERROR", ""
-        if text is not None:
-            cands = [squash(name), squash(re.sub(r"\s*(체험가|한정가)\s*$", "", name))]
-            pos = next((text.find(c) for c in cands if c and text.find(c) >= 0), -1)
-            if pos < 0:
-                status = "NOT_FOUND"
-            else:
-                window = text[pos: pos + len(cands[0]) + 160]
-                pat = re.compile(rf"(?<![\d,]){re.escape(f'{price:,}')}(?![\d,])|(?<!\d){price}(?!\d)")
-                status = "FOUND" if pat.search(window) else "NAME_ONLY"
-                snippet = window[:160]
+        if pages[url] is not None:
+            status, snippet = check(*pages[url], name, price, on_page[url] - {name})
+            snippet = squash(snippet)[:160]
         b = br[r[0]]
         out.append({"status": status, "checked_at": now_iso()[:10], "reason": reason, "brand": brands[b[0]], "branch": S[b[1]], "name": name, "listed_price": price,
                     "vat": {1: "포함", 2: "별도"}.get(r[12], "미확인"), "kind": D["meta"]["kinds"][r[5]], "conditions_in_app": S[r[6]],

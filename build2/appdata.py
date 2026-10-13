@@ -223,7 +223,7 @@ def region(addr):
     return ""
 
 
-CHECK_CODES = {"FOUND": 1, "NAME_ONLY": 2, "NOT_FOUND": 3, "FETCH_ERROR": 4}
+CHECK_CODES = {"FOUND": 1, "NAME_ONLY": 2, "NOT_FOUND": 3, "FETCH_ERROR": 4, "IN_BLOCK": 5}
 
 
 def price_checks(rows, date):

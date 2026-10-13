@@ -107,7 +107,7 @@
     KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label }));
     KI = Object.fromEntries(KEYS.map((k) => [k.id, k.i]));
     ROWS = D.rows;
-    // source re-checks of low prices (scrape/verify_prices.py): row → { s: 1 found · 2 name only · 3 not found · 4 fetch error, d: date }
+    // source re-checks of low prices (scrape/verify_prices.py): row → { s: 1 found · 2 name only · 3 not found · 4 fetch error · 5 in the same block, d: date }
     CHK = new Map((D.meta.checks || []).map(([i, s, d]) => [i, { s, d }]));
     // r[15] = 0 live · 1 event over (until < today) · 2 price jump waiting for review; r[14] = listed price when VAT 별도
     const td = today();
@@ -588,7 +588,8 @@
   }
   const checkedOk = (i) => (CHK.get(i) || {}).s === 1;
   const CHECK_TXT = { 1: "원본 페이지에서 같은 이름·가격을 다시 확인했어요", 2: "원본에 상품명은 있지만 이 가격은 옆에서 찾지 못했어요 — 바뀌었을 수 있어요",
-    3: "원본 페이지에서 이 상품을 찾지 못했어요 — 행사가 끝났거나 이름이 바뀌었을 수 있어요", 4: "원본 페이지를 읽지 못했어요" };
+    3: "원본 페이지에서 이 상품을 찾지 못했어요 — 행사가 끝났거나 이름이 바뀌었을 수 있어요", 4: "원본 페이지를 읽지 못했어요",
+    5: "원본 페이지의 같은 상품 칸에서 이 가격을 찾았어요 (상품명 바로 옆은 아니에요)" };
   function priceSheet(i) {
     const r = ROWS[i], b = r[0], f = fresh(b), conds = priceConds(i), stx = priceStats(i), low = isLow(i, stx);
     const vatTxt = r[12] === 2 ? (st.vat === "incl" ? `병원 표시가 ${won(r[14])} + 부가세 10% = ${won(r[3])} (병원이 '부가세 별도'라고 적어 둠)` : `병원 표시가 ${won(r[14])} (부가세 별도, 결제 땐 10% 더 붙을 수 있어요)`)
