@@ -25,8 +25,9 @@
 - E2E(Playwright, Chromium 390px):
   - `tests/e2e/qa7.js`: 32/32 통과(지시서 QA 7문항 + 지점 수 일치)
   - `tests/e2e/ux_qa.js`: 25/25 통과
-  - `tests/e2e/touch_targets.js`: 3,785/3,785 통과(19개 화면, 세부 구분·카드 보기 포함)
-  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 14개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/touch_targets.js`: 3,790/3,790 통과(19개 화면, 세부 구분·카드 보기 포함)
+  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 15개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/v5_features.js`: 27/27 (v5.0: A/B 비교·보기 기록·집·직장 지우기·장바구니 막대·지도 거리)
   - `tests/e2e/jomi.js` 35/35 · `objective.js` 30/30 · `frame.js` 9/9 · `table_attr.js` 13/13 · `compare_cards.js` 14/14 (2026-10-13 점검 뒤 전체 재실행)
   - `tests/e2e/concern.js`: 23/23 통과
   - 가로 넘침: 375·390·430·768·1280px 위반 0
@@ -103,7 +104,7 @@
 | 46 | 믿을 수 있는 수집 | COMPLETE · NEEDS VERIFICATION | 주간 수집, 30% 감소 시 지난 자료, robots 확인, 급변 검토 큐, 원본 대조 | 원본 대조 판정 개선 | 파이썬 시험 7개, GitHub 실행 | 장기 운영 관찰 |
 | 47 | 관리자·사용자 권한 | PARTIAL · BLOCKED | DB 정책·MFA·감사 로그 SQL과 로컬 시험, PIN은 인증 아님 | — | `tests/db` | 실제 백엔드(Supabase 키) |
 | 48 | 건강 정보 개인정보 | COMPLETE | 고민 문장은 기기 안에서만 분류하고 저장 안 함 | 보기 기록 통제 추가 | `concern.js` | 개인정보 처리방침(공개 전) |
-| 49 | 성능·오류·접근성 시험 | COMPLETE(실험실) · NEEDS VERIFICATION | LCP·CLS·누르기 반응(INP 유사), axe, 터치, 오류 화면 | **누르기 반응 측정 추가, 비교 목록만 다시 그리기** | `QA_REPORT.md` | 실기기·현장 데이터 |
+| 49 | 성능·오류·접근성 시험 | COMPLETE(실험실) · NEEDS VERIFICATION | LCP 0.79초·CLS 0(느린 4G), 누르기 반응 최대 0.18~0.20초(CPU 4배 느림), axe 15화면×2 위반 0, 터치 3,790/3,790, 오류 화면 | **누르기 반응 측정 추가, 비교 목록만 다시 그리기** | `QA_REPORT.md` | 실기기·현장 데이터 |
 | 50 | 출시 준비 | BLOCKED | `docs/RELEASE_CHECKLIST.md` | **새로 작성** | — | 법률 검토, 처리방침, PIN·인증, 모니터링 |
 
 ## 미비 작업 점검·실시 (2026-10-13, 지시 "지금까지 미비된 작업들을 확인해서 실시")

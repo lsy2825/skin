@@ -1,6 +1,6 @@
 // First-load measurement in Chromium (lab, not field data): FCP, LCP, CLS, long tasks and transferred bytes of the
 // PIN screen, then how long until the home screen shows prices when the PIN is typed right away, then an INP-like
-// number: the slowest of 8 scripted taps (tabs, a treatment, sort, card view, price evidence, cart), from Event Timing.
+// number: the slowest of 7 scripted taps (tabs, sort, card/list view, price evidence, cart), from Event Timing.
 // Profiles: 'slow4g' = the Lighthouse mobile preset (150 ms RTT, 1.6 Mbps down, 750 kbps up, CPU 4x slower), 'fast' = no throttling.
 // Serve app/ gzipped like GitHub Pages (tests/perf/gzserve.js), then:
 //   node tests/perf/gzserve.js app 8770 &   APP_PIN=<pin> BASE=http://localhost:8770/ node tests/perf/first_load.js
