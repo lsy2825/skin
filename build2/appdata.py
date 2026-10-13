@@ -3,12 +3,13 @@
 usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
   meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
-  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s, url s, vat, review]
+  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s, url s, vat, review, parts s]
             keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
             group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
             url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
             and nobody approved it yet (data2/review.csv, approvals in data2/review_ok.csv) — the app keeps it out of
             comparisons
+            parts = for names with '+': comparison keys matched by each part, 'X12,X24;;X01' (package mode C)
   branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
             this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
@@ -26,7 +27,7 @@ from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X  # noqa: E402
+from xkeys import X, match as xmatch  # noqa: E402
 import groups as G  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
@@ -83,6 +84,14 @@ def trend(hist, date, rows):
                 offs.setdefault(k, []).append(round((int(r["orig"]) - int(r["sale"])) / int(r["orig"]) * 100))
     disc = {k: sorted(v)[len(v) // 2] for k, v in offs.items() if len(v) >= 3}
     return {"dates": dates, "k": per, "disc": disc}
+
+
+def part_keys(name):
+    """'슈링크 300샷 + 리쥬란 2cc' -> 'X12;X24': which comparison keys each '+' part is (same xkeys rules as whole rows)"""
+    if "+" not in name:
+        return ""
+    parts = [re.sub(r"\[[^\]]*\]\s*", "", p).strip() for p in re.split(r"\s*\+\s*", name)]
+    return ";".join(",".join(k[0] for k in X if p and xmatch(k, p)) for p in parts)
 
 
 def about():
@@ -187,7 +196,7 @@ def main():
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
                          kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g, S(r["until"]), S(r["url"]),
-                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0])
+                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"]))])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"

@@ -88,3 +88,42 @@ test("cart: item nobody sells", () => {
   assert.equal(r.mix.missing, 1);
   assert.equal(r.savings, null);
 });
+
+test("first-visit prices: one per branch, the biggest saving stays", () => {
+  const L = (t, extra = {}) => ({ total: t, rows: [0], units: 1, ...extra });
+  const lines = [L(5000), L(9000), L(30000)];
+  const alts = [L(20000), L(10000), null];
+  const out = P.limitOnce(lines, [true, true, false], (j) => alts[j]);
+  assert.deepEqual(out.map((l) => l.total), [5000, 10000, 30000]);   // item 0 saves 15,000 → keeps; item 1 falls back
+  assert.equal(out[1].restacked, true);
+  const noAlt = P.limitOnce([L(5000), L(9000)], [true, true], (j) => (j === 0 ? L(20000) : null));
+  assert.equal(noAlt[1].total, 9000);                                  // no other price: kept (only option) …
+  assert.equal(noAlt[1].stackWarn, undefined);                         // … because it saves most (Infinity)
+  assert.equal(noAlt[0].restacked, true);
+  assert.deepEqual(P.limitOnce([L(1), null], [true, false], () => null).map((l) => l && l.total), [1, null]);
+});
+
+test("package match: spec equal / different / unknown, extra parts", () => {
+  const norm = (s) => s.toLowerCase().replace(/\s+/g, "");
+  const items = [{ fam: /슈링크/, spec: "300샷" }, { fam: /리쥬란/, spec: "2cc" }, { fam: /아쿠아필/, spec: "" }];
+  let m = P.matchPackage("슈링크 300샷 + 리쥬란 2cc", items, norm);
+  assert.deepEqual(m.matched.map((x) => [x.j, x.state]), [[0, "match"], [1, "match"]]);
+  assert.equal(m.full, true);
+  m = P.matchPackage("슈링크 100샷 + 리쥬란 2cc + 크라이오셀", items, norm);
+  assert.deepEqual(m.matched.map((x) => x.state), ["spec", "match"]);
+  assert.deepEqual(m.extras, ["크라이오셀"]);
+  assert.equal(m.full, false);
+  m = P.matchPackage("아쿠아필 + 리쥬란 2cc", items, norm);
+  assert.deepEqual(m.matched.map((x) => [x.j, x.state]), [[1, "match"], [2, "check"]]);
+});
+
+test("package match with per-part comparison keys (from xkeys)", () => {
+  const norm = (s) => s.toLowerCase().replace(/\s+/g, "");
+  const items = [{ fam: /톡신|보톡스/, spec: "50U", key: "X01" }, { fam: /톡신|보톡스/, spec: "", key: "X02" }];
+  let m = P.matchPackage("[EVENT] 국산 사각턱보톡스 50U + 국산 주름보톡스 1부위", items, norm, "X01;X02");
+  assert.deepEqual(m.matched.map((x) => [x.j, x.state]), [[0, "match"], [1, "match"]]);
+  assert.equal(m.full, true);
+  m = P.matchPackage("국산 턱보톡스 100U + 침샘보톡스", items, norm, ";");
+  assert.deepEqual(m.matched.map((x) => x.state), ["spec", "spec"]);   // toxin, but not the same procedure
+  assert.equal(m.full, false);
+});

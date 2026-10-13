@@ -122,5 +122,49 @@
     return { full, partial, mix, pair, savings: full.length && !mix.missing ? full[0].total - mix.total : null };
   }
 
-  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, condState, cheapest, lineCost, compareClinics };
+  // ---- 'first visit' prices are often one per visit: keep at most one such line per branch (the one that saves most);
+  // the others fall back to their next price (recompute(j) = the line without first-visit rows). A line with no fallback
+  // stays but is flagged, because the clinic may not allow it.
+  function limitOnce(lines, onceFlags, recompute) {
+    const idx = lines.map((l, j) => (l && onceFlags[j] ? j : -1)).filter((j) => j >= 0);
+    if (idx.length <= 1) return lines.map((l) => l);
+    const alt = new Map(idx.map((j) => [j, recompute(j)]));
+    const saving = (j) => (alt.get(j) ? alt.get(j).total : Infinity) - lines[j].total;
+    const keep = idx.reduce((a, j) => (saving(j) > saving(a) ? j : a), idx[0]);
+    return lines.map((l, j) => {
+      if (!alt.has(j) || j === keep) return l;
+      const a = alt.get(j);
+      return a ? { ...a, restacked: true } : { ...l, stackWarn: true };
+    });
+  }
+
+  // ---- clinic package vs. the cart (mode C). name: package option name ('슈링크 300샷 + 리쥬란 2cc'),
+  // items: [{fam: RegExp for the procedure family, spec: '300샷' | '', key: comparison id | undefined}],
+  // partKeys: per '+' part, the comparison ids that part is (from build2 xkeys rules, 'X12;X24'), norm: Search.norm.
+  // Each item: 'match' (the part is the same procedure: same key, or same family and amount), 'spec' (same family,
+  // different amount/area/product), 'check' (same family, nothing to compare). extras = parts matching no cart item.
+  function matchPackage(name, items, norm, partKeys = "") {
+    const parts = (name || "").split(/\s*\+\s*/).map((s) => s.replace(/\[[^\]]*\]\s*/g, "").trim());
+    const keysOf = partKeys ? partKeys.split(";").map((s) => s.split(",").filter(Boolean)) : [];
+    const used = new Set();
+    const matched = [];
+    items.forEach((it, j) => {
+      let k = it.key ? parts.findIndex((p, n) => !used.has(n) && (keysOf[n] || []).includes(it.key)) : -1;
+      if (k < 0) k = parts.findIndex((p, n) => p && !used.has(n) && it.fam.test(p));
+      if (k < 0) return;
+      used.add(k);
+      let state;
+      if (it.key && keysOf.length) state = (keysOf[k] || []).includes(it.key) ? "match" : "spec";
+      else {
+        const pn = norm(parts[k]);
+        const amount = /\d+(샷|cc|u|kj)/.exec(pn);
+        state = !it.spec ? "check" : pn.includes(norm(it.spec)) ? "match" : amount ? "spec" : "check";
+      }
+      matched.push({ j, state, part: parts[k] });
+    });
+    const extras = parts.filter((p, n) => p && !used.has(n));
+    return { parts, matched, extras, full: matched.length > 0 && matched.every((m) => m.state === "match") && !extras.length };
+  }
+
+  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, condState, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
 });
