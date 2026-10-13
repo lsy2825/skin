@@ -4,7 +4,7 @@
 - 스타일: `app/styles.css`(토큰 + 컴포넌트, 약 650줄). `index.html`의 인라인 스타일은 없앴어요.
 - 아이콘: `app/icons.js`(Lucide 82개, ISC — `app/vendor/lucide/LICENSE`)
 - 글꼴: Pretendard Variable 동적 서브셋(OFL-1.1 — `app/vendor/fonts/pretendard/LICENSE.txt`). 화면에 필요한 글자 범위 파일만 내려받아요.
-- 로고타입·마스코트: `brand/make_logotype.py` → `brand/logotype.svg`, `brand/make_mascot.py` → `app/icons/mascot-160.png`
+- 로고타입·마스코트: `brand/make_logotype.py` → `brand/logotype.svg`, `brand/make_mascot.py` → `app/assets/jomi/`(마스코트 죠미: `docs/JOMI_CHARACTER_GUIDE.md`)
 
 ## 1. 감사: 바꾸기 전 문제
 | # | 문제 | 어떻게 바꿨나 |

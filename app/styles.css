@@ -652,3 +652,58 @@ body.has-fcart .wrap { padding-bottom: calc(var(--nav-h) + 96px + env(safe-area-
 .chip.bchip[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
 .chip.bchip[aria-pressed="false"] .dot { opacity: .3; }
 .lcbox { max-width: 520px; }
+
+/* ---------- 죠미 (docs/JOMI_INTERACTION_SPEC.md) */
+html.sheet-open, html.sheet-open body { overflow: hidden; }
+.jomi-btn { flex: none; border: 0; background: none; padding: 0; border-radius: 50%; display: grid; place-items: center; transition: transform var(--fast); }
+.jomi-btn:active { transform: scale(.9); }
+.brand { gap: 0; }
+img.mascot { object-fit: cover; }
+.jomi-hello { justify-self: start; display: inline-flex; align-items: center; gap: 8px; max-width: 100%; border: 1px solid var(--line-soft); background: var(--surface); color: var(--ink-2);
+  border-radius: 999px; padding: 4px 14px 4px 4px; font-size: 13.5px; font-weight: 620; text-align: left; transition: transform var(--fast), box-shadow var(--mid); }
+.jomi-hello span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.jomi-hello .mascot { width: 28px; height: 28px; box-shadow: none; }
+.jomi-hello:active { transform: scale(.97); }
+.jomi-hello:hover { box-shadow: var(--shadow-1); }
+.jomi-load { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 6px 4px; font-size: 14px; font-weight: 620; color: var(--ink-2); }
+.jomi-load .mascot { width: 40px; height: 40px; }
+/* idle: a slow, rare nod — still most of the time (transform only) */
+.mascot.idle { animation: jomi-idle 6s var(--ease) infinite; }
+@keyframes jomi-idle { 0%, 70%, 100% { transform: none; } 78% { transform: translateY(-3px) rotate(-4deg); } 86% { transform: translateY(0) rotate(3deg); } 92% { transform: rotate(0); } }
+.jomi-say { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; }
+.jomi-say .mascot { width: 32px; height: 32px; margin-top: 2px; box-shadow: none; }
+.jomi-say .bub { background: var(--butter-soft); color: var(--ink); border-radius: 6px 18px 18px 18px; padding: 10px 14px; font-size: 14px; line-height: 1.55; min-width: 0; }
+.jomi-say .bub p { margin: 0; }
+.jomi-empty img.portrait { width: 88px; height: 88px; border-radius: 26px; margin: 0 auto 14px; display: block; box-shadow: none; }
+.jomi-line { margin: 0; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: 6px 18px 18px 18px; font-size: 14px; color: var(--ink); }
+img.mascot.portrait { border-radius: 24%; box-shadow: none; background: none; }
+.jomi-intro { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; text-align: center; gap: 6px; padding-top: 4px; }
+.jomi-pic { border: 0; background: none; padding: 0; border-radius: 28%; animation: sheetin .4s var(--ease) both; }
+.jomi-pic img { display: block; }
+.jomi-intro.first .jomi-pic img { width: 128px; height: 128px; }
+.jomi-pic.hop { animation: jomi-hop .5s var(--ease); }
+@keyframes jomi-hop { 0% { transform: none; } 40% { transform: translateY(-10px) rotate(-3deg); } 70% { transform: translateY(0) rotate(2deg); } 100% { transform: none; } }
+.jomi-quip { min-height: 20px; margin: 0; font-size: 13px; font-weight: 650; color: var(--sage); }
+.jomi-id { display: grid; justify-items: center; gap: 4px; }
+.jomi-id b { font-size: 22px; font-weight: 760; letter-spacing: -0.03em; }
+.jomi-id .en { font-size: 12.5px; color: var(--muted); font-weight: 600; letter-spacing: .04em; }
+.jomi-words { display: grid; gap: 6px; margin-top: 10px; }
+.jomi-words p { margin: 0; line-height: 1.6; color: var(--ink); }
+.jomi-words p:first-child { font-weight: 720; font-size: 17px; }
+.jomi-back { margin: 10px 0 0; font-size: 17px; font-weight: 700; }
+.jomi-does { list-style: none; margin: 14px 0 0; padding: 12px 16px; display: grid; gap: 6px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 16px; text-align: left; justify-self: stretch; font-size: 13.5px; color: var(--ink-2); }
+.jomi-does li { display: flex; align-items: center; gap: 8px; }
+.jomi-does svg { color: var(--sage); }
+.jomi-intro .tiny { max-width: 34em; }
+.jomi-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; justify-self: stretch; margin-top: 14px; }
+.jomi-actions .btn:only-child { grid-column: 1 / -1; }
+.toast.jt { display: flex; align-items: center; gap: 10px; white-space: normal; padding: 8px 14px 8px 8px; max-width: min(440px, calc(100% - 32px)); width: max-content; }
+.toast.jt .mascot { width: 28px; height: 28px; box-shadow: none; flex: none; }
+.toast.jt .tt { line-height: 1.4; font-size: 13.5px; }
+.toast.jt button { flex: none; }
+.gate .mascot { animation: sheetin .5s var(--ease) both; }
+.favbtn.pop svg { animation: bump .45s var(--ease); }
+.jomi-intro:not(.first) .jomi-pic img { width: 96px; height: 96px; }
+/* toasts sit above a page's own bottom bar (compare actions, concern composer) and the floating cart */
+body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + env(safe-area-inset-bottom, 0px)); }
+@media (min-width: 900px) { body.has-fcart .toast, body.has-bar .toast { bottom: 96px; } }

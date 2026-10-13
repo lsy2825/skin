@@ -30,6 +30,14 @@
   const CAT_IC = { "톡신": "syringe", "보톡스·필러": "syringe", "윤곽·필러": "droplet", "리프팅": "sparkles", "부스터": "leaf", "스킨부스터": "leaf", "피부": "sun",
     "피부·레이저": "sun", "제모·바디": "zap", "제모": "zap", "바디": "flower-2", "패키지": "gift", "기타": "circle-plus" };
   const catIcon = (c, cls = "") => icon(CAT_IC[c] || "circle-dot", cls);
+  // ---------------- 죠미 (app/jomi.js registry): one image per expression; expressions without their own artwork yet
+  // fall back to the official pose. Text always goes with her — she never carries meaning alone.
+  const J = window.JOMI || { name: "죠미", en: "Jomi", role: "", files: {}, expressions: {}, lines: {} };
+  const jomiSrc = (expr, kind) => (J.expressions[expr] || {})[kind] || J.files[kind];
+  const jomiImg = (expr = "default", kind = "face", size = 32, alt = "") => h("img", { class: `mascot jomi${kind === "portrait" ? " portrait" : ""}`, src: jomiSrc(expr, kind),
+    alt, width: size, height: size, decoding: "async", "data-expr": expr });
+  const jomiSay = (expr, text, ...more) => h("div", { class: "jomi-say" }, jomiImg(expr, "face", 32), h("div", { class: "bub" }, h("p", {}, text), ...more));
+  const jomiEmpty = (expr, title, ...kids) => h("div", { class: "empty jomi-empty" }, jomiImg(expr, "portrait", 88), h("b", {}, title), ...kids);
   const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
   const store = {
@@ -37,7 +45,7 @@
     set(k, v) { try { localStorage.setItem("pc:" + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
   };
   let toastT;
-  const toast = (t) => { const el = $("#toast"); el.classList.remove("act"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 1800); };
+  const toast = (t) => { const el = $("#toast"); el.classList.remove("act", "jt"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 1800); };
   async function copyText(text, done = "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
   // a toast with a '되돌리기' button for 6 s (deleting carts, items, alerts, records, presets)
   function undoToast(text, undo) {
@@ -46,7 +54,16 @@
     btn.type = "button"; btn.textContent = "되돌리기";
     btn.addEventListener("click", () => { el.classList.remove("on", "act"); clearTimeout(toastT); undo(); toast("되돌렸어요"); });
     el.replaceChildren(document.createTextNode(text + " "), btn);
-    el.classList.add("on", "act"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), 6000);
+    el.classList.remove("jt"); el.classList.add("on", "act"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), 6000);
+  }
+  // 죠미's toast: her face, one short line, optionally one action (되돌리기 / 관심 보기 / 알림 관리). One toast at a time:
+  // a new one replaces the last, so the same success is never stacked.
+  function jomiToast(expr, text, act) {
+    const el = $("#toast");
+    const kids = [h("img", { class: "mascot", src: jomiSrc(expr, "face"), alt: "", width: 24, height: 24, "data-expr": expr }), h("span", { class: "tt" }, text)];
+    if (act) kids.push(h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); clearTimeout(toastT); act[1](); } }, act[0]));
+    el.replaceChildren(...kids); el.classList.add("on", "jt"); el.classList.toggle("act", !!act);
+    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), act ? 5000 : 2600);
   }
 
   // ---------------- state
@@ -364,11 +381,13 @@
   function toggleFav(kind, id, label) {
     const f = favs(), on = f[kind].includes(id);
     f[kind] = on ? f[kind].filter((x) => x !== id) : [id, ...f[kind]].slice(0, 30);
-    store.set("favs", f); render();
+    if (!on) favPop = `${kind}:${id}`;
+    store.set("favs", f); render(); favPop = null;
     if (on) undoToast(`관심에서 뺐어요: ${label}`, () => { const g = favs(); g[kind] = [id, ...g[kind]]; store.set("favs", g); render(); });
-    else toast(`관심에 넣었어요: ${label}`);
+    else jomiToast("happy", J.lines.saved || "저장했어요", ["관심 보기", () => nav("saved")]);
   }
-  const favBtn = (kind, id, label) => h("button", { class: "favbtn", type: "button", "aria-pressed": isFav(kind, id) ? "true" : "false", "aria-label": isFav(kind, id) ? `${label} 관심 빼기` : `${label} 관심 등록`,
+  let favPop = null;   // the heart just filled pops once
+  const favBtn = (kind, id, label) => h("button", { class: favPop === `${kind}:${id}` ? "favbtn pop" : "favbtn", type: "button", "aria-pressed": isFav(kind, id) ? "true" : "false", "aria-label": isFav(kind, id) ? `${label} 관심 빼기` : `${label} 관심 등록`,
     onclick: (e) => { e.stopPropagation(); toggleFav(kind, id, label); } }, icon("heart"));
 
   // ---------------- cart
@@ -422,11 +441,15 @@
     const el = same[Math.min(Math.max(m.n, 0), same.length - 1)] || all[Math.min(m.at, all.length - 1)];
     if (el) el.focus({ preventScroll: true });
   }
+  const openSheets = new Set();   // closed when the page changes (back button, a link), so no sheet outlives its page
   function sheet(title, body) {
     const opener = document.activeElement, om = focusMark($("#main"), opener);
     const bg = h("div", { class: "sheet-bg", onclick: (e) => { if (e.target === bg) close(); } });
     // the opener may have been redrawn while the sheet was open (e.g. '+ 담기' → '담김 ✓'): fall back to its twin
-    const close = () => { bg.remove(); document.removeEventListener("keydown", key); if (opener && opener.isConnected) opener.focus(); else focusBack($("#main"), om); };
+    const close = (quiet) => { if (!openSheets.delete(close)) return; bg.remove(); document.removeEventListener("keydown", key); if (!document.querySelector(".sheet-bg")) document.documentElement.classList.remove("sheet-open");
+      if (quiet === true) return; if (opener && opener.isConnected) opener.focus(); else focusBack($("#main"), om); };
+    openSheets.add(close);
+    document.documentElement.classList.add("sheet-open");   // the page behind doesn't scroll while a sheet is open
     const key = (e) => {
       if (e.key === "Escape") { close(); return; }
       if (e.key !== "Tab") return;
@@ -484,8 +507,11 @@
             have ? h("button", { class: "btn gray", type: "button", onclick: () => { const c = st.carts[s.ci], pos = c.items.indexOf(have); c.items = c.items.filter((x) => x !== have); saveCarts(); close(); render();
               undoToast("장바구니에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
             h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
-              if (have) have.q = s.q; else st.carts[s.ci].items.push({ t: "k", k: KEYS[s.k].id, q: s.q });
-              saveCarts(); toast(have ? "횟수를 바꿨어요" : `'${st.carts[s.ci].name}'에 담았어요`); close(); render();
+              const c = st.carts[s.ci], it = have || { t: "k", k: KEYS[s.k].id, q: s.q };
+              if (have) have.q = s.q; else c.items.push(it);
+              saveCarts(); close(); render();
+              if (have) toast("횟수를 바꿨어요");
+              else jomiToast("happy", J.lines.added || `'${c.name}'에 담았어요`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
             } }, have ? `${s.q}회로 바꾸기` : `${s.q}회 담기`)));
       };
       paint();
@@ -590,15 +616,18 @@
           h("button", { class: "btn sm gray", type: "button", style: "flex:1", onclick: () => { close(); alertSheet({ row: { n, br: bkey(r[0]) } }); } }, icon("bell", "sm"), /^\d{4}-\d{2}-\d{2}$/.test(S[r[10]] || "") ? "종료 전 알림" : "가격 알림"),
           h("button", { class: "btn sm gray", type: "button", style: "flex:1", onclick: () => { close(); reportSheet(i); } }, icon("flag", "sm"), "신고")),
         h("button", { class: "btn", type: "button", style: "width:100%;margin-top:12px", onclick: () => {
-          const items = st.carts[s.ci].items;
+          const cart = st.carts[s.ci], items = cart.items;
+          let added = null;
           if (s.how === "row") {
             const ov = {};
-            items.push({ t: "r", n, br: bkey(r[0]), p: r[3], q: s.q, ov });
+            added = { t: "r", n, br: bkey(r[0]), p: r[3], q: s.q, ov }; items.push(added);
           } else {
             const id = KEYS[s.how].id, have = items.find((c) => c.t === "k" && c.k === id);
-            if (have) have.q = s.q; else items.push({ t: "k", k: id, q: s.q, ov: { [bkey(r[0])]: n } });
+            if (have) have.q = s.q; else { added = { t: "k", k: id, q: s.q, ov: { [bkey(r[0])]: n } }; items.push(added); }
           }
-          saveCarts(); toast(`'${st.carts[s.ci].name}'에 담았어요`); close(); render();
+          saveCarts(); close(); render();
+          if (!added) toast("횟수를 바꿨어요");
+          else jomiToast("happy", J.lines.added || `'${cart.name}'에 담았어요`, ["되돌리기", () => { cart.items = cart.items.filter((x) => x !== added); saveCarts(); render(); toast("되돌렸어요"); }]);
         } }, `${s.q}회 담기`));
       paint();
       return box;
@@ -961,12 +990,16 @@
     if (fired) toast(`가격 알림 ${fired}개 — 관심 탭에서 확인하세요`);
   }
   function addAlert(a) {
-    if (st.alerts.length >= 20) { toast("알림은 20개까지예요. 관심 탭에서 정리해 주세요"); return; }
+    if (st.alerts.length >= 20) { toast("알림은 20개까지예요. 관심 탭에서 정리해 주세요"); return false; }
     const al = { id: uid(), created: today(), ...a };
     Object.assign(al, Intel.evalAlert({ ...al, lastAt: today() }, alertNow(al), "0000-00-00").patch);   // set the baseline only
     delete al.lastAt;
     if (al.type === "target" || al.type === "cartdrop") delete al.last;
-    st.alerts.push(al); saveAlerts(); toast("알림을 만들었어요 · 앱을 열 때 확인해요");
+    st.alerts.push(al); saveAlerts();
+    // 죠미 winks only once the alert is really stored; the toast repeats the condition that was saved
+    if (store.get("alerts", []).some((x) => x.id === al.id)) jomiToast("wink", `${J.lines.alertSet || "알림을 만들었어요"} ${alertName(al)} · ${ALERT_TYPES[al.type]}${al.target ? ` ${won(al.target)}` : ""}`, ["알림 관리", () => nav("saved")]);
+    else toast("알림을 저장하지 못했어요(이 기기의 저장 공간을 확인해 주세요)");
+    return true;
   }
   function alertSheet(base) {
     const now = alertNow(base);
@@ -1068,6 +1101,8 @@
     const q = h("input", { type: "search", placeholder: "어떤 피부 고민이 있으세요?", "aria-label": "피부 고민이나 시술 이름으로 찾기", enterkeyhint: "search" });
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") routeQuery(q.value); });
     box.append(h("section", { class: "hero-home" },
+      h("button", { class: "jomi-hello", type: "button", "aria-haspopup": "dialog", onclick: () => jomiSheet() }, jomiImg("default", "face", 28),
+        h("span", {}, store.get("jomiSeen", null) ? J.lines.homeBack : J.lines.homeFirst), h("span", { class: "sr" }, " — 죠미 소개 보기")),
       h("h2", { class: "display" }, "피부 시술,", h("br"), "이제 알고 비교해요."),
       h("p", { class: "lede" }, "내 고민에 맞는 시술 정보부터 병원별 가격까지."),
       h("div", { class: "search hsearch" }, icon("search"), withSuggest(q, routeQuery), h("button", { type: "button", onclick: () => routeQuery(q.value) }, "찾기"))));
@@ -1078,6 +1113,8 @@
       FLAGS.concernSearch ? ent("e-concern", "message-circle", "피부 고민으로 찾아보기", "고민을 적으면 관련 시술 정보를 정리해 드려요", () => nav("concern")) : null,
       ent("e-price", "chart-column", "시술명으로 가격비교", `같은 조건끼리 ${regionName()} 지점 가격을 비교해요`, () => nav("compare"))));
     if (!FLAGS.concernSearch) box.lastChild.style.gridTemplateColumns = "1fr";
+    const cont = continueChips();
+    if (cont) box.append(secHead("이어서 보기"), cont);
     // 인기 시술: cheapest plain price per treatment, how far below the middle, + 담기
     const cats = [...new Set(KEYS.map((k) => k.cat))];
     if (st.hcat && !cats.includes(st.hcat)) st.hcat = null;
@@ -1108,7 +1145,7 @@
     box.append(grid, h("button", { class: "btn line block", type: "button", onclick: () => nav("compare") }, `시술 ${KEYS.length.toLocaleString()}개 전체 비교`, icon("chevron-right", "sm")));
     // 최저가 발견: the biggest gaps between the lowest plain price and the middle, with where it sits in the range
     const finds = lowFinds();
-    if (finds.length) box.append(secHead("최저가 발견", "중간값보다 많이 낮은 곳"), h("div", { class: "card flush" }, h("ul", { class: "list" }, finds.map((x) =>
+    if (finds.length) box.append(secHead("죠미의 오늘의 발견", "중간값보다 많이 낮은 곳"), h("div", { class: "card flush" }, h("ul", { class: "list" }, finds.map((x) =>
       h("li", {}, h("button", { class: "disc-row", type: "button", onclick: () => { st.key = x.k; nav("compare"); } },
         h("span", { class: "t" }, KEYS[x.k].label), h("span", { class: "p num" }, won(x.top.p)),
         mrange(x.lo, x.hi, x.top.p, x.med),
@@ -1135,6 +1172,42 @@
       h("button", { class: "linkbtn", type: "button", onclick: () => nav("about") }, "알아두면 좋은 점", icon("chevron-right", "xs"))));
     return box;
   };
+
+  // personal shortcuts on 홈: the screen left last time, saved treatments, recently viewed (this phone)
+  const ROUTE_NAME = { cart: "장바구니", map: "지도", table: "전체 가격표", guide: "시술 사전", rank: "지점 순위", versus: "지점 비교", change: "가격 변동" };
+  function continueChips() {
+    const out = [], seen = new Set();
+    const add = (key, el) => { if (!seen.has(key) && out.length < 5) { seen.add(key); out.push(el); } };
+    const last = store.get("lastRoute", ""), lv = last.split(/[/?]/)[0];
+    if (lv === "branch" && BR[+last.split(/[/?]/)[1]]) { const b = +last.split(/[/?]/)[1]; add(`b:${bkey(b)}`, h("button", { class: "chip", type: "button", onclick: () => nav(last) }, icon("history", "sm"), bname(b))); }
+    else if (ROUTE_NAME[lv] && (lv !== "cart" || cur().items.length)) add(`r:${lv}`, h("button", { class: "chip", type: "button", onclick: () => nav(last) }, icon("history", "sm"), lv === "cart" ? `장바구니 ${cur().items.length}개` : ROUTE_NAME[lv]));
+    for (const id of favs().k.slice(0, 2)) if (KI[id] != null) add(`k:${id}`, h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${id}`) }, icon("heart", "sm"), KEYS[KI[id]].label));
+    for (const v of store.get("recent", [])) { const [kind, ...rest] = v.split(":"), id = rest.join(":"); if (kind === "k" && KI[id] != null) add(`k:${id}`, h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${id}`) }, catIcon(KEYS[KI[id]].cat, "sm"), KEYS[KI[id]].label)); }
+    return out.length ? h("div", { class: "chips" }, out) : null;
+  }
+  // 죠미's introduction: only when someone taps her (never pops up by itself). The full introduction the first time,
+  // a short hello afterwards with a way back to the full one. Seen = a date on this phone, nothing else.
+  function jomiSheet(full) {
+    const first = full || !store.get("jomiSeen", null);
+    if (!store.get("jomiSeen", null)) store.set("jomiSeen", today());
+    let taps = 0;
+    sheet(`${J.name} 소개`, (close) => {
+      const pic = h("button", { class: "jomi-pic", type: "button", "aria-label": `${J.name} 쓰다듬기` }, jomiImg(first ? "welcome" : "default", "portrait", first ? 128 : 84, `윤실장 공식 안내냥 ${J.name}`));
+      const quip = h("p", { class: "jomi-quip", "aria-live": "polite" });
+      // a small discoverable touch: tapping her gets a hop and a line (only general app tips, nothing medical)
+      pic.addEventListener("click", () => { const L = J.lines.easter || []; if (!L.length) return; quip.textContent = L[taps++ % L.length]; pic.classList.remove("hop"); void pic.offsetWidth; pic.classList.add("hop"); });
+      const go = (route) => () => { close(); nav(route); };
+      const actions = h("div", { class: "jomi-actions" },
+        FLAGS.concernSearch ? h("button", { class: "btn soft", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "피부 고민 탐색") : null,
+        h("button", { class: "btn", type: "button", onclick: go("compare") }, icon("chart-column", "sm"), "시술 가격비교"));
+      const id = h("div", { class: "jomi-id" }, h("b", {}, J.name), h("span", { class: "en" }, J.en), h("span", { class: "infotag" }, J.role));
+      return h("div", { class: `jomi-intro${first ? " first" : ""}` }, pic, quip, id,
+        first ? [h("div", { class: "jomi-words" }, (J.lines.intro || []).map((t) => h("p", {}, t))),
+          h("ul", { class: "jomi-does" }, (J.lines.does || []).map((t) => h("li", {}, icon("check", "xs"), t))), h("p", { class: "tiny" }, J.lines.doesNot || "")]
+          : [h("p", { class: "jomi-back" }, J.lines.back || ""), h("button", { class: "linkbtn", type: "button", onclick: () => { close(); jomiSheet(true); } }, "전체 소개 다시 보기", icon("chevron-right", "xs"))],
+        actions);
+    });
+  }
 
   // ---------------- 탐색: every way to look at prices and treatments
   views.explore = () => {
@@ -1181,7 +1254,7 @@
             h("span", { class: "p num" }, top ? won(top.p) : "-"), h("span", { class: "m" }, top ? h("span", {}, `${regionName()} 최저 · ${bname(top.b)}`) : null))); }),
         favB.map((b) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${b}`) }, h("span", { class: "t row", style: "gap:10px;flex-wrap:nowrap" }, icon("store", "sm"), bname(b)),
           h("span", { class: "sub" }, dist(b) != null ? km(dist(b)) : BR[b].region), h("span", { class: "m" }, `가격 ${byB[b].length}개 · 확인 ${verified(b)}`)))))
-        : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("heart")), h("b", {}, "관심 시술이 없어요"), "시술 비교나 지점 화면에서 하트를 누르면 여기에 모여요.")));
+        : jomiEmpty("empty", "관심 시술이 없어요", "시술 비교나 지점 화면에서 하트를 누르면 여기에 모여요.")));
     const rc = recentChips();
     box.append(h("div", { class: "card" }, h("h3", {}, "최근 본 것"), rc ? h("div", { style: "margin-top:12px" }, rc) : h("p", { class: "sub", style: "margin:6px 0 0" }, "시술이나 지점을 보면 여기에 남아요(이 기기).")));
     const presets = store.get("presets", []);
@@ -1475,7 +1548,7 @@
     if (!f.reg || f.reg !== "전국") { const n = count({ ...f, reg: "전국" }, toks); if (n) tips.push([`전국에서 찾기 (${n.toLocaleString()}개)`, () => go({ reg: "전국" })]); }
     if (toks.length > 1) toks.forEach((tk, j) => { const rest = toks.filter((_, k) => k !== j); const n = count(f, rest); if (n) tips.push([`‘${tk}’ 빼고 찾기 (${n.toLocaleString()}개)`, () => go({ q: rest.join(" ") })]); });
     if (toks.length) for (const s of Search.suggest(toks[0], searchIndex(), suggestTerms(), 3)) tips.push([`‘${s}’ 찾기`, () => nav(`search/${encodeURIComponent(s)}`)]);
-    return h("div", { class: "card" }, h("div", { class: "empty", style: "padding:12px 0" }, "이 조건으로는 가격이 없어요."),
+    return h("div", { class: "card" }, jomiEmpty("empty", J.lines.emptySearch || "찾지 못했어요", "이 조건으로는 가격이 없어요."),
       tips.length ? h("div", {}, h("div", { class: "sub", style: "margin-bottom:6px" }, "이렇게 찾아보면 있어요"), h("div", { class: "chips wrapc" }, tips.slice(0, 6).map(([l, fn]) => h("button", { class: "chip", type: "button", onclick: fn }, l))))
         : h("div", { class: "sub" }, "짧게 써 보세요(예: 슈링크)."));
   }
@@ -1738,6 +1811,7 @@
     const q = h("input", { type: "search", class: "field", placeholder: "시술 이름으로 찾기 (예: 보톡스)", "aria-label": "시술 사전에서 찾기", value: params.get("q") || "" });
     const list = h("div", {});
     box.append(h("div", { class: "card" }, h("h2", {}, "시술 사전"),
+      jomiSay("explaining", J.lines.guideTip || "이름이 비슷한 시술을 쉽게 정리했어요."),
       h("div", { class: "sub" }, "이름이 비슷해서 헷갈리는 시술을 쉽게 정리했어요. '가격 비교'를 누르면 지점별 가격을 봐요."),
       h("div", { class: "chips", style: "margin-top:10px" }, ["", ...CMP_CATS].map((x) => h("button", { class: "chip", type: "button", "aria-pressed": x === c ? "true" : "false",
         onclick: () => nav(x ? `guide?c=${encodeURIComponent(x)}` : "guide", true) }, x || "전체"))),
@@ -1812,7 +1886,7 @@
   }
   // chat-style layout for an information service: the guide's 'messages' are the knowledge files' own sentences,
   // the user's words stay in memory (this visit, this tab) and are shown back only on this screen
-  const mascotImg = (size) => h("img", { class: "mascot", src: "icons/mascot-160.png", alt: "", width: size, height: size });
+  const mascotImg = (size, expr = "curious") => jomiImg(expr, "face", size);
   views.concern = (arg, params) => {
     const box = h("div", { class: "view" });
     box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
@@ -1826,7 +1900,7 @@
     const out = h("div", { class: "cout answers" });
     const visible = CONC.concerns.filter(concernVisible);
     const intro = h("div", { class: "msg bot" }, mascotImg(32), h("div", { class: "bub" },
-      h("p", {}, "어떤 점이 신경 쓰이는지 편하게 적어 주세요. 관련된 일반 정보와 시술 설명, 확인할 위험과 한계를 정리해 드려요."),
+      h("p", {}, J.lines.concernAsk || "어떤 점이 신경 쓰이는지 편하게 적어 주세요."),
       h("p", { class: "tiny" }, "진단이나 상담이 아니고, 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 낱말 사전으로 분류하고, 의학 설명은 지식 파일의 문장만 보여줘요."),
       visible.length ? h("div", { style: "margin-top:12px" }, h("div", { class: "eyebrow", style: "margin-bottom:8px" }, "고민 고르기"),
         h("div", { class: "chips wrapc" }, visible.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => nav(`concern?c=${c.id}`, true) }, c.name)))) : null));
@@ -1843,6 +1917,7 @@
         if (!cs.length) parts.push(h("div", { class: "card" }, h("h3", {}, "어떤 고민인지 찾지 못했어요"),
           h("p", { class: "sub" }, "'고민 고르기'에서 골라 보거나 낱말을 바꿔 적어 보세요(예: 주름, 기미, 여드름, 땀). 증상이 걱정되면 피부과 진료를 받아 보세요.")));
         if (cs.length > 1) parts.push(h("div", { class: "sub", style: "margin:0 4px" }, `적은 말과 관련된 고민 ${cs.length}가지예요(찾은 낱말이 많은 순).`));
+        if (cs.length) parts.push(h("p", { class: "jomi-line" }, J.lines.concernFound || ""));
         for (const [c, m] of cs) parts.push(concernCard(c, m));
       }
       fill(out, parts);
@@ -2443,9 +2518,8 @@
           undoToast(many ? `'${c.name}'을(를) 지웠어요` : "장바구니를 비웠어요", () => { st.carts = snap; st.ci = ci; saveCarts(); render(); });
         } }, icon("trash-2", "sm"), st.carts.length > 1 ? "삭제" : "비우기")));
     if (!c.items.length) {
-      box.append(h("div", { class: "card" }, h("div", { class: "empty" }, h("div", { class: "ei" }, icon("shopping-bag")), h("b", {}, "장바구니가 비어 있어요"),
-        "받고 싶은 시술을 담으면 한 곳에서 다 받을 때, 여러 곳을 섞을 때, 브랜드·지역별로 어디가 가장 싼지 계산해 드려요.", h("br"),
-        "시술 비교 화면이나 지점 가격표·검색 결과의 '담기'로 실제 옵션을 그대로 담을 수 있어요."),
+      box.append(h("div", { class: "card" }, jomiEmpty("cart", J.lines.emptyCart || "장바구니가 비어 있어요", h("span", { style: "display:block;color:var(--ink-2);margin-bottom:6px" }, J.lines.emptyCartSub || "시술을 담으면 병원별 비용을 비교할 수 있어요."),
+        "한 곳에서 다 받을 때, 여러 곳을 섞을 때, 브랜드·지역별로 어디가 가장 싼지 계산해 드려요. 시술 비교 화면이나 지점 가격표·검색 결과의 '담기'로 실제 옵션을 그대로 담을 수 있어요."),
         h("button", { class: "btn block", type: "button", onclick: () => nav("compare") }, "시술 고르러 가기", icon("chevron-right", "sm")), st.carts.length > 1 ? manage : null));
       return box;
     }
@@ -2991,7 +3065,9 @@
     const params = new URLSearchParams(qs || "");
     const view = views[name] ? name : name === "more" ? "me" : name === "favorites" ? "saved" : "home";
     const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
+    if (!same) for (const c of [...openSheets]) c(true);
     current = view; lastPath = path;
+    if (ROUTE_NAME[view] || view === "branch") store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
       map: "explore", branch: "explore", about: "me", ops: "me" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
@@ -3001,6 +3077,7 @@
     // the page itself so the next Tab starts in the new content instead of the header
     if (mark) { if (same) focusBack(main, mark); else main.focus({ preventScroll: true }); }
     paintFloatCart(view);
+    document.body.classList.toggle("has-bar", view === "compare" || view === "concern");
   }
   window.addEventListener("popstate", render);
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => nav(b.dataset.tab)));
@@ -3017,6 +3094,23 @@
   $("#fcart").addEventListener("click", () => nav("cart"));   // no inline handlers: the CSP allows scripts from files only
   paintCartN();
   if (window.Auth && window.Auth.enabled) window.Auth.onChange((u) => { if (u && D) syncFromAccount(); else if (D) render(); });
-  loadData().then(() => { if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => { $("#main").replaceChildren(h("div", { class: "card empty" }, "데이터를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.")); console.error(e); });
+  $("#jomibtn").addEventListener("click", () => jomiSheet());
+  // start: no splash delay — the page shows as soon as data.json is read; a slow read says so after 12 s, a failed one
+  // explains what failed (only that the price file could not be read) and retries in place
+  function boot() {
+    const slow = setTimeout(() => { const m = $("#load-msg"); if (!m || D) return; m.textContent = J.lines.slow || "평소보다 오래 걸리고 있어요.";
+      m.parentElement.append(h("button", { class: "btn sm gray", type: "button", onclick: () => location.reload() }, icon("refresh-cw", "sm"), "새로고침")); }, 12000);
+    loadData().then(() => { clearTimeout(slow); if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => {
+      clearTimeout(slow); D = null; console.error(e);
+      const main = $("#main"); main.removeAttribute("aria-busy");
+      main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", J.lines.error || "문제가 생겼어요",
+        "가격 데이터를 불러오지 못했어요. 인터넷 연결이 끊겼거나 서버가 잠시 응답하지 않을 수 있어요.",
+        h("button", { class: "btn block", type: "button", style: "margin-top:16px", onclick: () => {
+          main.setAttribute("aria-busy", "true");
+          main.replaceChildren(h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg("sleeping", "face", 40), h("span", { id: "load-msg" }, J.lines.loading || "불러오는 중…")), h("div", { class: "skel", style: "height:180px" })));
+          boot(); } }, icon("refresh-cw", "sm"), "다시 시도")))));
+    });
+  }
+  boot();
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) navigator.serviceWorker.register("sw.js").catch(() => {});
 })();

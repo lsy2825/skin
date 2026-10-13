@@ -7,6 +7,7 @@
 - 데이터 품질: `docs/DATA_QUALITY_REPORT.md`
 - 보안: `docs/SECURITY_AUDIT.md` · `SECURITY_ARCHITECTURE.md` · `SECURITY_REMEDIATION.md` · `SECURITY_TEST_REPORT.md` · `INCIDENT_RESPONSE_PLAN.md`
 - 디자인 시스템(2026 개편: 토큰·컴포넌트·그래프·화면 구조·검사 결과): `docs/DESIGN_SYSTEM.md`
+- 마스코트 죠미: `docs/JOMI_CHARACTER_GUIDE.md` · `JOMI_ASSET_INVENTORY.md` · `JOMI_INTERACTION_SPEC.md` · `JOMI_COPYWRITING.md` · `JOMI_UI_UX_QA.md`
 
 **실제로 돌린 테스트** (이 세션, 2026-10-13)
 - `node --test tests/*.test.js`: 30개 통과(가격 계산, 검색, 가격 이력·알림, 고민 분류)
@@ -29,6 +30,24 @@
   - `tests/e2e/xss.js`: 악성 입력 실행 0회(CSP 켬/끔 모두), 7/7 통과
   - 기능별 회귀 시나리오: 페이지 오류 0건
 - 못 한 것: 실기기·스크린리더 검사, 병원 원본과의 실시간 대조(이 환경에서 병원 사이트 접속 불가 → `price-check` 워크플로로)
+
+## 마스코트 죠미 (2026-10-13, JOMI MASTER CHARACTER GUIDE v3.0)
+- **된 것**
+  - 공식 원본 확인·보존(`brand/yoonsiljang-icon-original.webp`)과 잘라낸 그림 3개(`app/assets/jomi/`)
+  - 레지스트리 `app/jomi.js`(표정 11종·대사)
+  - 소개 시트: 누를 때만 열려요. 처음과 재방문이 다르고, 새로고침 뒤에도 기억해요. Esc·바깥·페이지 이동으로 닫히고, 포커스가 돌아오고, 뒤 화면 스크롤을 잠가요.
+  - 홈 인사, '이어서 보기'
+  - 로딩·지연(12초)·오류 복구(그 자리에서 다시 시도)
+  - 빈 장바구니·검색 결과 없음·관심 없음
+  - 시술 사전 한마디, 고민 가이드 말풍선
+  - 토스트: 담기(되돌리기), 관심 저장, 알림 저장(저장 확인 후 윙크)
+  - 움직임 줄이기 설정 지원
+  - 가격 비교 화면엔 죠미를 넣지 않아요.
+- **⛔ 사용자 자료 필요 — 표정 그림 8종:** welcome·curious·thinking·explaining·empty·cart·sleeping·error
+  - 원본에 윙크 미소 한 장뿐이라 만들 수 없었어요.
+  - 지금은 원본 포즈로 대신하고, 레지스트리에 `art: "pending"`으로 표시했어요(`JOMI_ASSET_INVENTORY.md` §3).
+  - 투명 배경 원본이 있으면 꼬리·눈 깜빡임 애니메이션도 가능해요.
+- **안 한 것:** 계절 테마, 표정 모음, 앱 위젯(PWA로는 불가)
 
 ## COMPLETED
 **데이터 수집·정확성**

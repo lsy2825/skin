@@ -20,6 +20,7 @@
   - `make_logotype.py` → `logotype.svg`: '윤실장' 로고타입
     - Pretendard(OFL) 글자 윤곽을 자간을 좁혀 그리고, 윤의 ㅇ 위에 고양이 귀, 끝에 코랄 점을 더했어요.
     - 색은 `currentColor`라 라이트·다크 모드를 따라가요. `app/index.html`에 인라인으로 넣었어요.
-  - `make_mascot.py` → `app/icons/mascot-160.png`: 아이콘 그림에서 고양이 얼굴만 원형으로 잘랐어요(새로 그린 그림 아님).
+  - `make_mascot.py` → `app/assets/jomi/`(얼굴 원형 96·160px, 상반신 360px): 아이콘 그림에서 잘라내기만 했어요(새로 그린 그림 아님).
+    - 고양이 이름은 **죠미(Jomi)**예요. `docs/JOMI_CHARACTER_GUIDE.md`, `docs/JOMI_ASSET_INVENTORY.md`
     - 상단 바·비밀번호 화면·고민 가이드에 써요.
   - 앱 테마는 분홍에서 웜 아이보리·버터·세이지·차콜·코랄로 바꿨어요. 아이콘 그림 자체는 그대로예요.
