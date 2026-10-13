@@ -28,6 +28,7 @@
   // ---------------- state
   const st = {
     special: store.get("special", true),          // include 체험가 · 한정가 · 시간 조건 prices
+    vat: store.get("vat", "incl"),                // "incl" VAT 포함 예상가 · "listed" 병원 표시가
     brands: store.get("brands", null),             // null = all
     carts: loadCarts(),                            // [{name, items: [{t:"k", k: key id, q, ov} | {t:"r", n: row name, br, p, q, ov}]}]
     ci: 0,                                         // current cart
@@ -59,8 +60,9 @@
     for (const r of ROWS) {
       const u = S[r[10]] || "";
       r[15] = /^\d{4}-\d{2}-\d{2}$/.test(u) && u < td ? 1 : r[13] ? 2 : 0;
-      if (r[12] === 2) { r[14] = r[3]; r[3] = Math.round(r[3] * 1.1); if (r[4]) r[4] = Math.round(r[4] * 1.1); }
+      r[14] = r[3]; r[16] = r[4];        // the clinic's listed price / list price, kept for the 'VAT 포함' switch
     }
+    applyVat();
     byKB = KEYS.map(() => new Map());
     byB = BR.map(() => []);
     ROWS.forEach((r, i) => {
@@ -105,6 +107,17 @@
   };
   // cheapest row for key k at branch b under the current settings (special: override st.special)
   const live = (i) => !ROWS[i][15];
+  // price basis: "incl" = VAT 포함 예상가 (listed + 10% where the clinic says VAT 별도), "listed" = as shown on the site
+  function applyVat() {
+    for (const r of ROWS) {
+      const f = st.vat === "incl" && r[12] === 2 ? 1.1 : 1;
+      r[3] = Math.round(r[14] * f);
+      r[4] = r[16] ? Math.round(r[16] * f) : 0;
+    }
+    if (gcache) gcache.clear();
+  }
+  const vatNote = () => st.vat === "incl" ? "가격은 부가세 10% 포함 예상가예요(병원 표시가 + 10%)." : "가격은 병원 사이트 표시가예요(대부분 부가세 10% 별도).";
+  const listedTxt = (r) => st.vat === "incl" && r[12] === 2 ? `병원 표시 ${won(r[14])} + VAT` : st.vat === "listed" && r[12] === 2 ? "VAT 별도" : "";
   function bestAt(k, b, special = st.special) {
     let best = -1;
     for (const i of byKB[k].get(b) || []) {
@@ -175,8 +188,8 @@
     const u = S[r[10]] || "";
     if (!r[15] && /^\d{4}-\d{2}-\d{2}$/.test(u) && u < "2099") out.push(h("span", { class: "k k4" }, `~${md2(u)}까지`));
     if (u.startsWith("posted:")) out.push(h("span", { class: "k k4" }, `고시표 ${u.slice(7)}`));
-    if (r[12] === 1) out.push(h("span", { class: "k k4" }, "VAT 포함"));
-    if (r[12] === 2) out.push(h("span", { class: "k k4", title: `병원 표시가 ${won(r[14])} + 부가세 10%` }, `VAT 포함 환산 (표시 ${won(r[14])})`));
+    if (r[12] === 1 && st.vat === "listed") out.push(h("span", { class: "k k4" }, "VAT 포함가"));
+    if (r[12] === 0) out.push(h("span", { class: "k k4" }, "VAT 표기 미확인"));
     if (r[5] === 1) out.push(h("span", { class: "k k1" }, "체험가"));
     if (r[5] === 2) out.push(h("span", { class: "k k2" }, "한정가"));
     if (r[5] === 4) out.push(h("span", { class: "k k4" }, "고시가"));
@@ -403,7 +416,7 @@
   function quoteText(x, items) {
     return [`[${bname(x.b)}] 예상 견적 (${D.meta.updated} 기준)`,
       ...items.map((it, j) => { const l = x.lines[j]; return l ? `- ${itemLabel(it)} ×${it.q || 1}: ${won(l.total)} (${S[ROWS[l.rows[0]][2]]})` : `- ${itemLabel(it)}: 이 지점에 없음`; }),
-      `합계 ${won(x.total)} · 가격 확인 ${fresh(x.b).d} · VAT 표기가 없는 가격은 부가세 별도일 수 있음 · 방문 전 병원 확인`].join("\n");
+      `합계 ${won(x.total)} (${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가, 대부분 부가세 별도"}) · 가격 확인 ${fresh(x.b).d} · 방문 전 병원 확인`].join("\n");
   }
 
   // ---------------- price trend (weekly snapshots of regular prices; data.json "trend")
@@ -490,7 +503,7 @@
     const card = h("div", { class: "card flush" });
     card.append(h("div", { style: "padding:12px 12px 0" }, h("div", { class: "row" }, h("h2", {}, "가격 동향"), h("span", { class: "sp" }),
       h("span", { class: "sub" }, tr.dates.length > 1 ? `${md(tr.dates[0])}~${md(tr.dates[tr.dates.length - 1])} · ${tr.dates.length}주` : `기록 시작 ${md(tr.dates[0])}`)),
-      h("div", { class: "sub" }, "일반가 중간값(전 지점) · 정가 대비는 각 병원이 적은 정가에서 할인된 정도"),
+      h("div", { class: "sub" }, "일반가 중간값(전 지점, 병원 표시가 기준) · 정가 대비는 각 병원이 적은 정가에서 할인된 정도"),
       h("div", { class: "chips", style: "margin-top:10px" }, cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": c === st.tcat ? "true" : "false", onclick: () => { st.tcat = c; render(); } }, c))),
       h("div", { class: "row", style: "margin-top:10px" }, h("b", {}, `${st.tcat} 평균`), avg == null ? h("span", { class: "sub" }, tr.dates.length < 2 ? "다음 주 월요일부터 지난주 대비 변동이 보여요" : "변동 없음")
         : chg({ pct: avg }))),
@@ -504,7 +517,7 @@
     const tr = TR(), v = tr.k[k.id];
     if (!v || !tr.dates.length) return null;
     const card = h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "가격 동향"), h("span", { class: "sp" }), chg(keyChange(k.id))),
-      h("div", { class: "sub" }, `${k.label} · 일반가 기준, 전 브랜드 지점`),
+      h("div", { class: "sub" }, `${k.label} · 일반가, 전 브랜드 지점, 병원 표시가 기준`),
       lineChart(tr.dates, [{ name: "중간값", color: "var(--s1)", values: v.map((x) => x && x[0]) }, { name: "최저가", color: "var(--s2)", values: v.map((x) => x && x[1]) }], `${k.label} 주별 가격`));
     if (tr.disc[k.id] != null) card.append(h("div", { class: "note", style: "margin-top:8px" }, `이번 주 병원들이 적은 정가보다 중간값 ${tr.disc[k.id]}% 싸게 팔고 있어요.`));
     if (tr.dates.length < 2) card.append(h("div", { class: "sub", style: "margin-top:6px" }, "매주 월요일 갱신 때마다 점이 하나씩 늘어 선이 돼요."));
@@ -550,7 +563,7 @@
           h("span", { class: "t" }, KEYS[k].label), h("span", { class: "p num cheap", style: "color:var(--good)" }, won(c)),
           h("span", { class: "m" }, bdot(b), bname(b), h("s", {}, won(a)), `-${Math.round((a - c) / a * 100)}%`)))))));
     }
-    box.append(h("div", { class: "note" }, "가격은 각 병원 홈페이지에 올라온 값을 매주 월요일 자동으로 모은 거예요. 부가세 별도인 곳이 많고, 체험가·한정가는 1인 1회예요. 방문 전에 병원에서 꼭 확인하세요."));
+    box.append(h("div", { class: "note" }, `가격은 각 병원 홈페이지에 올라온 값을 매주 월요일(이벤트가 끝나면 그다음 날에도) 자동으로 모은 거예요. ${vatNote()} 체험가·한정가는 1인 1회예요. 방문 전에 병원에서 꼭 확인하세요.`));
     return box;
   };
 
@@ -587,7 +600,7 @@
         h("span", { class: "hb" }, bname(top.b)), h("span", { class: "hp num" }, won(top.p)),
         h("span", { class: "hl", style: "color:var(--muted);font-weight:600" }, `중간값 ${won(prices[prices.length >> 1])} · 가장 비싼 곳 ${won(prices[prices.length - 1])}`),
         h("span", { class: "hl row", style: "color:var(--muted);font-weight:600;gap:8px" }, h("span", {}, S[ROWS[top.i][2]]), kindBadge(ROWS[top.i]),
-          h("span", {}, `${fresh(top.b).d} 확인`), srcLink(top.i, "출처 보기"))));
+          listedTxt(ROWS[top.i]) ? h("span", {}, listedTxt(ROWS[top.i])) : null, h("span", {}, `${fresh(top.b).d} 확인`), srcLink(top.i, "출처 보기"))));
       card.append(h("div", { class: "row", style: "margin-top:12px" }, addBtn(k.i),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { st.mapKey = k.i; nav("map"); } }, "지도에서 보기")));
     }
@@ -602,7 +615,7 @@
         h("span", { class: "m" }, S[r[2]], r[4] ? h("s", {}, won(r[4])) : null, kindBadge(r), x.d != null ? h("b", {}, km(x.d)) : null))));
     });
     box.append(h("div", { class: "card flush" }, rk.length ? list : h("div", { class: "empty" }, "조건에 맞는 지점이 없어요. 브랜드나 특가 설정을 바꿔 보세요.")));
-    box.append(h("div", { class: "note" }, "같은 시술로 묶는 기준: 용량·샷 수·회차·원산지가 같은 1회 가격. 다른 시술과 묶인 패키지, 추가 옵션, 구독권은 빠져요. 이름이 조금 달라도 같은 시술이면 묶었어요."));
+    box.append(h("div", { class: "note" }, `${vatNote()} 같은 시술로 묶는 기준: 용량·샷 수·회차·원산지가 같은 1회 가격. 다른 시술과 묶인 패키지, 추가 옵션, 구독권은 빠져요. 종료일이 지난 이벤트와 확인 중인 급변 가격도 빠져요.`));
     return box;
   };
 
@@ -944,7 +957,7 @@
     else box.append(sumView(full));
     box.append(h("div", { class: "note" }, "• 특가(체험가·한정가)는 첫 1회만, 2회째부터는 그 지점 일반가로 계산해요.", h("br"),
       "• 지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.", h("br"),
-      "• 부가세 별도인 병원이 많아요. 방문 전에 병원에 꼭 확인하세요."));
+      `• ${vatNote()} 방문 전에 병원에 꼭 확인하세요.`));
     return box;
   };
   // one branch's quote, expandable, with a per-line option picker
@@ -981,7 +994,7 @@
       body.append(h("div", { class: "qline" },
         h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, won(l.total))),
         h("div", { class: "m" }, h("span", {}, S[r[2]]), r[4] ? h("s", {}, won(r[4])) : null, pct > 0 ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
-          l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, detail ? h("span", {}, detail) : null, srcLink(l.rows[0])),
+          l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0])),
         alts.length > 1 || l.ov ? h("div", { style: "margin-top:6px" }, sel) : null));
     });
     body.append(h("div", { class: "row", style: "margin-top:10px" }, h("b", {}, "합계"), h("span", { class: "sp" }), h("b", { class: "num", style: "font-size:20px" }, won(x.total))),
@@ -1216,7 +1229,8 @@
       h("ul", { class: "list", style: "margin-top:8px" }, D.meta.brands.map((b, i) => !counts[i][0] ? null : h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
         h("span", { class: "sub" }, `${counts[i][0]}곳 · ${counts[i][1].toLocaleString()}개`), h("span", { class: "m" }, b[2]))))),
       h("div", { class: "note", style: "margin-top:10px" }, "• 체험가·한정가는 보통 1인 1회예요. '특가 포함'을 끄면 일반가만 비교해요.", h("br"),
-        "• '평일 낮', '일요일' 같은 표시는 그 시간에만 되는 가격이에요.", h("br"), "• 부가세(10%) 별도인 병원이 많아요.", h("br"),
+        "• '평일 낮', '일요일' 같은 표시는 그 시간에만 되는 가격이에요.", h("br"), `• ${vatNote()} 4개 브랜드 모두 사이트에 부가세 10% 별도라고 적혀 있어요(내정보 → 설정에서 표시 방식 변경).`, h("br"),
+        "• 종료일이 지난 이벤트, 지난주보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요. 가격마다 '출처'로 병원 페이지를 열 수 있어요.", h("br"),
         "• 병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요.")));
     // branch list by brand
     box.append(h("div", { class: "card" }, h("h2", {}, "지역"), h("div", { class: "sub" }, "고르면 비교·장바구니·검색·순위가 이 지역 지점만 보여 줘요(데이터는 전국을 모두 모아요)"), h("div", { style: "margin-top:10px" }, regionSelect())));
@@ -1228,6 +1242,10 @@
     box.append(h("div", { class: "card" }, h("h2", {}, "설정"),
       h("div", { class: "row", style: "margin-top:10px" }, ["auto", "light", "dark"].map((t) => h("button", { class: "chip", type: "button", "aria-pressed": theme === t ? "true" : "false",
         onclick: () => { store.set("theme", t); applyTheme(); render(); } }, { auto: "기기 설정", light: "밝게", dark: "어둡게" }[t]))),
+      h("div", { class: "sub", style: "margin-top:14px" }, "가격 표시"),
+      h("div", { class: "row", style: "margin-top:6px" }, [["incl", "부가세 포함 예상가"], ["listed", "병원 표시가"]].map(([v, l]) => h("button", { class: "chip", type: "button", "aria-pressed": st.vat === v ? "true" : "false",
+        onclick: () => { st.vat = v; store.set("vat", v); applyVat(); render(); } }, l))),
+      h("div", { class: "sub", style: "margin-top:4px" }, "4개 브랜드 모두 사이트에 '부가세 10% 별도'라고 적혀 있어요(2026-10-13 확인). 상품명에 '부가세 포함'이 따로 있는 가격은 그대로 써요."),
       h("div", { class: "row", style: "margin-top:12px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => window.lockApp && window.lockApp() }, "지금 잠그기"),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { store.set("brands", null); store.set("special", true); location.reload(); } }, "설정 초기화")),
       h("div", { class: "sub", style: "margin-top:12px" }, "지도 © OpenStreetMap 기여자. 가격 출처는 각 병원 홈페이지예요.")));

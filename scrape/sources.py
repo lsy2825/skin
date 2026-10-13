@@ -95,8 +95,13 @@ def main():
             pu = urlparse(u)
             hosts.setdefault(pu.netloc, set()).add((pu.path or "/") + (f"?{pu.query}" if pu.query else ""))
         hs = [robots(f, h, sorted(p)[:3]) for h, p in list(hosts.items())[:12]]
+        # hosts asking for a long crawl delay (리엔장: 180 s) get no extra sample-page request: the scraper's one weekly
+        # page per host is all we read there
+        slow = {x["host"] for x in hs if (x.get("crawl_delay") or 0) >= 10}
+        sample = [u for u in sample if urlparse(u).netloc not in slow]
         entry = {**{k: v for k, v in reg.items() if k != "seeds"}, "hosts": hs, "hosts_total": len(hosts),
-                 "allowed": all(x["allowed"] for x in hs), "vat_evidence": evidence(f, sample)}
+                 "allowed": all(x["allowed"] for x in hs), "vat_evidence": evidence(f, sample),
+                 "skipped_samples_for_crawl_delay": sorted(slow)}
         if key == "velyb" and urls:
             entry["date_samples"] = date_samples(f, urls[0])
         out["brands"][key] = entry

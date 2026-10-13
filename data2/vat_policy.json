@@ -1,0 +1,27 @@
+{
+ "_about": "브랜드 기본 부가세 표기. 사이트 원문 근거가 있을 때만 적어요(scrape/sources.py가 모은 data2/sources.json). 행 이름에 '부가세 포함/별도'가 따로 있으면 그게 우선이에요.",
+ "블리비": {
+  "default": "excl",
+  "checked": "2026-10-13",
+  "url": "https://www.velyb.kr/community/community01.php?tb=event_multi",
+  "evidence": "정부의 부가세법 개정안에 따라 부가세 10%가 별도로 부과됩니다."
+ },
+ "쁨": {
+  "default": "excl",
+  "checked": "2026-10-13",
+  "url": "https://sinnonhyeon.ppeum.com/selectSurgery",
+  "evidence": "총 시술금액 (VAT 별도) / 내가 담은 상품(※ VAT별도) — 일부 상품명에 '(*부가세포함)'은 따로 표기"
+ },
+ "톡스앤필": {
+  "default": "excl",
+  "checked": "2026-10-13",
+  "url": "https://www.toxnfill1.com/detail.php?c=3628&i=29879",
+  "evidence": "예상금액 부가세 10% 별도 / 총 금액 (부가세 별도) — 일부 상품명에 '[부가세10%포함]'은 따로 표기"
+ },
+ "리엔장": {
+  "default": "excl",
+  "checked": "2026-10-13",
+  "url": "https://incheon.lienjang.net/agree/info",
+  "evidence": "모든 피부미용 시술의 경우 10% 부가세가 별도로 부과됩니다."
+ }
+}
