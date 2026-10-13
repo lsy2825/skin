@@ -37,8 +37,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('Tab으로 검색창 도달', found);
     await p.keyboard.type('리쥬란 2cc'); await p.keyboard.press('Enter'); await p.waitForTimeout(1000);
     ok('Enter로 검색', /search\//.test(p.url()));
-    let onAdd = false; for (let k = 0; k < 80 && !onAdd; k++) { await p.keyboard.press('Tab'); onAdd = await p.evaluate(() => document.activeElement && document.activeElement.textContent.trim() === '+ 담기'); }
-    ok('Tab으로 + 담기 도달', onAdd);
+    let onAdd = false; for (let k = 0; k < 80 && !onAdd; k++) { await p.keyboard.press('Tab'); onAdd = await p.evaluate(() => document.activeElement && document.activeElement.textContent.trim() === '담기'); }
+    ok('Tab으로 담기 버튼 도달', onAdd);
     await p.keyboard.press('Enter'); await p.waitForTimeout(300);
     const inSheet = await p.evaluate(() => !!document.activeElement.closest('.sheet'));
     ok('시트 열리면 포커스가 시트 안', inSheet);
@@ -65,10 +65,10 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     await p.goto(BASE); await unlock(p); await p.waitForSelector('.pc');
     await p.evaluate(() => localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])));
     const bad = [];
-    for (const r of ['home', 'compare?k=X12', 'compare?k=X24', 'guide', 'guide?c=%EC%A0%9C%EB%AA%A8%C2%B7%EB%B0%94%EB%94%94', 'rank', 'versus', 'table', 'search/%EB%A6%AC%EC%A5%AC%EB%9E%80', 'cart', 'me', 'branch/3', 'change', 'about', 'ops', 'map', 'concern?c=wrinkle']) {
+    for (const r of ['home', 'explore', 'saved', 'compare?k=X12', 'compare?k=X24', 'guide', 'guide?c=%EC%A0%9C%EB%AA%A8%C2%B7%EB%B0%94%EB%94%94', 'rank', 'versus', 'table', 'search/%EB%A6%AC%EC%A5%AC%EB%9E%80', 'cart', 'me', 'branch/3', 'change', 'about', 'ops', 'map', 'concern?c=wrinkle']) {
       await p.goto(BASE + '#' + r); await p.waitForTimeout(500);
       const sw = await p.evaluate(() => document.documentElement.scrollWidth); if (sw > w + 1) bad.push(`${r}:${sw}`); }
-    ok(`가로 넘침 없음 (${w}px, 17개 화면)`, !bad.length, bad.join(' ')); await ctx.close(); }
+    ok(`가로 넘침 없음 (${w}px, 19개 화면)`, !bad.length, bad.join(' ')); await ctx.close(); }
   // 5) empty states
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload(); await unlock(p); await p.waitForSelector('.pc');
@@ -76,8 +76,9 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('빈 장바구니 안내', /담으면/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#search/zzqqxx?nl=0'); await p.waitForTimeout(800);
     ok('검색 결과 없음 안내', /가격이 없어요/.test(await p.locator('#main').innerText()));
+    await p.goto(BASE + '#saved'); await p.waitForTimeout(400); const savedTxt = await p.locator('#main').innerText();
     await p.goto(BASE + '#me'); await p.waitForTimeout(400);
-    ok('알림·기록 없을 때 안내', /알림을 만들 수 있어요/.test(await p.locator('#main').innerText()) && /기록하면/.test(await p.locator('#main').innerText()));
+    ok('알림(관심 탭)·기록(마이) 없을 때 안내', /알림을 만들 수 있어요/.test(savedTxt) && /하트를 누르면/.test(savedTxt) && /기록하면/.test(await p.locator('#main').innerText()));
     // undo: favourite remove
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
     await p.click('.keyhead .favbtn'); await p.click('.keyhead .favbtn'); await p.waitForTimeout(150);
@@ -94,12 +95,12 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     await p.click('.cartsum .btn'); await p.waitForTimeout(300);
     const q1 = await p.locator('.qrow .rank .p').first().textContent();
     ok('병원별 비교 열면 1위 합계 = 요약 총액', q1 === t2, `${q1} / ${t2}`);
-    ok('하단 떠 있는 장바구니(다른 화면)', await (async () => { await p.goto(BASE + '#compare'); await p.waitForTimeout(400); return p.locator('#fcart').isVisible(); })());
+    ok('하단 떠 있는 장바구니(다른 화면)', await (async () => { await p.goto(BASE + '#guide'); await p.waitForTimeout(400); return p.locator('#fcart').isVisible(); })());
     await ctx.close(); }
   // 6) dark mode renders with dark surface
   { const ctx = await b.newContext({ serviceWorkers: 'block', colorScheme: 'dark', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 }); const p = await ctx.newPage();
     await p.goto(BASE); await unlock(p); await p.waitForSelector('.pc');
     const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    ok('다크 모드(기기 설정 따름)', bg === 'rgb(22, 16, 19)', bg); await p.screenshot({ path: `${OUT}/qa-dark.png` }); await ctx.close(); }
+    ok('다크 모드(기기 설정 따름)', bg === 'rgb(20, 19, 17)', bg); await p.screenshot({ path: `${OUT}/qa-dark.png` }); await ctx.close(); }
   require('fs').writeFileSync(`${OUT}/ux_qa.json`, JSON.stringify(R));
   console.log(`TOTAL ${R.filter((x) => x[1]).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every((x) => x[1]) ? 0 : 1; })();

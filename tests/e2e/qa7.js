@@ -30,13 +30,13 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
   // Q1 home '+ 담기' → cart count
   { const { ctx, p } = await page();
     const n0 = await p.locator('#cart-n').isHidden();
-    const add = async (i) => { await p.locator('#main .addbtn', { hasText: '+ 담기' }).nth(i).click(); await p.waitForTimeout(200);
+    const add = async (i) => { await p.locator('#main .addbtn', { hasText: /^담기$/ }).nth(i).click(); await p.waitForTimeout(200);
       await p.locator('.sheet button', { hasText: /회 담기$/ }).first().click(); await p.waitForTimeout(300); };
     await add(0); const n1 = await p.locator('#cart-n').textContent();
     const pressed = await p.locator('#main .addbtn[aria-pressed="true"]').count();
     await add(0); const n2 = await p.locator('#cart-n').textContent();
     ok('Q1', '홈에서 담으면 장바구니 숫자 갱신', n0 && n1 === '1' && n2 === '2', `처음 숨김=${n0} → ${n1} → ${n2}`);
-    ok('Q1', '담은 카드 버튼이 "담김 ✓"로 바뀜', pressed >= 1, `aria-pressed=true ${pressed}개`);
+    ok('Q1', '담은 카드 버튼이 "담김"으로 바뀜', pressed >= 1, `aria-pressed=true ${pressed}개`);
     const c = await carts(p); ok('Q1', '저장된 장바구니와 숫자가 같음', c[0].items.length === 2, JSON.stringify(c[0].items.map((x) => x.k)));
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
     ok('Q1', '장바구니 화면에 같은 개수', /담은 시술 2개/.test(await p.locator('#main').innerText()));
@@ -143,7 +143,10 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     for (let i = 0; i < Math.min(pins, 4); i++) {
       // the popup pans the map, so take the i-th pin that is inside the map box right now
       const j = await p.evaluate((i) => { const m = document.getElementById('map').getBoundingClientRect();
-        const inside = [...document.querySelectorAll('.pin-price')].map((e, j) => [e.getBoundingClientRect(), j]).filter(([r]) => r.left > m.left + 4 && r.right < m.right - 4 && r.top > m.top + 4 && r.bottom < m.bottom - 4);
+        const pins = [...document.querySelectorAll('.pin-price')];
+        // inside the map box and not under the map's own buttons (the lock / re-search bar sits on top of the map)
+        const inside = pins.map((e, j) => [e.getBoundingClientRect(), j]).filter(([r, j]) => { if (!(r.left > m.left + 4 && r.right < m.right - 4 && r.top > m.top + 4 && r.bottom < m.bottom - 4)) return false;
+          const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!t && pins[j].contains(t); });
         return inside.length ? inside[i % inside.length][1] : -1; }, i);
       if (j < 0) continue;
       tried++; await p.locator('.pin-price').nth(j).click(); await p.waitForTimeout(450);

@@ -39,7 +39,7 @@
   방문한 지점, 그 아래 옛 더보기 내용(데이터 안내·지역·지점 목록(접힘)·설정).
 - 로그인: Supabase(구글·카카오) 코드 준비만, 사용자 결정 '기능만 만들고 지금 넣지 말기' → app/config.js 비어 있으면 꺼짐.
   app/auth.js, supabase/schema.sql(RLS, delete_me), docs/로그인_설정.md. 민감정보(시술 기록) 동의·처리방침 필요 안내함.
-- 폰트: 나눔스퀘어라운드(OFL) app/vendor/fonts에 R/B/EB woff2.
+- 폰트: Pretendard(OFL-1.1) app/vendor/fonts/pretendard (동적 서브셋, 필요한 글자 범위만 내려받음). 아이콘: Lucide(ISC) app/icons.js.
 - 가격 동향: appdata trend(data2/history 주별 스냅샷 → 키별 일반가 중간값·최저가, 정가 대비 할인 중간값). 홈 '가격 동향'(대분류 칩→소분류 목록·스파크라인), 비교 탭 선 그래프.
   스냅샷은 2026-10-13 하나뿐이라 선은 10/19부터 생김.
 

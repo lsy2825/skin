@@ -37,7 +37,7 @@ GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저
 | 수집 | Python 3.12, requests, BeautifulSoup | `scrape/` (블리비·쁨·톡스앤필·리엔장, 포에버는 일시 중지) |
 | 정리·정규화 | Python | `build2/clean.py`, `xkeys.py`, `groups.py` |
 | 배포·스케줄 | GitHub Actions, GitHub Pages | `.github/workflows/weekly.yml` |
-| 프런트 | 바닐라 JS(`app.js` 약 2,200줄 + `domain/` 약 450줄), Leaflet(OSM), 나눔스퀘어라운드 | `app/` |
+| 프런트 | 바닐라 JS(`app.js` 약 2,200줄 + `domain/` 약 450줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
 | 사용자 데이터 | 기기 localStorage(`pc:` 접두사). Supabase(Postgres+Auth)는 준비만 | `app/auth.js`, `supabase/schema.sql` |
 | 테스트 | node:test(단위), Python 자체 테스트(xkeys·taxonomy·knowledge), Playwright(E2E·QA·접근성, 로컬 실행) | `tests/`, `tests/e2e/` |
 

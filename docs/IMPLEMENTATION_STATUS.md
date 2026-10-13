@@ -6,9 +6,10 @@
 - 라이브 제품 UX 감사(지시서 항목별): `docs/UX_AUDIT.md`
 - 데이터 품질: `docs/DATA_QUALITY_REPORT.md`
 - 보안: `docs/SECURITY_AUDIT.md` · `SECURITY_ARCHITECTURE.md` · `SECURITY_REMEDIATION.md` · `SECURITY_TEST_REPORT.md` · `INCIDENT_RESPONSE_PLAN.md`
+- 디자인 시스템(2026 개편: 토큰·컴포넌트·그래프·화면 구조·검사 결과): `docs/DESIGN_SYSTEM.md`
 
 **실제로 돌린 테스트** (이 세션, 2026-10-13)
-- `node --test tests/*.test.js`: 23개 통과(가격 계산, 검색, 가격 이력·알림)
+- `node --test tests/*.test.js`: 30개 통과(가격 계산, 검색, 가격 이력·알림, 고민 분류)
 - `python build2/xkeys.py`: 93개 통과(브랜드 간 같은 시술 판정)
 - `python build2/taxonomy.py`: 39개 통과(시술 분류표: 제품군·세부 구분·용량·회차, 묶음·추가 옵션 거르기)
 - `python build2/knowledge.py`: 통과(지식 베이스 49개 항목의 형식·출처·검수 규칙)
@@ -21,8 +22,10 @@
 - E2E(Playwright, Chromium 390px):
   - `tests/e2e/qa7.js`: 32/32 통과(지시서 QA 7문항 + 지점 수 일치)
   - `tests/e2e/ux_qa.js`: 25/25 통과
-  - `tests/e2e/touch_targets.js`: 3,210/3,210 통과(14개 화면)
-  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 9개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/touch_targets.js`: 2,942/2,942 통과(17개 화면, 디자인 개편 후)
+  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 12개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/concern.js`: 23/23 통과
+  - 가로 넘침: 375·390·430·768·1280px 위반 0
   - `tests/e2e/xss.js`: 악성 입력 실행 0회(CSP 켬/끔 모두), 7/7 통과
   - 기능별 회귀 시나리오: 페이지 오류 0건
 - 못 한 것: 실기기·스크린리더 검사, 병원 원본과의 실시간 대조(이 환경에서 병원 사이트 접속 불가 → `price-check` 워크플로로)
@@ -149,7 +152,7 @@
   - 내보내기: `build2/export_db.py`
   - 사용자 데이터: `supabase/schema.sql`(RLS)
 - **기능 플래그**(`app/config.js`): 광고·예약·이메일 알림·검색 노출은 꺼져 있어요.
-- **PWA:** 오프라인 캐시, 나눔스퀘어라운드 글꼴, 비밀번호 화면
+- **PWA:** 오프라인 캐시, Pretendard 글꼴, 비밀번호 화면
 
 ## IN PROGRESS
 - **피부 고민 기능 공개 전 조건:** 법률 검토(`LEGAL_REVIEW_CHECKLIST.md` A~F), 의료진 검수(지식 49개·고민 14개 모두 초안), 금기와 주의 나누기
