@@ -43,6 +43,14 @@
 - 가격 동향: appdata trend(data2/history 주별 스냅샷 → 키별 일반가 중간값·최저가, 정가 대비 할인 중간값). 홈 '가격 동향'(대분류 칩→소분류 목록·스파크라인), 비교 탭 선 그래프.
   스냅샷은 2026-10-13 하나뿐이라 선은 10/19부터 생김.
 
+## 2026-10-13 마스터 요구사항 대응 (자세한 건 docs/ARCHITECTURE.md, docs/IMPLEMENTATION_STATUS.md)
+- 예전 앱 = claude.ai 아티팩트 CVsoz3sVXrMRNjGJ6Hy1wP(공유)·M4UdRzMGj9uGuMAnrxYReZ. 빠졌던 기능 대부분 복원(자동 묶음 build2/groups.py, 지점 순위·비교, 가격 변동, 전체 가격표, 안내, 장바구니 2곳 조합·공유 메모, 방문일).
+- 지역 기본 보기 수도권(pc:region), 데이터는 전국.
+- 정확성: 종료일 지난 이벤트 제외 + 종료 다음 날 자동 재수집(needs_refresh.py, 매일 06:00 판단), 출처·확인일, STALE, 급변 검토(review.csv/review_ok.csv),
+  부가세 4개 브랜드 모두 '별도'(vat_policy.json 원문 근거) → 앱 기본 부가세 포함 예상가(pc:vat), robots.txt 확인(sources.py, source-check 워크플로).
+- 계산 로직 app/domain/pricing.js + tests/pricing.test.js(node --test tests/*.test.js, 워크플로에서도 실행).
+- 사용자 결정: 알림·로그인·관리자는 키 필요 → 나중에.
+
 ## 남은 일
 1. 포에버의원: 연결 완료(브랜드 안내에 'VAT 별도'; 태그로 넣으면 '특가'로 분류돼 숨겨지므로 태그는 안 씀). 다음 Actions 실행 결과(report.md)로 행·지점·주소 확인.
    앱: 필터를 저장한 사용자도 새 브랜드는 켜진 상태로 시작(pc:nbrands).

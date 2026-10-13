@@ -81,7 +81,16 @@ def date_samples(f, url):
     if not r:
         return []
     soup = BeautifulSoup(r.text, "html.parser")
-    return [clean(d.get_text(" ")) for d in soup.select("div.cont .top .date")][:5]
+    out = [clean(d.get_text(" ")) for d in soup.select("div.cont .top .date")][:5]
+    # wording around '프라임 타임' (weekday-daytime prices): the hours, if the page states them
+    text = clean(soup.get_text(" "))
+    for m in re.finditer(r"프라임\s*타임", text):
+        snip = text[max(0, m.start() - 40):m.end() + 80]
+        if snip not in out:
+            out.append(snip)
+        if len(out) >= 10:
+            break
+    return out
 
 
 def main():

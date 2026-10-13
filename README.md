@@ -1,6 +1,7 @@
 # 피부과 가격비교
 
 공장형 피부과 브랜드(블리비·쁨·톡스앤필·리엔장)의 지점별 시술 가격을 모아 비교하는 홈 화면 앱(PWA).
+구조·설계 결정은 `docs/ARCHITECTURE.md`, 진행 상태는 `docs/IMPLEMENTATION_STATUS.md`.
 
 - 앱: `app/` (GitHub Pages로 배포). 휴대폰 브라우저에서 열고 "홈 화면에 추가"하면 앱처럼 쓸 수 있어요.
 - 매주 월요일 06:00(KST) GitHub Actions가 자동으로 가격을 모으고(`scrape/`), 정리하고(`build2/clean.py`), 앱 데이터(`app/data.json`)를 만들어 배포해요.
@@ -15,6 +16,7 @@
     pip install -r requirements.txt
     python build2/weekly.py            # 수집부터 전부 (약 15분)
     python build2/weekly.py --skip-scrape   # 이미 모은 자료로 다시 만들기
+    node --test tests/*.test.js          # 가격 계산 단위 테스트
     python -m http.server 8766 --directory app
 
 지도: © OpenStreetMap contributors (Leaflet, BSD-2). 좌표: OpenStreetMap Nominatim.

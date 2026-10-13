@@ -204,6 +204,11 @@ select.mini { border: 0; background: var(--fill); border-radius: 10px; padding: 
 .sheet-bg { position: fixed; inset: 0; z-index: 80; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; justify-content: center; animation: fadein .2s ease both; }
 .sheet { background: var(--surface); width: 100%; max-width: 560px; max-height: 86vh; overflow: auto; border-radius: 22px 22px 0 0; padding: 18px 18px calc(18px + env(safe-area-inset-bottom, 0px)); }
 @media (min-width: 900px) { .sheet-bg { align-items: center; } .sheet { border-radius: 22px; } }
+.fcart { position: fixed; right: 16px; bottom: calc(var(--nav-h) + 14px + env(safe-area-inset-bottom, 0px)); z-index: 55; border: 0; border-radius: 999px; padding: 11px 16px;
+  background: var(--ink); color: var(--bg); font-weight: 800; font-size: 14px; box-shadow: var(--shadow); max-width: calc(100% - 32px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (min-width: 900px) { .fcart { bottom: 24px; } }
+.chip.mini-chip { padding: 3px 10px; font-size: 12px; }
+pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: var(--fill); border-radius: 12px; padding: 10px 12px; margin: 0; color: var(--ink-2); }
 /* home extras */
 .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .qbtn { display: grid; justify-items: center; gap: 1px; border: 0; background: var(--surface); border-radius: 18px; padding: 12px 4px 10px; min-width: 0; }
@@ -356,10 +361,12 @@ html:not(.locked) .gate { display: none; }
   <main id="main"><div class="empty">불러오는 중…</div></main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<button class="fcart" id="fcart" type="button" hidden onclick="location.hash='#cart'"></button>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>
 <script src="auth.js"></script>
+<script src="domain/pricing.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

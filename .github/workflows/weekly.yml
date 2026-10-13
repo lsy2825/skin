@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}        # "Run workflow" button for a manual update
   push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
     branches: [main]
-    paths: ["app/**", "build2/**", ".github/workflows/weekly.yml"]
+    paths: ["app/**", "build2/**", "tests/**", ".github/workflows/weekly.yml"]
 
 permissions:
   contents: write
@@ -35,6 +35,9 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ]; then python build2/needs_refresh.py; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
       - if: steps.decide.outputs.run == 'true'
         run: pip install -r requirements.txt
+      - name: Unit tests (price calculation)
+        if: steps.decide.outputs.run == 'true'
+        run: node --test tests/*.test.js
       - name: Scrape, check, build
         if: steps.decide.outputs.run == 'true'
         run: python build2/weekly.py ${{ github.event_name == 'push' && '--skip-scrape' || '' }}
