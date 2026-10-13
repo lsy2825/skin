@@ -47,3 +47,25 @@ test("unit price is a reference: per 100샷 / 1cc / 10U, none for bundles", () =
   assert.equal(S.unitOf("온다 리프팅 10,000KJ").qty, 10000);
   assert.equal(S.unitOf("온다 리프팅 10만줄").qty, 100);
 });
+
+test("natural language: price limits, area, brand, kind, sort; amounts are not prices", () => {
+  const ctx = { brands: ["블리비", "쁨", "톡스앤필", "리엔장"], sido: ["서울", "경기", "인천"], areas: ["강남", "홍대", "잠실"] };
+  let r = S.interpret("강남 슈링크 300샷 10만원 이하 체험가", ctx);
+  assert.equal(r.q, "슈링크 300샷"); assert.equal(r.area, "강남"); assert.equal(r.max, 100000); assert.equal(r.kind, "체험가");
+  r = S.interpret("리쥬란 2cc 15만원 미만 제일 싼 곳", ctx);
+  assert.equal(r.q, "리쥬란 2cc"); assert.equal(r.max, 149999); assert.equal(r.sort, "price");
+  r = S.interpret("블리비 홍대점 울쎄라 5만~10만", ctx);
+  assert.equal(r.brand, "블리비"); assert.equal(r.area, "홍대"); assert.equal(r.min, 50000); assert.equal(r.max, 100000); assert.equal(r.q, "울쎄라");
+  r = S.interpret("서울 써마지 600샷 패키지 20만원대", ctx);
+  assert.equal(r.region, "서울"); assert.equal(r.sess, "pkg"); assert.equal(r.min, 200000); assert.equal(r.max, 399999); assert.equal(r.q, "써마지 600샷");
+  r = S.interpret("슈링크 300샷", ctx);
+  assert.deepEqual([r.q, r.max, r.min, r.chips.length], ["슈링크 300샷", undefined, undefined, 0]);
+  r = S.interpret("잠실 근처 리쥬란 어디 싸?", ctx);
+  assert.equal(r.area, "잠실");
+});
+
+test("natural language: filler words dropped", () => {
+  const ctx = { brands: ["블리비"], sido: ["서울"], areas: ["잠실"] };
+  assert.equal(S.interpret("잠실 근처 리쥬란 어디 싸?", ctx).q, "리쥬란");
+  assert.equal(S.interpret("제일 싼 곳 피코토닝", ctx).q, "피코토닝");
+});

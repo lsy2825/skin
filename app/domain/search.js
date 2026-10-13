@@ -161,5 +161,43 @@
     return { unit: u.unit, per: u.per, price: Math.round(price / u.qty * u.per), qty: u.qty };
   }
 
-  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice };
+  // ---- natural-language query → filters + remaining search words (requirement: 자연어 검색 조건 해석)
+  // '강남 슈링크 300샷 10만원 이하 체험가' → {q: '슈링크 300샷', area: '강남', max: 100000, kind: '체험가', chips: [...]}
+  // ctx: {brands: [names], sido: [names], areas: [place words found in branch names/addresses]}
+  const PRICE = /(\d+(?:\.\d+)?)\s*(만\s*원|만|천\s*원|천|원)?\s*(이하|미만|아래|까지|이내|이상|초과|넘는|부터|대)?/;
+  function money(n, u) { n = parseFloat(n); return Math.round(u && u.startsWith("만") ? n * 10000 : u && u.startsWith("천") ? n * 1000 : n); }
+  function interpret(q, ctx = {}) {
+    const out = { q: "", chips: [] };
+    let text = ` ${(q || "").trim()} `;
+    const take = (re, fn) => { const m = re.exec(text); if (m) { text = text.replace(m[0], " "); fn(m); } return m; };
+    // price range '5만~10만', '5만원에서 10만원'
+    take(/(\d+(?:\.\d+)?)\s*(만\s*원|만|천\s*원|천)?\s*(?:~|-|에서|부터)\s*(\d+(?:\.\d+)?)\s*(만\s*원|만|천\s*원|천)\s*(?:사이|까지)?/, (m) => {
+      out.min = money(m[1], m[2] || m[4]); out.max = money(m[3], m[4]); out.chips.push(`${out.min.toLocaleString()}~${out.max.toLocaleString()}원`); });
+    // single bound: needs a money unit (만/천/원) so '300샷' or '2cc' are never read as prices
+    take(/(\d+(?:\.\d+)?)\s*(만\s*원|만원|만|천\s*원|천원|천|원)\s*(이하|미만|아래|까지|이내|이상|초과|넘는|부터|대)?(?=\s)/, (m) => {
+      const v = money(m[1], m[2].replace(/\s/g, ""));
+      const w = m[3] || "이하";
+      if (/이상|초과|넘는|부터/.test(w)) { out.min = v; out.chips.push(`${v.toLocaleString()}원 이상`); }
+      else if (w === "대") { out.min = v; out.max = v * 2 - 1; out.chips.push(`${v.toLocaleString()}원대`); }
+      else { out.max = w === "미만" ? v - 1 : v; out.chips.push(`${v.toLocaleString()}원 ${w === "미만" ? "미만" : "이하"}`); }
+    });
+    for (const b of ctx.brands || []) take(new RegExp(`\\s${b}(의원|피부과)?\\s`), () => { out.brand = b; out.chips.push(b); });
+    for (const s of ctx.sido || []) take(new RegExp(`\\s${s}(시|도|특별시|광역시)?\\s`), () => { out.region = s; out.chips.push(s); });
+    take(/\s수도권\s/, () => { out.region = "수도권"; out.chips.push("수도권"); });
+    for (const a of (ctx.areas || []).slice().sort((x, y) => y.length - x.length)) {
+      if (out.area) break;
+      take(new RegExp(`\\s${a}(역|점|구|동)?(\\s|근처|주변|에서)`), () => { out.area = a; out.chips.push(`${a} 근처 지점`); });
+    }
+    take(/\s(체험가|한정가|고시가)\s/, (m) => { out.kind = m[1]; out.chips.push(m[1]); });
+    take(/\s(일반가|정가만|조건\s*없는)\s/, () => { out.cond = "plain"; out.chips.push("조건 없는 가격"); });
+    take(/\s(패키지|\d+\s*회\s*권|여러\s*회)\s/, () => { out.sess = "pkg"; out.chips.push("2회 이상 패키지"); });
+    take(/\s(이용권|무제한|구독)\s/, () => { out.sess = "pass"; out.chips.push("이용권"); });
+    take(/\s(제일\s*싼\s*곳?|가장\s*싼\s*곳?|최저가?|싼\s*곳|저렴한\s*곳?)\s/, () => { out.sort = "price"; out.chips.push("싼 순"); });
+    take(/\s(가까운|근처|주변)\s/, () => { out.sort = "near"; out.chips.push("가까운 순"); });
+    take(/\s(할인율|많이\s*할인)\s/, () => { out.sort = "disc"; out.chips.push("할인율 큰 순"); });
+    out.q = text.replace(/[?？!.]/g, " ").replace(/\s(에서|으로|로|를|을|은|는|이|가|좀|추천|알려\s*줘|찾아\s*줘|어디|얼마|가격|싸|싼|싼데|싸요|있어|있나요)(?=\s)/g, " ").replace(/\s+/g, " ").trim();
+    return out;
+  }
+
+  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret };
 });

@@ -219,6 +219,15 @@ pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; back
 ul.warns { margin: 8px 0 0; padding: 8px 12px 8px 26px; background: var(--tag-bg); color: var(--tag); border-radius: 12px; font-size: 12.5px; display: grid; gap: 3px; }
 .skel { border-radius: var(--r); background: linear-gradient(90deg, var(--surface) 25%, var(--sunken) 50%, var(--surface) 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite linear; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+.ferr { color: var(--pricey); font-size: 12.5px; font-weight: 700; margin-top: 4px; }
+[aria-invalid="true"] { outline: 2px solid var(--pricey) !important; }
+.sliders { display: grid; gap: 2px; margin-top: 6px; }
+.sliders input[type=range] { width: 100%; accent-color: var(--accent-fill); }
+.chip.on { background: var(--accent-soft); color: var(--accent); }
+.pchip { display: inline-flex; align-items: center; gap: 2px; padding: 0 4px 0 12px; }
+.pchip button { border: 0; background: none; font: inherit; color: inherit; padding: 8px 4px; }
+.pchip .px { color: var(--muted); font-weight: 800; }
+.sugsec { padding: 6px 12px 2px; font-size: 12px; font-weight: 700; color: var(--muted); list-style: none; }
 /* home extras */
 .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .qbtn { display: grid; justify-items: center; gap: 1px; border: 0; background: var(--surface); border-radius: 18px; padding: 12px 4px 10px; min-width: 0; }
@@ -311,6 +320,8 @@ details.fold.small > summary { padding: 10px 4px 6px; font-size: 13.5px; color: 
 .toast { position: fixed; left: 50%; bottom: calc(var(--nav-h) + 20px + env(safe-area-inset-bottom, 0px)); transform: translate(-50%, 20px); opacity: 0; background: var(--ink); color: var(--bg);
   padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 600; transition: .25s; pointer-events: none; z-index: 90; white-space: nowrap; }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
+.toast.act { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+.toast button { border: 0; background: none; color: var(--accent-fill); font-weight: 800; padding: 4px 2px; font-size: 14px; }
 .back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: var(--surface); border-radius: 999px; padding: 8px 14px; font-weight: 600; color: var(--ink-2); justify-self: start; }
 .note { font-size: 13px; color: var(--ink-2); background: var(--fill); border-radius: 12px; padding: 10px 12px; line-height: 1.55; }
 .kv { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px 14px; font-size: 14px; }
