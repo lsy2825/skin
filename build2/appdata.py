@@ -85,6 +85,24 @@ def trend(hist, date, rows):
     return {"dates": dates, "k": per, "disc": disc}
 
 
+def about():
+    """reference facts for the 안내 page: cleanup counts by reason, VAT evidence, robots.txt check per brand"""
+    from collections import Counter
+    ip = os.path.join(ROOT, "data2", "issues.csv")
+    issues = Counter(f"{r['action']}: {r['reason'].split('(')[0] if r['reason'].startswith('이벤트 기간') else r['reason']}"
+                     for r in csv.DictReader(open(ip, encoding="utf-8-sig"))) if os.path.exists(ip) else {}
+    vp = os.path.join(ROOT, "data2", "vat_policy.json")
+    vat = {b: v for b, v in json.load(open(vp, encoding="utf-8")).items() if not b.startswith("_")} if os.path.exists(vp) else {}
+    sp = os.path.join(ROOT, "data2", "sources.json")
+    src = {}
+    if os.path.exists(sp):
+        sj = json.load(open(sp, encoding="utf-8"))
+        src = {"checked_at": sj.get("checked_at", ""), "brands": {v["brand"]: {"allowed": v.get("allowed"), "method": v.get("method", ""), "rate": v.get("rate", ""),
+               "terms_reviewed": v.get("terms_reviewed"), "crawl_delay": max([h.get("crawl_delay") or 0 for h in v.get("hosts", [])] or [0])}
+               for v in sj.get("brands", {}).values()}}
+    return {"issues": dict(issues), "vat": vat, "sources": src}
+
+
 def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s):
     """prices that moved ≥90% down or ×10 up since the previous snapshot are held back (row[13] = 1) until someone
     lists them in data2/review_ok.csv (brand,branch,name,price). Writes data2/review.csv. Returns pending count."""
@@ -193,7 +211,7 @@ def main():
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s)
     data = {
-        "meta": {"updated": a.date, "prev": prev_date, "review": review, "rows": len(out_rows), "branches": len(branches),
+        "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
         "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
