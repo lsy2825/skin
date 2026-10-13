@@ -41,3 +41,57 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function public.delete_me() from public, anon;
 grant execute on function public.delete_me() to authenticated;
+
+-- ---- 장바구니·저장한 패키지·가격 알림 (로그인 시 기기 장바구니와 합쳐요: app/auth.js)
+create table if not exists public.carts (
+  id          uuid primary key,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  name        text not null check (char_length(name) <= 30),
+  updated_at  timestamptz not null default now()
+);
+create table if not exists public.cart_items (
+  cart_id     uuid not null references public.carts (id) on delete cascade,
+  position    smallint not null,
+  kind        text not null check (kind in ('k', 'r')),          -- k = 비교 시술(X12), r = 지점 상품 그대로
+  key_code    text,                                               -- treatment_variants.code
+  row_name    text check (char_length(row_name) <= 200),
+  branch_key  text,                                               -- '브랜드|지점' (r일 때 담은 곳)
+  qty         smallint not null default 1 check (qty between 1 and 20),
+  special     boolean,                                            -- 이 시술만 특가 포함/제외 (null = 전체 설정)
+  overrides   jsonb not null default '{}',                        -- 지점별로 고른 옵션 {'브랜드|지점': 상품 이름}
+  primary key (cart_id, position)
+);
+create table if not exists public.saved_packages (                -- 이름 붙여 저장한 조합(공유 링크 포함)
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  name        text not null check (char_length(name) <= 30),
+  items       jsonb not null,
+  created_at  timestamptz not null default now()
+);
+create table if not exists public.price_alerts (
+  id          uuid primary key,
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  type        text not null check (type in ('target', 'newlow', 'cartdrop', 'expiring', 'newmatch')),
+  key_code    text, cart_id uuid references public.carts (id) on delete cascade, row_name text, branch_key text,
+  target_krw  integer check (target_krw is null or target_krw > 0),
+  base        integer, last_value integer, last_sent_on date,       -- 중복 방지·하루 1번
+  email       boolean not null default false,                      -- 메일 발송은 발송 서비스 연결 후
+  created_at  timestamptz not null default now()
+);
+create index if not exists carts_user_idx on public.carts (user_id);
+create index if not exists price_alerts_user_idx on public.price_alerts (user_id);
+
+alter table public.carts enable row level security;
+alter table public.cart_items enable row level security;
+alter table public.saved_packages enable row level security;
+alter table public.price_alerts enable row level security;
+drop policy if exists "own carts" on public.carts;
+create policy "own carts" on public.carts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own cart items" on public.cart_items;
+create policy "own cart items" on public.cart_items for all
+  using (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()))
+  with check (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()));
+drop policy if exists "own packages" on public.saved_packages;
+create policy "own packages" on public.saved_packages for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "own alerts" on public.price_alerts;
+create policy "own alerts" on public.price_alerts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

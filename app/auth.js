@@ -73,6 +73,30 @@
       const { error } = await sb.from("records").delete().eq("id", id).eq("user_id", user.id);
       if (error) throw error;
     },
+    // carts: [{id, name, items:[{t,k,n,br,q,sp,ov}]}] <-> carts + cart_items (supabase/schema.sql)
+    async pullCarts() {
+      await load();
+      if (!user) return [];
+      const { data, error } = await sb.from("carts").select("id,name,updated_at,cart_items(position,kind,key_code,row_name,branch_key,qty,special,overrides)").eq("user_id", user.id);
+      if (error) throw error;
+      return (data || []).map((c) => ({ id: c.id, name: c.name, updated: c.updated_at,
+        items: (c.cart_items || []).sort((a, b) => a.position - b.position).map((x) => (x.kind === "k"
+          ? { t: "k", k: x.key_code, q: x.qty, sp: x.special ?? undefined, ov: x.overrides || {} }
+          : { t: "r", n: x.row_name, br: x.branch_key, q: x.qty, sp: x.special ?? undefined, ov: x.overrides || {} })) }));
+    },
+    async saveCart(c) {
+      await load();
+      if (!user || !c.id) return;
+      let r = await sb.from("carts").upsert({ id: c.id, user_id: user.id, name: c.name, updated_at: new Date().toISOString() });
+      if (r.error) throw r.error;
+      r = await sb.from("cart_items").delete().eq("cart_id", c.id);
+      if (r.error) throw r.error;
+      if (!c.items.length) return;
+      r = await sb.from("cart_items").insert(c.items.map((it, i) => ({ cart_id: c.id, position: i, kind: it.t, key_code: it.t === "k" ? it.k : null,
+        row_name: it.t === "r" ? it.n : null, branch_key: it.t === "r" ? it.br : null, qty: it.q || 1, special: it.sp ?? null, overrides: it.ov || {} })));
+      if (r.error) throw r.error;
+    },
+    async deleteCart(id) { await load(); if (!user) return; const { error } = await sb.from("carts").delete().eq("id", id).eq("user_id", user.id); if (error) throw error; },
     // removes the profile, records and the login itself (supabase/schema.sql: delete_me)
     async deleteAccount() {
       await load();

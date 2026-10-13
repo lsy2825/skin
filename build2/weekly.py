@@ -85,6 +85,8 @@ def main():
         sys.exit("no brand has data: nothing to publish")
     if not a.skip_scrape:
         run(["scrape/branches.py"])
+    # draft report first, so the app data built next (운영 현황) shows this run's collection status
+    open(os.path.join(ROOT, "data2", "report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(report) + "\n")
     build = lambda: run(["build2/clean.py"]) and run(["build2/appdata.py", "--date", a.date])
     if not build():
         # the new data broke the build: publish last week's data instead, so the app keeps working

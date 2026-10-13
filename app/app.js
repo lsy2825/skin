@@ -41,10 +41,12 @@
   };
   let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache;
   // carts: old single cart [{k, q}] becomes the first saved cart
+  function newId() { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (Math.random() * 16) >> (c / 4)).toString(16)); }
   function loadCarts() {
     const c = store.get("carts", null);
-    if (Array.isArray(c) && c.length) return c;
-    return [{ name: "내 장바구니", items: store.get("cart", []).map((x) => ({ t: "k", k: x.k, q: x.q || 1 })) }];
+    const list = Array.isArray(c) && c.length ? c : [{ name: "내 장바구니", items: store.get("cart", []).map((x) => ({ t: "k", k: x.k, q: x.q || 1 })) }];
+    for (const x of list) if (!x.id) x.id = newId();      // stable id so a signed-in cart can be merged with the server copy
+    return list;
   }
 
   // ---------------- data
@@ -276,7 +278,13 @@
   // ---------------- cart
   const bkey = (b) => `${D.meta.brands[BR[b].brand][0]}|${BR[b].name}`;
   const cur = () => st.carts[st.ci];
-  const saveCarts = () => { store.set("carts", st.carts); store.set("ci", st.ci); paintCartN(); };
+  let cartPush = null;
+  const saveCarts = () => {
+    for (const x of st.carts) if (!x.id) x.id = newId();
+    store.set("carts", st.carts); store.set("ci", st.ci); paintCartN();
+    const A = window.Auth && window.Auth.enabled ? window.Auth : null;
+    if (A && A.user) { clearTimeout(cartPush); cartPush = setTimeout(() => Promise.all(st.carts.map((c) => A.saveCart(c))).catch(() => toast("장바구니를 계정에 저장하지 못했어요(이 기기에는 저장됨)")), 800); }
+  };
   const inCart = (k) => cur().items.some((c) => c.t === "k" && c.k === KEYS[k].id);
   const sessOf = (i) => ROWS[i][8] || 1;
   const itemLabel = (it) => it.t === "k" ? (KI[it.k] != null ? KEYS[KI[it.k]].label : it.k) : it.n;
@@ -940,6 +948,58 @@
     return box;
   };
 
+  // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy) — behind the PIN screen
+  const FLAGS = Object.assign({ ops: true, ads: false, booking: false, emailAlerts: false, publicIndex: false }, (window.APP_CONFIG || {}).flags || {});
+  views.ops = () => {
+    const box = h("div", { class: "view" });
+    box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, "‹ 뒤로"));
+    if (!FLAGS.ops) { box.append(h("div", { class: "card empty" }, "운영 현황이 꺼져 있어요(config.js flags.ops).")); return box; }
+    const A = D.meta.about || {}, REPO = "https://github.com/lsy2825/skin";
+    // collection report of the last run
+    const lines = (A.report || "").split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2).replace(/\*\*/g, ""));
+    box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h2", {}, "운영 현황"), h("span", { class: "sp" }), h("a", { class: "btn sm gray", href: `${REPO}/actions`, target: "_blank", rel: "noopener" }, "실행 기록")),
+      h("div", { class: "sub", style: "margin-top:4px" }, `마지막 빌드 ${D.meta.updated} · 매일 06:00 판단(월요일·이벤트 종료 다음 날 수집)`),
+      h("ul", { class: "plain" }, lines.map((l) => h("li", { class: /유지|실패|막|검토/.test(l) ? "up" : "" }, l)))));
+    // freshness per brand
+    const per = D.meta.brands.map((b, bi) => {
+      const brs = BR.filter((x) => x.brand === bi);
+      if (!brs.length) return null;
+      const rows = brs.reduce((s, x) => s + byB[x.i].length, 0);
+      const stale = brs.filter((x) => fresh(x.i).stale).length;
+      const latest = brs.map((x) => verified(x.i)).sort().pop();
+      const expired = brs.reduce((s, x) => s + byB[x.i].filter((i) => ROWS[i][15] === 1).length, 0);
+      const pending = brs.reduce((s, x) => s + byB[x.i].filter((i) => ROWS[i][15] === 2).length, 0);
+      return { b, brs, rows, stale, latest, expired, pending };
+    }).filter(Boolean);
+    box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, "데이터 신선도")),
+      h("ul", { class: "list" }, per.map((x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${x.b[1]}` }), x.b[0]),
+        h("span", { class: "sub" }, `확인 ${x.latest}`),
+        h("span", { class: "m" }, h("span", {}, `지점 ${x.brs.length}곳 · 가격 ${x.rows.toLocaleString()}개`), h("span", { class: x.stale ? "up" : "down" }, x.stale ? `STALE ${x.stale}곳` : "모두 VERIFIED"),
+          x.expired ? h("span", { class: "up" }, `EXPIRED ${x.expired.toLocaleString()}개`) : null, x.pending ? h("span", { class: "up" }, `PENDING_REVIEW ${x.pending}개`) : null)))))));
+    // review queue
+    const rv = A.review || [];
+    box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, `검토 큐 ${rv.filter((x) => x.status === "검토 대기").length}개`),
+      h("div", { class: "sub" }, "지난주보다 90% 넘게 내리거나 10배 넘게 오른 가격. 확인 전까지 비교에서 빠져요."),
+      h("div", { class: "sub", style: "margin-top:4px" }, "승인: data2/review_ok.csv 에 brand,branch,name,price 한 줄을 추가 → 다음 빌드부터 반영(변경은 git 기록으로 남아요). ",
+        h("a", { class: "linkbtn src", href: `${REPO}/blob/main/data2/review.csv`, target: "_blank", rel: "noopener" }, "review.csv"))),
+      rv.length ? h("ul", { class: "list" }, rv.map((x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, x.name), h("span", { class: "p num" }, `${(+x.price).toLocaleString()}원`),
+        h("span", { class: "m" }, h("span", {}, `${x.brand} ${x.branch}`), h("s", {}, `${(+x.before).toLocaleString()}원`), h("span", { class: "up" }, x.change), h("span", { class: x.status === "승인됨" ? "k k1" : "k kx" }, x.status),
+          x.url ? h("a", { class: "linkbtn src", href: x.url, target: "_blank", rel: "noopener noreferrer" }, "출처") : null)))))
+        : h("div", { class: "empty" }, D.meta.prev ? "검토할 가격이 없어요" : "지난주 기록이 생긴 뒤(다음 갱신)부터 확인해요")));
+    // source policy
+    const src = (A.sources || {}).brands || {};
+    box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, "출처 정책 (Source Policy Registry)"), h("div", { class: "sub" }, `robots.txt 확인 ${((A.sources || {}).checked_at || "-").slice(0, 10)}`)),
+      h("ul", { class: "list" }, Object.entries(src).map(([b, s]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, b), h("span", { class: s.allowed ? "down" : "up" }, s.allowed ? "허용" : "막힘"),
+        h("span", { class: "m" }, h("span", {}, s.method), s.crawl_delay ? h("span", {}, `crawl-delay ${s.crawl_delay}초`) : null,
+          h("span", { class: s.terms_reviewed ? "" : "up" }, s.terms_reviewed ? `약관 검토 ${s.terms_reviewed}` : "약관 검토 필요")))))),
+      h("div", { class: "sub", style: "padding:8px 12px 12px" }, "약관 검토일은 사람이 사이트 이용약관을 읽은 뒤 scrape/sources.py REGISTRY에 적어요.")));
+    box.append(h("div", { class: "card" }, h("h3", {}, "기능 플래그"), h("div", { class: "sub", style: "margin-top:4px" }, "법률 검토가 필요한 기능은 꺼 둬요(app/config.js flags)."),
+      h("div", { class: "chips wrapc", style: "margin-top:8px" }, Object.entries({ ops: "운영 현황", ads: "광고", booking: "예약 연결", emailAlerts: "메일 알림", publicIndex: "검색 노출" }).map(([k, l]) =>
+        h("span", { class: "chip", style: "cursor:default" }, `${l}: ${FLAGS[k] ? "켬" : "끔"}`))),
+      h("div", { class: "sub", style: "margin-top:8px" }, `로그인: ${window.Auth && window.Auth.enabled ? "켬" : "끔(키 없음)"}`)));
+    return box;
+  };
+
   // ---------------- 알아두면 좋은 점: how prices are collected, compared and checked
   views.about = () => {
     const box = h("div", { class: "view" });
@@ -1593,6 +1653,12 @@
       const onServer = new Set(s.records.map((r) => r.id));
       saveRecs(st.recs.filter((x) => !onServer.has(x.id)));
       await A.saveProfile(st.me);
+      // carts: server carts this phone doesn't have are added; this phone's carts are pushed
+      const remote = await A.pullCarts();
+      const ids = new Set(st.carts.map((c) => c.id));
+      for (const c of remote) if (!ids.has(c.id)) st.carts.push({ id: c.id, name: c.name, items: c.items });
+      st.carts = st.carts.filter((c) => c.items.length || st.carts.length === 1);
+      saveCarts();
       render();
     } catch (e) { console.warn(e); toast("계정 정보를 불러오지 못했어요"); }
   }
@@ -1709,7 +1775,7 @@
           h("span", { class: "t row" }, b != null ? bdot(b) : null, brLabel(br) || "지점 미입력"), h("span", { class: "p num" }, `${v.n}회`),
           h("span", { class: "m" }, h("span", {}, `마지막 ${v.last}`), v.sum ? h("span", {}, `합계 ${won(v.sum)}`) : null, b == null ? h("span", {}, "앱 목록에 없는 곳") : null))); }))));
     // more pages
-    box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, [["table", "📋", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "📉", "가격 변동", "지난주보다 내리거나 오른 가격"], ["rank", "🏆", "지점 순위", "같은 상품 기준 싼 지점"], ["about", "ℹ️", "알아두면 좋은 점", "가격 종류·비교 기준·부가세·출처"]].map(([v, e, l, s]) =>
+    box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, [["table", "📋", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "📉", "가격 변동", "지난주보다 내리거나 오른 가격"], ["rank", "🏆", "지점 순위", "같은 상품 기준 싼 지점"], ["about", "ℹ️", "알아두면 좋은 점", "가격 종류·비교 기준·부가세·출처"], ["ops", "🛠️", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, e, l, s]) =>
       h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(v) }, h("span", { class: "t" }, `${e} ${l}`), h("span", { class: "sub" }, "›"), h("span", { class: "m" }, s)))))));
     // data guide, region, branch list, settings (former 더보기)
     const counts = D.meta.brands.map((_, i) => [BR.filter((b) => b.brand === i).length, D.rows.filter((r) => BR[r[0]].brand === i).length]);
@@ -1783,9 +1849,10 @@
     const params = new URLSearchParams(qs || "");
     const view = views[name] ? name : name === "more" ? "me" : "home";
     current = view;
-    const tab = { branch: null, search: "home", import: "cart", more: "me", rank: "compare", versus: "compare", change: "home", table: "compare", about: "me" }[view] ?? view;
+    const tab = { branch: null, search: "home", import: "cart", more: "me", rank: "compare", versus: "compare", change: "home", table: "compare", about: "me", ops: "me" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     $("#main").replaceChildren(views[view](rest.join("/"), params));
+    $("#main").removeAttribute("aria-busy");
     paintFloatCart(view);
   }
   window.addEventListener("popstate", render);

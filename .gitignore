@@ -2,3 +2,4 @@ data2/raw/
 data2/clean.csv
 __pycache__/
 *.pyc
+data2/db/

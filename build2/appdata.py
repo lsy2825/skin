@@ -109,7 +109,11 @@ def about():
         src = {"checked_at": sj.get("checked_at", ""), "brands": {v["brand"]: {"allowed": v.get("allowed"), "method": v.get("method", ""), "rate": v.get("rate", ""),
                "terms_reviewed": v.get("terms_reviewed"), "crawl_delay": max([h.get("crawl_delay") or 0 for h in v.get("hosts", [])] or [0])}
                for v in sj.get("brands", {}).values()}}
-    return {"issues": dict(issues), "vat": vat, "sources": src}
+    rp = os.path.join(ROOT, "data2", "report.md")
+    report = open(rp, encoding="utf-8").read() if os.path.exists(rp) else ""
+    rv = os.path.join(ROOT, "data2", "review.csv")
+    review = list(csv.DictReader(open(rv, encoding="utf-8-sig")))[:200] if os.path.exists(rv) else []
+    return {"issues": dict(issues), "vat": vat, "sources": src, "report": report, "review": review}
 
 
 def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s):
