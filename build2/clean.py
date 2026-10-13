@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match, ONCE, sessions  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
-BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장")]
+BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장"), ("forever", "포에버")]
 
 PAPER = re.compile(r"진단서|소견서|제증명|증명서|수수료|사본|발급")
 NOTE = re.compile(r"^[※▶▷★▼■●◆]|참조|참고하세요|가격표")

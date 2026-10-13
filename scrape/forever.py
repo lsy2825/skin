@@ -6,7 +6,7 @@ JSON string literals; joined, they contain plain JSON objects:
   /ko/treatments            -> "categories":[{slug, label, treatments:[{slug, name, priceNumeric, ...}]}]
   /ko/treatments/<cat>/<slug> -> "options":[{name, price (list, 0 = none), discountPrice (sale, 0 = none), isEvent}]
 Branch list = the <code>.4-ever.co.kr links on www.4-ever.co.kr; branch name from the page <title> ('… | 포에버의원 강남').
-Prices on these sites are VAT-exclusive ('부가세(VAT) 별도'); the tag 'VAT 별도' is added to every row.
+Prices on these sites are VAT-exclusive ('부가세(VAT) 별도'); the app says so in the brand note (build2/appdata.py).
 """
 import argparse, json, re
 from concurrent.futures import ThreadPoolExecutor

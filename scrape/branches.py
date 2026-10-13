@@ -2,7 +2,7 @@
 
 usage: python scrape/branches.py            (run after the price scrapers: it reads their logs for the branch sites)
 Address sources: 블리비 = one table (community02.php, table#address); 톡스앤필 = <site>/map.php;
-쁨 = each branch site's front page; 리엔장 = each branch site's front page. The first road address
+쁨 = each branch site's front page; 리엔장 = each branch site's front page; 포에버 = <code>.4-ever.co.kr/ko. The first road address
 (시도 시군구 [구] ...로|길 번호) on the page is used.
 Coordinates: OpenStreetMap Nominatim (1 request/second, results cached in data2/geocache.json so each address is
 looked up once). Lookup tries the road address, then without the building number, then 시군구 only (marked approx).
@@ -70,6 +70,10 @@ def others(f):
         if p.get("ok"):
             a, full = page_addr(f, f"https://{p['host']}/")
             out.append(("리엔장", p["branch"], a, full))
+    for s in from_log("포에버", "forever").get("sites", []):
+        if s.get("ok"):
+            a, full = page_addr(f, f"https://{s['code']}.4-ever.co.kr/ko")
+            out.append(("포에버", s["branch"], a, full))
     return out
 
 

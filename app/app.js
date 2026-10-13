@@ -52,6 +52,10 @@
     });
     nameIdx = null;
     if (!st.brands) st.brands = D.meta.brands.map((_, i) => i);
+    // a brand added after the filter was saved starts switched on (4 = brands before 포에버 was added)
+    const added = D.meta.brands.map((_, i) => i).filter((i) => i >= store.get("nbrands", 4) && !st.brands.includes(i));
+    if (added.length && store.get("brands", null)) { st.brands.push(...added); store.set("brands", st.brands); }
+    store.set("nbrands", D.meta.brands.length);
     $("#upd").textContent = `${D.meta.updated} 기준 · ${BR.length}개 지점`;
   }
   const brandOf = (b) => D.meta.brands[BR[b].brand];

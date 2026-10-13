@@ -14,7 +14,7 @@
   - 톡스앤필: toxnfillN.com, serviceInfo.php?c= → 카테고리 → detail.php 옵션(li.treatment_item). 옵션 없으면 카드의 '부터' 가격을 (대표가)로.
     본문의 자유 형식 표(예: 압구정 제모)는 읽지 않음.
   - 리엔장: <지점>.lienjang.net/agree/info 비급여 고시표(정가, 최종변경일 2024-10-25) → 앱에 '고시가'로 표시. 강남 404, 잠실 SSL 오류.
-  - 포에버의원(`scrape/forever.py`, 아직 weekly·clean·appdata에 연결 안 함): <코드>.4-ever.co.kr/ko/treatments의 self.__next_f 안
+  - 포에버의원(`scrape/forever.py`, weekly·clean·appdata·branches에 연결함 2026-10-13. 클라우드 샌드박스에선 사이트 접속 불가 → 첫 실제 수집은 Actions): <코드>.4-ever.co.kr/ko/treatments의 self.__next_f 안
     "categories"→treatments, 상세 /ko/treatments/<cat>/<slug>의 "options"[{name, price(정가), discountPrice(판매가)}]. VAT 별도. 강남 시험: 77개 시술 · 278행.
 - 주소·좌표: `scrape/branches.py` → data2/branches.csv (120곳: 정확 110, 도로 9, 구 1). Nominatim 1초 간격, geocache.json 캐시.
 - 정리: `build2/clean.py` (제외 96줄, 정가 삭제 20줄, 같은 지점 중복·행사 라벨만 다른 줄 합침 → 62,417줄). 사유는 data2/issues.csv.
@@ -25,7 +25,8 @@
 - 비밀번호 화면은 화면 잠금일 뿐: 저장소·data.json이 공개라 데이터는 공개 상태(사용자에게 안내함).
 
 ## 남은 일
-1. 포에버의원 연결: clean.py BRANDS, appdata.py BRANDS(색·안내 문구), weekly.py SCRAPERS에 추가 → 전체 수집 → 앱 확인.
+1. 포에버의원: 연결 완료(브랜드 안내에 'VAT 별도'; 태그로 넣으면 '특가'로 분류돼 숨겨지므로 태그는 안 씀). 다음 Actions 실행 결과(report.md)로 행·지점·주소 확인.
+   앱: 필터를 저장한 사용자도 새 브랜드는 켜진 상태로 시작(pc:nbrands).
 2. GitHub Pages: 사용자가 Settings → Pages → Source를 "GitHub Actions"로 했는지 확인 → Actions에서 weekly-prices 수동 실행 →
    해외 서버에서 사이트가 열리는지 확인(report.md). 막히면 사용자 PC(Windows, Python 3.12) 작업 스케줄러로 월요일 실행 + push.
 3. 클라우드 샌드박스에서 병원 사이트가 막힐 수 있음(예전 리눅스 샌드박스에서 velyb.kr 403). 그러면 수집은 Actions에 맡기고 앱·규칙 작업만.
