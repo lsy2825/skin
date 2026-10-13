@@ -147,6 +147,27 @@ create policy user_roles_read_own on public.user_roles for select to authenticat
 drop policy if exists user_roles_read_admin on public.user_roles;
 create policy user_roles_read_admin on public.user_roles for select to authenticated using (public.is_admin());
 
+-- ---------------------------------------------------------------- 4b. treatment knowledge and concern taxonomy (education)
+-- Only medically reviewed records (publication_status = 'published', which the table itself allows only with a reviewer,
+-- a review date and sources) are public. Reviewers see drafts; admins with MFA write. No sponsor/ad column exists, so
+-- the order or content of medical information cannot depend on payment.
+grant select on public.treatment_knowledge, public.concern_taxonomy to anon, authenticated;
+grant insert, update, delete on public.treatment_knowledge, public.concern_taxonomy to authenticated;
+do $$ declare t text; begin
+  foreach t in array array['treatment_knowledge', 'concern_taxonomy'] loop
+    execute format('drop policy if exists %I on public.%I', t || '_read_published', t);
+    execute format('create policy %I on public.%I for select to anon, authenticated using (publication_status = ''published'')', t || '_read_published', t);
+    execute format('drop policy if exists %I on public.%I', t || '_read_reviewer', t);
+    execute format('create policy %I on public.%I for select to authenticated using (public.is_reviewer())', t || '_read_reviewer', t);
+    execute format('drop policy if exists %I on public.%I', t || '_admin_insert', t);
+    execute format('create policy %I on public.%I for insert to authenticated with check (public.is_admin())', t || '_admin_insert', t);
+    execute format('drop policy if exists %I on public.%I', t || '_admin_update', t);
+    execute format('create policy %I on public.%I for update to authenticated using (public.is_admin()) with check (public.is_admin())', t || '_admin_update', t);
+    execute format('drop policy if exists %I on public.%I', t || '_admin_delete', t);
+    execute format('create policy %I on public.%I for delete to authenticated using (public.is_admin())', t || '_admin_delete', t);
+  end loop;
+end $$;
+
 -- ---------------------------------------------------------------- 5. user reports (signed-in users; reviewers handle them)
 alter table public.user_reports add column if not exists user_id uuid references auth.users (id) on delete set null default auth.uid();
 create index if not exists user_reports_user_idx on public.user_reports (user_id, created_at desc);
@@ -203,7 +224,8 @@ begin
   end if;
   insert into public.audit_logs (table_name, row_id, action, before, after, actor)
   values (tg_table_name,
-          coalesce(to_jsonb(coalesce(new, old)) ->> 'id', concat_ws('|', to_jsonb(coalesce(new, old)) ->> 'user_id',
+          coalesce(to_jsonb(coalesce(new, old)) ->> 'id', to_jsonb(coalesce(new, old)) ->> 'treatment_id', to_jsonb(coalesce(new, old)) ->> 'concern_id',
+                   concat_ws('|', to_jsonb(coalesce(new, old)) ->> 'user_id',
                    to_jsonb(coalesce(new, old)) ->> 'offer_id', to_jsonb(coalesce(new, old)) ->> 'role')),
           tg_op, b, a,
           coalesce(auth.uid()::text, nullif(auth.jwt() ->> 'role', ''), session_user));
@@ -213,7 +235,7 @@ revoke all on function public.audit_row() from public, anon, authenticated;
 
 do $$ declare t text; begin
   foreach t in array array['clinic_brands', 'clinic_branches', 'treatment_products', 'treatment_variants', 'official_packages',
-                           'source_registry', 'user_roles'] loop
+                           'source_registry', 'user_roles', 'treatment_knowledge', 'concern_taxonomy'] loop
     execute format('drop trigger if exists audit_changes on public.%I', t);
     execute format('create trigger audit_changes after insert or update or delete on public.%I for each row execute function public.audit_row()', t);
   end loop;

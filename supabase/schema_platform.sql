@@ -172,6 +172,40 @@ create table user_reports (                           -- 사용자 신고(가격
   created_at  timestamptz not null default now()
 );
 
+-- 시술 지식(교육용 설명)과 피부 고민 분류표: knowledge/treatments.json, knowledge/concerns.json과 같은 내용.
+-- 가격 데이터와 분리해서 관리하고, 광고·협찬 관련 칸을 두지 않아요(의학 정보 순서가 돈으로 바뀌지 않게).
+-- 공개 API로는 publication_status = 'published'(의료진 검수 완료)만 읽혀요(DATABASE_ACCESS_POLICIES.sql).
+create table treatment_knowledge (
+  treatment_id                 text primary key,
+  treatment_name               text not null,
+  related_concerns             text[] not null default '{}',
+  general_purpose              text not null,
+  mechanism_overview           text,
+  evidence_level               text not null check (evidence_level in ('public_guidance', 'review_article', 'clinic_reference', 'none')),
+  limitations                  text[] not null default '{}',
+  contraindication_information text[] not null default '{}',
+  common_risks                 text[] not null default '{}',
+  source_references            jsonb not null default '[]',
+  medical_reviewer             text,
+  reviewed_at                  date,
+  publication_status           text not null default 'draft' check (publication_status in ('draft', 'in_review', 'published', 'needs_changes')),
+  -- 게시(published)하려면 검수자·검수일·출처가 꼭 있어야 해요
+  check (publication_status <> 'published' or (medical_reviewer is not null and reviewed_at is not null and jsonb_array_length(source_references) > 0))
+);
+create table concern_taxonomy (
+  concern_id                   text primary key,
+  name                         text not null,
+  synonyms                     text[] not null default '{}',
+  general_explanation          text not null,
+  non_procedural_options       text[] not null default '{}',
+  treatment_ids                text[] not null default '{}',
+  source_references            jsonb not null default '[]',
+  medical_reviewer             text,
+  reviewed_at                  date,
+  publication_status           text not null default 'draft' check (publication_status in ('draft', 'in_review', 'published', 'needs_changes')),
+  check (publication_status <> 'published' or (medical_reviewer is not null and reviewed_at is not null))
+);
+
 create table audit_logs (                             -- 관리자 변경 기록
   id          bigserial primary key,
   table_name  text not null,
@@ -196,6 +230,6 @@ do $$ declare t regclass; begin
              and c.relname in ('clinic_brands', 'clinic_branches', 'treatment_categories', 'treatment_products', 'treatment_variants',
                'source_registry', 'ingestion_jobs', 'offers', 'offer_conditions', 'official_packages', 'official_package_items',
                'price_snapshots', 'price_snapshots_2026', 'price_snapshots_2027', 'price_snapshots_default', 'verification_logs',
-               'user_reports', 'audit_logs')
+               'user_reports', 'audit_logs', 'treatment_knowledge', 'concern_taxonomy')
   loop execute format('alter table %s enable row level security', t); end loop;
 end $$;

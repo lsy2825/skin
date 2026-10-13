@@ -13,6 +13,8 @@ begin;
 \copy official_packages from 'data2/db/official_packages.csv' with (format csv, header true, null '')
 \copy official_package_items from 'data2/db/official_package_items.csv' with (format csv, header true, null '')
 \copy price_snapshots from 'data2/db/price_snapshots.csv' with (format csv, header true, null '')
+\copy treatment_knowledge from 'data2/db/treatment_knowledge.csv' with (format csv, header true, null '')
+\copy concern_taxonomy from 'data2/db/concern_taxonomy.csv' with (format csv, header true, null '')
 -- serial counters continue after the loaded ids
 select setval(pg_get_serial_sequence('clinic_brands', 'id'), (select max(id) from clinic_brands));
 select setval(pg_get_serial_sequence('clinic_branches', 'id'), (select max(id) from clinic_branches));

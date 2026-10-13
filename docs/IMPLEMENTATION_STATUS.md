@@ -134,6 +134,14 @@
   - `supabase/DATABASE_ACCESS_POLICIES.sql`: 모든 표 RLS, 명령별 정책, 관리자 = 역할 + MFA, 감사 트리거, 추가만 가능한 기록, 요청 한도
   - CI 워크플로 `db-security`가 매번 시험해요
 
+**피부 고민으로 찾기** (`#concern`, 명세: `AI_CONCERN_DISCOVERY_SPEC.md`, 법률 질문: `LEGAL_REVIEW_CHECKLIST.md`)
+- **방식:** 규칙 기반이고 기기 안에서만 돌아요. 생성형 AI 없음, 입력 저장·전송 없음.
+- **고민 분류표:** 14종(`knowledge/concerns.json`). 위험 신호(응급·자해·진료 권고)와 개인 판단 요청을 먼저 확인해요.
+- **답변:** 6단계 고정 형식이에요. 의학 문장은 지식 파일 문장만 쓰고, 병원·가격은 보여주지 않아요. 가격 비교는 사용자가 직접 골라요.
+- **시술 지식 형식:** `limitations`, `evidence_level`(근거 문서 종류), `related_concerns`, `publication_status`. DB 표 `treatment_knowledge`·`concern_taxonomy`(공개는 `published`만)
+- **플래그:** `concernSearch`, `concernPriceLink`, `showDraftKnowledge`(공개 전 false), `concernGenerativeAI: false`
+- **시험:** 단위 7, 브라우저 23, DB K1~K4
+
 **운영·DB·설정**
 - **운영 현황 화면**(내정보 → 운영 현황, `flags.ops`): 마지막 수집 결과, 지점 신선도, 검토 대기, robots.txt 확인, 기기에 저장된 신고 목록
 - **DB 스키마(PostgreSQL):** `supabase/schema_platform.sql`
@@ -144,6 +152,7 @@
 - **PWA:** 오프라인 캐시, 나눔스퀘어라운드 글꼴, 비밀번호 화면
 
 ## IN PROGRESS
+- **피부 고민 기능 공개 전 조건:** 법률 검토(`LEGAL_REVIEW_CHECKLIST.md` A~F), 의료진 검수(지식 49개·고민 14개 모두 초안), 금기와 주의 나누기
 - **보안 남은 일**(`SECURITY_REMEDIATION.md` R-open)
   - 비밀번호 화면 PIN 교체(사용자 결정)
   - GitHub 보안 기능 켜기(사용자 조치. 이 환경에서는 설정 변경이 막혀 있어요)

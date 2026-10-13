@@ -29,6 +29,10 @@ insert into public.cart_items (cart_id, position, kind, key_code) values ('10000
 insert into public.saved_packages (user_id, name, items) values ('00000000-0000-0000-0000-00000000000a', 'pkg', '[]');
 insert into public.price_alerts (id, user_id, type, key_code, target_krw) values (gen_random_uuid(), '00000000-0000-0000-0000-00000000000a', 'target', 'X12', 9000);
 insert into public.favorites (user_id, kind, ref) values ('00000000-0000-0000-0000-00000000000a', 'k', 'X12');
+insert into public.treatment_knowledge (treatment_id, treatment_name, general_purpose, evidence_level, publication_status, medical_reviewer, reviewed_at, source_references) values
+  ('toxin-wrinkle', '주름 보톡스', '표정 주름', 'public_guidance', 'published', '피부과 전문의 (테스트)', '2026-10-13', '[{"id": "aad-botox"}]'),
+  ('booster-exo', '엑소좀 부스터', '피부결', 'none', 'draft', null, null, '[]');
+insert into public.concern_taxonomy (concern_id, name, general_explanation) values ('wrinkle', '표정 주름', '근육 움직임으로 생기는 주름');
 
 -- ---------------------------------------------------------------- 1. anonymous visitor: read verified prices, change nothing
 set role anon;
@@ -203,6 +207,45 @@ do $$ declare n integer; begin
   if n <> 1 then raise exception 'FAIL 4s: deleting an offer broke or removed its review log'; end if;
   raise notice 'PASS 4e: pipeline writes are audited as service_role; the audit log is append-only even for the database owner';
 end $$;
+
+-- ---------------------------------------------------------------- K. only medically reviewed education content is public
+set role anon;
+set request.jwt.claims = '{"role": "anon"}';
+do $$ declare n integer; begin
+  select count(*) into n from public.treatment_knowledge; if n <> 1 then raise exception 'FAIL Ka: anon sees % knowledge rows (want 1 published)', n; end if;
+  select count(*) into n from public.concern_taxonomy;    if n <> 0 then raise exception 'FAIL Kb: anon sees draft concerns (%)', n; end if;
+  begin update public.treatment_knowledge set general_purpose = 'x'; raise exception 'FAIL Kc: anon edited medical content';
+  exception when insufficient_privilege then null; end;
+  raise notice 'PASS K1: the public sees only medically reviewed (published) education records and cannot edit them';
+end $$;
+reset role;
+set role authenticated;
+set request.jwt.claims = '{"sub": "00000000-0000-0000-0000-00000000000a", "role": "authenticated", "aal": "aal2"}';
+do $$ declare n integer; begin
+  begin insert into public.treatment_knowledge (treatment_id, treatment_name, general_purpose, evidence_level) values ('x', 'x', 'x', 'none');
+        raise exception 'FAIL Kd: a user added medical content';
+  exception when insufficient_privilege then null; end;
+  update public.treatment_knowledge set publication_status = 'published' where treatment_id = 'booster-exo'; get diagnostics n = row_count;
+  if n <> 0 then raise exception 'FAIL Ke: a user published a draft'; end if;
+  raise notice 'PASS K2: a signed-in user cannot add, change or publish medical content';
+end $$;
+set request.jwt.claims = '{"sub": "00000000-0000-0000-0000-00000000000d", "role": "authenticated", "aal": "aal2"}';
+do $$ declare n integer; begin
+  select count(*) into n from public.treatment_knowledge; if n <> 2 then raise exception 'FAIL Kf: reviewer does not see drafts (%)', n; end if;
+  raise notice 'PASS K3: a reviewer with MFA sees drafts for review';
+end $$;
+set request.jwt.claims = '{"sub": "00000000-0000-0000-0000-00000000000c", "role": "authenticated", "aal": "aal2"}';
+do $$ declare n integer; begin
+  begin update public.treatment_knowledge set publication_status = 'published' where treatment_id = 'booster-exo';
+        raise exception 'FAIL Kg: published without reviewer, date and sources';
+  exception when check_violation then null; end;
+  update public.treatment_knowledge set general_purpose = '피부결 (수정)' where treatment_id = 'booster-exo';
+  select count(*) into n from public.audit_logs where table_name = 'treatment_knowledge' and row_id = 'booster-exo' and after ->> 'general_purpose' = '피부결 (수정)'
+    and actor = '00000000-0000-0000-0000-00000000000c';
+  if n <> 1 then raise exception 'FAIL Kh: medical content change not audited'; end if;
+  raise notice 'PASS K4: even an admin cannot publish without reviewer, review date and sources; content edits are audited';
+end $$;
+reset role;
 
 -- ---------------------------------------------------------------- 6. quotas stop scripted abuse
 set role authenticated;

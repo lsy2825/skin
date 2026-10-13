@@ -14,91 +14,104 @@
    "publisher": "American Academy of Dermatology (미국피부과학회)",
    "url": "https://www.aad.org/public/cosmetic/wrinkles/botulinum-toxin-faqs",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 부작용 목록 확인"
+   "how": "검색 결과 요약으로 부작용 목록 확인",
+   "type": "academy"
   },
   "mfds-botulinum": {
    "title": "보툴리눔 주사제, 이런 점에 주의하여 사용하세요 (보도자료)",
    "publisher": "식품의약품안전처",
    "url": "https://impfood.mfds.go.kr/CFBBB02F02/getCntntsDetail?cntntsSn=281817",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인(본문 전체는 읽지 못함)"
+   "how": "검색 결과 요약으로 확인(본문 전체는 읽지 못함)",
+   "type": "government"
   },
   "review-botox": {
    "title": "The whole truth about botulinum toxin – a review (Postepy Dermatol Alergol, PMC7874868)",
    "publisher": "PubMed Central",
    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7874868/",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 부위별 부작용 확인"
+   "how": "검색 결과 요약으로 부위별 부작용 확인",
+   "type": "review_article"
   },
   "fda-fillers": {
    "title": "Dermal Fillers (Soft Tissue Fillers)",
    "publisher": "U.S. FDA (미국 식품의약국)",
    "url": "https://www.fda.gov/medical-devices/aesthetic-cosmetic-devices/dermal-fillers-soft-tissue-fillers",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 위험 목록 확인"
+   "how": "검색 결과 요약으로 위험 목록 확인",
+   "type": "government"
   },
   "fda-filler-dos": {
    "title": "Dermal Filler Do's and Don'ts for Wrinkles, Lips and More",
    "publisher": "U.S. FDA",
    "url": "https://www.fda.gov/consumers/consumer-updates/dermal-filler-dos-and-donts-wrinkles-lips-and-more",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "government"
   },
   "review-filler": {
    "title": "Review of the Adverse Effects Associated with Dermal Filler Treatments: Part I (Diagnostics 2024, PMC11311355)",
    "publisher": "PubMed Central",
    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11311355/",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "review_article"
   },
   "aad-lhr": {
    "title": "Laser hair removal: FAQs",
    "publisher": "American Academy of Dermatology",
    "url": "https://www.aad.org/public/cosmetic/hair-removal/laser-hair-removal-faqs",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "academy"
   },
   "mayo-lhr": {
    "title": "Laser hair removal",
    "publisher": "Mayo Clinic",
    "url": "https://www.mayoclinic.org/tests-procedures/laser-hair-removal/about/pac-20394555",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "clinic_reference"
   },
   "aad-peel": {
    "title": "Chemical peels: FAQs",
    "publisher": "American Academy of Dermatology",
    "url": "https://www.aad.org/public/cosmetic/younger-looking/chemical-peels-faqs",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "academy"
   },
   "mayo-peel": {
    "title": "Chemical peel",
    "publisher": "Mayo Clinic",
    "url": "https://www.mayoclinic.org/tests-procedures/chemical-peel/about/pac-20393473",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "clinic_reference"
   },
   "review-hifu": {
    "title": "Complications and Risks of High-Intensity Focused Ultrasound (HIFU) in Esthetic Procedures: A Review (Applied Sciences 2025)",
    "publisher": "MDPI",
    "url": "https://www.mdpi.com/2076-3417/15/9/4958",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "review_article"
   },
   "cc-rf": {
    "title": "Radio Frequency (RF) Skin Tightening",
    "publisher": "Cleveland Clinic",
    "url": "https://my.clevelandclinic.org/health/treatments/24683-radio-frequency-rf-skin-tightening",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "clinic_reference"
   },
   "review-toning": {
    "title": "Hypopigmentation Induced by Frequent Low-Fluence, Large-Spot-Size QS Nd:YAG Laser Toning (PMC4695430)",
    "publisher": "PubMed Central",
    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4695430/",
    "checked": "2026-10-13",
-   "how": "검색 결과 요약으로 확인"
+   "how": "검색 결과 요약으로 확인",
+   "type": "review_article"
   }
  },
  "entries": [
@@ -138,7 +151,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 영구적이지 않아서, 시간이 지나면 줄어들어 다시 맞는 경우가 많아요",
+    "효과가 나타나는 시점과 지속 기간은 사람마다 달라요",
+    "제품마다 1U의 세기가 달라서 U 숫자만으로 비교하기 어려워요"
+   ]
   },
   {
    "id": "toxin-wrinkle",
@@ -499,7 +517,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "대부분의 필러는 시간이 지나면 흡수되어 효과가 영구적이지 않아요",
+    "결과와 지속 기간은 제품·부위·사람마다 달라요",
+    "원하는 모양이 아니거나 문제가 생기면 추가 처치가 필요할 수 있어요"
+   ]
   },
   {
    "id": "filler-nose",
@@ -760,7 +783,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "모든 필러를 녹이는 것은 아니에요(히알루론산 필러에 써요)"
+   ]
   },
   {
    "id": "base-collagen",
@@ -797,7 +823,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과가 서서히 나타나고 여러 번 받는 경우가 많아요",
+    "결과와 지속 기간은 사람마다 달라요",
+    "히알루론산 필러처럼 녹이는 주사로 되돌리기 어려운 제품이 있어요"
+   ]
   },
   {
    "id": "base-fatinj",
@@ -864,7 +895,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "제품마다 성분이 다르고, 효과에 대한 근거 자료는 정리되지 않았어요",
+    "결과는 사람마다 달라요"
+   ]
   },
   {
    "id": "base-hifu",
@@ -907,7 +942,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 서서히 나타나고 정도는 사람마다 달라요",
+    "처짐이 심한 경우에는 기대만큼의 변화가 없을 수 있어요",
+    "샷 수가 같아도 장비·부위·시술자에 따라 결과가 달라요"
+   ]
   },
   {
    "id": "base-rf",
@@ -953,7 +993,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 서서히 나타나고 정도는 사람마다 달라요",
+    "처짐이 심한 경우에는 기대만큼의 변화가 없을 수 있어요",
+    "유지하려면 반복 시술을 권하는 경우가 많아요"
+   ]
   },
   {
    "id": "lift-onda",
@@ -979,7 +1024,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과와 지속 기간은 사람마다 달라요",
+    "다른 리프팅 장비와 직접 비교한 자료는 정리되지 않았어요"
+   ]
   },
   {
    "id": "lift-thread",
@@ -1019,7 +1068,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "실이 흡수되면서 효과가 줄어들어 영구적이지 않아요",
+    "결과는 실 종류·개수·시술자·피부 상태에 따라 달라요"
+   ]
   },
   {
    "id": "booster-pn",
@@ -1059,7 +1112,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 서서히 나타나고 여러 번 받는 경우가 많아요",
+    "결과는 사람마다 다르고, 효과를 객관적으로 비교한 자료는 정리되지 않았어요"
+   ]
   },
   {
    "id": "booster-ha",
@@ -1103,7 +1160,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 일시적이라 반복하는 경우가 많아요",
+    "결과는 사람마다 달라요"
+   ]
   },
   {
    "id": "booster-exo",
@@ -1137,7 +1198,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "제품마다 성분과 근거 수준이 다르고, 효과에 대한 근거 자료는 정리되지 않았어요"
+   ]
   },
   {
    "id": "skin-toning",
@@ -1179,7 +1243,12 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받는 경우가 많고, 결과는 색소의 종류·깊이에 따라 달라요",
+    "기미는 다시 생길 수 있어 자외선 차단이 함께 필요해요",
+    "잦은 시술은 오히려 색이 빠지는 부작용과 관련이 있다는 보고가 있어요"
+   ]
   },
   {
    "id": "skin-vascular",
@@ -1220,7 +1289,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받는 경우가 많고, 원인 질환이 있으면 다시 붉어질 수 있어요"
+   ]
   },
   {
    "id": "skin-resurface",
@@ -1257,7 +1329,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받는 경우가 많고, 흉터가 완전히 없어지지는 않을 수 있어요",
+    "회복 기간(붉음·딱지)이 필요할 수 있어요"
+   ]
   },
   {
    "id": "skin-mnrf",
@@ -1292,7 +1368,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받는 경우가 많고, 흉터·모공이 완전히 없어지지는 않을 수 있어요"
+   ]
   },
   {
    "id": "skin-peel",
@@ -1350,7 +1429,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "효과는 필링 깊이에 따라 다르고, 얕은 필링은 여러 번 받는 경우가 많아요",
+    "피부 타입에 따라 색소 변화가 생길 수 있어요"
+   ]
   },
   {
    "id": "skin-aqua",
@@ -1377,7 +1460,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "피부 표면 관리라 효과는 일시적이에요"
+   ]
   },
   {
    "id": "skin-mole",
@@ -1421,7 +1507,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "제거한 자리에 흔적이 남거나 다시 생길 수 있어요",
+    "제거 전에 진찰이 필요한 점이 있어요(크기·모양·색이 변한 점 등)"
+   ]
   },
   {
    "id": "skin-acneinj",
@@ -1449,7 +1539,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여드름 자체의 원인을 치료하는 방법은 아니어서, 계속 나면 진료가 필요해요"
+   ]
   },
   {
    "id": "skin-tattoo",
@@ -1480,7 +1573,11 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받는 경우가 많고, 색에 따라 완전히 지워지지 않을 수 있어요",
+    "흉터나 색 변화가 남을 수 있어요"
+   ]
   },
   {
    "id": "skin-iv",
@@ -1529,7 +1626,10 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "피부에 대한 효과를 보여주는 근거 자료는 정리되지 않았어요"
+   ]
   },
   {
    "id": "hair-laser",
@@ -1563,7 +1663,23 @@
     "reviewed_at": "",
     "notes": ""
    },
-   "updated": "2026-10-13"
+   "updated": "2026-10-13",
+   "limitations": [
+    "여러 번 받아야 하고, 털이 완전히 없어지지 않을 수 있어요",
+    "털 색·피부색에 따라 효과가 다를 수 있어요"
+   ]
   }
- ]
+ ],
+ "source_types": {
+  "government": "공공기관(식약처·FDA)",
+  "academy": "전문 학회 환자 안내",
+  "clinic_reference": "의료기관 환자 안내",
+  "review_article": "리뷰 논문"
+ },
+ "evidence_levels": {
+  "public_guidance": "공공기관·학회 안내 자료",
+  "review_article": "리뷰 논문",
+  "clinic_reference": "의료기관 안내 자료",
+  "none": "근거 자료 미정리"
+ }
 }

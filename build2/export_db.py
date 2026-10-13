@@ -19,6 +19,11 @@ COND = ["평일 낮", "일요일", "타임세일", "첫 방문", "1인 1회"]
 UNIT = re.compile(r"(\d+)\s*(샷|cc|U|KJ)")
 
 
+def pg_array(xs):
+    """Python list -> PostgreSQL array literal for COPY csv ({"a","b \"c\""})"""
+    return "{" + ",".join('"' + str(x).replace("\\", "\\\\").replace('"', '\\"') + '"' for x in xs) + "}"
+
+
 def write(name, header, rows):
     with open(os.path.join(OUT, f"{name}.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
@@ -117,6 +122,20 @@ def main():
     counts["official_package_items"] = write("official_package_items", ["package_id", "position", "part_text", "variant_id"], items)
     counts["price_snapshots"] = write("price_snapshots", ["observed_on", "offer_id", "branch_id", "variant_id", "auto_group", "price_krw", "normalized_krw",
                                                           "verification_status", "source_url", "conditions", "collected_at"], snaps)
+    # treatment knowledge and concern taxonomy (knowledge/): the schema of the concern-discovery directive
+    import knowledge
+    recs = knowledge.schema_records()
+    counts["treatment_knowledge"] = write("treatment_knowledge", list(recs[0].keys()), [[
+        x["treatment_id"], x["treatment_name"], pg_array(x["related_concerns"]), x["general_purpose"], x["mechanism_overview"], x["evidence_level"],
+        pg_array(x["limitations"]), pg_array(x["contraindication_information"]), pg_array(x["common_risks"]),
+        json.dumps(x["source_references"], ensure_ascii=False), x["medical_reviewer"] or "", x["reviewed_at"] or "", x["publication_status"]] for x in recs])
+    _, conc = knowledge.export()
+    pub = {"approved": "published"}
+    counts["concern_taxonomy"] = write("concern_taxonomy", ["concern_id", "name", "synonyms", "general_explanation", "non_procedural_options",
+                                                            "treatment_ids", "source_references", "medical_reviewer", "reviewed_at", "publication_status"], [[
+        c["id"], c["name"], pg_array(c["synonyms"]), c["general"], pg_array(c["non_procedural"]), pg_array(c["treatments"]),
+        json.dumps([{"id": s["id"], "title": s["title"], "publisher": s["publisher"], "url": s["url"]} for s in c["sources"]], ensure_ascii=False),
+        c["review"]["reviewer"] or "", c["review"]["reviewed_at"] or "", pub.get(c["review"]["status"], c["review"]["status"] or "draft")] for c in conc["concerns"]])
     print("wrote", OUT, dict(counts))
 
 

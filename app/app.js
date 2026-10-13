@@ -53,6 +53,7 @@
     sort: store.get("sort", "price"), cat: 0, key: null, mapKey: null, bcat: -1, region: "",
   };
   let CHK = new Map();
+  let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, concernText = "", concernPick = null;
   let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache, KB, kbByFam, kbByFid;
   // carts: old single cart [{k, q}] becomes the first saved cart
   function newId() { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (Math.random() * 16) >> (c / 4)).toString(16)); }
@@ -118,6 +119,8 @@
     KB = D.meta.kb || { entries: [], statuses: {} };
     kbByFam = new Map(); kbByFid = new Map();
     for (const e of KB.entries) { for (const n of e.families) if (!kbByFam.has(n)) kbByFam.set(n, e); for (const x of e.fids) if (!kbByFid.has(x)) kbByFid.set(x, e); }
+    // concern taxonomy (knowledge/concerns.json) for '피부 고민으로 찾기'
+    CONC = D.meta.concerns || CONC;
     BK = new Map(BR.map((b) => [bkey(b.i), b.i]));
     SI = new Map(S.map((x, i) => [x, i]));
     byName = new Map();
@@ -932,7 +935,9 @@
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
     box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }),
       withSuggest(q, (v) => nav(`search/${encodeURIComponent(v)}`)), h("button", { type: "button", onclick: go }, "검색")));
-    box.append(h("button", { class: "linkbtn", type: "button", style: "justify-self:start;margin:-4px 4px 0", onclick: () => nav("guide") }, "📖 주름 보톡스? 스킨보톡스? 헷갈리면 시술 사전"));
+    box.append(h("div", { class: "row", style: "gap:14px;margin:-4px 4px 0" },
+      h("button", { class: "linkbtn", type: "button", onclick: () => nav("guide") }, "📖 주름 보톡스? 스킨보톡스? 헷갈리면 시술 사전"),
+      FLAGS.concernSearch ? h("button", { class: "linkbtn", type: "button", onclick: () => nav("concern") }, "💬 피부 고민으로 찾기") : null));
     // shortcuts
     const ch = changeItems(), dn = ch.filter((x) => x.t === "down").length, up = ch.filter((x) => x.t === "up").length;
     const top1 = branchRanks()[0];
@@ -1348,7 +1353,8 @@
   }
 
   // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy) — behind the PIN screen
-  const FLAGS = Object.assign({ ops: true, ads: false, booking: false, emailAlerts: false, publicIndex: false }, (window.APP_CONFIG || {}).flags || {});
+  const FLAGS = Object.assign({ ops: true, ads: false, booking: false, emailAlerts: false, publicIndex: false, concernSearch: true, concernGenerativeAI: false,
+    concernPriceLink: true, showDraftKnowledge: true }, (window.APP_CONFIG || {}).flags || {});
   views.ops = () => {
     const box = h("div", { class: "view" });
     box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, "‹ 뒤로"));
@@ -1469,7 +1475,10 @@
   const famsIn = (c) => FAM.filter((f) => f.cat === c).sort((a, b) => b.n - a.n);
   const famNorm = (f) => f.norm || (f.norm = Search.norm(`${f.name} ${f.cat} ${f.vs.map((v) => v.label).join(" ")} ${KEYS[f.main].label}`));
   const famFind = (text) => { const t = text.trim() ? Search.parse(text, searchIndex()).tokens : []; return t.length ? FAM.filter((f) => Search.matches(famNorm(f), t)).sort((a, b) => b.n - a.n) : []; };
-  const kbOf = (f) => (f && (kbByFam.get(f.name) || kbByFid.get(f.fid))) || null;
+  // only medically reviewed text is 'verified'; drafts are shown (labelled) only while flags.showDraftKnowledge is on
+  const KB_STATE = () => (FLAGS.showDraftKnowledge ? "설명은 의료진 검수 전 초안이에요." : "의료진 검수를 마친 설명만 보여줘요.");
+  const kbVisible = (e) => !!e && ((e.review || {}).status === "approved" || FLAGS.showDraftKnowledge);
+  const kbOf = (f) => { const e = (f && (kbByFam.get(f.name) || kbByFid.get(f.fid))) || null; return kbVisible(e) ? e : null; };
   const famByName = (n) => FAM.find((f) => f.name === n);
   const MAIN_TYPES = { toxin: ["주름 보톡스", "사각턱 보톡스", "스킨보톡스", "다한증 보톡스", "바디 보톡스"], filler: ["코 필러", "턱끝 필러", "애교 필러", "눈밑 필러", "입술 필러"],
     lifting: ["슈링크 유니버스", "울쎄라", "써마지 FLX", "인모드", "올리지오"], toning: ["레이저토닝", "피코토닝", "제네시스", "착색토닝"] };
@@ -1477,7 +1486,8 @@
   const KB_REPO = "https://github.com/lsy2825/skin";
   const reviewBadge = (e) => { const r = e.review || {}; const t = (KB.statuses || {})[r.status] || r.status;
     return h("span", { class: `k ${r.status === "approved" ? "k1" : "kx"}`, title: r.status === "approved" ? `${r.reviewer} · ${r.reviewed_at}` : "의료진이 아직 확인하지 않은 초안이에요" }, r.status === "approved" ? `✓ ${t}` : t); };
-  const evidenceBadge = (e) => h("span", { class: `k ${e.sources.length ? "k4" : "kx"}` }, e.sources.length ? `근거 출처 ${e.sources.length}개` : "근거 자료 미정리");
+  const evidenceBadge = (e) => h("span", { class: `k ${e.sources.length ? "k4" : "kx"}`, title: "근거 문서의 종류예요(효과의 크기를 뜻하지 않아요)" },
+    e.sources.length ? `근거: ${(KB.evidence_levels || {})[e.evidence_level] || "출처"} ${e.sources.length}개` : "근거 자료 미정리");
   // short card on the compare tab: one line + purpose + how it differs, review state, quick view
   function guideBox(f) {
     const e = kbOf(f);
@@ -1569,11 +1579,87 @@
         if (grp && grp.length > 6) { if (!done.has(f.fid)) { done.add(f.fid); out.push(entry(f, grp)); } continue; }
         out.push(entry(f));
       }
-      fill(list, out.length ? out : h("div", { class: "empty" }, "맞는 시술이 없어요."), h("p", { class: "tiny", style: "margin-top:12px" }, DISCLAIM + " 설명이 없는 시술은 병원이 상품 이름에 적은 설명만 보여줘요. 설명은 의료진 검수 전 초안이에요."));
+      fill(list, out.length ? out : h("div", { class: "empty" }, "맞는 시술이 없어요."), h("p", { class: "tiny", style: "margin-top:12px" }, DISCLAIM + " 설명이 없는 시술은 병원이 상품 이름에 적은 설명만 보여줘요. " + KB_STATE()));
     };
     let tm = 0;
     q.addEventListener("input", () => { clearTimeout(tm); tm = setTimeout(paint, 150); });
     paint();
+    return box;
+  };
+  // ---------------- 피부 고민으로 찾기 (app/domain/concern.js + knowledge/concerns.json), on this phone only
+  // The typed words live in memory (concernText) for this visit: never in the URL, localStorage, recent searches or any
+  // request. Every medical sentence on the page comes from the knowledge files; the page itself adds headings only.
+  // It never diagnoses, judges suitability, decides doses, ranks treatments or names a clinic.
+  const concernOf = (id) => CONC.concerns.find((c) => c.id === id);
+  const concernVisible = (c) => !!c && ((c.review || {}).status === "approved" || FLAGS.showDraftKnowledge);
+  const kbById = (id) => { const e = KB.entries.find((x) => x.id === id); return kbVisible(e) ? e : null; };
+  const famsOfEntry = (e) => FAM.filter((f) => kbOf(f) === e).sort((a, b) => b.n - a.n);
+  const draftTag = (o) => { const r = o.review || {}; return h("span", { class: `k ${r.status === "approved" ? "k1" : "kx"}` }, r.status === "approved" ? `의료진 검수 ${r.reviewed_at}` : (KB.statuses || {}).draft || "초안 · 전문가 검수 전"); };
+  function concernCard(c, m) {
+    const es = c.treatments.map(kbById).filter(Boolean);
+    const sec = (n, t, ...kids) => h("section", { class: "csec" }, h("h4", {}, `${n}. ${t}`), ...kids);
+    return h("div", { class: "card concern" },
+      h("div", { class: "row", style: "gap:6px" }, h("h3", { style: "margin:0" }, c.name), h("span", { class: "sp" }), draftTag(c)),
+      m.hits && m.hits.length ? h("div", { class: "sub" }, `적은 말에서 찾은 낱말: ${m.hits.join(", ")}`) : null,
+      sec(1, "고민에 대한 일반적인 설명", h("p", {}, c.general)),
+      sec(2, "관련 시술과 시술 말고 할 수 있는 관리",
+        h("div", { class: "flabel" }, "시술 말고 할 수 있는 관리"), h("ul", { class: "warns" }, c.non_procedural.map((x) => h("li", {}, x))),
+        h("div", { class: "flabel", style: "margin-top:8px" }, "관련 시술"),
+        h("div", { class: "sub" }, es.length ? es.map((e) => e.title).join(" · ") : "보여드릴 수 있는 시술 설명이 아직 없어요(검수 전)."),
+        h("p", { class: "tiny" }, "순서는 분류표에 적힌 순서예요. 추천 순위나 효과 순위가 아니에요.")),
+      es.length ? sec(3, "시술별 목적과 차이", h("div", { class: "ttable", role: "table", "aria-label": `${c.name} 관련 시술 비교` },
+        h("div", { class: "tr th", role: "row" }, h("span", { role: "columnheader" }, "시술"), h("span", { role: "columnheader" }, "주로 받는 이유"), h("span", { role: "columnheader" }, "방식·비슷한 시술과 차이")),
+        es.map((e) => h("div", { class: "tr", role: "row" }, h("span", { role: "cell" }, h("b", {}, e.title)), h("span", { role: "cell" }, e.purpose), h("span", { role: "cell" }, e.method || e.one_liner))))) : null,
+      es.length ? sec(4, "확인해야 할 위험과 한계", es.map((e) => h("div", { class: "crisk" },
+        h("div", { class: "row", style: "gap:4px" }, h("b", {}, e.title), h("span", { class: "sp" }), reviewBadge(e), evidenceBadge(e)),
+        e.side_effects.length ? h("div", { class: "sub" }, "주요 부작용: " + e.side_effects.slice(0, 3).join(" / ")) : null,
+        e.limitations.length ? h("div", { class: "sub" }, "한계: " + e.limitations.join(" / ")) : h("div", { class: "sub" }, "한계: 정리 안 됨"),
+        e.cautions.length ? h("div", { class: "sub" }, "주의: " + e.cautions.slice(0, 2).join(" / ")) : null))) : null,
+      es.length ? sec(5, "관련 시술 자세히 보기", h("div", { class: "chips wrapc" },
+        es.map((e) => h("button", { class: "chip", type: "button", onclick: () => kbSheet(e, famsOfEntry(e)[0] || null) }, `ⓘ ${e.title}`)))) : null,
+      es.length && FLAGS.concernPriceLink ? sec(6, "직접 골라서 가격 비교하기",
+        h("div", { class: "chips wrapc" }, es.flatMap((e) => famsOfEntry(e).slice(0, 4).map((f) =>
+          h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, `${f.name} 가격 →`)))),
+        h("p", { class: "tiny" }, "가격 비교는 이 고민 정보와 따로 계산해요. 같은 조건(용량·회차)끼리 싼 순으로 보여주고, 광고·협찬으로 순서가 바뀌지 않으며 특정 병원을 추천하지 않아요. 예약·결제·개인정보 전달 기능은 없어요.")) : null,
+      h("div", { class: "csrc" },
+        h("div", { class: "tiny" }, "고민 설명 근거: ", c.sources.length ? c.sources.flatMap((x, i) => [i ? ", " : "", h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.publisher)]) : "근거 자료 미정리"),
+        h("p", { class: "tiny" }, "이 화면의 설명 문장은 모두 지식 파일(knowledge/)에 적힌 그대로예요. 화면이 새로 만든 의학 문장은 없어요. 지금은 모두 의료진 검수 전 초안이에요. " + DISCLAIM)));
+  }
+  views.concern = (arg, params) => {
+    const box = h("div", { class: "view" });
+    box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, "‹ 뒤로"));
+    if (!FLAGS.concernSearch) { box.append(h("div", { class: "card empty" }, "피부 고민으로 찾기는 지금 꺼져 있어요.")); return box; }
+    const picked = params.get("c");   // a concern id from a chip or the search page — never the typed words
+    const ta = h("textarea", { class: "field", rows: "3", maxlength: String(Concern.MAX_LEN), placeholder: "예: 이마랑 미간 주름이 신경 쓰여요 / 기미가 늘었어요", "aria-label": "피부 고민 적기" });
+    ta.value = concernText;
+    const out = h("div", { class: "cout", "aria-live": "polite" });
+    const paint = (r) => {
+      if (r.empty) { fill(out, h("div", { class: "card empty" }, "고민을 적거나 위에서 골라 주세요.")); return; }
+      const parts = r.safety.map((x) => h("div", { class: `card ${x.level === "emergency" ? "calert" : "cwarn"}`, role: "alert" },
+        h("h3", {}, (x.level === "emergency" ? "🚨 " : "⚠️ ") + x.title), h("p", {}, x.message)));
+      // a warning sign of an emergency: the clinician comes first, so no treatment information at all
+      if (r.safety.some((x) => x.level === "emergency")) { fill(out, parts); return; }
+      if (r.personal) parts.push(h("div", { class: "card note" }, h("b", {}, "개인 맞춤 판단은 하지 않아요"), h("p", { style: "margin:4px 0 0" }, CONC.safety.personal.message)));
+      if (r.clipped) parts.push(h("div", { class: "note" }, `앞 ${Concern.MAX_LEN}자만 분류했어요.`));
+      const cs = r.matches.map((m) => [concernOf(m.id), m]).filter(([c]) => concernVisible(c));
+      if (!cs.length) parts.push(h("div", { class: "card" }, h("h3", {}, "어떤 고민인지 찾지 못했어요"),
+        h("p", { class: "sub" }, "위의 '고민 고르기'에서 골라 보거나 낱말을 바꿔 적어 보세요(예: 주름, 기미, 여드름, 땀). 증상이 걱정되면 피부과 진료를 받아 보세요.")));
+      if (cs.length > 1) parts.push(h("div", { class: "sub", style: "margin:0 4px" }, `적은 말과 관련된 고민 ${cs.length}가지예요(찾은 낱말이 많은 순).`));
+      for (const [c, m] of cs) parts.push(concernCard(c, m));
+      fill(out, parts);
+    };
+    const run = () => { concernText = ta.value; paint(Concern.classify(concernText, CONC)); };
+    ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); run(); } });
+    box.append(h("div", { class: "card" }, h("h2", {}, "피부 고민으로 찾기"),
+      h("div", { class: "sub" }, "고민을 적으면 관련된 일반 정보, 시술과 시술 말고 할 수 있는 관리, 확인할 위험과 한계를 함께 보여줘요. 진단하거나 시술을 권하지 않아요."),
+      h("div", { style: "margin-top:10px" }, ta),
+      h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn", type: "button", onclick: run }, "찾기"), h("span", { class: "sp" }), h("span", { class: "sub" }, `${Concern.MAX_LEN}자까지`)),
+      h("p", { class: "tiny" }, "🔒 적은 내용은 이 휴대폰 안에서 낱말 분류에만 쓰고, 저장하거나 어디에도 보내지 않아요(주소·검색 기록에도 남지 않아요). 생성형 AI가 아니라 낱말 사전으로 분류하고, 의학 설명은 지식 파일의 문장만 보여줘요."),
+      h("div", { class: "chips wrapc", style: "margin-top:8px" }, h("span", { class: "sub", style: "align-self:center" }, "고민 고르기:"),
+        CONC.concerns.filter(concernVisible).map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => nav(`concern?c=${c.id}`, true) }, c.name)))));
+    box.append(out);
+    if (picked && concernOf(picked)) paint({ safety: [], personal: false, matches: [{ id: picked, hits: [] }] });
+    else if (concernText.trim()) paint(Concern.classify(concernText, CONC));
     return box;
   };
   views.compare = (arg, params) => {
@@ -2069,6 +2155,11 @@
     const run = (v) => { if (v) nav(`search/${encodeURIComponent(v)}`, true); };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") run(q.value.trim()); });
     box.append(h("div", { class: "search" }, h("span", { html: '<svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>' }), withSuggest(q, run)));
+    if (FLAGS.concernSearch && CONC.concerns.length) {
+      const cm = Concern.classify(qs, CONC).matches.map((m) => CONC.concerns.find((c) => c.id === m.id)).filter(Boolean);
+      if (cm.length) box.append(h("div", { class: "row", style: "gap:10px;margin:-4px 4px 0" }, h("span", { class: "sub" }, "고민으로 보기:"),
+        cm.map((c) => h("button", { class: "linkbtn", type: "button", onclick: () => nav(`concern?c=${c.id}`) }, `💬 ${c.name}`))));
+    }
     // comparison keys whose label matches (same normalization as prices)
     const { tokens } = Search.parse(qs, searchIndex());
     // kinds of this procedure with a plain-language line each ('보톡스' → 주름·스킨·사각턱·바디 …)
@@ -2082,7 +2173,7 @@
         h("div", { class: "tr th", role: "row" }, h("span", { role: "columnheader" }, "종류"), h("span", { role: "columnheader" }, how ? "방식" : "놓는 곳"), h("span", { role: "columnheader" }, "주로 받는 이유")),
         main.map((f) => { const e = kbOf(f); return h("div", { class: "tr", role: "row" },
           h("span", { role: "cell" }, h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f) }, f.name)), h("span", { role: "cell" }, how ? e.one_liner : e.areas), h("span", { role: "cell" }, e.purpose)); })),
-      h("p", { class: "tiny" }, "종류 이름을 누르면 부작용·주의사항·근거까지 볼 수 있어요. 설명은 의료진 검수 전 초안이에요.")));
+      h("p", { class: "tiny" }, "종류 이름을 누르면 부작용·주의사항·근거까지 볼 수 있어요. " + KB_STATE())));
     if (fams.length) box.append(h("div", { class: "card" }, h("h3", {}, `‘${qs}’ 종류 ${fams.length}가지`),
       h("div", { class: "sub" }, "이름이 비슷해도 놓는 곳과 목적이 달라요. 누르면 지점별 가격을 비교해요."),
       h("ul", { class: "list", style: "margin-top:4px" }, fams.slice(0, 12).map((f) => { const e = kbOf(f), top = ranking(f.main, "price")[0];

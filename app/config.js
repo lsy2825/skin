@@ -11,5 +11,10 @@ window.APP_CONFIG = {
     booking: false,     // 예약·결제 연결(만들지 않음)
     emailAlerts: false, // 메일 가격 알림(로그인 + 발송 서비스 키 필요)
     publicIndex: false, // 검색엔진 노출(index.html의 noindex 해제는 법률 검토 후)
+    // 피부 고민으로 찾기 — 위험 등급과 법률 검토 항목: docs/LEGAL_REVIEW_CHECKLIST.md
+    concernSearch: true,        // 규칙 기반 고민 분류 + 지식 파일 문장만 보여주기(기기 안에서만, 저장 안 함). 비공개 베타 범위
+    concernPriceLink: true,     // 고민 화면에서 사용자가 직접 누르는 '가격 비교' 버튼(환자 유인 해당 여부 검토 대상)
+    showDraftKnowledge: true,   // 의료진 검수 전 설명도 '초안' 표시와 함께 보여주기. 공개 출시 전 false(검수 완료만 노출)
+    concernGenerativeAI: false, // 생성형 AI 답변: 만들지 않음. 법률·의료 검토 + 서버(키 보호·요청 제한) 전에는 켜지 않아요
   },
 };

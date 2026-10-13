@@ -318,13 +318,14 @@ def main():
                 if k in kid:
                     changes.append([kid[k], bi[(brand, branch)], before, after])
     checks = price_checks(rows, a.date)
+    KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "kb": knowledge.export(), "checks": checks},
+                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks},
         "branches": branches, "rows": out_rows, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, a.date, rows),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,

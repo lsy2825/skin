@@ -81,6 +81,17 @@ dl.facts { margin: 8px 0 0; display: grid; gap: 10px; }
 .ttable .tr { display: grid; grid-template-columns: 26% 30% minmax(0, 1fr); gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--line-soft); line-height: 1.45; }
 .ttable .th { font-weight: 700; color: var(--muted); font-size: 12px; }
 .ttable .linkbtn { font-size: 12.5px; text-align: left; }
+/* 피부 고민으로 찾기 */
+.concern .csec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
+.concern .csec h4 { margin: 0 0 6px; font-size: 14px; color: var(--brand-ink); }
+.concern .csec p { margin: 0; line-height: 1.6; }
+.concern .crisk { padding: 8px 0; border-bottom: 1px solid var(--line-soft); display: grid; gap: 3px; }
+.concern .crisk:last-child { border-bottom: 0; }
+.concern .csrc { margin-top: 12px; }
+.card.calert { background: var(--pricey-soft); border: 2px solid var(--pricey); }
+.card.calert h3, .card.cwarn h3 { margin: 0 0 6px; color: var(--pricey); }
+.card.calert p, .card.cwarn p { margin: 0; line-height: 1.6; }
+.card.cwarn { background: var(--pricey-soft); }
 .settings .setrow { margin-top: 16px; display: grid; gap: 6px; }
 .settings .flabel { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0; }
 .settings .now { font-size: 12.5px; color: var(--accent); }
@@ -462,6 +473,7 @@ html:not(.locked) .gate { display: none; }
 <script src="domain/pricing.js"></script>
 <script src="domain/search.js"></script>
 <script src="domain/intel.js"></script>
+<script src="domain/concern.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

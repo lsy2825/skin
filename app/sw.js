@@ -1,6 +1,6 @@
 // Offline cache: the app shell is cache-first, data.json and map tiles are network-first (fall back to the last copy).
-const VER = "pc-v6";
-const SHELL = ["./", "index.html", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "vendor/fonts/NanumSquareRoundR.woff2", "vendor/fonts/NanumSquareRoundB.woff2", "vendor/fonts/NanumSquareRoundEB.woff2", "manifest.webmanifest", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "icons/icon-192.png", "icons/logo-96.png", "icons/favicon-32.png", "icons/apple-touch-icon.png"];
+const VER = "pc-v7";
+const SHELL = ["./", "index.html", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "vendor/fonts/NanumSquareRoundR.woff2", "vendor/fonts/NanumSquareRoundB.woff2", "vendor/fonts/NanumSquareRoundEB.woff2", "manifest.webmanifest", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css", "icons/icon-192.png", "icons/logo-96.png", "icons/favicon-32.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VER).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VER).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

@@ -28,6 +28,37 @@
 | `sources` | 근거 출처 id 목록(파일 위쪽 `sources`에 제목·기관·URL·확인일·확인 방법) |
 | `evidence_note` | 근거를 어떻게 정리했는지, 무엇이 아직 확인 안 됐는지 |
 | `review` | `status`(draft / in_review / approved / needs_changes), `reviewer`, `reviewed_at`, `notes` |
+| `limitations` / `extra_limitations` | 한계(효과가 일시적, 개인차 등). 공통 항목에서 물려받아요. 2026-10-13 추가, 49개 모두 있음 |
+
+- 출처(`sources`)마다 `type`이 있어요: government / academy / clinic_reference / review_article.
+- 이걸로 `evidence_level`(근거 문서의 종류)을 자동으로 정해요. 효과의 크기나 근거 등급이 아니에요.
+- 지시서의 시술 정보 형식(treatment_id … publication_status)으로 바꾼 기록은 `python build2/knowledge.py --schema`로 볼 수 있어요. DB 표 `treatment_knowledge`에도 같은 내용이 들어가요.
+
+## 피부 고민 분류표 (`concerns.json`)
+'피부 고민으로 찾기'(`#concern`)가 쓰는 유일한 근거 파일이에요. 기능 명세는 `docs/AI_CONCERN_DISCOVERY_SPEC.md`.
+
+**고민 하나에 들어가는 것**
+- `id`, `name`
+- `synonyms`: 사람들이 쓰는 말. 공백을 무시하고, 한 글자 낱말은 단어 단위로만 맞춰요.
+- `general`: 일반 설명
+- `non_procedural`: 시술 말고 할 수 있는 관리
+- `treatments`: 이 파일의 시술 `id`
+- `sources`, `review`
+
+**`safety` (위험 신호 규칙)**
+- 응급, 자해, 진료 권고, 개인 판단 요청(진단·적합성·용량)의 정규식과 안내 문구예요.
+- 의료진이 이 파일만 고쳐도 다음 빌드부터 반영돼요.
+
+**지켜야 할 것**
+- 진단·적합성·용량을 말하지 않아요.
+- 시술 순서는 추천 순위가 아니에요(분류표 순서).
+- 병원 이름이나 가격을 넣지 않아요.
+
+**검사:** `python build2/knowledge.py`가 고민 id, 시술 id 존재, 출처, 검수 상태, 정규식 오류를 확인해요.
+
+## 검수 전 초안 노출 (`app/config.js` `showDraftKnowledge`)
+- true(지금, 비공개 베타): 초안도 '초안 · 전문가 검수 전' 표시와 함께 보여요.
+- false: `approved` 항목만 보여요. 공개 출시 전에는 의료진 검수를 마치거나 false로 바꿔야 해요(`docs/LEGAL_REVIEW_CHECKLIST.md`).
 
 ## 전문가 검수 방법
 1. **의견만 줄 때:** 앱의 설명 아래 "검수 의견 보내기"를 눌러요. 항목 id가 채워진 GitHub 이슈(라벨 `knowledge-review`)가 열려요. 운영자가 반영해요.
