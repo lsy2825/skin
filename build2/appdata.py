@@ -51,6 +51,30 @@ SIDO = [("전남광주", "광주"), ("서울", "서울"), ("경기", "경기"), 
         ("전라남|전남", "전남"), ("경상북|경북", "경북"), ("경상남|경남", "경남"), ("제주", "제주")]
 
 
+def trend(hist, date, rows):
+    """weekly price trend per comparison key from the snapshots in data2/history (regular prices only):
+    {"dates": [...], "k": {key: [[median, min, branches] or None per date]}, "disc": {key: median % off the list price now}}"""
+    files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] <= date)[-52:]
+    dates, per = [], {}
+    for i, p in enumerate(files):
+        dates.append(os.path.basename(p)[:10])
+        by = {}
+        for kk, v in json.load(open(p, encoding="utf-8")).items():
+            by.setdefault(kk.split("|")[0], []).append(v)
+        for k, vs in by.items():
+            vs.sort()
+            per.setdefault(k, [None] * len(files))[i] = [vs[len(vs) // 2], vs[0], len(vs)]
+    for k in per:
+        per[k] += [None] * (len(files) - len(per[k]))
+    offs = {}
+    for r in rows:
+        if r["orig"] and int(r["orig"]) > int(r["sale"]) and r["kind"] != "구독권":
+            for k in r["keys"].split():
+                offs.setdefault(k, []).append(round((int(r["orig"]) - int(r["sale"])) / int(r["orig"]) * 100))
+    disc = {k: sorted(v)[len(v) // 2] for k, v in offs.items() if len(v) >= 3}
+    return {"dates": dates, "k": per, "disc": disc}
+
+
 def region(addr):
     for p, name in SIDO:
         if re.match(p, addr or ""):
@@ -116,6 +140,7 @@ def main():
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
         "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
+        "trend": trend(hist, a.date, rows),
     }
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     txt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
