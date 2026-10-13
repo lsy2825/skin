@@ -84,6 +84,10 @@
   }
   const brandOf = (b) => D.meta.brands[BR[b].brand];
   const brandOn = (b) => st.brands.includes(BR[b].brand);
+  // region view: "" = 전국, "수도권" = 서울·경기·인천, otherwise one 시·도 (data stays nationwide)
+  const CAPITAL = ["서울", "경기", "인천"];
+  const regionOk = (b) => !st.region || (st.region === "수도권" ? CAPITAL.includes(BR[b].region) : BR[b].region === st.region);
+  const regionName = () => st.region || "전국";
   const isSpecial = (r) => r[5] === 1 || r[5] === 2 || S[r[6]] !== "";
   const dist = (b) => {
     const x = BR[b];
@@ -106,7 +110,7 @@
   function ranking(k, sort = st.sort) {
     const out = [];
     for (const b of byKB[k].keys()) {
-      if (!brandOn(b) || (st.region && BR[b].region !== st.region)) continue;
+      if (!brandOn(b) || !regionOk(b)) continue;
       const i = bestAt(k, b);
       if (i >= 0) out.push({ b, i, p: ROWS[i][3], d: dist(b) });
     }
@@ -147,7 +151,7 @@
     return h("span", { class: "dbar", "aria-hidden": "true" }, h("i", { class: v < 0 ? "neg" : "pos", style: v < 0 ? `right:50%;width:${w}%` : `left:50%;width:${w}%` })); };
   const levelOf = (b, cat = -1) => { const s = (D.bstat || [])[b]; if (!s) return null; if (cat >= 0) return s[5] ? s[5][cat] ?? null : null; return st.special ? s[1] : s[0]; };
   function branchRanks(cat = -1) {
-    const list = BR.filter((x) => brandOn(x.i) && (!st.region || x.region === st.region)).map((x) => ({ b: x.i, lv: levelOf(x.i, cat) })).filter((x) => x.lv != null);
+    const list = BR.filter((x) => brandOn(x.i) && regionOk(x.i)).map((x) => ({ b: x.i, lv: levelOf(x.i, cat) })).filter((x) => x.lv != null);
     list.sort((a, c) => a.lv - c.lv);
     return list;
   }
@@ -166,6 +170,19 @@
   };
   const bname = (b) => `${D.meta.brands[BR[b].brand][0]} ${BR[b].name}`;
   const bdot = (b) => h("span", { class: "bdot", style: `background:${brandOf(b)[1]}` });
+
+  // ---------------- region picker (header button + 내정보)
+  function regionSelect(after) {
+    const regions = [...new Set(BR.map((b) => b.region).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
+    const cnt = (f) => BR.filter(f).length;
+    return h("select", { class: "pick", "aria-label": "지역", onchange: (e) => { setRegion(e.target.value); if (after) after(); } },
+      h("option", { value: "수도권", selected: st.region === "수도권" }, `수도권 (서울·경기·인천) ${cnt((b) => CAPITAL.includes(b.region))}곳`),
+      h("option", { value: "", selected: !st.region }, `전국 ${BR.length}곳`),
+      regions.map((r) => h("option", { value: r, selected: r === st.region }, `${r} ${cnt((b) => b.region === r)}곳`)));
+  }
+  function setRegion(v) { st.region = v; store.set("region", v); gcache && gcache.clear(); paintRegion(); render(); }
+  function paintRegion() { const el = $("#regbtn span"); if (el) el.textContent = regionName(); }
+  function regionSheet() { sheet("지역", (close) => h("div", {}, h("div", { class: "sub", style: "margin:4px 0 10px" }, "비교·장바구니·검색·순위에 이 지역 지점만 보여요"), regionSelect(close))); }
 
   // ---------------- location
   function locate(then) {
@@ -322,7 +339,7 @@
     const rest = reg >= 0 ? reg : first;
     return { total: ROWS[first][3] + ROWS[rest][3] * (q - 1), rows: first === rest ? [first] : [first, rest], units: q };
   }
-  const branchOk = (b) => brandOn(b) && (!st.region || BR[b].region === st.region) && (!st.maxKm || !st.loc || (dist(b) != null && dist(b) <= st.maxKm));
+  const branchOk = (b) => brandOn(b) && regionOk(b) && (!st.maxKm || !st.loc || (dist(b) != null && dist(b) <= st.maxKm));
   function cartTotals(items) {
     const full = [], part = [];
     if (!items.length) return { full, part };
@@ -597,7 +614,7 @@
   function initMap() {
     if (typeof L === "undefined") { $("#map").replaceWith(h("div", { class: "card empty" }, "지도를 불러오지 못했어요(인터넷 연결 확인).")); return; }
     if (map) { map.remove(); map = null; }
-    map = L.map("map", { zoomControl: true, attributionControl: true }).setView(st.loc ? [st.loc.lat, st.loc.lng] : [36.4, 127.8], st.loc ? 13 : 7);
+    map = L.map("map", { zoomControl: true, attributionControl: true }).setView(st.loc ? [st.loc.lat, st.loc.lng] : st.region === "수도권" ? [37.5, 126.98] : [36.4, 127.8], st.loc ? 13 : st.region === "수도권" ? 10 : 7);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, subdomains: "abc",
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' }).addTo(map);
     layer = L.layerGroup().addTo(map);
@@ -825,7 +842,7 @@
     const hits = [];
     for (let i = 0; i < ROWS.length; i++) {
       const r = ROWS[i];
-      if (!brandOn(r[0]) || (!st.special && isSpecial(r))) continue;
+      if (!brandOn(r[0]) || !regionOk(r[0]) || (!st.special && isSpecial(r))) continue;
       const n = compact(S[r[2]]);
       if (words.every((w) => n.includes(compact(w)))) hits.push(i);
     }
@@ -892,7 +909,7 @@
         st.loc ? h("select", { class: "mini", "aria-label": "거리", onchange: (e) => { st.maxKm = +e.target.value; render(); } },
           [[0, "거리 제한 없음"], [3, "3km 안"], [5, "5km 안"], [10, "10km 안"], [20, "20km 안"], [50, "50km 안"]].map(([v, l]) => h("option", { value: v, selected: v === st.maxKm }, l)))
           : h("button", { class: "btn sm soft", type: "button", onclick: () => locate("keep") }, "내 위치로 거리 보기")),
-      brandChips(), st.region ? h("div", { class: "sub", style: "margin-top:8px" }, `지역: ${st.region} (더보기에서 바꿈)`) : null));
+      brandChips(), h("div", { class: "sub", style: "margin-top:8px" }, `지역: ${regionName()} (화면 위 지역 버튼에서 바꿔요)`)));
     if (!items.length) return box;
     const tabs = [["one", "한 곳에서 다 받기"], ["mix", "여러 곳 섞기"], ["sum", "브랜드·지역별"]];
     box.append(h("div", { class: "seg", role: "tablist" }, tabs.map(([v, l]) => h("button", { type: "button", role: "tab", "aria-selected": st.cartTab === v ? "true" : "false", onclick: () => { st.cartTab = v; render(); } }, l))));
@@ -1177,11 +1194,8 @@
         "• '평일 낮', '일요일' 같은 표시는 그 시간에만 되는 가격이에요.", h("br"), "• 부가세(10%) 별도인 병원이 많아요.", h("br"),
         "• 병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요.")));
     // branch list by brand
-    const regions = [...new Set(BR.map((b) => b.region).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ko"));
-    const regSel = h("select", { class: "pick", "aria-label": "지역", onchange: (e) => { st.region = e.target.value; store.set("region", st.region); render(); } },
-      h("option", { value: "" }, "전국"), regions.map((r) => h("option", { value: r, selected: r === st.region }, r)));
-    box.append(h("div", { class: "card" }, h("h2", {}, "지역"), h("div", { class: "sub" }, "고르면 비교·장바구니·검색이 이 지역 지점만 보여 줘요"), h("div", { style: "margin-top:10px" }, regSel)));
-    const shown = BR.filter((b) => !st.region || b.region === st.region);
+    box.append(h("div", { class: "card" }, h("h2", {}, "지역"), h("div", { class: "sub" }, "고르면 비교·장바구니·검색·순위가 이 지역 지점만 보여 줘요(데이터는 전국을 모두 모아요)"), h("div", { style: "margin-top:10px" }, regionSelect())));
+    const shown = BR.filter((b) => regionOk(b.i));
     box.append(h("details", { class: "card flush fold" }, h("summary", {}, `지점 전체 목록 ${shown.length}곳`),
       h("ul", { class: "list" }, shown.sort((a, b) => a.brand - b.brand || a.name.localeCompare(b.name, "ko")).map((b) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${b.i}`) },
         h("span", { class: "t row" }, bdot(b.i), bname(b.i)), h("span", { class: "sub" }, dist(b.i) != null ? km(dist(b.i)) : b.region), h("span", { class: "m" }, b.addr)))))));
@@ -1226,7 +1240,9 @@
   $("#locbtn").addEventListener("click", () => locate());
 
   applyTheme();
-  st.region = store.get("region", "");
+  st.region = store.get("region", "수도권");
+  paintRegion();
+  $("#regbtn").addEventListener("click", () => { if (D) regionSheet(); });
   paintCartN();
   if (window.Auth && window.Auth.enabled) window.Auth.onChange((u) => { if (u && D) syncFromAccount(); else if (D) render(); });
   loadData().then(() => { render(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => { $("#main").replaceChildren(h("div", { class: "card empty" }, "데이터를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.")); console.error(e); });
