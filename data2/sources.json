@@ -1,0 +1,454 @@
+{
+ "checked_at": "2026-10-13T14:54:39+09:00",
+ "user_agent_rule": "*",
+ "brands": {
+  "velyb": {
+   "brand": "블리비",
+   "method": "공개 HTML (지점별 이벤트 페이지 7쪽)",
+   "rate": "1 req/s, 동시 4",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "www.velyb.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/",
+      "/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=1",
+      "/community/community02.php"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 1,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=1",
+     "text": "각 표기된 해당 기간 동안까지 방문 혹은 예약 고객 대상으로 진행됩니다. · 정부의 부가세법 개정안에 따라 부가세 10%가 별도로 부과됩니다. 1 빠른상담 신청하기 빠른상담 지점 지점선택 강남역점 건대점 경기 광주점 경주점 광명점 광주"
+    }
+   ],
+   "date_samples": [
+    "2026-10-17까지",
+    "2026-10-17까지",
+    "2026-10-17까지",
+    "2026-10-17까지",
+    "2026-10-17까지"
+   ]
+  },
+  "ppeum": {
+   "brand": "쁨",
+   "method": "공개 HTML (지점별 온라인 예약 페이지)",
+   "rate": "1 req/s, 동시 4",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "sinnonhyeon.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "event.ppeum.com",
+     "robots": "없음 (HTTP 404)",
+     "allowed": true,
+     "checked_paths": [
+      "/",
+      "/v1/event/reserve?branch=ppeum6&type=homepage&directLink=onlineReserve"
+     ]
+    },
+    {
+     "host": "bupyeong.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "konkukuniv.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "busan.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daegu.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jamsil.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheonan.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "balsan.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "bucheon.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "chuncheon.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "changwon.ppeum.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/selectSurgery"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 13,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://sinnonhyeon.ppeum.com/selectSurgery",
+     "text": "진료 시간 둘러보기 의료진 소개 공지사항 인재채용 시술예약 상담 이벤트 병원 소개 마이페이지 총 시술금액 (VAT 별도) *결제는 내원 시 진행돼요. 0 장바구니 예약하기 장바구니에 상품을 담았습니다. 이미 장바구니에 있는 상"
+    },
+    {
+     "url": "https://event.ppeum.com/v1/event/reserve?branch=ppeum6&type=homepage&directLink=onlineReserve",
+     "text": "예쁨주의쁨의원 내가 담은 상품(※ VAT별도) 0 이벤트 신청하기 0 장바구니 0 시술 받으실 상품을 선택해주세요 Home 검색 취소 바로예약 항목선택"
+    },
+    {
+     "url": "https://bupyeong.ppeum.com/selectSurgery",
+     "text": "000원 1,500,000원 34% [10월 이벤트] [10월 지점이벤트] 내맘대로 온다리프팅 10만줄 (*부가세포함) 온다리프팅은 기존의 고주파, 초음파 에너지와 달리 극초단파(Micro wave)에너지를 이용한 새로운 제"
+    },
+    {
+     "url": "https://bupyeong.ppeum.com/selectSurgery",
+     "text": "신경 써주세요. 99,000원 190,000원 47% [10월 지점이벤트] 내맘대로 온다리프팅 10만줄 (*부가세포함) 온다리프팅은 기존의 고주파, 초음파 에너지와 달리 극초단파(Micro wave)에너지를 이용한 새로운 제"
+    },
+    {
+     "url": "https://bupyeong.ppeum.com/selectSurgery",
+     "text": "000원 1,190,000원 35% [10월 이벤트] [10월 지점이벤트] 내맘대로 온다리프팅 10만줄 (*부가세포함) 온다리프팅은 기존의 고주파, 초음파 에너지와 달리 극초단파(Micro wave)에너지를 이용한 새로운 제"
+    },
+    {
+     "url": "https://bupyeong.ppeum.com/selectSurgery",
+     "text": " 차단과 수분 관리에 신경 써주세요. 79,000원 149,000원 46% 내맘대로 온다리프팅 10만줄 (*부가세포함) 온다리프팅은 기존의 고주파, 초음파 에너지와 달리 극초단파(Micro wave)에너지를 이용한 새로운 제"
+    }
+   ]
+  },
+  "toxnfill": {
+   "brand": "톡스앤필",
+   "method": "공개 HTML (시술안내/가격 상세)",
+   "rate": "1 req/s, 동시 4",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "www.toxnfill1.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/",
+      "/detail.php?c=3628&i=29879"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill17.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=289&i=517"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill32.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=3739&i=23699"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill6.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=350&i=32064"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill10.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=835&i=2063"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill15.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=264&i=9065"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill35.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=386&i=923"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill41.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=1021&i=3589"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill39.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=274&i=25468"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill51.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=5310&i=37476"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill29.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=494&i=1213"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill9.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4274&i=27384"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 32,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://www.toxnfill1.com/detail.php?c=3628&i=29879",
+     "text": "다한증 보톡스 (면적에 따라 비용추가) 200,000 원 예상금액 * 방문 결제는 내원시 이루어집니다. / 부가세 10% 별도 0 원 (온라인 결제) 0 원 (방문 결제) 0 원 이벤트/시술 예약하기 시술내용 다한증톡신 WHAT IS"
+    },
+    {
+     "url": "https://www.toxnfill17.com/detail.php?c=289&i=517",
+     "text": "끝 (자갈턱/호두주름) (국산) 30,000 원 턱끝 (자갈턱/호두주름) (수입) 60,000 원 예상금액 부가세 10% 별도 0 원 이벤트/시술 예약하기 주름톡신 WHAT IS IT? 더모톡신은 피부를 뜻하는 ‘더모(dermo)’와"
+    },
+    {
+     "url": "https://www.toxnfill32.com/detail.php?c=3739&i=23699",
+     "text": "120,000 원 [EVENT] [미국산] 턱보톡스 (50U) 350,000 원 180,000 원 예상금액 부가세 10% 별도 0 원 이벤트/시술 예약하기 사각턱 보톡스 WHAT IS IT? 클로스트리디움 보튤리늄 톡신이 주성분으로,"
+    },
+    {
+     "url": "https://www.toxnfill1.com/",
+     "text": "진행하실 경우 진료비가 별도로 발생됩니다. (당일 시술을 진행한다면 진료비는 제외됩니다.) 확인 총 금액 (부가세 별도) *방문결제는 내원시 진행 온라인 결제 0 원 방문 결제 0 원 0 원 오늘 강남본점의 진료시간은 20:0"
+    }
+   ]
+  },
+  "lienjang": {
+   "brand": "리엔장",
+   "method": "공개 HTML (비급여 진료비 고시표)",
+   "rate": "1 req/s",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "incheon.lienjang.net",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/agree/info"
+     ],
+     "crawl_delay": 180
+    },
+    {
+     "host": "myeongdong.lienjang.net",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/agree/info"
+     ],
+     "crawl_delay": 180
+    },
+    {
+     "host": "mokdong.lienjang.net",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/agree/info"
+     ],
+     "crawl_delay": 180
+    },
+    {
+     "host": "hongdae.lienjang.net",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/agree/info"
+     ],
+     "crawl_delay": 180
+    },
+    {
+     "host": "hanam.lienjang.net",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/agree/info"
+     ],
+     "crawl_delay": 180
+    }
+   ],
+   "hosts_total": 5,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://incheon.lienjang.net/agree/info",
+     "text": "합니다. * 수/시술방법 및 개인의 상태에 따라 상이할 수 있습니다. * 모든 피부미용 시술의 경우 10% 부가세가 별도로 부과됩니다. 중분류 소분류 항목 항목별 가격정보(단위:원) 최종변경일 코드 명칭 구분 비용 최저비용 최고"
+    },
+    {
+     "url": "https://incheon.lienjang.net/agree/info",
+     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 인천광역시 남동구 구월동 1469 맨하탄빌딩 7층/ [도로명]인천광역시 남동"
+    },
+    {
+     "url": "https://myeongdong.lienjang.net/agree/info",
+     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 서울특별시 중구 명동길 14, 5층 (명동2가, 눈스퀘어) 의료기관명칭 : "
+    },
+    {
+     "url": "https://mokdong.lienjang.net/agree/info",
+     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 서울시 양천구 오목로 325, 2층(목동,대학빌딩) 의료기관명칭 : 리엔장의"
+    }
+   ]
+  },
+  "forever": {
+   "brand": "포에버",
+   "method": "공개 HTML (Next.js 내장 데이터) — 일시 중지",
+   "rate": "0.8 req/s, 동시 4",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "www.4-ever.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gn.4-ever.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/ko/treatments"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 2,
+   "allowed": true,
+   "vat_evidence": []
+  }
+ }
+}
