@@ -16,7 +16,8 @@
     pip install -r requirements.txt
     python build2/weekly.py            # 수집부터 전부 (약 15분)
     python build2/weekly.py --skip-scrape   # 이미 모은 자료로 다시 만들기
-    node --test tests/*.test.js          # 가격 계산 단위 테스트
+    node --test tests/*.test.js          # 가격 계산·검색·이력 단위 테스트
     python -m http.server 8766 --directory app
+    node tests/e2e/ux_qa.js              # 화면 검사(Playwright 필요, 서버를 띄운 상태에서). 결과: docs/UX_QA_REPORT.md
 
 지도: © OpenStreetMap contributors (Leaflet, BSD-2). 좌표: OpenStreetMap Nominatim.

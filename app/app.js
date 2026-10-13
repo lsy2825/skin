@@ -55,7 +55,10 @@
   function loadCarts() {
     const c = store.get("carts", null);
     const list = Array.isArray(c) && c.length ? c : [{ name: "내 장바구니", items: store.get("cart", []).map((x) => ({ t: "k", k: x.k, q: x.q || 1 })) }];
-    for (const x of list) if (!x.id) x.id = newId();      // stable id so a signed-in cart can be merged with the server copy
+    const moved = list !== c;
+    let stamped = false;
+    for (const x of list) if (!x.id) { x.id = newId(); stamped = true; }      // stable id so a signed-in cart can be merged with the server copy
+    if (moved ? list[0].items.length : stamped) store.set("carts", list);     // save the moved/stamped carts once so the ids stay stable
     return list;
   }
 
@@ -347,10 +350,31 @@
 
   // bottom sheet
   // keyboard: focus moves into the sheet, Tab stays inside, Esc closes, focus returns to the opener
+  // keyboard focus survives a redraw: remember the focused control by what it is (tag + label, counts dropped) and
+  // where it is, then focus the same control in the new page (or the one at the same position)
+  const FOCUSABLE = "button, input, select, textarea, a[href]";
+  const fsig = (e) => {
+    const lab = e.closest("label");
+    const t = e.getAttribute("aria-label") || (e.matches("input, select, textarea") ? (lab && lab.firstChild && lab.firstChild.textContent) || e.placeholder : e.textContent);
+    return e.tagName + "|" + (t || "").trim().replace(/\s*\(\d[\d,]*\)$/, "").slice(0, 40);
+  };
+  function focusMark(root, el) {
+    if (!el || el === root || !root.contains(el)) return null;
+    const all = [...root.querySelectorAll(FOCUSABLE)], s = fsig(el);
+    return { s, n: all.filter((e) => fsig(e) === s).indexOf(el), at: all.indexOf(el) };
+  }
+  function focusBack(root, m) {
+    if (!m) return;
+    const all = [...root.querySelectorAll(FOCUSABLE)].filter((e) => !e.disabled && e.offsetParent !== null);
+    const same = all.filter((e) => fsig(e) === m.s);
+    const el = same[Math.min(Math.max(m.n, 0), same.length - 1)] || all[Math.min(m.at, all.length - 1)];
+    if (el) el.focus({ preventScroll: true });
+  }
   function sheet(title, body) {
-    const opener = document.activeElement;
+    const opener = document.activeElement, om = focusMark($("#main"), opener);
     const bg = h("div", { class: "sheet-bg", onclick: (e) => { if (e.target === bg) close(); } });
-    const close = () => { bg.remove(); document.removeEventListener("keydown", key); if (opener && opener.isConnected) opener.focus(); };
+    // the opener may have been redrawn while the sheet was open (e.g. '+ 담기' → '담김 ✓'): fall back to its twin
+    const close = () => { bg.remove(); document.removeEventListener("keydown", key); if (opener && opener.isConnected) opener.focus(); else focusBack($("#main"), om); };
     const key = (e) => {
       if (e.key === "Escape") { close(); return; }
       if (e.key !== "Tab") return;
@@ -748,7 +772,7 @@
 
   // ---------------- views
   const views = {};
-  let current = "home";
+  let current = "home", lastPath = "";
 
   // ---------------- price changes since the previous weekly snapshot (listed prices): key + auto-group moves
   const EMO = { "톡신": "💉", "윤곽·필러": "💧", "리프팅": "✨", "부스터": "🌿", "피부": "🌟", "제모·바디": "🪒" };
@@ -1037,7 +1061,8 @@
     const minR = rs(f.min || 0, "최소"), maxR = rs(f.max || smax, "최대");
     const err = h("div", { class: "ferr", role: "alert", hidden: true }, "최소 가격이 최대 가격보다 커요");
     const check = () => { const a = +minIn.value || 0, b = +maxIn.value || 0; const bad = b && a > b; err.hidden = !bad; minIn.setAttribute("aria-invalid", bad ? "true" : "false"); return !bad; };
-    const commit = () => setTimeout(() => { if (!check()) return; const a = Math.max(0, Math.round(+minIn.value || 0)), b = Math.max(0, Math.round(+maxIn.value || 0)); go({ min: a || "", max: b || "" }); }, 0);
+    // only redraw when the range actually changed — tabbing through the boxes must not reset keyboard focus
+    const commit = () => setTimeout(() => { if (!check()) return; const a = Math.max(0, Math.round(+minIn.value || 0)), b = Math.max(0, Math.round(+maxIn.value || 0)); if (a !== (f.min || 0) || b !== (f.max || 0)) go({ min: a || "", max: b || "" }); }, 0);
     minR.addEventListener("input", () => { if (+minR.value > +maxR.value) maxR.value = minR.value; minIn.value = +minR.value || ""; maxIn.value = +maxR.value >= smax ? "" : maxR.value; check(); });
     maxR.addEventListener("input", () => { if (+maxR.value < +minR.value) minR.value = maxR.value; maxIn.value = +maxR.value >= smax ? "" : maxR.value; minIn.value = +minR.value || ""; check(); });
     minIn.addEventListener("input", () => { minR.value = +minIn.value || 0; check(); }); maxIn.addEventListener("input", () => { maxR.value = +maxIn.value || smax; check(); });
@@ -2157,11 +2182,15 @@
     const [name, ...rest] = path.split("/");
     const params = new URLSearchParams(qs || "");
     const view = views[name] ? name : name === "more" ? "me" : "home";
-    current = view;
+    const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
+    current = view; lastPath = path;
     const tab = { branch: null, search: "home", import: "cart", more: "me", rank: "compare", versus: "compare", change: "home", table: "compare", about: "me", ops: "me" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
-    $("#main").replaceChildren(views[view](rest.join("/"), params));
-    $("#main").removeAttribute("aria-busy");
+    main.replaceChildren(views[view](rest.join("/"), params));
+    main.removeAttribute("aria-busy");
+    // same page redrawn (filter, quantity …): focus goes back to that control; new page opened from the content: focus
+    // the page itself so the next Tab starts in the new content instead of the header
+    if (mark) { if (same) focusBack(main, mark); else main.focus({ preventScroll: true }); }
     paintFloatCart(view);
   }
   window.addEventListener("popstate", render);
