@@ -61,6 +61,14 @@ def strip_event_prefix(s):
         s = m.group(2)
 
 
+def price(x):
+    """'99000' / '99000.0' / '99,000' -> 99000; empty or junk -> 0"""
+    try:
+        return int(round(float(str(x or "").replace(",", ""))))
+    except ValueError:
+        return 0
+
+
 def load():
     rows = []
     for key, brand in BRANDS:
@@ -75,8 +83,7 @@ def main():
     issues, out, seen = [], [], {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
-        sale = int(r["sale"]) if r["sale"] else 0
-        orig = int(r["orig"]) if r["orig"] else 0
+        sale, orig = price(r["sale"]), price(r["orig"])
         why = None
         if not opt:
             why = "옵션 이름 없음"

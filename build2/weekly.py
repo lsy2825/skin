@@ -15,9 +15,20 @@ PY = sys.executable
 
 
 def run(args):
+    """run a step, echo its output; on failure also print the last lines as a GitHub annotation (readable in the
+    run's summary/API even when the full log can't be downloaded)"""
     print("$", " ".join(args), flush=True)
-    r = subprocess.run([PY] + args, cwd=ROOT, env={**os.environ, "PYTHONUTF8": "1"})
-    return r.returncode == 0
+    p = subprocess.Popen([PY] + args, cwd=ROOT, env={**os.environ, "PYTHONUTF8": "1"}, stdout=subprocess.PIPE,
+                         stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
+    tail = []
+    for line in p.stdout:
+        print(line, end="", flush=True)
+        tail = (tail + [line.rstrip()])[-25:]
+    ok = p.wait() == 0
+    if not ok and os.environ.get("GITHUB_ACTIONS"):
+        msg = "%0A".join(s.replace("%", "%25").replace("\r", "") for s in tail)
+        print(f"::error title={' '.join(args)} failed::{msg}", flush=True)
+    return ok
 
 
 def stats(path):
@@ -35,7 +46,7 @@ def main():
     os.makedirs(ACC, exist_ok=True)
     os.makedirs(RAW, exist_ok=True)
     report = [f"# 주간 갱신 {a.date}", ""]
-    used_new = 0
+    used_new, fresh = 0, []
     for key, brand in SCRAPERS:
         new = os.path.join(RAW, f"{key}.csv")
         old = os.path.join(ACC, f"{key}.csv")
@@ -55,7 +66,7 @@ def main():
             if os.path.exists(new):
                 os.remove(new)
         else:
-            shutil.copy(new, old)
+            fresh.append((key, brand))      # saved to data2/accepted only after the build below works
             used_new += 1
             report.append(f"- {brand}: {n_new:,}행 · {b_new}개 지점" + (f" (지난번 {n_old:,}행 · {b_old}개 지점)" if n_old else ""))
     if not used_new and not any(os.path.exists(os.path.join(ACC, f"{k}.csv")) for k, _ in SCRAPERS):
@@ -63,8 +74,22 @@ def main():
         sys.exit("no brand has data: nothing to publish")
     if not a.skip_scrape:
         run(["scrape/branches.py"])
-    if not run(["build2/clean.py"]) or not run(["build2/appdata.py", "--date", a.date]):
-        sys.exit("build failed: nothing to publish")
+    build = lambda: run(["build2/clean.py"]) and run(["build2/appdata.py", "--date", a.date])
+    if not build():
+        # the new data broke the build: publish last week's data instead, so the app keeps working
+        for key, brand in fresh:
+            new, old = os.path.join(RAW, f"{key}.csv"), os.path.join(ACC, f"{key}.csv")
+            if os.path.exists(old):
+                shutil.copy(old, new)
+            elif os.path.exists(new):
+                os.remove(new)
+        report.append(f"- **새 자료로 앱 데이터 만들기 실패 → 지난 자료로 배포** (새로 읽은 브랜드: {', '.join(b for _, b in fresh) or '-'}) — 오류는 실행 요약 참고")
+        fresh = []
+        if not build():
+            print("\n".join(report))
+            sys.exit("build failed: nothing to publish")
+    for key, _ in fresh:
+        shutil.copy(os.path.join(RAW, f"{key}.csv"), os.path.join(ACC, f"{key}.csv"))
     issues = list(csv.DictReader(open(os.path.join(ROOT, "data2", "issues.csv"), encoding="utf-8-sig")))
     meta = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))["meta"]
     report += ["", f"- 앱 데이터: 가격 {meta['rows']:,}개 · 지점 {meta['branches']}곳",

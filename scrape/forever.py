@@ -86,8 +86,8 @@ def scrape(code, gap):
                                  "addon": 0, "until": "", "url": url, "fetched_at": ts})
                 continue
             for o in opts:
-                sale = o.get("discountPrice") or o.get("price") or 0
-                orig = o.get("price") if o.get("discountPrice") and o.get("price") else ""
+                sale = int(o.get("discountPrice") or o.get("price") or 0)
+                orig = int(o["price"]) if o.get("discountPrice") and o.get("price") else ""
                 rows.append({"brand": "포에버", "branch": name, "category": c["label"], "group": clean(t["name"]),
                              "option": clean(o.get("name")), "sale": sale, "orig": orig, "addon": 0,
                              "until": "", "url": url, "fetched_at": ts})
