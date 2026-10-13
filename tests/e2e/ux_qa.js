@@ -63,10 +63,10 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     await p.goto(BASE); await unlock(p); await p.waitForSelector('.pc');
     await p.evaluate(() => localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])));
     const bad = [];
-    for (const r of ['home', 'compare?k=X12', 'rank', 'versus', 'table', 'search/%EB%A6%AC%EC%A5%AC%EB%9E%80', 'cart', 'me', 'branch/3', 'change', 'about', 'ops', 'map']) {
+    for (const r of ['home', 'compare?k=X12', 'compare?k=X24', 'guide', 'guide?c=%EC%A0%9C%EB%AA%A8%C2%B7%EB%B0%94%EB%94%94', 'rank', 'versus', 'table', 'search/%EB%A6%AC%EC%A5%AC%EB%9E%80', 'cart', 'me', 'branch/3', 'change', 'about', 'ops', 'map']) {
       await p.goto(BASE + '#' + r); await p.waitForTimeout(500);
       const sw = await p.evaluate(() => document.documentElement.scrollWidth); if (sw > w + 1) bad.push(`${r}:${sw}`); }
-    ok(`가로 넘침 없음 (${w}px, 13개 화면)`, !bad.length, bad.join(' ')); await ctx.close(); }
+    ok(`가로 넘침 없음 (${w}px, 16개 화면)`, !bad.length, bad.join(' ')); await ctx.close(); }
   // 5) empty states
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload(); await unlock(p); await p.waitForSelector('.pc');

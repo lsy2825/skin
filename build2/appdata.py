@@ -16,8 +16,11 @@ data.json (compact, strings interned in `s`):
   bstat     per branch [regular level, level incl. specials, groups used, cheapest count, sole cheapest, {cat: level}]
             (level = geometric mean of price / median, 0.81 = 19% cheaper than the middle branch)
   achg      auto-group changes since the previous snapshot {prev, chg [g, b, before, after], new [g, b, p], gone [label s, b, before]}
-  meta.fam  procedure families for the option picker: [name, regex for related rows at a branch, [[key id, variant label]...]]
-  keys      [id, cat, label]
+  meta.fam  procedure families (build2/taxonomy.py) for the compare picker and option switch: [name, regex for related rows
+            at a branch (tested on the name without spaces), [[key id, variant label]...], compare category, base family id,
+            [the clinics' own short explanations from the names]]
+  meta.guide plain-language notes per family (build2/guide.py): {family name or 'id:<base id>': [what it is, what it is used for, how it differs]}
+  keys      [id, cat, label] — hand-made X01..X36 (xkeys.py) first, then variant keys T… (taxonomy.py, data2/variants.json)
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
 the 'before'.
@@ -29,6 +32,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match as xmatch  # noqa: E402
 import groups as G  # noqa: E402
+from guide import GUIDE  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -62,6 +66,68 @@ SIDO = [("전남광주", "광주"), ("서울", "서울"), ("경기", "경기"), 
         ("전라남|전남", "전남"), ("경상북|경북", "경북"), ("경상남|경남", "경남"), ("제주", "제주")]
 
 
+def variant_keys():
+    """hand-made keys (xkeys.X) + variant keys from build2/taxonomy.py (data2/variants.json, written by clean.py)"""
+    vp = os.path.join(ROOT, "data2", "variants.json")
+    v = json.load(open(vp, encoding="utf-8")) if os.path.exists(vp) else {"keys": [], "families": []}
+    allk = [(k[0], k[1], k[2]) for k in X] + [(k["id"], k["cat"], k["label"]) for k in v["keys"]]
+    lab = {k[0]: k[2] for k in allk}
+    auto = {k["id"]: k for k in v["keys"]}
+    num = lambda t: float(re.search(r"\d+(?:\.\d+)?", t).group(0)) if re.search(r"\d", t or "") else 0
+
+    def sub(kid, fam):
+        if kid in auto:
+            return auto[kid]["sub"]
+        # hand-made key label minus the family's words ('리쥬란힐러 2cc' in 리쥬란 → '힐러 2cc')
+        fw = [w for w in re.split(r"[\s·]+", fam) if len(w) >= 2]
+        out = []
+        for w in lab[kid].split():
+            for f in fw:
+                if w == f:
+                    w = ""
+                    break
+                if w.startswith(f):
+                    w = w[len(f):]
+                    break
+            if w:
+                out.append(w)
+        return " ".join(out) or "기본"
+
+    fams = []
+    for f in sorted(v["families"], key=lambda f: (CATS_X.index(f["cat"]) if f["cat"] in CATS_X else 9, f["name"])):
+        ks = sorted(f["keys"], key=lambda k: (re.sub(r"[\d.]+(U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)|\d+회", "", auto[k]["sub"]).strip(),
+                                            num(auto[k].get("sub", "")), auto[k]["sig"].rsplit("|", 1)[-1].zfill(3)))
+        fams.append([f["name"], f.get("rx", ""), [[k, sub(k, f["name"])] for k in sorted(f["curated"]) + ks], f["cat"], f.get("fam", ""), f.get("desc", [])])
+    return allk, fams
+
+
+CATS_X = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디"]
+
+
+def save_snapshot(hist, date, best):
+    """hand-made keys → <date>.json (small, readable diff); variant keys (T…) → <date>.keys.json.gz (gzip, mtime 0 so
+    the same prices give the same bytes)"""
+    x = {k: v for k, v in best.items() if not k.startswith("T")}
+    t = {k: v for k, v in sorted(best.items()) if k.startswith("T")}
+    json.dump(x, open(os.path.join(hist, f"{date}.json"), "w", encoding="utf-8", newline="\n"), ensure_ascii=False)
+    import gzip, io
+    raw = io.BytesIO()
+    with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as f:
+        f.write(json.dumps(t, ensure_ascii=False, separators=(",", ":")).encode("utf-8"))
+    open(os.path.join(hist, f"{date}.keys.json.gz"), "wb").write(raw.getvalue())
+
+
+def load_snapshot(path):
+    """<date>.json + its <date>.keys.json.gz companion (if any) as one dict"""
+    import gzip
+    d = json.load(open(path, encoding="utf-8"))
+    gz = path[:-5] + ".keys.json.gz"
+    if os.path.exists(gz):
+        with gzip.open(gz, "rt", encoding="utf-8") as f:
+            d.update(json.load(f))
+    return d
+
+
 def trend(hist, date, rows):
     """weekly price trend per comparison key from the snapshots in data2/history (regular prices only):
     {"dates": [...], "k": {key: [[median, min, branches] or None per date]}, "disc": {key: median % off the list price now}}"""
@@ -70,7 +136,7 @@ def trend(hist, date, rows):
     for i, p in enumerate(files):
         dates.append(os.path.basename(p)[:10])
         by = {}
-        for kk, v in json.load(open(p, encoding="utf-8")).items():
+        for kk, v in load_snapshot(p).items():
             by.setdefault(kk.split("|")[0], []).append(v)
         for k, vs in by.items():
             vs.sort()
@@ -116,7 +182,7 @@ def about():
     return {"issues": dict(issues), "vat": vat, "sources": src, "report": report, "review": review}
 
 
-def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s):
+def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, allk):
     """prices that moved ≥90% down or ×10 up since the previous snapshot are held back (row[13] = 1) until someone
     lists them in data2/review_ok.csv (brand,branch,name,price). Writes data2/review.csv. Returns pending count."""
     okp = os.path.join(ROOT, "data2", "review_ok.csv")
@@ -128,7 +194,7 @@ def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s):
             hits[("g", g, b, after)] = before
     for k, b, before, after in changes:
         if big(before, after):
-            hits[("k", X[k][0], b, after)] = before
+            hits[("k", allk[k][0], b, after)] = before
     out = []
     for i, (r, row) in enumerate(zip(rows, out_rows)):
         b, sale = row[0], row[3]
@@ -192,6 +258,7 @@ def main():
     for b in branches:
         b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(a.date) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
         b[7] = S(b[7])
+    ALLK, VFAM = variant_keys()
     out_rows = []
     best = {}
     gid, groups, gkeys, bstat, low_reg = G.build(rows, bi, CATS)
@@ -209,25 +276,26 @@ def main():
     hist = os.path.join(ROOT, "data2", "history")
     os.makedirs(hist, exist_ok=True)
     prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < a.date)
-    json.dump(best, open(os.path.join(hist, f"{a.date}.json"), "w", encoding="utf-8", newline="\n"), ensure_ascii=False)
+    save_snapshot(hist, a.date, best)
     changes, prev_date = [], ""
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
-        prev = json.load(open(prev_files[-1], encoding="utf-8"))
-        kid = {k[0]: i for i, k in enumerate(X)}
+        prev = load_snapshot(prev_files[-1])
+        kid = {k[0]: i for i, k in enumerate(ALLK)}
         for kk, after in best.items():
             before = prev.get(kk)
             if before and before != after:
                 k, brand, branch = kk.split("|")
-                changes.append([kid[k], bi[(brand, branch)], before, after])
+                if k in kid:
+                    changes.append([kid[k], bi[(brand, branch)], before, after])
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
-    review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s)
+    review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
-        "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
+                 "fam": VFAM, "guide": GUIDE},
+        "branches": branches, "rows": out_rows, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, a.date, rows),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},

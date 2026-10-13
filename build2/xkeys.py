@@ -214,3 +214,5 @@ if __name__ == "__main__":
             bad += 1
             print("FAIL", kid, name, "got", got, "comp=", comp(name), "sess=", sessions(name))
     print("tests", len(tests), "fail", bad)
+    if bad:
+        raise SystemExit(1)

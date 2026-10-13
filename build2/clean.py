@@ -18,6 +18,7 @@ from collections import Counter, defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match, ONCE, sessions  # noqa: E402
+import taxonomy  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
 TODAY = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date().isoformat()
@@ -169,6 +170,14 @@ def main():
             continue
         ks = [k[0] for k in X if match(k, row["mname"])]
         row["keys"] = " ".join(ks)
+    # variant keys for everything else (build2/taxonomy.py): same family, tags, amount and sessions, sold at 3+ branches
+    auto, vkeys, vfams, vstat = taxonomy.build(out)
+    for row, k in zip(out, auto):
+        if k:
+            row["keys"] = (row["keys"] + " " + k).strip()
+    json.dump({"keys": vkeys, "families": vfams, "stats": vstat}, open(os.path.join(ROOT, "data2", "variants.json"), "w", encoding="utf-8", newline="\n"),
+              ensure_ascii=False, indent=0)
+    print(f"variant keys: {vstat['auto_keys']} (+{len(X)} hand-made) · rows with a comparison key {vstat['covered']}/{vstat['rows']}")
     os.makedirs(os.path.join(ROOT, "data2"), exist_ok=True)
     with open(os.path.join(ROOT, "data2", "clean.csv"), "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(out[0].keys()))

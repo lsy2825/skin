@@ -47,7 +47,7 @@ create table treatment_products (                     -- 시술 제품군: 슈�
 create table treatment_variants (                     -- 비교 단위: 같은 스펙끼리만 비교 (X12 = 슈링크 유니버스 300샷 1회)
   id            serial primary key,
   product_id    integer references treatment_products(id),
-  code          text not null unique,                 -- X01..X36 (build2/xkeys.py)
+  code          text not null unique,                 -- X01..X36 (build2/xkeys.py) · T… (build2/taxonomy.py)
   label         text not null,
   unit          text,                                 -- 샷 · cc · U · KJ
   qty           numeric,

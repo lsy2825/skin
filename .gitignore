@@ -3,3 +3,5 @@ data2/clean.csv
 __pycache__/
 *.pyc
 data2/db/
+data2/variants.json
+data2/variants_report.txt

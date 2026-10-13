@@ -2,7 +2,7 @@
 
 usage: python build2/export_db.py [--date YYYY-MM-DD]
        psql "$DATABASE_URL" -f supabase/schema_platform.sql && psql "$DATABASE_URL" -f supabase/load_platform.sql
-Sources: data2/clean.csv (offers), data2/branches.csv, data2/vat_policy.json, data2/sources.json, build2/xkeys.py (variants),
+Sources: data2/clean.csv (offers), data2/branches.csv, data2/vat_policy.json, data2/sources.json, build2/xkeys.py + data2/variants.json (variants),
 build2/appdata.py FAM (products), data2/review.csv (PENDING_REVIEW). Integer KRW only. One price snapshot per offer for the
 export date (history before that stays in data2/history, key/group level).
 """
@@ -61,11 +61,15 @@ def main():
         prod_rows.append([i + 1, CATS.index(cat) + 1, name, "{}"])
     counts["treatment_products"] = write("treatment_products", ["id", "category_id", "name", "aliases"], prod_rows)
     key_prod = {v[0]: name for name, _, vs in FAM for v in vs}
-    vid = {k[0]: i + 1 for i, k in enumerate(X)}
+    # hand-made keys (xkeys.X) + variant keys from build2/taxonomy.py (data2/variants.json, written by clean.py)
+    vp = os.path.join(ROOT, "data2", "variants.json")
+    auto = json.load(open(vp, encoding="utf-8"))["keys"] if os.path.exists(vp) else []
+    allk = [(k[0], k[2], 1) for k in X] + [(v["id"], v["label"], int(v["sig"].rsplit("|", 1)[-1])) for v in auto]
+    vid = {k[0]: i + 1 for i, k in enumerate(allk)}
     var_rows = []
-    for k in X:
-        m = UNIT.search(k[2])
-        var_rows.append([vid[k[0]], pid.get(key_prod.get(k[0], ""), ""), k[0], k[2], m.group(2) if m else "", m.group(1) if m else "", 1, "{}"])
+    for kid, label, sess in allk:
+        m = UNIT.search(label)
+        var_rows.append([vid[kid], pid.get(key_prod.get(kid, ""), ""), kid, label, m.group(2) if m else "", m.group(1) if m else "", sess, "{}"])
     counts["treatment_variants"] = write("treatment_variants", ["id", "product_id", "code", "label", "unit", "qty", "sessions", "attrs"], var_rows)
     reg_rows = []
     for i, (key, s) in enumerate(src.get("brands", {}).items()):
@@ -90,7 +94,7 @@ def main():
         status = "PENDING_REVIEW" if (r["brand"], r["branch"], r["name"], price) in review else "EXPIRED" if until and until < a.date else "VERIFIED"
         v = {"포함": "incl", "별도": "excl"}.get(r.get("vat", ""), "unknown")
         keys = r["keys"].split()
-        offers.append([oid, brid[k], vid[keys[0]] if keys else "", comp(r["name"]) if r["kind"] != "구독권" else "", r["name"], r["option"], r["group"],
+        offers.append([oid, brid[k], vid.get(keys[0], "") if keys else "", comp(r["name"]) if r["kind"] != "구독권" else "", r["name"], r["option"], r["group"],
                        r["src_cat"], CATS.index(r["cat"]) + 1, price, lst, v, r["kind"], int(r["sess"] or 1), r["addon"] == "1", until,
                        r["url"], h, (r["fetched_at"] or a.date)[:10], (r["fetched_at"] or a.date)[:10], status])
         for c in r["tags"].split("·"):
@@ -103,7 +107,7 @@ def main():
                 hit = next((x[0] for x in X if part and xmatch(x, part)), None)
                 items.append([len(pkgs), pos, part, vid[hit] if hit else ""])
         norm = round(price * 1.1) if v == "excl" else price
-        snaps.append([a.date, oid, brid[k], vid[keys[0]] if keys else "", offers[-1][3], price, norm, status, r["url"],
+        snaps.append([a.date, oid, brid[k], vid.get(keys[0], "") if keys else "", offers[-1][3], price, norm, status, r["url"],
                       "{" + ",".join(c for c in r["tags"].split("·") if c in COND) + "}", r["fetched_at"] or f"{a.date}T00:00:00+09:00"])
     counts["offers"] = write("offers", ["id", "branch_id", "variant_id", "auto_group", "name", "raw_name", "raw_group", "source_category", "category_id",
                                         "price_krw", "list_price_krw", "vat", "kind", "sessions", "is_addon", "valid_until", "source_url", "source_hash",
