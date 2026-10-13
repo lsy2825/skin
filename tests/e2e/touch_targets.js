@@ -1,12 +1,14 @@
 // hit-test probe: a target passes if points 11px above/below/left/right of its centre still hit it
-// Usage: python3 -m http.server 8766 --directory app &  then  node tests/e2e/touch_targets.js [out-dir]
+// Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/touch_targets.js [out-dir]
 // Needs Playwright with Chromium (PLAYWRIGHT=/path/to/node_modules/playwright if it isn't resolvable). Not part of
 // `node --test`: it drives a real browser against the local server. Results are written up in docs/UX_QA_REPORT.md.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
+const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
+if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요 (예: APP_PIN=xxxx node ' + process.argv[1] + ')'); process.exit(2); }
 (async () => { const b = await chromium.launch(); const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
   await p.goto(BASE); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])); }); await p.reload();
-  for (const d of '0717') await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
+  for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
   let tot = 0, bad = 0; const ex = {};
   for (const r of ['home', 'compare?k=X12', 'compare?k=X24', 'guide', 'search/%EB%B3%B4%ED%86%A1%EC%8A%A4', 'table', 'cart', 'me', 'branch/3', 'versus', 'change', 'about', 'ops', 'rank']) {
     await p.goto(BASE + '#' + r); await p.waitForTimeout(500);

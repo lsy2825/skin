@@ -1,4 +1,4 @@
-// 피부과 가격비교 — app logic. Data: data.json (built by build2/appdata.py). No framework.
+// 윤실장 (피부과 가격비교) — app logic. Data: data.json (built by build2/appdata.py). No framework.
 (function () {
   "use strict";
   const $ = (s, el = document) => el.querySelector(s);
@@ -10,11 +10,14 @@
       else if (k === "html") e.innerHTML = v;
       else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
       else if (k === "style") e.setAttribute("style", v);
+      else if ((k === "href" || k === "src") && !safeUrl(v)) continue;   // links built from scraped data
       else e.setAttribute(k, v === true ? "" : v);
     }
     for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
     return e;
   };
+  // only relative links and http(s) / mailto / tel: a 'javascript:' or 'data:' URL from scraped data never becomes a link
+  function safeUrl(v) { const m = /^\s*([a-z][a-z0-9+.-]*):/i.exec(String(v)); return !m || /^(https?|mailto|tel)$/i.test(m[1]); }
   const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((c) => c != null && c !== false));
   const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
@@ -293,6 +296,10 @@
 
   // ---------------- location: GPS, or a saved place (집·직장) — set from GPS or the map centre
   const places = () => store.get("places", {});
+  // places saved before at ~1 m precision are rounded once to ~100 m
+  { const p = places(), r = (v) => +(+v).toFixed(3); let moved = false;
+    for (const k of Object.keys(p)) if (p[k] && (r(p[k].lat) !== p[k].lat || r(p[k].lng) !== p[k].lng)) { p[k] = { lat: r(p[k].lat), lng: r(p[k].lng) }; moved = true; }
+    if (moved) store.set("places", p); }
   function usePlace(name) {
     const p = places()[name];
     if (!p) return;
@@ -300,7 +307,8 @@
     $("#locbtn").classList.add("on"); $("#locbtn span").textContent = name;
     store.set("locPlace", name); render();
   }
-  function savePlace(name, lat, lng) { const p = places(); p[name] = { lat: +lat.toFixed(5), lng: +lng.toFixed(5) }; store.set("places", p); toast(`'${name}' 위치를 저장했어요`); }
+  // saved on this phone at about 100 m (3 decimals): enough for distances, not an exact home address
+  function savePlace(name, lat, lng) { const p = places(); p[name] = { lat: +lat.toFixed(3), lng: +lng.toFixed(3) }; store.set("places", p); toast(`'${name}' 위치를 저장했어요`); }
   function locSheet() {
     const p = places();
     sheet("거리 기준 위치", (close) => h("div", {},
@@ -674,7 +682,7 @@
       const payload = () => ({ name: c.name, items: c.items, from: from.value.trim().slice(0, 20), note: note.value.trim().slice(0, 200),
         sent: best ? { total: best.total, b: bkey(best.b), date: today(), vat: st.vat } : null });
       const link = () => `${location.origin}${location.pathname}#import/${enc(payload())}`;
-      const text = () => [`${from.value.trim() ? `${from.value.trim()}님이 보낸 ` : ""}피부과 장바구니 '${c.name}'`,
+      const text = () => [`${from.value.trim() ? `${from.value.trim()}님이 보낸 ` : ""}윤실장 장바구니 '${c.name}'`,
         ...c.items.map((it) => `- ${itemLabel(it)} ×${it.q || 1}`),
         best ? `한 곳 최저: ${bname(best.b)} ${won(best.total)} (${today()} 기준, ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"})` : null,
         note.value.trim() || null].filter(Boolean).join("\n");
@@ -687,7 +695,7 @@
           h("button", { class: "btn", type: "button", style: "flex:1", onclick: async () => {
             store.set("sender", from.value.trim());
             try {
-              if (navigator.share) await navigator.share({ title: "피부과 장바구니", text: text(), url: link() });
+              if (navigator.share) await navigator.share({ title: "윤실장 장바구니", text: text(), url: link() });
               else { await navigator.clipboard.writeText(`${text()}\n${link()}`); toast("메시지와 링크를 복사했어요"); }
               close();
             } catch (e) { if (e && e.name !== "AbortError") toast("보내지 못했어요"); }
@@ -1328,6 +1336,7 @@
         h("div", { class: "opts", style: "margin-top:10px" }, reasons.map((x) => h("button", { class: "opt", type: "button", "aria-pressed": s.why === x ? "true" : "false", onclick: () => { s.why = x; paint(); } }, h("b", {}, x)))),
         h("label", { class: "flabel" }, "메모 (선택)", note),
         h("div", { class: "sub", style: "margin-top:8px" }, "신고는 운영자가 확인해 다음 갱신에 반영해요. GitHub 계정이 없으면 '내용 복사'로 운영자에게 보내 주세요."),
+        h("div", { class: "sub", style: "margin-top:4px;color:var(--pricey)" }, "GitHub 신고는 누구나 볼 수 있는 공개 글이에요. 메모에 이름·연락처 같은 개인정보를 적지 마세요."),
         h("div", { class: "row", style: "margin-top:12px" },
           h("button", { class: "btn gray", type: "button", onclick: () => { keep(); copyText(body(), "신고 내용을 복사했어요"); close(); } }, "내용 복사"),
           h("a", { class: "btn", style: "flex:1;text-align:center;text-decoration:none", target: "_blank", rel: "noopener",
@@ -2034,7 +2043,7 @@
 
   // ---------------- search over every price
   views.search = (arg, params) => {
-    let qs = decodeURIComponent(arg || "");
+    let qs = ""; try { qs = decodeURIComponent(arg || ""); } catch (e) { qs = String(arg || ""); }   // a malformed %-sequence in the link
     // natural language → filters, once per new search (?nl=1 marks it as done; ?nl=0 = take the words literally)
     if (qs && !params.has("nl")) {
       const it = Search.interpret(qs, nlCtx());
@@ -2362,11 +2371,28 @@
     return box;
   }
   // a cart shared by link
+  // a shared cart comes from someone else's link: keep only the known fields, with their types and sizes
+  function cleanShared(raw) {
+    if (!raw || typeof raw !== "object" || !Array.isArray(raw.items)) return null;
+    const str = (v, n) => (typeof v === "string" ? v.slice(0, n) : "");
+    const ov = (o) => (o && typeof o === "object" ? Object.fromEntries(Object.entries(o).slice(0, 30).filter(([k, v]) => typeof v === "string").map(([k, v]) => [k.slice(0, 80), v.slice(0, 200)])) : undefined);
+    const items = raw.items.slice(0, 50).map((it) => {
+      if (!it || typeof it !== "object") return null;
+      const q = Math.max(1, Math.min(20, Math.floor(+it.q) || 1)), sp = typeof it.sp === "boolean" ? it.sp : undefined;
+      if (it.t === "k" && typeof it.k === "string" && /^[A-Z][A-Z0-9]{1,11}$/.test(it.k)) return { t: "k", k: it.k, q, sp, ov: ov(it.ov) };
+      if (it.t === "r" && typeof it.n === "string" && it.n) return { t: "r", n: it.n.slice(0, 200), br: str(it.br, 80), p: Math.max(0, Math.round(+it.p) || 0), q, sp };
+      return null;
+    }).filter(Boolean);
+    const sent = raw.sent && typeof raw.sent === "object" && Number.isFinite(+raw.sent.total)
+      ? { total: Math.round(+raw.sent.total), vat: raw.sent.vat === "listed" ? "listed" : "incl", date: str(raw.sent.date, 10) } : null;
+    return { name: str(raw.name, 30), from: str(raw.from, 20), note: str(raw.note, 200), items, sent };
+  }
   views.import = (arg) => {
     const box = h("div", { class: "view" });
     let c = null;
-    try { c = dec(arg); } catch (e) { /* bad link */ }
-    if (!c || !Array.isArray(c.items)) { box.append(h("div", { class: "card empty" }, "공유 링크를 읽지 못했어요.")); return box; }
+    // size cap before decoding (a real cart link is a few KB); any decoding error = unreadable link
+    try { if (String(arg || "").length <= 20000) c = cleanShared(dec(arg)); } catch (e) { c = null; }
+    if (!c || !c.items.length) { box.append(h("div", { class: "card empty" }, "공유 링크를 읽지 못했어요.")); return box; }
     const okItems = c.items.filter((it) => it && (it.t === "k" || it.t === "r") && itemOk(it));
     const now = okItems.length === c.items.length && okItems.length ? cartPlan(okItems).full[0] : null;
     box.append(h("div", { class: "card" }, h("h2", {}, `${c.from ? `${String(c.from).slice(0, 20)}님이 보낸 ` : "공유받은 "}장바구니: ${c.name || "장바구니"}`),
@@ -2377,7 +2403,7 @@
       h("ul", { class: "list", style: "margin-top:6px" }, c.items.map((it) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, itemLabel(it)), h("span", { class: "sub" }, `×${it.q || 1}`),
         !itemOk(it) ? h("span", { class: "m", style: "color:var(--pricey)" }, "이번 주 가격표에 없음") : null)))),
       h("button", { class: "btn", type: "button", style: "width:100%;margin-top:12px", onclick: () => {
-        st.carts.push({ name: String(c.name || "공유받은 장바구니").slice(0, 30), items: c.items.filter((it) => it && (it.t === "k" || it.t === "r")).map((it) => ({ ...it, q: Math.max(1, Math.min(20, +it.q || 1)) })) });
+        st.carts.push({ id: newId(), name: c.name || "공유받은 장바구니", items: c.items.map((it) => JSON.parse(JSON.stringify(it))) });
         st.ci = st.carts.length - 1; saveCarts(); toast("내 장바구니로 저장했어요"); nav("cart", true); } }, "내 장바구니로 저장")));
     return box;
   };
@@ -2599,6 +2625,11 @@
   function applyTheme() {
     const t = store.get("theme", "auto");
     if (t === "auto") document.documentElement.removeAttribute("data-theme"); else document.documentElement.setAttribute("data-theme", t);
+    // the status bar follows a theme picked here too (the two meta tags otherwise follow the device setting)
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => {
+      if (!m.dataset.c) m.dataset.c = m.content;
+      m.content = t === "auto" ? m.dataset.c : t === "dark" ? "#161013" : "#fbf2f4";
+    });
   }
 
   // ---------------- router
@@ -2651,6 +2682,7 @@
   st.region = store.get("region", "수도권");
   paintRegion();
   $("#regbtn").addEventListener("click", () => { if (D) regionSheet(); });
+  $("#fcart").addEventListener("click", () => nav("cart"));   // no inline handlers: the CSP allows scripts from files only
   paintCartN();
   if (window.Auth && window.Auth.enabled) window.Auth.onChange((u) => { if (u && D) syncFromAccount(); else if (D) render(); });
   loadData().then(() => { if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => { $("#main").replaceChildren(h("div", { class: "card empty" }, "데이터를 불러오지 못했어요. 인터넷 연결을 확인하고 새로고침해 주세요.")); console.error(e); });

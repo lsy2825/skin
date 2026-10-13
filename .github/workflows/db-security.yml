@@ -1,0 +1,45 @@
+name: db-security
+
+# Database security tests on a throwaway PostgreSQL 16 (service container), never a real database:
+#   tests/db/run_security_tests.sh   access policies (anonymous, other users, price changes, privilege escalation, MFA,
+#                                    audit log, quotas) — supabase/DATABASE_ACCESS_POLICIES.sql
+#   tests/db/backup_restore_test.sh  real current data: dump → restore → identical rows, checksums, policies, triggers
+on:
+  push:
+    branches: [main]
+    paths: ["supabase/**", "tests/db/**", "build2/export_db.py", ".github/workflows/db-security.yml"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: postgres     # the throwaway CI database above, not a credential of any real system
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Access policy tests
+        run: bash tests/db/run_security_tests.sh
+      - name: Backup and restore with the real data
+        run: |
+          python build2/weekly.py --skip-scrape > /dev/null
+          python build2/export_db.py
+          bash tests/db/backup_restore_test.sh

@@ -5,13 +5,16 @@
 - 화면 검사 결과: `docs/UX_QA_REPORT.md`
 - 라이브 제품 UX 감사(지시서 항목별): `docs/UX_AUDIT.md`
 - 데이터 품질: `docs/DATA_QUALITY_REPORT.md`
+- 보안: `docs/SECURITY_AUDIT.md` · `SECURITY_ARCHITECTURE.md` · `SECURITY_REMEDIATION.md` · `SECURITY_TEST_REPORT.md` · `INCIDENT_RESPONSE_PLAN.md`
 
 **실제로 돌린 테스트** (이 세션, 2026-10-13)
 - `node --test tests/*.test.js`: 23개 통과(가격 계산, 검색, 가격 이력·알림)
 - `python build2/xkeys.py`: 93개 통과(브랜드 간 같은 시술 판정)
 - `python build2/taxonomy.py`: 39개 통과(시술 분류표: 제품군·세부 구분·용량·회차, 묶음·추가 옵션 거르기)
 - `python build2/knowledge.py`: 통과(지식 베이스 49개 항목의 형식·출처·검수 규칙)
-- `tests/db/rls_test.sql`: 로컬 PostgreSQL 16에서 사용자 간 데이터 격리 확인(`RLS OK`)
+- `tests/db/run_security_tests.sh`: 로컬 PostgreSQL 16에서 DB 접근 정책 시나리오 통과(익명·다른 사용자·가격 변경·권한 상승·관리자 MFA·감사 기록·요청 한도). 의도적 약화 3개 중 3개 탐지
+- `tests/db/backup_restore_test.sh`: 실제 데이터(가격 62,417줄) 백업→복구 후 행 수·체크섬·정책·트리거 일치
+- `tests/security/scan_secrets.py`: 현재 파일 비밀 정보 0건(기록에는 예전 PIN 있음 — 교체 필요)
 - `supabase/schema_platform.sql` + `load_platform.sql`:
   - 로컬 PostgreSQL 16에 가격 62,417줄을 넣었어요.
   - "서울 슈링크 유니버스 300샷 최저가" 질의 결과(블리비 구로점 51,700원)가 앱과 같았어요.
@@ -20,6 +23,7 @@
   - `tests/e2e/ux_qa.js`: 25/25 통과
   - `tests/e2e/touch_targets.js`: 3,210/3,210 통과(14개 화면)
   - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 9개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/xss.js`: 악성 입력 실행 0회(CSP 켬/끔 모두), 7/7 통과
   - 기능별 회귀 시나리오: 페이지 오류 0건
 - 못 한 것: 실기기·스크린리더 검사, 병원 원본과의 실시간 대조(이 환경에서 병원 사이트 접속 불가 → `price-check` 워크플로로)
 
@@ -120,6 +124,16 @@
 - **터치·화면:** 모든 터치 영역 24px 이상, 다크 모드, 하단 떠 있는 장바구니
 - **대비:** axe 자동 검사에서 라이트·다크 모두 위반 0건이에요. 글자색·버튼색 토큰을 조정했어요.
 
+**보안** (상세: `SECURITY_*.md`)
+- **브랜드:** 앱 이름 '윤실장'과 아이콘(`brand/`), 아이콘에서 가져온 분홍 테마(라이트·다크)
+- **브라우저:** CSP(스크립트는 같은 사이트만), 안전한 링크만 허용, 공유 링크 검증, 위치 정밀도 낮춤, 신고 공개 안내
+- **비밀 정보:** PIN 평문 제거(테스트는 `APP_PIN`), 배포 전 비밀 검사, 로그인 라이브러리를 저장소 안으로
+- **CI:** 작업별 최소 권한, 액션 SHA 고정, 패키지 버전 고정, Dependabot 설정, 워크플로 입력 인젝션 수정
+- **수집:** robots.txt를 확인할 수 없으면 수집 안 함(RFC 9309), 모든 호스트 확인
+- **DB:**
+  - `supabase/DATABASE_ACCESS_POLICIES.sql`: 모든 표 RLS, 명령별 정책, 관리자 = 역할 + MFA, 감사 트리거, 추가만 가능한 기록, 요청 한도
+  - CI 워크플로 `db-security`가 매번 시험해요
+
 **운영·DB·설정**
 - **운영 현황 화면**(내정보 → 운영 현황, `flags.ops`): 마지막 수집 결과, 지점 신선도, 검토 대기, robots.txt 확인, 기기에 저장된 신고 목록
 - **DB 스키마(PostgreSQL):** `supabase/schema_platform.sql`
@@ -130,6 +144,10 @@
 - **PWA:** 오프라인 캐시, 나눔스퀘어라운드 글꼴, 비밀번호 화면
 
 ## IN PROGRESS
+- **보안 남은 일**(`SECURITY_REMEDIATION.md` R-open)
+  - 비밀번호 화면 PIN 교체(사용자 결정)
+  - GitHub 보안 기능 켜기(사용자 조치. 이 환경에서는 설정 변경이 막혀 있어요)
+  - main 브랜치 보호, 전용 도메인
 - **시술 설명 의료진 검수:** 49개 항목이 모두 초안이에요. 출처가 없는 13개는 '근거 자료 미정리'로 보여요.
 - **가격 동향·변동 데이터 쌓기:** 첫 기록이 2026-10-13이에요. 선 그래프와 변동 목록은 2026-10-19(월) 갱신부터 채워져요.
 - **블리비 프라임 타임 시간대:** 사이트 확인 작업이 "프라임 타임" 주변 문구를 모아요. 시각이 확인되면 방문 시간 필터에 반영해요.

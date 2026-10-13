@@ -10,8 +10,9 @@
   - `yoonsiljang-icon-maskable-1024.png`
     - 그림을 80% 크기로 줄이고 분홍 여백을 둔 버전이에요.
     - Android가 원형 등으로 잘라도 '윤실장' 글자가 잘리지 않게 하려는 거예요.
-- **아직 앱에 적용하지 않았어요.** 적용할 때 바꿀 곳:
+- **2026-10-13 앱에 적용했어요.** 바꾼 곳:
   - `app/manifest.webmanifest`: name, short_name, icons, theme_color
   - `app/index.html`: title, apple-touch-icon, 머리말 제목
   - `app/icons/`: 192·512·maskable·180px 아이콘
   - `app/sw.js`: 캐시 버전
+- 테마 색도 아이콘에서 가져왔어요(`app/index.html`의 `:root` 색 토큰: 분홍·라즈베리·크림). 라이트·다크 모두 글자 대비 4.5:1 이상이에요.

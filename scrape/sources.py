@@ -48,11 +48,19 @@ def accepted_urls(key):
     return list(seen.values())
 
 
+def robots_unread(host, err, paths):
+    """robots.txt could not be read. RFC 9309: a 4xx answer means there is none (crawling allowed); a 5xx answer or no
+    answer at all (timeout, connection error) means assume everything is disallowed — that brand is not scraped this week."""
+    if err.startswith("HTTP 4"):
+        return {"host": host, "robots": f"없음 ({err})", "allowed": True, "checked_paths": paths}
+    return {"host": host, "robots": f"확인 실패 ({err}) — 수집 안 함", "allowed": False, "checked_paths": paths}
+
+
 def robots(f, host, paths):
     r = f.get(f"https://{host}/robots.txt")
-    if r is None:   # 404 = no robots.txt (everything allowed by convention); other errors are recorded as such
-        err = f.fails[-1]["error"] if f.fails and f.fails[-1]["url"].endswith("/robots.txt") else "?"
-        return {"host": host, "robots": "없음 (HTTP 404)" if err == "HTTP 404" else f"확인 실패 ({err})", "allowed": True, "checked_paths": paths}
+    if r is None:
+        err = f.fails[-1]["error"] if f.fails and f.fails[-1]["url"].endswith("/robots.txt") else "응답 없음"
+        return robots_unread(host, str(err), paths)
     rp = urllib.robotparser.RobotFileParser()
     rp.parse(r.text.splitlines())
     blocked = [p for p in paths if not rp.can_fetch("*", f"https://{host}{p}")]
@@ -103,7 +111,7 @@ def main():
         for u in urls + reg["seeds"]:
             pu = urlparse(u)
             hosts.setdefault(pu.netloc, set()).add((pu.path or "/") + (f"?{pu.query}" if pu.query else ""))
-        hs = [robots(f, h, sorted(p)[:3]) for h, p in list(hosts.items())[:12]]
+        hs = [robots(f, h, sorted(p)[:3]) for h, p in hosts.items()]   # every host the scraper reads
         # hosts asking for a long crawl delay (리엔장: 180 s) get no extra sample-page request: the scraper's one weekly
         # page per host is all we read there
         slow = {x["host"] for x in hs if (x.get("crawl_delay") or 0) >= 10}

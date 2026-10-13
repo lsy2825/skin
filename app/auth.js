@@ -4,7 +4,8 @@
   "use strict";
   const cfg = window.APP_CONFIG || {};
   const enabled = !!(cfg.supabaseUrl && cfg.supabaseAnonKey);
-  const SDK = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
+  // supabase-js 2.45.4 (MIT), copied into the repo from the npm package so no third-party script runs (CSP: script-src 'self')
+  const SDK = "vendor/supabase/supabase.js";
   let sb = null, user = null, ready = null;
   const listeners = [];
   const emit = () => listeners.forEach((f) => { try { f(user); } catch (e) { console.error(e); } });
@@ -41,7 +42,9 @@
       const { error } = await sb.auth.signInWithOAuth({ provider, options: { redirectTo: location.origin + location.pathname } });
       if (error) throw error;
     },
-    async signOut() { await load(); await sb.auth.signOut(); },
+    // logout revokes this device's refresh token on the server (not just a local flag), so a copied token stops working
+    // once its short-lived access token (Supabase JWT expiry, 1 h by default) runs out
+    async signOut() { await load(); await sb.auth.signOut({ scope: "local" }); },
     // server copy of profile + records (null when signed out)
     async pull() {
       await load();

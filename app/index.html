@@ -3,14 +3,22 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>피부과 가격비교</title>
-<meta name="description" content="공장형 피부과 브랜드·지점별 시술 가격 비교">
-<meta name="theme-color" content="#f2f4f6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0f1114" media="(prefers-color-scheme: dark)">
+<title>윤실장 · 피부과 가격비교</title>
+<meta name="description" content="윤실장 — 공장형 피부과 브랜드·지점별 시술 가격 비교">
+<meta name="application-name" content="윤실장">
+<meta name="apple-mobile-web-app-title" content="윤실장">
+<meta name="theme-color" content="#fbf2f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161013" media="(prefers-color-scheme: dark)">
 <meta name="robots" content="noindex,nofollow">
+<!-- Content Security Policy: scripts, data and fonts only from this site; map tiles from OpenStreetMap; the sign-in API
+     (Supabase) only when login is turned on. GitHub Pages cannot send HTTP headers, so this meta tag is the policy
+     (frame-ancestors is ignored in a meta tag — see docs/SECURITY_ARCHITECTURE.md). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32">
+<link rel="icon" href="icons/icon-192.png" sizes="192x192">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="preload" href="vendor/fonts/NanumSquareRoundB.woff2" as="font" type="font/woff2" crossorigin>
@@ -21,30 +29,32 @@
 @font-face { font-family: "NanumSquareRound"; src: url(vendor/fonts/NanumSquareRoundB.woff2) format("woff2"); font-weight: 600 700; font-display: swap; }
 @font-face { font-family: "NanumSquareRound"; src: url(vendor/fonts/NanumSquareRoundEB.woff2) format("woff2"); font-weight: 800 900; font-display: swap; }
 :root {
-  --bg: #f2f4f6; --surface: #fff; --fill: #f2f4f6; --sunken: #f7f8fa; --line: #e5e8eb; --line-soft: #f0f2f5;
-  --ink: #191f28; --ink-2: #4e5968; --muted: #5f6b78; --faint: #b0b8c1;
-  --accent: #1b64da; --accent-fill: #1f6fe5; --accent-soft: #e8f3ff; --accent-ink: #fff; --toast-act: #6eaaff;
-  --good: #1b64da; --pricey: #cc1f30; --pricey-soft: #ffeef0;
-  --k-trial-bg: #e8f3ff; --k-trial: #1b64da; --k-ltd-bg: #fff1e0; --k-ltd: #b05200; --k-post-bg: #f0f2f5; --k-post: #4e5968;
-  --tag-bg: #fff6d9; --tag: #7a5600;
-  --shadow: 0 1px 2px rgba(25,31,40,.04), 0 10px 28px rgba(25,31,40,.08);
-  --s1: #2a78d6; --s2: #eb6834;
+  /* 윤실장 theme: blush pink, raspberry, cream from the app icon (brand/). Price meaning stays apart from the brand pink:
+     cheaper / down = blue (--good), pricier / missing / over budget = red-orange (--pricey). All text pairs >= 4.5:1. */
+  --bg: #fbf2f4; --surface: #fff; --fill: #f8e9ee; --sunken: #fdf6f8; --line: #f1dfe5; --line-soft: #f7edf0;
+  --ink: #2b1b21; --ink-2: #5e4650; --muted: #735d66; --faint: #c9b3bb;
+  --accent: #b31e57; --accent-fill: #c02461; --accent-soft: #fde8ef; --accent-ink: #fff; --toast-act: #ff9fbe; --brand-ink: #7a2340;
+  --good: #1b64da; --pricey: #c2361d; --pricey-soft: #fdece8;
+  --k-trial-bg: #fde8ef; --k-trial: #a81c52; --k-ltd-bg: #fff1e0; --k-ltd: #a14b00; --k-post-bg: #f5eef0; --k-post: #5e4650;
+  --tag-bg: #fff4d6; --tag: #7a5600;
+  --shadow: 0 1px 2px rgba(122,35,64,.05), 0 10px 28px rgba(122,35,64,.09);
+  --s1: #d63a6e; --s2: #b7791f;
   --r: 20px; --nav-h: 64px;
   --font: "NanumSquareRound", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0f1114; --surface: #191b20; --fill: #24272e; --sunken: #20232a; --line: #2b2f37; --line-soft: #22252c;
-  --ink: #f2f4f6; --ink-2: #c9ced6; --muted: #9aa2ad; --faint: #5d6570;
-  --accent: #6eaaff; --accent-fill: #1f6fe5; --accent-soft: #15284a; --toast-act: #1b64da; --good: #6eaaff; --pricey: #ff6b78; --pricey-soft: #3a1b20;
-  --k-trial-bg: #15284a; --k-trial: #8fbdff; --k-ltd-bg: #3a2710; --k-ltd: #ffb866; --k-post-bg: #262a31; --k-post: #c9ced6;
-  --tag-bg: #352b0e; --tag: #f2d583; --shadow: 0 0 0 1px #2b2f37; --s1: #3987e5; --s2: #d95926; color-scheme: dark; } }
+  --bg: #161013; --surface: #201a1d; --fill: #2c2428; --sunken: #261f23; --line: #3a3035; --line-soft: #2a2226;
+  --ink: #f8eef1; --ink-2: #dccbd1; --muted: #ab979f; --faint: #5f4f56;
+  --accent: #ff8db4; --accent-fill: #cc2b68; --accent-soft: #3d1a28; --toast-act: #a81c52; --brand-ink: #ffb3cc; --good: #7fb2ff; --pricey: #ff7a63; --pricey-soft: #3a1d18;
+  --k-trial-bg: #3d1a28; --k-trial: #ffa6c4; --k-ltd-bg: #3a2710; --k-ltd: #ffb866; --k-post-bg: #2c2428; --k-post: #dccbd1;
+  --tag-bg: #352b0e; --tag: #f2d583; --shadow: 0 0 0 1px #3a3035; --s1: #ea4f86; --s2: #bd8230; color-scheme: dark; } }
 :root[data-theme="dark"] {
-  --bg: #0f1114; --surface: #191b20; --fill: #24272e; --sunken: #20232a; --line: #2b2f37; --line-soft: #22252c;
-  --ink: #f2f4f6; --ink-2: #c9ced6; --muted: #9aa2ad; --faint: #5d6570;
-  --accent: #6eaaff; --accent-fill: #1f6fe5; --accent-soft: #15284a; --toast-act: #1b64da; --good: #6eaaff; --pricey: #ff6b78; --pricey-soft: #3a1b20;
-  --k-trial-bg: #15284a; --k-trial: #8fbdff; --k-ltd-bg: #3a2710; --k-ltd: #ffb866; --k-post-bg: #262a31; --k-post: #c9ced6;
-  --tag-bg: #352b0e; --tag: #f2d583; --shadow: 0 0 0 1px #2b2f37; --s1: #3987e5; --s2: #d95926; color-scheme: dark; }
+  --bg: #161013; --surface: #201a1d; --fill: #2c2428; --sunken: #261f23; --line: #3a3035; --line-soft: #2a2226;
+  --ink: #f8eef1; --ink-2: #dccbd1; --muted: #ab979f; --faint: #5f4f56;
+  --accent: #ff8db4; --accent-fill: #cc2b68; --accent-soft: #3d1a28; --toast-act: #a81c52; --brand-ink: #ffb3cc; --good: #7fb2ff; --pricey: #ff7a63; --pricey-soft: #3a1d18;
+  --k-trial-bg: #3d1a28; --k-trial: #ffa6c4; --k-ltd-bg: #3a2710; --k-ltd: #ffb866; --k-post-bg: #2c2428; --k-post: #dccbd1;
+  --tag-bg: #352b0e; --tag: #f2d583; --shadow: 0 0 0 1px #3a3035; --s1: #ea4f86; --s2: #bd8230; color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 15px; line-height: 1.5; letter-spacing: -0.01em;
@@ -101,8 +111,8 @@ a { color: var(--accent); }
 
 /* header */
 header.top { display: flex; align-items: center; gap: 10px; padding: 6px 0 12px; }
-.logo { width: 32px; height: 32px; border-radius: 10px; background: var(--accent-fill); color: #fff; display: grid; place-items: center; font-weight: 800; flex: none; }
-header.top h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: -0.03em; }
+.logo { width: 36px; height: 36px; border-radius: 10px; flex: none; display: block; box-shadow: 0 1px 3px rgba(122,35,64,.18); }
+header.top h1 { font-size: 18px; font-weight: 800; margin: 0; letter-spacing: -0.03em; color: var(--brand-ink); }
 header.top .upd { font-size: 12px; color: var(--muted); }
 .regbtn { margin-left: auto; }
 .regbtn + .locbtn { margin-left: 0; }
@@ -210,8 +220,8 @@ select.pick { width: 100%; border: 0; background: var(--fill); border-radius: 12
 /* map */
 #map { height: min(58vh, 520px); border-radius: var(--r); overflow: hidden; background: var(--fill); z-index: 0; }
 .leaflet-container { font-family: var(--font); }
-.pin-price { background: var(--surface); color: var(--ink); border: 2px solid var(--c, #3182f6); border-radius: 10px; padding: 1px 6px; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.2); transform: translate(-50%, -50%); display: inline-block; }
-.pin-price.best { background: var(--c, #3182f6); color: #fff; }
+.pin-price { background: var(--surface); color: var(--ink); border: 2px solid var(--c, var(--accent-fill)); border-radius: 10px; padding: 1px 6px; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.2); transform: translate(-50%, -50%); display: inline-block; }
+.pin-price.best { background: var(--c, var(--accent-fill)); color: #fff; }
 .pin-price.sel, .pin-cluster.sel { outline: 3px solid var(--ink); outline-offset: 1px; }
 .pin-cluster { background: var(--ink); color: var(--surface); border-radius: 14px; padding: 4px 9px; font-size: 12px; font-weight: 800; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,.25); transform: translate(-50%, -50%); display: inline-block; cursor: pointer; }
 .pin-cluster.best { background: var(--accent-fill); color: #fff; }
@@ -295,7 +305,7 @@ ul.warns { margin: 8px 0 0; padding: 8px 12px 8px 26px; background: var(--tag-bg
 .pwrap { position: relative; display: grid; min-width: 0; }
 .pwrap > .addbtn { position: absolute; top: 12px; right: 10px; padding: 5px 9px; font-size: 12px; }
 .pc .pico { width: 38px; height: 38px; border-radius: 13px; background: var(--fill); display: grid; place-items: center; font-size: 19px; margin-bottom: 6px; }
-.pc .save { font-size: 12.5px; font-weight: 800; color: var(--good); }
+.pc .save { font-size: 12.5px; font-weight: 800; color: var(--accent); }
 .pc .save.flat { color: var(--muted); font-weight: 600; }
 .card .pc { background: var(--sunken); }
 /* change view */
@@ -391,7 +401,8 @@ html.locked .wrap, html.locked nav.tabs { display: none !important; }
 .gate { position: fixed; inset: 0; z-index: 1000; background: var(--bg); display: grid; place-items: center; padding: 24px 16px; }
 html:not(.locked) .gate { display: none; }
 .gate-box { width: 100%; max-width: 340px; display: grid; justify-items: center; gap: 10px; text-align: center; }
-.gate .logo { width: 52px; height: 52px; border-radius: 18px; font-size: 24px; }
+.gate .logo { width: 72px; height: 72px; border-radius: 18px; }
+.gate .gbrand { font-size: 20px; font-weight: 900; color: var(--brand-ink); letter-spacing: -0.03em; margin-top: -2px; }
 .gate .gmsg { min-height: 22px; font-size: 14px; font-weight: 600; color: var(--muted); margin: 0; }
 .gate .gmsg.err { color: var(--pricey); }
 .gdots { display: flex; gap: 16px; margin: 14px 0 6px; }
@@ -410,7 +421,8 @@ html:not(.locked) .gate { display: none; }
 <body>
 <div class="gate" id="gate" role="dialog" aria-modal="true" aria-labelledby="gate-t">
   <div class="gate-box">
-    <div class="logo" aria-hidden="true">₩</div>
+    <img class="logo" src="icons/logo-96.png" alt="" width="72" height="72">
+    <div class="gbrand">윤실장</div>
     <h2 id="gate-t">비밀번호를 입력해 주세요</h2>
     <p class="gmsg" id="gate-msg" aria-live="polite">허가된 분만 볼 수 있어요</p>
     <div class="gdots" id="gate-dots" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -434,15 +446,15 @@ html:not(.locked) .gate { display: none; }
 
 <div class="wrap">
   <header class="top">
-    <div class="logo" aria-hidden="true">₩</div>
-    <div><h1>피부과 가격비교</h1><div class="upd" id="upd"></div></div>
+    <img class="logo" src="icons/logo-96.png" alt="" width="36" height="36">
+    <div><h1>윤실장</h1><div class="upd" id="upd"></div></div>
     <button class="locbtn regbtn" id="regbtn" type="button" aria-label="지역 바꾸기"><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg><span>수도권</span></button>
     <button class="locbtn" id="locbtn" type="button"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="8"/></svg><span>내 위치</span></button>
   </header>
   <main id="main" tabindex="-1" aria-busy="true"><div class="view" aria-label="불러오는 중"><div class="skel" style="height:56px"></div><div class="skel" style="height:84px"></div><div class="skel" style="height:320px"></div><div class="skel" style="height:220px"></div></div></main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<button class="fcart" id="fcart" type="button" hidden onclick="location.hash='#cart'"></button>
+<button class="fcart" id="fcart" type="button" hidden></button>
 
 <script src="vendor/leaflet/leaflet.js"></script>
 <script src="config.js"></script>

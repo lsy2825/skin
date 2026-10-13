@@ -1,5 +1,7 @@
 // PIN screen (a screen lock, not data protection: data.json is still a public file).
-// HASH = sha256("velyb-gate:" + PIN); change the PIN with build2/site.py --pin 1234.
+// HASH = sha256("velyb-gate:" + PIN). New PIN: python3 -c "import hashlib;print(hashlib.sha256(b'velyb-gate:NEWPIN').hexdigest())",
+// paste it below and bump VER in sw.js (gate.js is served cache-first). A 4-digit PIN hash is easy to brute-force: this
+// only keeps casual viewers out; data.json and the repo stay public.
 // 5th wrong try locks 5 min, each further wrong try doubles it (cap 24 h). Unlock lasts for this tab (sessionStorage).
 (function () {
   "use strict";

@@ -1,5 +1,7 @@
--- 피부과 가격비교: 회원 정보 테이블 (Supabase → SQL Editor에 붙여 넣고 Run)
--- 각 회원은 자기 행만 읽고 쓸 수 있어요(row level security). 운영자는 Supabase 대시보드(Table Editor)에서 전체를 봐요.
+-- 윤실장(피부과 가격비교): 회원 정보 테이블 (Supabase → SQL Editor에 붙여 넣고 Run)
+-- 적용 순서: supabase/schema_platform.sql → 이 파일 → supabase/DATABASE_ACCESS_POLICIES.sql
+-- 이 파일은 테이블만 만들고 모든 테이블에 row level security를 켜요. 접근 정책(누가 무엇을 읽고 쓰는지)은
+-- DATABASE_ACCESS_POLICIES.sql에만 있어요. 그래서 이 파일만 적용하면 API로는 아무도 읽거나 쓸 수 없어요(안전한 기본값).
 
 create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
@@ -26,17 +28,9 @@ create index if not exists records_user_idx on public.records (user_id, done_on 
 alter table public.profiles enable row level security;
 alter table public.records enable row level security;
 
-drop policy if exists "own profile" on public.profiles;
-create policy "own profile" on public.profiles for all
-  using (auth.uid() = id) with check (auth.uid() = id);
-
-drop policy if exists "own records" on public.records;
-create policy "own records" on public.records for all
-  using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
 -- 회원 탈퇴: 본인 로그인 계정 삭제(프로필·기록은 on delete cascade로 같이 지워짐)
 create or replace function public.delete_me() returns void
-language sql security definer set search_path = public as $$
+language sql security definer set search_path = '' as $$
   delete from auth.users where id = auth.uid();
 $$;
 revoke all on function public.delete_me() from public, anon;
@@ -78,20 +72,24 @@ create table if not exists public.price_alerts (
   email       boolean not null default false,                      -- 메일 발송은 발송 서비스 연결 후
   created_at  timestamptz not null default now()
 );
+create table if not exists public.favorites (                     -- 즐겨찾는 시술·지점
+  user_id     uuid not null references auth.users (id) on delete cascade,
+  kind        text not null check (kind in ('k', 'b')),             -- k = 비교 시술 코드(X12), b = 지점('브랜드|지점')
+  ref         text not null check (char_length(ref) between 1 and 120),
+  created_at  timestamptz not null default now(),
+  primary key (user_id, kind, ref)
+);
 create index if not exists carts_user_idx on public.carts (user_id);
 create index if not exists price_alerts_user_idx on public.price_alerts (user_id);
+-- jsonb size limits (payload abuse): overrides and saved package items stay small
+alter table public.cart_items drop constraint if exists cart_items_overrides_size;
+alter table public.cart_items add constraint cart_items_overrides_size check (jsonb_typeof(overrides) = 'object' and pg_column_size(overrides) <= 8192);
+alter table public.saved_packages drop constraint if exists saved_packages_items_size;
+alter table public.saved_packages add constraint saved_packages_items_size check (jsonb_typeof(items) = 'array' and pg_column_size(items) <= 32768);
 
 alter table public.carts enable row level security;
 alter table public.cart_items enable row level security;
 alter table public.saved_packages enable row level security;
 alter table public.price_alerts enable row level security;
-drop policy if exists "own carts" on public.carts;
-create policy "own carts" on public.carts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-drop policy if exists "own cart items" on public.cart_items;
-create policy "own cart items" on public.cart_items for all
-  using (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()))
-  with check (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()));
-drop policy if exists "own packages" on public.saved_packages;
-create policy "own packages" on public.saved_packages for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-drop policy if exists "own alerts" on public.price_alerts;
-create policy "own alerts" on public.price_alerts for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+alter table public.favorites enable row level security;
+-- 정책: supabase/DATABASE_ACCESS_POLICIES.sql

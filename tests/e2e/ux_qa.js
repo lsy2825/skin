@@ -1,12 +1,14 @@
 // UX QA: one check per criterion, prints PASS/FAIL lines
-// Usage: python3 -m http.server 8766 --directory app &  then  node tests/e2e/ux_qa.js [out-dir]
+// Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/ux_qa.js [out-dir]
 // Needs Playwright with Chromium (PLAYWRIGHT=/path/to/node_modules/playwright if it isn't resolvable). Not part of
 // `node --test`: it drives a real browser against the local server. Results are written up in docs/UX_QA_REPORT.md.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
+const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
+if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요 (예: APP_PIN=xxxx node ' + process.argv[1] + ')'); process.exit(2); }
 const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, detail]); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${detail}`); };
 (async () => { const OUT = process.argv[2] || require('os').tmpdir(); const b = await chromium.launch();
-  const unlock = async (p) => { for (const d of '0717') await p.click(`#gate-pad button[data-d="${d}"]`); };
+  const unlock = async (p) => { for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); };
   // 1) loading skeleton + error state
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.route('**/data.json', async (r) => { await new Promise((s) => setTimeout(s, 1500)); r.continue(); });
@@ -29,7 +31,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
   // 3) keyboard only: search → add to cart
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload();
-    for (const d of '0717') await p.keyboard.press(d); await p.waitForSelector('.pc');
+    for (const d of PIN) await p.keyboard.press(d); await p.waitForSelector('.pc');
     ok('비밀번호 키보드 입력', await p.locator('.pc').count() > 0);
     let found = false; for (let k = 0; k < 15 && !found; k++) { await p.keyboard.press('Tab'); found = await p.evaluate(() => document.activeElement && document.activeElement.matches('.search input')); }
     ok('Tab으로 검색창 도달', found);
@@ -98,6 +100,6 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
   { const ctx = await b.newContext({ serviceWorkers: 'block', colorScheme: 'dark', viewport: { width: 390, height: 844 }, deviceScaleFactor: 2 }); const p = await ctx.newPage();
     await p.goto(BASE); await unlock(p); await p.waitForSelector('.pc');
     const bg = await p.evaluate(() => getComputedStyle(document.body).backgroundColor);
-    ok('다크 모드(기기 설정 따름)', bg === 'rgb(15, 17, 20)', bg); await p.screenshot({ path: `${OUT}/qa-dark.png` }); await ctx.close(); }
+    ok('다크 모드(기기 설정 따름)', bg === 'rgb(22, 16, 19)', bg); await p.screenshot({ path: `${OUT}/qa-dark.png` }); await ctx.close(); }
   require('fs').writeFileSync(`${OUT}/ux_qa.json`, JSON.stringify(R));
   console.log(`TOTAL ${R.filter((x) => x[1]).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every((x) => x[1]) ? 0 : 1; })();

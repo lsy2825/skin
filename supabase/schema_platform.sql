@@ -1,4 +1,6 @@
 -- 가격 플랫폼 스키마 (PostgreSQL 15+ / Supabase). 가격 카탈로그·이력·수집 파이프라인용.
+-- 보안: 끝에서 모든 테이블에 row level security를 켜요(정책이 없으면 API로는 아무도 못 읽음 = 안전한 기본값).
+--       누가 무엇을 읽고 쓰는지는 supabase/DATABASE_ACCESS_POLICIES.sql에만 있어요. 적용 순서: 이 파일 → schema.sql → 정책 파일.
 -- 사용자 데이터(프로필·시술 기록·장바구니·알림)는 supabase/schema.sql (Supabase Auth 필요).
 -- 지금 앱은 정적 파일(app/data.json)로 동작하고, 이 스키마는 DB로 옮길 때의 설계예요.
 -- 데이터 채우기: python build2/export_db.py → data2/db/*.csv → psql -f supabase/load_platform.sql
@@ -181,8 +183,19 @@ create table audit_logs (                             -- 관리자 변경 기록
   created_at  timestamptz not null default now()
 );
 
--- 지금 비교에 쓰는 가격: 검증됨 + 종료일 안 지남
-create view current_offers as
+-- 지금 비교에 쓰는 가격: 검증됨 + 종료일 안 지남. security_invoker: 보는 사람의 권한·정책으로 읽어요(뷰가 정책을 우회하지 않게)
+create view current_offers with (security_invoker = true) as
   select o.*, b.brand_id, b.region
   from offers o join clinic_branches b on b.id = o.branch_id
   where o.verification_status = 'VERIFIED' and (o.valid_until is null or o.valid_until >= current_date);
+
+-- row level security on every table (partitions too: they are tables of their own in the API schema)
+do $$ declare t regclass; begin
+  for t in select c.oid::regclass from pg_class c join pg_namespace n on n.oid = c.relnamespace
+           where n.nspname = current_schema() and c.relkind in ('r', 'p')
+             and c.relname in ('clinic_brands', 'clinic_branches', 'treatment_categories', 'treatment_products', 'treatment_variants',
+               'source_registry', 'ingestion_jobs', 'offers', 'offer_conditions', 'official_packages', 'official_package_items',
+               'price_snapshots', 'price_snapshots_2026', 'price_snapshots_2027', 'price_snapshots_default', 'verification_logs',
+               'user_reports', 'audit_logs')
+  loop execute format('alter table %s enable row level security', t); end loop;
+end $$;

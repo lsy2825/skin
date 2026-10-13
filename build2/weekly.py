@@ -51,10 +51,14 @@ def main():
     # Source Policy Registry: robots.txt check before scraping (data2/sources.json)
     policy = {}
     if not a.skip_scrape:
-        if run(["scrape/sources.py"]):
-            policy = json.load(open(os.path.join(ROOT, "data2", "sources.json"), encoding="utf-8")).get("brands", {})
-        else:
-            report.append("- 출처 정책(robots.txt) 확인 실패 — 지난번 확인 결과 기준으로 진행")
+        ok_src = run(["scrape/sources.py"])
+        src = os.path.join(ROOT, "data2", "sources.json")
+        # on failure the previous check is really used (it was only reported before): a brand blocked last time stays blocked
+        policy = json.load(open(src, encoding="utf-8")).get("brands", {}) if os.path.exists(src) else {}
+        if not ok_src:
+            report.append("- 출처 정책(robots.txt) 확인 실패 — 지난번 확인 결과 기준으로 진행" if policy else "- **출처 정책 확인 실패, 이전 결과도 없음 — 이번 주 수집 안 함**")
+            if not policy:
+                policy = {key: {"allowed": False} for key, _ in SCRAPERS}
     for key, brand in SCRAPERS:
         new = os.path.join(RAW, f"{key}.csv")
         old = os.path.join(ACC, f"{key}.csv")

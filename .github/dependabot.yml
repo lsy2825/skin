@@ -1,0 +1,13 @@
+# Dependency updates as pull requests (pinned versions in requirements.txt and SHA-pinned actions)
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5

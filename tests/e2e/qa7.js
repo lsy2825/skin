@@ -1,10 +1,12 @@
 // QA for the live-product directive: the 7 questions, each checked in a real browser, plus the branch-count check (P0-1)
-// Usage: python3 -m http.server 8766 --directory app &  then  node tests/e2e/qa7.js [out-dir]
+// Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/qa7.js [out-dir]
 // Needs Playwright with Chromium (PLAYWRIGHT=/path/to/node_modules/playwright if it isn't resolvable). Not part of
 // `node --test`. Map tiles are answered with an empty response so the test runs offline. Results: docs/UX_AUDIT.md.
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const path = require('path');
 const BASE = process.env.BASE || 'http://localhost:8766/';
+const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
+if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요 (예: APP_PIN=xxxx node ' + process.argv[1] + ')'); process.exit(2); }
 const D = require(path.join(__dirname, '../../app/data.json'));
 const R = []; const ok = (q, name, pass, detail = '') => { R.push([q, name, pass, detail]); console.log(`${pass ? 'PASS' : 'FAIL'} | ${q} | ${name} | ${detail}`); };
 const num = (t) => +String(t).replace(/[^\d]/g, '');
@@ -20,7 +22,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     p.errs = []; p.on('pageerror', (e) => p.errs.push(e.message));
     await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
     await p.goto(BASE); await p.evaluate(([c, rg]) => { localStorage.clear(); if (c) localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: '내 장바구니', items: c }])); if (rg != null) localStorage.setItem('pc:region', JSON.stringify(rg)); }, [cart, region]);
-    await p.reload(); for (const d of '0717') await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
+    await p.reload(); for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
     return { ctx, p };
   };
   const carts = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts') || '[]'));
