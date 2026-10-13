@@ -16,5 +16,9 @@ window.APP_CONFIG = {
     concernPriceLink: true,     // 고민 화면에서 사용자가 직접 누르는 '가격 비교' 버튼(환자 유인 해당 여부 검토 대상)
     showDraftKnowledge: true,   // 의료진 검수 전 설명도 '초안' 표시와 함께 보여주기. 공개 출시 전 false(검수 완료만 노출)
     concernGenerativeAI: false, // 생성형 AI 답변: 만들지 않음. 법률·의료 검토 + 서버(키 보호·요청 제한) 전에는 켜지 않아요
+    // 가격의 객관적 배치(환자 유인 위험 줄이기) — docs/OBJECTIVE_DISPLAY_POLICY.md, docs/LEGAL_REVIEW_CHECKLIST.md
+    lowestHighlight: false,     // 특정 병원을 '최저가'로 앞세우는 표시(이름 붙은 최저가 헤드라인, 1~3위 표시, 지도 최저가 핀, 브랜드별 최저 지점). 끄면 가격 범위·중간값으로 보여줘요
+    branchRanking: false,       // 지점을 싼 순으로 줄 세우는 화면(지점 순위, 가격 착한 지점 TOP 5, 지점 화면의 순위·'제일 싼 시술')
+    discountEmphasis: false,    // 할인 강조('중간보다 N% 싸요', 할인율 큰 순 정렬, 할인 큰 시술 모음). 끄면 정가·할인율은 가격 근거 안에만
   },
 };

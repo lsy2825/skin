@@ -93,8 +93,11 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('수량 바꾸면 합계 즉시 갱신', t1 !== t2, `${t1} → ${t2}`);
     ok('기본 장바구니: 병원별 목록은 접혀 있음', await p.locator('.qrow').count() === 0 && /병원별 비교 보기/.test(await p.locator('.cartsum .btn').textContent()));
     await p.click('.cartsum .btn'); await p.waitForTimeout(300);
-    const q1 = await p.locator('.qrow .rank .p').first().textContent();
-    ok('병원별 비교 열면 1위 합계 = 요약 총액', q1 === t2, `${q1} / ${t2}`);
+    // the summary is the range of one-clinic totals (no clinic pinned as 'the lowest'): its ends = the list's min and max
+    await p.locator('.sortchips .chip', { hasText: '합계 낮은순' }).click(); await p.waitForTimeout(300);
+    const qs = (await p.locator('.qrow .rank .p').allTextContents()).map((t) => +t.replace(/[^\d]/g, ''));
+    const ends = t2.split('~').map((t) => +t.replace(/[^\d]/g, ''));
+    ok('병원별 비교: 요약 범위 = 목록의 최저·최고 합계', qs.length > 0 && ends[0] === Math.min(...qs) && ends[ends.length - 1] >= Math.max(...qs.slice(0, 40)), `${t2} / ${Math.min(...qs)}~${Math.max(...qs)}`);
     ok('하단 떠 있는 장바구니(다른 화면)', await (async () => { await p.goto(BASE + '#guide'); await p.waitForTimeout(400); return p.locator('#fcart').isVisible(); })());
     await ctx.close(); }
   // 6) dark mode renders with dark surface

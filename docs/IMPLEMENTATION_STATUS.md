@@ -7,6 +7,7 @@
 - 데이터 품질: `docs/DATA_QUALITY_REPORT.md`
 - 보안: `docs/SECURITY_AUDIT.md` · `SECURITY_ARCHITECTURE.md` · `SECURITY_REMEDIATION.md` · `SECURITY_TEST_REPORT.md` · `INCIDENT_RESPONSE_PLAN.md`
 - 디자인 시스템(2026 개편: 토큰·컴포넌트·그래프·화면 구조·검사 결과): `docs/DESIGN_SYSTEM.md`
+- 가격의 객관적 배치(정렬·최저가 강조·가격 옆 정보): `docs/OBJECTIVE_DISPLAY_POLICY.md`
 - 마스코트 죠미: `docs/JOMI_CHARACTER_GUIDE.md` · `JOMI_ASSET_INVENTORY.md` · `JOMI_INTERACTION_SPEC.md` · `JOMI_COPYWRITING.md` · `JOMI_UI_UX_QA.md`
 
 **실제로 돌린 테스트** (이 세션, 2026-10-13)
@@ -30,6 +31,20 @@
   - `tests/e2e/xss.js`: 악성 입력 실행 0회(CSP 켬/끔 모두), 7/7 통과
   - 기능별 회귀 시나리오: 페이지 오류 0건
 - 못 한 것: 실기기·스크린리더 검사, 병원 원본과의 실시간 대조(이 환경에서 병원 사이트 접속 불가 → `price-check` 워크플로로)
+
+## 가격 정보의 객관적 배치 (2026-10-13, 지시 ②) — `docs/OBJECTIVE_DISPLAY_POLICY.md`
+- **된 것**
+  - 기본 정렬을 지역·이름순으로 바꿨어요(위치를 정하면 가까운순). 정렬 5가지: 지역·이름 / 가까운 / 최근 확인 / 낮은 가격 / 높은 가격
+  - 요약은 가격 범위·중간값으로 보여주고 병원 이름을 넣지 않아요.
+  - 순위 번호·최저가 강조·할인 강조·지점 순위는 플래그 3개로 꺼 뒀어요.
+  - 가격 바로 아래 '가격과 함께 꼭 확인하세요' 카드
+    - 시술 조건, 정품 표기(병원 표기만), 시술 의료진(모으지 않음), 부작용, 주의사항
+  - 가격 근거 시트에도 같은 항목을 넣었어요.
+  - 장바구니는 합계 범위를 보여주고, 병원별 목록 정렬을 사용자가 골라요.
+  - 확인: `tests/e2e/objective.js` 26/26
+- **안 한 것:** 리뷰많은순·추천순
+  - 리뷰 데이터가 없어요.
+  - 추천 기준을 만들면 그 자체가 병원 추천이 돼요. 근거는 문서 §2에 있어요.
 
 ## 마스코트 죠미 (2026-10-13, JOMI MASTER CHARACTER GUIDE v3.0)
 - **된 것**

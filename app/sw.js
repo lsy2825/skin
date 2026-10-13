@@ -1,5 +1,5 @@
 // Offline cache: the app shell is cache-first, data.json and map tiles are network-first (fall back to the last copy).
-const VER = "pc-v9";
+const VER = "pc-v10";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use)
 const SHELL = ["./", "index.html", "styles.css", "icons.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js",
   "vendor/fonts/pretendard/pretendard.css", "manifest.webmanifest", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css",

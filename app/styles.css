@@ -707,3 +707,24 @@ img.mascot.portrait { border-radius: 24%; box-shadow: none; background: none; }
 /* toasts sit above a page's own bottom bar (compare actions, concern composer) and the floating cart */
 body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + env(safe-area-inset-bottom, 0px)); }
 @media (min-width: 900px) { body.has-fcart .toast, body.has-bar .toast { bottom: 96px; } }
+
+/* ---------- price + what to check (docs/OBJECTIVE_DISPLAY_POLICY.md) */
+.hero .hp.range { font-size: 30px; white-space: normal; letter-spacing: -0.04em; line-height: 1.2; }
+.hero .hp.range .to { color: var(--muted); font-weight: 600; }
+.sortchips .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.card.flush .sortchips { margin: 0 -14px; padding: 2px 14px; }
+.checks .chks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; }
+.chk { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; }
+.chk-ic { width: 32px; height: 32px; border-radius: 10px; background: var(--fill); color: var(--ink-2); display: grid; place-items: center; }
+.chk-b b { display: block; font-size: 14px; margin-bottom: 2px; }
+.chk-b .sub { line-height: 1.55; color: var(--ink-2); }
+.chk-b ul.plain { margin: 2px 0 0; font-size: 13px; gap: 3px; }
+.pc .pk { font-size: 11.5px; font-weight: 650; color: var(--muted); margin-top: 6px; }
+.pc .pk + .p { margin-top: 0; }
+.hp.range { font-size: 28px !important; }
+.hp.range .nw { white-space: nowrap; display: inline-block; }
+.cartsum .hp.range { white-space: normal; letter-spacing: -0.04em; }
+.cartsum .hp.range .to { color: var(--muted); font-weight: 600; }
+.rank.nonum { grid-template-columns: minmax(0, 1fr) auto; }
+.rank.nonum .n { display: none; }
+.rank.nonum .m { grid-column: 1 / -1; }
