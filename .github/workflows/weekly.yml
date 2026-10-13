@@ -36,6 +36,7 @@ jobs:
           git config user.name "weekly-prices bot"
           git config user.email "actions@users.noreply.github.com"
           git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json
+          for f in data2/sources.json data2/review.csv; do if [ -f "$f" ]; then git add "$f"; fi; done
           git diff --cached --quiet || git commit -m "${{ github.event_name == 'push' && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
           git push
       - name: Summary

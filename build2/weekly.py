@@ -48,10 +48,20 @@ def main():
     os.makedirs(RAW, exist_ok=True)
     report = [f"# 주간 갱신 {a.date}", ""]
     used_new, fresh = 0, []
+    # Source Policy Registry: robots.txt check before scraping (data2/sources.json)
+    policy = {}
+    if not a.skip_scrape:
+        if run(["scrape/sources.py"]):
+            policy = json.load(open(os.path.join(ROOT, "data2", "sources.json"), encoding="utf-8")).get("brands", {})
+        else:
+            report.append("- 출처 정책(robots.txt) 확인 실패 — 지난번 확인 결과 기준으로 진행")
     for key, brand in SCRAPERS:
         new = os.path.join(RAW, f"{key}.csv")
         old = os.path.join(ACC, f"{key}.csv")
-        ok = True if a.skip_scrape else run([f"scrape/{key}.py"])
+        blocked = policy.get(key, {}).get("allowed") is False
+        if blocked:
+            report.append(f"- **{brand}: robots.txt가 수집 경로를 막아서 이번 주 수집 안 함** (data2/sources.json)")
+        ok = True if a.skip_scrape else (False if blocked else run([f"scrape/{key}.py"]))
         n_new, b_new = stats(new) if ok else (0, 0)
         n_old, b_old = stats(old)
         bad = (not ok or n_new == 0 or (n_old and (n_new < 0.7 * n_old or b_new < 0.7 * b_old)))
