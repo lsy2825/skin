@@ -3,9 +3,14 @@
 usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
   meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
-  branches  [brand, name s, address s, lat, lng, region s, site s]
-  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group]  (keys = comparison ids, space
-            separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한; group = auto group index or -1)
+  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s, url s, vat, review]
+            keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
+            group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
+            url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
+            and nobody approved it yet (data2/review.csv, approvals in data2/review_ok.csv) — the app keeps it out of
+            comparisons
+  branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
+            this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
   bstat     per branch [regular level, level incl. specials, groups used, cheapest count, sole cheapest, {cat: level}]
             (level = geometric mean of price / median, 0.81 = 19% cheaper than the middle branch)
@@ -80,6 +85,39 @@ def trend(hist, date, rows):
     return {"dates": dates, "k": per, "disc": disc}
 
 
+def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s):
+    """prices that moved ≥90% down or ×10 up since the previous snapshot are held back (row[13] = 1) until someone
+    lists them in data2/review_ok.csv (brand,branch,name,price). Writes data2/review.csv. Returns pending count."""
+    okp = os.path.join(ROOT, "data2", "review_ok.csv")
+    ok = {(x["brand"], x["branch"], x["name"], int(x["price"])) for x in csv.DictReader(open(okp, encoding="utf-8-sig"))} if os.path.exists(okp) else set()
+    big = lambda before, after: after <= before * 0.1 or after >= before * 10
+    hits = {}
+    for g, b, before, after in achg:
+        if big(before, after):
+            hits[("g", g, b, after)] = before
+    for k, b, before, after in changes:
+        if big(before, after):
+            hits[("k", X[k][0], b, after)] = before
+    out = []
+    for i, (r, row) in enumerate(zip(rows, out_rows)):
+        b, sale = row[0], row[3]
+        before = hits.get(("g", gid[i], b, sale))
+        if before is None:
+            before = next((hits[("k", k, b, sale)] for k in r["keys"].split() if ("k", k, b, sale) in hits), None)
+        if before is None:
+            continue
+        approved = (r["brand"], r["branch"], r["name"], sale) in ok
+        if not approved:
+            row[13] = 1
+        out.append({"status": "승인됨" if approved else "검토 대기", "brand": r["brand"], "branch": r["branch"], "name": r["name"],
+                    "before": before, "price": sale, "change": f"{(sale / before - 1) * 100:+.0f}%", "url": r["url"]})
+    with open(os.path.join(ROOT, "data2", "review.csv"), "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.DictWriter(f, fieldnames=["status", "brand", "branch", "name", "before", "price", "change", "url"])
+        w.writeheader()
+        w.writerows(out)
+    return sum(1 for x in out if x["status"] == "검토 대기")
+
+
 def region(addr):
     for p, name in SIDO:
         if re.match(p, addr or ""):
@@ -113,7 +151,16 @@ def main():
             bi[k] = len(branches)
             branches.append([bnames.index(r["brand"]), S(r["branch"]), S(g.get("address_full") or g.get("address", "")),
                              float(g["lat"]) if g.get("lat") else None, float(g["lng"]) if g.get("lng") else None,
-                             S(region(g.get("address", ""))), S(site)])
+                             S(region(g.get("address", ""))), S(site), "", ""])
+    # freshness: newest fetch date per branch; older than the build date by more than a day = previous data kept
+    for r in rows:
+        b = branches[bi[(r["brand"], r["branch"])]]
+        d = (r["fetched_at"] or "")[:10]
+        if d > b[7]:
+            b[7] = d
+    for b in branches:
+        b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(a.date) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
+        b[7] = S(b[7])
     out_rows = []
     best = {}
     gid, groups, gkeys, bstat, low_reg = G.build(rows, bi, CATS)
@@ -121,7 +168,8 @@ def main():
         b = bi[(r["brand"], r["branch"])]
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
-                         kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g])
+                         kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g, S(r["until"]), S(r["url"]),
+                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
@@ -143,8 +191,9 @@ def main():
                 changes.append([kid[k], bi[(brand, branch)], before, after])
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
+    review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s)
     data = {
-        "meta": {"updated": a.date, "prev": prev_date, "rows": len(out_rows), "branches": len(branches),
+        "meta": {"updated": a.date, "prev": prev_date, "review": review, "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
         "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
@@ -157,7 +206,7 @@ def main():
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
     nogeo = [s[b[1]] for b in branches if b[3] is None]
     print(f"wrote {a.out}: {len(txt) / 1e6:.2f} MB | rows {len(out_rows)} | branches {len(branches)} (no map position: {len(nogeo)})"
-          f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)}")
+          f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)} | review pending {review}")
     if nogeo:
         print("  no position:", nogeo)
 

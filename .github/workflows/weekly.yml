@@ -2,7 +2,8 @@ name: weekly-prices
 
 on:
   schedule:
-    - cron: "0 21 * * 0"      # every Monday 06:00 KST (Sunday 21:00 UTC)
+    - cron: "0 21 * * *"      # every day 06:00 KST: Monday = weekly update; other days only if saved events have
+                              # expired (build2/needs_refresh.py), otherwise the run stops right away
   workflow_dispatch: {}        # "Run workflow" button for a manual update
   push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
     branches: [main]
@@ -21,17 +22,26 @@ jobs:
   update:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - name: Decide
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then python build2/needs_refresh.py; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
+      - if: steps.decide.outputs.run == 'true'
+        run: pip install -r requirements.txt
       - name: Scrape, check, build
+        if: steps.decide.outputs.run == 'true'
         run: python build2/weekly.py ${{ github.event_name == 'push' && '--skip-scrape' || '' }}
         env:
           PYTHONUTF8: "1"
       - name: Save accepted data, snapshots and report
+        if: steps.decide.outputs.run == 'true'
         run: |
           git config user.name "weekly-prices bot"
           git config user.email "actions@users.noreply.github.com"
@@ -41,12 +51,15 @@ jobs:
           git pull --rebase -X theirs origin main   # another run may have pushed meanwhile
           git push
       - name: Summary
+        if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-pages-artifact@v3
+      - if: steps.decide.outputs.run == 'true'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: app
   deploy:
     needs: update
+    if: needs.update.outputs.run == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

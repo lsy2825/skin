@@ -105,6 +105,9 @@ def main():
     meta = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))["meta"]
     report += ["", f"- 앱 데이터: 가격 {meta['rows']:,}개 · 지점 {meta['branches']}곳",
                f"- 정리한 줄: {len(issues)}개 (data2/issues.csv)"]
+    if meta.get("review"):
+        report.append(f"- **급변 가격 검토 대기 {meta['review']}개** (지난주보다 90% 넘게 내리거나 10배 넘게 오름) — data2/review.csv, "
+                      "맞으면 data2/review_ok.csv에 brand,branch,name,price로 추가. 그 전까지 앱 비교에서 빠져요")
     open(os.path.join(ROOT, "data2", "report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(report) + "\n")
     print("\n".join(report))
 

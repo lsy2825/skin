@@ -3,13 +3,16 @@
 usage: python build2/clean.py
 Rules (each dropped or changed row is listed in issues.csv with the reason):
   drop   price missing/0 · option empty · notes (※, ▶) · paperwork fees (진단서·소견서·제증명·수수료) · price > 5천만원
+         · event already over (until = YYYY-MM-DD before today, KST)
   fix    list price below the sale price, or 10x+ the sale price -> list price removed (typo on the site)
   dedupe the same (brand, branch, option, sale, list) shown on several pages of one branch -> kept once
          (a category page wins over the 기획전 page, so the row keeps its real category)
 Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가), cat (common category), name (display name),
-mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 일요일 · 첫 방문), keys (matched comparison ids).
+mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 일요일 · 첫 방문), keys (matched comparison ids),
+vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
+evidence from the site, see data2/sources.json).
 """
-import csv, os, re, sys
+import csv, datetime, json, os, re, sys
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,6 +20,17 @@ sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match, ONCE, sessions  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
+TODAY = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date().isoformat()
+ISO = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+VAT_IN = re.compile(r"(부가세|부가가치세|VAT)[^가-힣A-Za-z]{0,6}(\d{1,2}\s*%\s*)?(포함)", re.I)
+VAT_EX = re.compile(r"(부가세|부가가치세|VAT)[^가-힣A-Za-z]{0,6}(\d{1,2}\s*%\s*)?(별도|미포함)", re.I)
+VAT_POLICY = os.path.join(ROOT, "data2", "vat_policy.json")
+
+
+def vat_policy():
+    if not os.path.exists(VAT_POLICY):
+        return {}
+    return {b: v.get("default", "") for b, v in json.load(open(VAT_POLICY, encoding="utf-8")).items() if not b.startswith("_")}
 BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장"), ("forever", "포에버")]
 
 PAPER = re.compile(r"진단서|소견서|제증명|증명서|수수료|사본|발급")
@@ -80,6 +94,7 @@ def load():
 
 def main():
     raw = load()
+    vdef = vat_policy()
     issues, out, seen = [], [], {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
@@ -95,6 +110,8 @@ def main():
             why = "서류 발급비(시술 아님)"
         elif sale > 50_000_000:
             why = "가격 비정상(5천만원 초과)"
+        elif ISO.match(r.get("until") or "") and r["until"] < TODAY:
+            why = f"이벤트 기간 지남({r['until']} 종료)"
         if why:
             issues.append({**r, "action": "제외", "reason": why})
             continue
@@ -131,7 +148,9 @@ def main():
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
                "name": name, "mname": mname, "cat": cat, "kind": kind, "sale": sale, "orig": orig or "",
                "addon": r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
-               "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"]}
+               "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
+               "vat": "별도" if VAT_EX.search(f"{grp} {opt}") else "포함" if VAT_IN.search(f"{grp} {opt}") else
+                      {"excl": "별도", "incl": "포함"}.get(vdef.get(r["brand"], ""), "")}
         # the same item shown in two events of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row
         k = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig)
         if k in seen:

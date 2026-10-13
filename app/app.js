@@ -54,6 +54,13 @@
     KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label }));
     KI = Object.fromEntries(KEYS.map((k) => [k.id, k.i]));
     ROWS = D.rows;
+    // r[15] = 0 live · 1 event over (until < today) · 2 price jump waiting for review; r[14] = listed price when VAT 별도
+    const td = today();
+    for (const r of ROWS) {
+      const u = S[r[10]] || "";
+      r[15] = /^\d{4}-\d{2}-\d{2}$/.test(u) && u < td ? 1 : r[13] ? 2 : 0;
+      if (r[12] === 2) { r[14] = r[3]; r[3] = Math.round(r[3] * 1.1); if (r[4]) r[4] = Math.round(r[4] * 1.1); }
+    }
     byKB = KEYS.map(() => new Map());
     byB = BR.map(() => []);
     ROWS.forEach((r, i) => {
@@ -97,11 +104,12 @@
     return 2 * R * Math.asin(Math.sqrt(a));
   };
   // cheapest row for key k at branch b under the current settings (special: override st.special)
+  const live = (i) => !ROWS[i][15];
   function bestAt(k, b, special = st.special) {
     let best = -1;
     for (const i of byKB[k].get(b) || []) {
       const r = ROWS[i];
-      if (!special && isSpecial(r)) continue;
+      if (r[15] || (!special && isSpecial(r))) continue;
       if (best < 0 || r[3] < ROWS[best][3] || (r[3] === ROWS[best][3] && isSpecial(ROWS[best]) && !isSpecial(r))) best = i;
     }
     return best;
@@ -125,7 +133,7 @@
     const per = new Map();
     for (const i of byG[g]) {
       const r = ROWS[i];
-      if (!special && isSpecial(r)) continue;
+      if (r[15] || (!special && isSpecial(r))) continue;
       const cur = per.get(r[0]);
       if (!cur || r[3] < cur.p) per.set(r[0], { p: r[3], i });
     }
@@ -159,8 +167,16 @@
     D.meta.brands.map((bb, bi) => !BR.some((x) => x.brand === bi) ? null : h("optgroup", { label: bb[0] }, BR.filter((x) => x.brand === bi).sort((a, c) => a.name.localeCompare(c.name, "ko"))
       .map((x) => h("option", { value: x.i, selected: x.i === val }, `${bb[0]} ${x.name}`)))));
 
+  const md2 = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const kindBadge = (r) => {
     const out = [];
+    if (r[15] === 1) out.push(h("span", { class: "k kx" }, "기간 끝남"));
+    if (r[15] === 2) out.push(h("span", { class: "k kx", title: "지난주보다 90% 넘게 내리거나 10배 넘게 올라 확인 중이에요" }, "급변·확인 중"));
+    const u = S[r[10]] || "";
+    if (!r[15] && /^\d{4}-\d{2}-\d{2}$/.test(u) && u < "2099") out.push(h("span", { class: "k k4" }, `~${md2(u)}까지`));
+    if (u.startsWith("posted:")) out.push(h("span", { class: "k k4" }, `고시표 ${u.slice(7)}`));
+    if (r[12] === 1) out.push(h("span", { class: "k k4" }, "VAT 포함"));
+    if (r[12] === 2) out.push(h("span", { class: "k k4", title: `병원 표시가 ${won(r[14])} + 부가세 10%` }, `VAT 포함 환산 (표시 ${won(r[14])})`));
     if (r[5] === 1) out.push(h("span", { class: "k k1" }, "체험가"));
     if (r[5] === 2) out.push(h("span", { class: "k k2" }, "한정가"));
     if (r[5] === 4) out.push(h("span", { class: "k k4" }, "고시가"));
@@ -169,6 +185,11 @@
     return out;
   };
   const bname = (b) => `${D.meta.brands[BR[b].brand][0]} ${BR[b].name}`;
+  // source page of a price + when it was last read
+  const srcLink = (i, label = "출처") => S[ROWS[i][11]] ? h("a", { class: "linkbtn src", href: S[ROWS[i][11]], target: "_blank", rel: "noopener noreferrer", onclick: (e) => e.stopPropagation() }, label) : null;
+  const verified = (b) => S[D.branches[b][7]] || "";
+  const daysSince = (d) => d ? Math.round((new Date(today()) - new Date(d)) / 86400000) : null;
+  const fresh = (b) => { const d = verified(b), n = daysSince(d), stale = S[D.branches[b][8]] === "STALE" || (n != null && n > 8); return { d, n, stale }; };
   const bdot = (b) => h("span", { class: "bdot", style: `background:${brandOf(b)[1]}` });
 
   // ---------------- region picker (header button + 내정보)
@@ -309,7 +330,7 @@
     let out;
     if (it.t === "k") out = KI[it.k] != null ? byKB[KI[it.k]].get(b) || [] : [];
     else out = (byName.get(SI.get(it.n)) || []).filter((i) => ROWS[i][0] === b);
-    return special ? out : out.filter((i) => !isSpecial(ROWS[i]));
+    return out.filter((i) => live(i) && (special || !isSpecial(ROWS[i])));
   }
   // every row of branch b the user may pick instead (other doses, packages, special prices)
   function altRows(it, b) {
@@ -317,7 +338,7 @@
     let rx = null;
     if (it.t === "k" && famOf[KI[it.k]]) rx = famOf[KI[it.k]].f.rx;
     if (it.t === "r") { const w = it.n.replace(/^\[[^\]]*\]\s*/, "").split(/[\s(·]/).find((x) => x.length >= 2); if (w) rx = new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")); }
-    const more = rx ? byB[b].filter((i) => rx.test(S[ROWS[i][2]])) : [];
+    const more = rx ? byB[b].filter((i) => live(i) && rx.test(S[ROWS[i][2]])) : [];
     return [...new Set([...base, ...more])].sort((a, c) => ROWS[a][3] - ROWS[c][3]).slice(0, 80);
   }
   const cheapest = (list) => list.reduce((best, i) => best < 0 || ROWS[i][3] < ROWS[best][3] || (ROWS[i][3] === ROWS[best][3] && isSpecial(ROWS[best]) && !isSpecial(ROWS[i])) ? i : best, -1);
@@ -326,7 +347,7 @@
     const q = it.q || 1;
     const ovName = it.ov && it.ov[bkey(b)];
     if (ovName != null && SI.has(ovName)) {
-      const i = (byName.get(SI.get(ovName)) || []).find((x) => ROWS[x][0] === b);
+      const i = (byName.get(SI.get(ovName)) || []).find((x) => ROWS[x][0] === b && live(x));
       if (i != null) {
         const ss = sessOf(i), units = ss >= 99 ? 1 : Math.ceil(q / ss);
         return { total: ROWS[i][3] * units, rows: [i], units, ov: true };
@@ -382,7 +403,7 @@
   function quoteText(x, items) {
     return [`[${bname(x.b)}] 예상 견적 (${D.meta.updated} 기준)`,
       ...items.map((it, j) => { const l = x.lines[j]; return l ? `- ${itemLabel(it)} ×${it.q || 1}: ${won(l.total)} (${S[ROWS[l.rows[0]][2]]})` : `- ${itemLabel(it)}: 이 지점에 없음`; }),
-      `합계 ${won(x.total)} · 부가세 별도일 수 있음 · 방문 전 병원 확인`].join("\n");
+      `합계 ${won(x.total)} · 가격 확인 ${fresh(x.b).d} · VAT 표기가 없는 가격은 부가세 별도일 수 있음 · 방문 전 병원 확인`].join("\n");
   }
 
   // ---------------- price trend (weekly snapshots of regular prices; data.json "trend")
@@ -564,7 +585,9 @@
       const prices = rk.map((x) => x.p).sort((a, b) => a - b);
       card.append(h("div", { class: "hero", style: "margin-top:14px" }, h("span", { class: "hl" }, `가장 싼 곳 · ${rk.length}개 지점 중`),
         h("span", { class: "hb" }, bname(top.b)), h("span", { class: "hp num" }, won(top.p)),
-        h("span", { class: "hl", style: "color:var(--muted);font-weight:600" }, `중간값 ${won(prices[prices.length >> 1])} · 가장 비싼 곳 ${won(prices[prices.length - 1])}`)));
+        h("span", { class: "hl", style: "color:var(--muted);font-weight:600" }, `중간값 ${won(prices[prices.length >> 1])} · 가장 비싼 곳 ${won(prices[prices.length - 1])}`),
+        h("span", { class: "hl row", style: "color:var(--muted);font-weight:600;gap:8px" }, h("span", {}, S[ROWS[top.i][2]]), kindBadge(ROWS[top.i]),
+          h("span", {}, `${fresh(top.b).d} 확인`), srcLink(top.i, "출처 보기"))));
       card.append(h("div", { class: "row", style: "margin-top:12px" }, addBtn(k.i),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { st.mapKey = k.i; nav("map"); } }, "지도에서 보기")));
     }
@@ -676,7 +699,9 @@
     box.append(h("div", { class: "card" }, h("div", { class: "row" }, bdot(b), h("span", { class: "sub" }, brandOf(b)[0])),
       h("h2", { style: "margin-top:2px" }, `${brandOf(b)[0]} ${x.name}`),
       h("dl", { class: "kv", style: "margin-top:10px" }, h("dt", {}, "주소"), h("dd", {}, x.addr || "확인 못 함"),
-        d != null ? [h("dt", {}, "거리"), h("dd", {}, `내 위치에서 ${km(d)}`)] : null),
+        d != null ? [h("dt", {}, "거리"), h("dd", {}, `내 위치에서 ${km(d)}`)] : null,
+        (() => { const f = fresh(b); return [h("dt", {}, "가격 확인"), h("dd", { class: f.stale ? "up" : "" }, f.d ? `${f.d} (${f.n === 0 ? "오늘" : `${f.n}일 전`})${f.stale ? " · 최신이 아닐 수 있어요" : ""}` : "확인일 없음")]; })()),
+      fresh(b).stale ? h("div", { class: "note", style: "margin-top:8px" }, "이번 수집에서 이 지점 가격을 새로 읽지 못해 지난 자료를 보여 주고 있어요. 방문 전에 병원에 꼭 확인하세요.") : null,
       h("div", { class: "row", style: "margin-top:12px" },
         x.lat != null ? h("button", { class: "btn sm soft", type: "button", onclick: () => { nav("map"); setTimeout(() => map && map.setView([x.lat, x.lng], 16), 50); } }, "지도") : null,
         x.addr ? h("a", { class: "btn sm gray", href: `https://map.kakao.com/?q=${encodeURIComponent(x.addr)}`, target: "_blank", rel: "noopener" }, "길찾기") : null,
@@ -702,7 +727,7 @@
       if (cheapHere.length) box.append(h("details", { class: "card flush fold" }, h("summary", {}, `이 지점이 제일 싼 시술 ${cheapHere.length}개`),
         h("ul", { class: "list" }, cheapHere.slice(0, 200).map((x) => { const r = ROWS[x.i];
           return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
-            h("span", { class: "m" }, h("span", {}, `${x.n}곳 중 ${x.sole ? "혼자 " : "공동 "}최저`), h("span", { class: "down" }, pctTxt(r[3] / x.med - 1)), kindBadge(r), h("span", { class: "sp" }), rowAddBtn(x.i)))); }))));
+            h("span", { class: "m" }, h("span", {}, `${x.n}곳 중 ${x.sole ? "혼자 " : "공동 "}최저`), h("span", { class: "down" }, pctTxt(r[3] / x.med - 1)), kindBadge(r), srcLink(x.i), h("span", { class: "sp" }), rowAddBtn(x.i)))); }))));
     }
     const rows = byB[b].filter((i) => st.special || !isSpecial(ROWS[i]));
     const cats = D.meta.cats.map((c, ci) => [c, rows.filter((i) => ROWS[i][1] === ci).length]).filter(([, n]) => n);
@@ -715,13 +740,13 @@
       const vm = (i) => { if (!pos.has(i)) pos.set(i, rowPos(i)); const x = pos.get(i); return x ? x.vsMed : 9; };
       const disc = (i) => ROWS[i][4] ? (ROWS[i][4] - ROWS[i][3]) / ROWS[i][4] : 0;
       const so = { cat: (a, c) => ROWS[a][1] - ROWS[c][1] || ROWS[a][3] - ROWS[c][3], price: (a, c) => ROWS[a][3] - ROWS[c][3], med: (a, c) => vm(a) - vm(c), disc: (a, c) => disc(c) - disc(a) }[st.bsort];
-      const shown = rows.filter((i) => (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort(so);
+      const shown = rows.filter((i) => (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort((a, c) => (ROWS[a][15] ? 1 : 0) - (ROWS[c][15] ? 1 : 0) || so(a, c));
       list.replaceChildren(...shown.slice(0, 400).map((i) => { const r = ROWS[i];
         return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
           h("span", { class: "m" }, D.meta.cats[r[1]], r[4] ? h("s", {}, won(r[4])) : null, r[4] ? h("span", { class: "k kt" }, `${Math.round((r[4] - r[3]) / r[4] * 100)}%↓`) : null, kindBadge(r),
             sessOf(i) > 1 ? h("span", {}, sessOf(i) >= 99 ? "이용권" : `${sessOf(i)}회`) : null,
-            (() => { const x = rowPos(i); return x ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위 · ${pctTxt(x.vsMed)}`) : null; })(),
-            h("span", { class: "sp" }), rowAddBtn(i)))); }));
+            (() => { const x = r[15] ? null : rowPos(i); return x ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위 · ${pctTxt(x.vsMed)}`) : null; })(),
+            srcLink(i), h("span", { class: "sp" }), r[15] ? null : rowAddBtn(i)))); }));
       if (!shown.length) list.replaceChildren(h("div", { class: "empty" }, "찾는 시술이 없어요"));
       else if (shown.length > 400) list.append(h("div", { class: "empty" }, `${shown.length}개 중 400개만 보여요. 검색으로 좁혀 보세요.`));
     };
@@ -842,7 +867,7 @@
     const hits = [];
     for (let i = 0; i < ROWS.length; i++) {
       const r = ROWS[i];
-      if (!brandOn(r[0]) || !regionOk(r[0]) || (!st.special && isSpecial(r))) continue;
+      if (r[15] || !brandOn(r[0]) || !regionOk(r[0]) || (!st.special && isSpecial(r))) continue;
       const n = compact(S[r[2]]);
       if (words.every((w) => n.includes(compact(w)))) hits.push(i);
     }
@@ -956,7 +981,7 @@
       body.append(h("div", { class: "qline" },
         h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, won(l.total))),
         h("div", { class: "m" }, h("span", {}, S[r[2]]), r[4] ? h("s", {}, won(r[4])) : null, pct > 0 ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
-          l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, detail ? h("span", {}, detail) : null),
+          l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, detail ? h("span", {}, detail) : null, srcLink(l.rows[0])),
         alts.length > 1 || l.ov ? h("div", { style: "margin-top:6px" }, sel) : null));
     });
     body.append(h("div", { class: "row", style: "margin-top:10px" }, h("b", {}, "합계"), h("span", { class: "sp" }), h("b", { class: "num", style: "font-size:20px" }, won(x.total))),
