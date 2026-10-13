@@ -4,8 +4,12 @@ usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
   meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
   branches  [brand, name s, address s, lat, lng, region s, site s]
-  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess]  (keys = comparison ids, space separated;
-            sess = sessions in the price, 1 = single, 99 = 이용권/무제한)
+  rows      [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group]  (keys = comparison ids, space
+            separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한; group = auto group index or -1)
+  groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
+  bstat     per branch [regular level, level incl. specials, groups used, cheapest count, sole cheapest, {cat: level}]
+            (level = geometric mean of price / median, 0.81 = 19% cheaper than the middle branch)
+  achg      auto-group changes since the previous snapshot {prev, chg [g, b, before, after], new [g, b, p], gone [label s, b, before]}
   meta.fam  procedure families for the option picker: [name, regex for related rows at a branch, [[key id, variant label]...]]
   keys      [id, cat, label]
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
@@ -18,6 +22,7 @@ from collections import defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X  # noqa: E402
+import groups as G  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -111,11 +116,12 @@ def main():
                              S(region(g.get("address", ""))), S(site)])
     out_rows = []
     best = {}
-    for r in rows:
+    gid, groups, gkeys, bstat, low_reg = G.build(rows, bi, CATS)
+    for r, g in zip(rows, gid):
         b = bi[(r["brand"], r["branch"])]
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
-                         kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1)])
+                         kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
@@ -135,12 +141,16 @@ def main():
             if before and before != after:
                 k, brand, branch = kk.split("|")
                 changes.append([kid[k], bi[(brand, branch)], before, after])
+    bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
+    achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": [[n, rx, [list(v) for v in vs]] for n, rx, vs in FAM]},
         "branches": branches, "rows": out_rows, "keys": [[k[0], k[1], k[2]] for k in X], "changes": changes, "s": s,
         "trend": trend(hist, a.date, rows),
+        "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
+        "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     txt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
