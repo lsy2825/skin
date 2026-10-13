@@ -4,10 +4,15 @@ on:
   schedule:
     - cron: "0 21 * * *"      # every day 06:00 KST: Monday = weekly update; other days only if saved events have
                               # expired (build2/needs_refresh.py), otherwise the run stops right away
-  workflow_dispatch: {}        # "Run workflow" button for a manual update
+  workflow_dispatch:           # "Run workflow" button for a manual update
+    inputs:
+      skip_scrape:
+        description: "rebuild from saved data only, no scraping (price-check.yml starts this after a source re-check)"
+        type: boolean
+        default: false
   push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
     branches: [main]
-    paths: ["app/**", "build2/**", "tests/**", ".github/workflows/weekly.yml"]
+    paths: ["app/**", "build2/**", "tests/**", "knowledge/**", ".github/workflows/weekly.yml"]   # knowledge/ = 시술 설명
 
 permissions:
   contents: write
@@ -35,15 +40,16 @@ jobs:
           if [ "${{ github.event_name }}" = "schedule" ]; then python build2/needs_refresh.py; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
       - if: steps.decide.outputs.run == 'true'
         run: pip install -r requirements.txt
-      - name: Unit tests (price calculation, comparison keys, treatment taxonomy)
+      - name: Unit tests (price calculation, comparison keys, treatment taxonomy, knowledge base)
         if: steps.decide.outputs.run == 'true'
         run: |
           node --test tests/*.test.js
           python build2/xkeys.py
           python build2/taxonomy.py
+          python build2/knowledge.py
       - name: Scrape, check, build
         if: steps.decide.outputs.run == 'true'
-        run: python build2/weekly.py ${{ github.event_name == 'push' && '--skip-scrape' || '' }}
+        run: python build2/weekly.py ${{ (github.event_name == 'push' || inputs.skip_scrape) && '--skip-scrape' || '' }}
         env:
           PYTHONUTF8: "1"
       - name: Save accepted data, snapshots and report
@@ -53,7 +59,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json
           for f in data2/sources.json data2/review.csv; do if [ -f "$f" ]; then git add "$f"; fi; done
-          git diff --cached --quiet || git commit -m "${{ github.event_name == 'push' && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
+          git diff --cached --quiet || git commit -m "${{ (github.event_name == 'push' || inputs.skip_scrape) && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
           git pull --rebase -X theirs origin main   # another run may have pushed meanwhile
           git push
       - name: Summary

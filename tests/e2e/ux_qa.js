@@ -84,9 +84,14 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     // realtime total: qty change updates totals
     await p.evaluate(() => localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X24', q: 1 }] }])));
     await p.goto(BASE + '#cart'); await p.reload(); await p.waitForTimeout(700);
-    const t1 = await p.locator('.qrow .rank .p').first().textContent(); await p.click('button[aria-label="하나 더"]'); await p.waitForTimeout(400);
-    const t2 = await p.locator('.qrow .rank .p').first().textContent();
+    // basic cart view: the estimated total is in the summary card; the per-clinic list opens with '병원별 비교 보기'
+    const t1 = await p.locator('.cartsum .hp').textContent(); await p.click('button[aria-label="하나 더"]'); await p.waitForTimeout(400);
+    const t2 = await p.locator('.cartsum .hp').textContent();
     ok('수량 바꾸면 합계 즉시 갱신', t1 !== t2, `${t1} → ${t2}`);
+    ok('기본 장바구니: 병원별 목록은 접혀 있음', await p.locator('.qrow').count() === 0 && /병원별 비교 보기/.test(await p.locator('.cartsum .btn').textContent()));
+    await p.click('.cartsum .btn'); await p.waitForTimeout(300);
+    const q1 = await p.locator('.qrow .rank .p').first().textContent();
+    ok('병원별 비교 열면 1위 합계 = 요약 총액', q1 === t2, `${q1} / ${t2}`);
     ok('하단 떠 있는 장바구니(다른 화면)', await (async () => { await p.goto(BASE + '#compare'); await p.waitForTimeout(400); return p.locator('#fcart').isVisible(); })());
     await ctx.close(); }
   // 6) dark mode renders with dark surface

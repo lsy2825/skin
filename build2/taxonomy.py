@@ -22,10 +22,10 @@ usage: python build2/taxonomy.py            # self-test
 import hashlib, re, sys
 from collections import Counter, defaultdict
 
-from xkeys import ADDON_ONLY, COND, comp, sessions
+from xkeys import ADDON, ADDON_ONLY, COND, comp, sessions
 
 # compare-tab categories (same names as xkeys categories)
-CATS = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디"]
+CATS = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디", "패키지", "기타"]
 
 def T(label, rx, where=None, split=None, scope="short"):
     """a tag. where: 'pre' (before the family name in labels), 'post' (after it) or 'hide' (signature only);
@@ -206,7 +206,7 @@ AMOUNT = re.compile(r"(\d+(?:\.\d+)?)(U|cc|ml|샷|KJ|부위|개(?!월)|줄|시�
 PACKAGE = re.compile(r"패키지|PKG|pkg|세트|SET|콤보|\+|&|(?<=[0-9샷cU])X(?=[가-힣])|결합|동시|코스")
 # filler words that don't change the product (marketing, price kind, generic nouns)
 STOP = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|할인|세일|첫방문|첫시술|1인1회|신규|웰컴|선착순|NEW|BEST|HOT|기획전|"
-                  r"가을|페스타|추천|인기|당일|회당|1회당|개당|[0-9]+회|1회|레이저|시술|관리|리프팅|주사|♥|★|☆|※|♡|◆|◇|■|□|▶|▷|#|-|·|/|,|\.|~|:|!|\?|_|=|\*|'|\"|“|”|‘|’")
+                  r"가을|페스타|추천|인기|당일|회당|1회당|[0-9]+회|1회|레이저|시술|관리|리프팅|주사|♥|★|☆|※|♡|◆|◇|■|□|▶|▷|#|-|·|/|,|\.|~|:|!|\?|_|=|\*|'|\"|“|”|‘|’")
 
 
 def _strip(name):
@@ -266,8 +266,16 @@ def _area(raw):
     return "/".join(re.sub(r"[^\w가-힣]", "", p) for p in parts if re.sub(r"[^\w가-힣]", "", p))
 
 
-def variant(name, addon=False, kind=""):
-    """→ (dict(fam, famname, cat, tags, area, residual, detail, amount, sess, sig, label, sub), '') or (None, reason)"""
+KINDWORDS = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|첫방문|첫시술|1인1회|선착순|NEW|BEST|HOT|웰컴|신규|[♥★☆※♡]|\d+회")
+KINDONLY = re.compile(r"체험가|한정가|이벤트|EVENT|특가|선착순|NEW|BEST|HOT|[♥★☆※♡]")
+# compare category for rows no family covers, from the clinic's own category (clean.py cat)
+ROWCAT = {"리프팅": "리프팅", "스킨부스터": "부스터", "피부·레이저": "피부", "제모": "제모·바디", "바디": "제모·바디", "기타": "기타"}
+
+
+def variant(name, addon=False, kind="", cat="", display=None):
+    """→ (dict(fam, famname, cat, tags, area, residual, detail, amount, sess, sig, label, sub, rx), '') or (None, reason).
+    cat: the row's own category (clean.py), used only for names no family covers; display: the shown name with its
+    'group · option' separator (name is clean.py's mname, where ' · ' became a space)."""
     if addon or kind == "구독권":
         return None, "추가 옵션·구독권"
     raw = name or ""
@@ -276,15 +284,74 @@ def variant(name, addon=False, kind=""):
         return None, "추가 옵션"
     if COND.search(full):
         return None, "조건부 가격(○○ 이상 시)"
-    fam, n = family_of(raw)
-    if not fam:
-        return None, "분류 안 됨"
-    st = _strip(raw)
-    if n >= 2 or PACKAGE.search(comp(st)):
-        return None, "묶음·패키지"
     sess = sessions(raw)
     if sess >= 99:
         return None, "이용권·무제한"
+    fam, n = family_of(raw)
+    # a bundle: two families, '+'/패키지 in the short name, or ' + ' between parts in the explanation ('환절기 스킨 리커버리(A + B)')
+    bundle = n >= 2 or bool(PACKAGE.search(comp(_strip(raw)))) or bool(re.search(r"\([^()]*\s\+\s[^()]*\)", raw))
+    if fam and not bundle:
+        v, why = _family_variant(raw, fam, sess)
+        if v:
+            return v, ""
+    elif not fam and not bundle and cat == "제모":
+        # '얼굴 제모 · [여성] 이마 1회': the area is the option, '제모' only in the group name
+        seg = re.split(r"\s+·\s+", display or raw)[-1]
+        sex = " ".join(re.findall(r"\[(?:여성|남성)\]", raw))
+        v, why = _family_variant(f"{sex} {seg} 제모", FAM_BY_ID["hair"], sess)
+        if v:
+            return v, ""
+    return _exact(display or raw, sess, cat, bundle)
+
+
+def _exact(raw, sess, rowcat, bundle):
+    """names no family rule covers (or that a rule can't read): same product only when the whole name is the same
+    (labels and explanations included, price-kind words and session counts aside). Bundles go to '패키지'."""
+    nm = re.sub(r"\[[^\]]*\]", " ", raw)
+    nm = nm if bundle else ADDON.sub("", nm)
+    seg = [x for x in re.split(r"\s+·\s+", nm) if x.strip()]
+    disp = (seg[-1] if seg else nm).strip()
+    # a package's parts all count ('+ 크라이오셀' is a part here, not a free extra): keep '+' away from comp()'s add-on rule
+    src = " ".join(seg) if seg else nm
+    sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
+    if not sigtext:
+        return None, "이름 없음"
+    amounts = " ".join(dict.fromkeys(f"{v}{u}" for v, u in AMOUNT.findall(comp(disp))))
+    if bundle:
+        first = next((f for f in FAMILIES if f["_rx"].search(comp(raw))), None)
+        famname, cat = (f"{first['name']} 포함 패키지" if first else "기타 패키지"), "패키지"
+        label = re.sub(r"\s+", " ", KINDONLY.sub("", disp)).strip(" -·")
+        sub = label
+        rx = first["rx"] if first else re.escape(comp(label)[:6])
+        fid = "package"
+    else:
+        base = re.sub(r"\([^()]*\)", " ", disp)
+        base = AMOUNT.sub(" ", comp_spaces(base))
+        base = re.sub(r"\s+", " ", KINDWORDS.sub(" ", base)).strip(" -·")
+        if not base:
+            return None, "이름 없음"
+        famname = base
+        cat = ROWCAT.get(rowcat) or ("톡신" if re.search(r"톡신|보톡|톡스", comp(raw)) else "윤곽·필러" if rowcat == "보톡스·필러" else "기타")
+        sub = " ".join(([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else [])) or "기본"
+        label = " ".join([famname] + ([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else []))
+        rx = re.escape(comp(famname))
+        fid = "generic"
+    sig = "|".join(["x", famname, sigtext, str(sess)])
+    desc = re.findall(r"\(([^()]{2,40})\)", disp)
+    return dict(fam=fid, famname=famname, cat=cat, tags=[], area="", residual="", detail=desc[0] if desc else "", amount=amounts, sess=sess,
+                sig=sig, label=label, sub=sub, rx=rx), ""
+
+
+def comp_spaces(s):
+    """comp()-like unit spelling (50유닛 → 50U, 2 CC → 2cc) but spaces kept, for display names"""
+    s = re.sub(r"(\d+)\s*(유닛|단위|unit|units|Unit|UNIT|u|U)(?![a-zA-Z])", r"\1U", s)
+    s = re.sub(r"(\d)\s*(CC|cC|Cc|cc)", r"\1cc", s)
+    return re.sub(r"(\d),(\d{3})", r"\1\2", s)
+
+
+def _family_variant(raw, fam, sess):
+    full = comp(raw)
+    st = _strip(raw)
     by_unit = defaultdict(set)
     for v, u in AMOUNT.findall(full):
         by_unit[u].add(float(v))
@@ -323,16 +390,15 @@ def variant(name, addon=False, kind=""):
     det = "·".join(x for x in (re.sub(r"등$", "", _clean(p, fam)) for p in re.split(r"[/,·]", detail)) if x)
     area = ""
     if fam.get("area"):
-        area = _area(raw)
-        if not area:
-            return None, "부위 없음"
+        area = _area(raw) or "부위 미표기"        # '제모 · 여자': the clinic names no area
         famname, rest, det = f"{area.replace('/', '·')} 제모", "", ""
     shown = lambda w: [t["label"] for t in tags if t["where"] == w]
     pre, post = shown("pre"), shown("post")
     tail = ([rest] if rest else []) + ([f"({det})"] if det else []) + ([amount] if amount else []) + ([f"{sess}회"] if sess > 1 else [])
     sig = "|".join([fam["id"], famname, ",".join(lab), rest, det, amount, str(sess)])
     return dict(fam=fam["id"], famname=famname, cat=cat, tags=lab, area=area, residual=rest, detail=det, amount=amount, sess=sess, sig=sig,
-                label=" ".join(pre + [famname] + post + tail), sub=" ".join(pre + post + tail) or "기본"), ""
+                label=" ".join(pre + [famname] + post + tail), sub=" ".join(pre + post + tail) or "기본",
+                rx=fam["rx"] + ("|보톡스|보툴" if fam["id"] == "toxin" else "")), ""
 
 
 def key_id(sig):
@@ -345,7 +411,7 @@ def build(rows, min_branches=3):
      families: [{name, cat, fam, keys: [ids], curated: [ids]}], stats)"""
     vs, why = [], Counter()
     for r in rows:
-        v, reason = variant(r.get("mname") or r["name"], r.get("addon") == "1", r.get("kind", ""))
+        v, reason = variant(r.get("mname") or r["name"], r.get("addon") == "1", r.get("kind", ""), r.get("cat", ""), r.get("name"))
         vs.append(v)
         if not v:
             why[reason] += 1
@@ -358,38 +424,50 @@ def build(rows, min_branches=3):
         branches = {(rows[i]["brand"], rows[i]["branch"]) for i in idx}
         if len(branches) < min_branches:
             continue
-        cur = Counter(k for i in idx for k in (rows[i].get("keys") or "").split())
+        cur = Counter(k for i in idx for k in (rows[i].get("keys") or "").split() if k.startswith("X"))
         top = cur.most_common(1)
         if top and top[0][1] >= len(idx) / 2:
             owned[sig] = top[0][0]          # this spec is one of the hand-made keys: keep using that key
             continue
         v = vs[idx[0]]
         kid = key_id(sig)
-        keys[sig] = dict(id=kid, cat=v["cat"], label=v["label"], fam=v["fam"], famname=v["famname"], sub=v["sub"], sig=sig, n=len(branches))
+        keys[sig] = dict(id=kid, cat=v["cat"], label=v["label"], fam=v["fam"], famname=v["famname"], sub=v["sub"], sig=sig, n=len(branches), rx=v["rx"],
+                         detail=v["detail"])
         for i in idx:
             row_keys[i] = kid
     # families: auto keys + the curated keys whose rows mostly fall in that family
     fam_of_curated = defaultdict(Counter)
     for i, r in enumerate(rows):
         for k in (r.get("keys") or "").split():
+            if not k.startswith("X"):
+                continue
             if vs[i]:
-                fam_of_curated[k][(vs[i]["famname"], vs[i]["cat"], vs[i]["fam"])] += 1
+                if vs[i]["fam"] in FAM_BY_ID:
+                    fam_of_curated[k][(vs[i]["famname"], vs[i]["cat"], vs[i]["fam"])] += 1
             else:
                 f, _ = family_of(r.get("mname") or r["name"])
                 if f:
                     fam_of_curated[k][(f["name"], f["cat"], f["id"])] += 1
-    fams = {}
-    new_fam = lambda name, cat, fid: dict(name=name, cat=cat, fam=fid, keys=[], curated=[], desc=[],
-                                         rx=FAM_BY_ID[fid]["rx"] + ("|보톡스|보툴" if fid == "toxin" else ""))
+    # same label twice in a family (names that differ only in their explanation): show the explanation
+    seen = defaultdict(list)
     for k in keys.values():
-        fams.setdefault((k["famname"], k["cat"]), new_fam(k["famname"], k["cat"], k["fam"]))["keys"].append(k["id"])
+        seen[(k["famname"], k["cat"], k["label"])].append(k)
+    for ks in seen.values():
+        if len(ks) > 1:
+            for n, k in enumerate(sorted(ks, key=lambda x: -x["n"])):
+                extra = k["detail"] or f"표기 {n + 1}"
+                k["label"], k["sub"] = f"{k['label']} ({extra})", f"{k['sub']} ({extra})"
+    fams = {}
+    new_fam = lambda name, cat, fid, rx: dict(name=name, cat=cat, fam=fid, keys=[], curated=[], desc=[], rx=rx)
+    for k in keys.values():
+        fams.setdefault((k["famname"], k["cat"]), new_fam(k["famname"], k["cat"], k["fam"], k["rx"]))["keys"].append(k["id"])
     from xkeys import X
     xlabel = {k[0]: re.sub(r"\s+", "", k[2]) for k in X}
     for cid, c in fam_of_curated.items():
         # prefer a family whose name is all in the key's label ('(여) 겨드랑이 제모 1회' → 겨드랑이 제모, not 겨드랑이·인중 제모)
         fit = [x for x, _ in c.most_common() if all(w in xlabel.get(cid, "") for w in re.split(r"[\s·]+", x[0]) if w)]
         (fname, fcat, fid) = fit[0] if fit else c.most_common(1)[0][0]
-        fams.setdefault((fname, fcat), new_fam(fname, fcat, fid))["curated"].append(cid)
+        fams.setdefault((fname, fcat), new_fam(fname, fcat, fid, FAM_BY_ID[fid]["rx"] + ("|보톡스|보툴" if fid == "toxin" else "")))["curated"].append(cid)
     # the clinics' own explanation in brackets ('리쥬란힐러(PN 프리미엄 스킨부스터)'), most common first
     said = defaultdict(Counter)
     for i, v in enumerate(vs):
@@ -400,7 +478,9 @@ def build(rows, min_branches=3):
                     said[(v["famname"], v["cat"])][t] += 1
     for key, f in fams.items():
         f["desc"] = [t for t, n in said[key].most_common(2) if n >= 3]
-    covered = sum(1 for i, r in enumerate(rows) if row_keys[i] or (r.get("keys") or "").strip())
+    covered = sum(1 for i, r in enumerate(rows) if row_keys[i] or any(k.startswith("X") for k in (r.get("keys") or "").split()))
+    few = sum(1 for i, v in enumerate(vs) if v and not row_keys[i] and not any(k.startswith("X") for k in (rows[i].get("keys") or "").split()))
+    why["판매 지점 3곳 미만(비교 대상 없음)"] = few
     stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why))
     return row_keys, list(keys.values()), list(fams.values()), stats
 
@@ -439,11 +519,16 @@ if __name__ == "__main__":
         ("피코토닝 1회", "pico", "피코토닝"),
         ("레이저토닝 10회", "toning", "레이저토닝 10회"),
         ("듀얼토닝 체험가", "toning", "듀얼 레이저토닝"),
+        ("아크네 포텐자(피지선 파괴술) 개당", "potenza", "아크네 포텐자 개당"),
     ]
-    rejects = [("리쥬베룩 패키지(리쥬란힐러/리제반PN 2cc + 쥬베룩 스킨 2cc + 크라이오셀) 한정가", "묶음·패키지"),
-               ("옵션2) 큐어스템 엑소좀 1회 추가", "추가 옵션"), ("울쎄라 프라임 100샷 *300샷 이상 시", "조건부 가격(○○ 이상 시)"),
-               ("볼뉴머300샷X슈링크300샷", "묶음·패키지"), ("겨드랑이/인중 제모 1년 구독권", "이용권·무제한"),
-               ("리쥬란 풀 패키지(리쥬란힐러 2cc + 아이 리쥬란힐러 1cc)", "묶음·패키지")]
+    rejects = [("옵션2) 큐어스템 엑소좀 1회 추가", "추가 옵션"), ("울쎄라 프라임 100샷 *300샷 이상 시", "조건부 가격(○○ 이상 시)"),
+               ("겨드랑이/인중 제모 1년 구독권", "이용권·무제한")]
+    # bundles and names no rule covers: same product only when the whole name is the same → (category, family)
+    exact = [("리쥬베룩 패키지(리쥬란힐러/리제반PN 2cc + 쥬베룩 스킨 2cc + 크라이오셀) 한정가", "패키지", "리쥬란 포함 패키지"),
+             ("볼뉴머300샷X슈링크300샷", "패키지", "슈링크 유니버스 포함 패키지"),
+             ("환절기 스킨 리커버리(제네시스 레이저 + 비타민관리 + 크라이오셀) 한정가", "패키지", "제네시스 포함 패키지"),
+             ("인라이튼 니플스(피코 프락셔널) · 인라이튼 니플스(피코 프락셔널) 1회", "기타", "인라이튼 니플스"),
+             ("리팟 레이저(VSLS 특화 색소 치료) - 5mm 이하", "피부", "리팟 레이저 - 이하")]
     bad = 0
     for name, fam, label in tests:
         v, why = variant(name)
@@ -455,11 +540,25 @@ if __name__ == "__main__":
         if v or why != want:
             bad += 1
             print("FAIL reject", name, "→", v and v["label"], why)
+    rowcat = {"인라이튼": "기타", "리팟": "피부·레이저"}
+    for name, cat, famname in exact:
+        v, why = variant(name, cat=next((c for w, c in rowcat.items() if w in name), ""))
+        if not v or v["cat"] != cat or v["famname"] != famname:
+            bad += 1
+            print("FAIL exact", name, "→", v and (v["cat"], v["famname"], v["label"]), why)
+    v, _ = variant(" · [여성] 이마 1회", cat="제모")
+    if not v or v["famname"] != "이마 제모" or "여성" not in v["tags"]:
+        bad += 1
+        print("FAIL hair area from option", v and v["label"])
+    a, b = variant("환절기 스킨 리커버리(제네시스 레이저 + 비타민관리 + 크라이오셀) 한정가")[0], variant("환절기 스킨 리커버리(제네시스 레이저 + 비타민관리) 한정가")[0]
+    if a["sig"] == b["sig"]:
+        bad += 1
+        print("FAIL package with different parts merged")
     a, b = variant("겨드랑이/인중 제모 5회")[0], variant("인중/겨드랑이 제모 5회")[0]
     if a["sig"] != b["sig"]:
         bad += 1
         print("FAIL area order")
-    print("tests", len(tests) + len(rejects) + 1, "fail", bad)
+    print("tests", len(tests) + len(rejects) + len(exact) + 3, "fail", bad)
     if bad and "--report" not in sys.argv:
         sys.exit(1)
     if "--report" in sys.argv:

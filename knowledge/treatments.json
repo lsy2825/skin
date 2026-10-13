@@ -1,0 +1,1569 @@
+{
+ "version": 1,
+ "updated": "2026-10-13",
+ "about": "시술 지식 베이스. 앱의 시술 설명(시술 사전·비교 탭·검색)이 이 파일을 써요. 형식과 검수 방법은 knowledge/README.md를 보세요.",
+ "statuses": {
+  "draft": "초안 · 전문가 검수 전",
+  "in_review": "전문가 검수 중",
+  "approved": "전문가 검수 완료",
+  "needs_changes": "검수 의견 반영 필요"
+ },
+ "sources": {
+  "aad-botox": {
+   "title": "Botulinum toxin therapy: FAQs",
+   "publisher": "American Academy of Dermatology (미국피부과학회)",
+   "url": "https://www.aad.org/public/cosmetic/wrinkles/botulinum-toxin-faqs",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 부작용 목록 확인"
+  },
+  "mfds-botulinum": {
+   "title": "보툴리눔 주사제, 이런 점에 주의하여 사용하세요 (보도자료)",
+   "publisher": "식품의약품안전처",
+   "url": "https://impfood.mfds.go.kr/CFBBB02F02/getCntntsDetail?cntntsSn=281817",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인(본문 전체는 읽지 못함)"
+  },
+  "review-botox": {
+   "title": "The whole truth about botulinum toxin – a review (Postepy Dermatol Alergol, PMC7874868)",
+   "publisher": "PubMed Central",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7874868/",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 부위별 부작용 확인"
+  },
+  "fda-fillers": {
+   "title": "Dermal Fillers (Soft Tissue Fillers)",
+   "publisher": "U.S. FDA (미국 식품의약국)",
+   "url": "https://www.fda.gov/medical-devices/aesthetic-cosmetic-devices/dermal-fillers-soft-tissue-fillers",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 위험 목록 확인"
+  },
+  "fda-filler-dos": {
+   "title": "Dermal Filler Do's and Don'ts for Wrinkles, Lips and More",
+   "publisher": "U.S. FDA",
+   "url": "https://www.fda.gov/consumers/consumer-updates/dermal-filler-dos-and-donts-wrinkles-lips-and-more",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "review-filler": {
+   "title": "Review of the Adverse Effects Associated with Dermal Filler Treatments: Part I (Diagnostics 2024, PMC11311355)",
+   "publisher": "PubMed Central",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC11311355/",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "aad-lhr": {
+   "title": "Laser hair removal: FAQs",
+   "publisher": "American Academy of Dermatology",
+   "url": "https://www.aad.org/public/cosmetic/hair-removal/laser-hair-removal-faqs",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "mayo-lhr": {
+   "title": "Laser hair removal",
+   "publisher": "Mayo Clinic",
+   "url": "https://www.mayoclinic.org/tests-procedures/laser-hair-removal/about/pac-20394555",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "aad-peel": {
+   "title": "Chemical peels: FAQs",
+   "publisher": "American Academy of Dermatology",
+   "url": "https://www.aad.org/public/cosmetic/younger-looking/chemical-peels-faqs",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "mayo-peel": {
+   "title": "Chemical peel",
+   "publisher": "Mayo Clinic",
+   "url": "https://www.mayoclinic.org/tests-procedures/chemical-peel/about/pac-20393473",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "review-hifu": {
+   "title": "Complications and Risks of High-Intensity Focused Ultrasound (HIFU) in Esthetic Procedures: A Review (Applied Sciences 2025)",
+   "publisher": "MDPI",
+   "url": "https://www.mdpi.com/2076-3417/15/9/4958",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "cc-rf": {
+   "title": "Radio Frequency (RF) Skin Tightening",
+   "publisher": "Cleveland Clinic",
+   "url": "https://my.clevelandclinic.org/health/treatments/24683-radio-frequency-rf-skin-tightening",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  },
+  "review-toning": {
+   "title": "Hypopigmentation Induced by Frequent Low-Fluence, Large-Spot-Size QS Nd:YAG Laser Toning (PMC4695430)",
+   "publisher": "PubMed Central",
+   "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC4695430/",
+   "checked": "2026-10-13",
+   "how": "검색 결과 요약으로 확인"
+  }
+ },
+ "entries": [
+  {
+   "id": "base-toxin",
+   "title": "보톡스(보툴리눔 톡신)",
+   "base": null,
+   "fids": [
+    "toxin"
+   ],
+   "one_liner": "근육을 움직이게 하는 신경 신호를 잠시 약하게 하는 주사예요.",
+   "purpose": "표정 주름을 펴거나, 큰 근육의 부피를 줄이거나, 땀을 줄이는 데 써요.",
+   "areas": "부위마다 이름을 나눠 팔아요(주름·스킨·사각턱·바디·다한증 등).",
+   "method": "가는 바늘로 근육(주름·사각턱·바디) 또는 피부 얕은 층(스킨·모공)에 놓아요. 시간이 지나면 효과가 줄어들어 다시 맞는 경우가 많아요.",
+   "kinds": "국산(나보타·보툴렉스·메디톡신·리즈톡스 등)과 수입(독일 제오민, 미국 제품 등)이 있어요. 병원들은 고순도·내성 걱정이 적다는 제품을 '프리미엄'으로 따로 팔아요. U(유닛)는 약의 양이고, 제품마다 1U의 세기가 같지 않아서 다른 제품끼리 U만으로 비교하긴 어려워요.",
+   "side_effects": [
+    "주사 부위 통증·붓기·붉어짐·멍, 당김이나 열감 (대개 며칠 안에 가라앉아요)",
+    "가벼운 두통 (흔하지 않아요)",
+    "놓은 곳 옆 근육이 약해져 눈썹·눈꺼풀이 잠시 처질 수 있어요 (드물어요)",
+    "드물게 두드러기·호흡곤란 같은 과민반응",
+    "매우 드물게 삼킴·말하기·숨쉬기가 어려운 증상 — 생기면 바로 병원에 알려야 해요"
+   ],
+   "cautions": [
+    "예전에 보톡스나 다른 약에 알레르기가 있었다면 미리 말하세요",
+    "임신·수유 중이거나 근육·신경 질환이 있으면 미리 말하세요",
+    "의료기관이 아닌 곳이나 면허 없는 사람에게 맞지 마세요"
+   ],
+   "sources": [
+    "aad-botox",
+    "mfds-botulinum",
+    "review-botox"
+   ],
+   "evidence_note": "부작용 목록은 미국피부과학회·식약처 자료와 리뷰 논문 요약을 따랐어요. '임신·수유·신경 질환' 문구는 일반적인 의약품 안내를 옮긴 것이라 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-wrinkle",
+   "title": "주름 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "주름 보톡스"
+   ],
+   "one_liner": "표정 주름이 생기는 근육에 소량 놓는 보톡스예요.",
+   "purpose": "움직일 때 생기는 이마·미간·눈가 주름을 덜 생기게 하려고 받아요.",
+   "areas": "이마, 미간, 눈가(눈꼬리), 콧등 등 — 보통 '1부위' 단위로 팔아요.",
+   "method": "근육에 놓아요. 스킨보톡스는 근육이 아니라 피부 얕은 층에 놓는다는 점이 달라요.",
+   "extra_side_effects": [
+    "이마·미간 시술 뒤 눈썹이 처지거나 눈썹 모양이 달라 보일 수 있어요 (대개 일시적)"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-skin",
+   "title": "스킨보톡스",
+   "base": "base-toxin",
+   "families": [
+    "스킨보톡스"
+   ],
+   "one_liner": "희석한 톡신을 피부 얕은 층에 여러 번 나눠 놓는 방식이에요. 더모톡신·더마톡신이라고도 불러요.",
+   "purpose": "모공, 피지, 잔주름, 피부결 개선 목적으로 많이 받아요.",
+   "areas": "얼굴 전체 또는 일부(볼·턱선 등) — 보통 '얼굴전체' 단위로 팔아요.",
+   "method": "근육이 아니라 피부 얕은 층에 촘촘히 놓아요. 주름 보톡스와 놓는 깊이·목적이 달라요.",
+   "extra_side_effects": [
+    "여러 곳을 찌르기 때문에 작은 멍·붓기가 여러 군데 생길 수 있어요"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-jaw",
+   "title": "사각턱 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "사각턱 보톡스"
+   ],
+   "one_liner": "턱 양옆의 씹는 근육(교근)에 놓는 보톡스예요.",
+   "purpose": "근육 부피를 줄여 턱선이 갸름해 보이게 하려고 받고, 이갈이·이악물기 때문에 받기도 해요.",
+   "areas": "턱 양옆(교근)",
+   "method": "근육에 놓아요. 보통 50U 안팎으로 팔아요. 침샘 보톡스(침샘)·턱라인 보톡스(턱선 아래 근육)와 놓는 곳이 달라요.",
+   "extra_side_effects": [
+    "씹을 때 힘이 빠지는 느낌이 들 수 있어요",
+    "드물게 웃을 때 어색함, 근육이 불룩해 보임, 볼이 꺼져 보임"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-jawline",
+   "title": "턱라인 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "턱라인 보톡스"
+   ],
+   "one_liner": "턱선과 목 쪽 근육에 놓아 턱 라인을 정리해 보이게 하는 보톡스예요.",
+   "purpose": "처져 보이는 턱선이 신경 쓰일 때 받아요.",
+   "areas": "턱선 아래, 목 위쪽",
+   "method": "병원마다 '턱라인·탄력 보톡스' 등으로 불러요. 사각턱 보톡스는 씹는 근육의 부피를 줄이는 것이라 목적이 달라요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-body",
+   "title": "바디 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "바디 보톡스"
+   ],
+   "one_liner": "승모근·종아리·허벅지·팔뚝 같은 큰 근육에 놓는 보톡스예요.",
+   "purpose": "근육 부피를 줄여 라인을 정리해 보이게 하려고 받아요.",
+   "areas": "승모근, 종아리, 허벅지, 팔뚝",
+   "method": "근육이 커서 양(100U 이상)이 많아요. 부위와 U에 따라 값이 크게 달라요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-sweat",
+   "title": "다한증 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "다한증 보톡스"
+   ],
+   "one_liner": "땀이 많이 나는 부위에 놓는 보톡스예요.",
+   "purpose": "땀 분비를 줄이려고 받아요.",
+   "areas": "겨드랑이, 손바닥, 발바닥",
+   "method": "땀샘이 있는 피부 쪽에 여러 번 나눠 놓아요. 겨드랑이만인지, 손·발까지인지에 따라 U와 값이 달라요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-gland",
+   "title": "침샘 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "침샘 보톡스"
+   ],
+   "one_liner": "턱 아래·귀밑의 침샘에 놓는 보톡스예요.",
+   "purpose": "침샘 부피를 줄여 턱 아래 라인을 정리해 보이게 하려고 받아요.",
+   "areas": "턱밑샘, 귀밑샘",
+   "method": "근육이 아니라 침샘에 놓아요.",
+   "extra_side_effects": [
+    "입마름을 느낄 수 있어요"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-pore",
+   "title": "모공 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "모공 보톡스"
+   ],
+   "one_liner": "코·볼 주변(나비존) 피부 얕은 층에 놓는 보톡스예요.",
+   "purpose": "모공·피지 개선 목적으로 받아요.",
+   "areas": "코와 양볼(나비존)",
+   "method": "스킨보톡스를 좁은 부위에만 하는 것과 비슷해요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-temporal",
+   "title": "측두근 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "측두근 보톡스"
+   ],
+   "one_liner": "관자놀이 쪽 씹는 근육(측두근)에 놓는 보톡스예요.",
+   "purpose": "옆머리 쪽 볼륨이나 이악물기 때문에 받는 경우가 많아요.",
+   "areas": "관자놀이 위쪽(측두근)",
+   "method": "근육에 놓아요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-mouth",
+   "title": "입꼬리 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "입꼬리 보톡스"
+   ],
+   "one_liner": "입꼬리를 아래로 당기는 근육에 놓는 보톡스예요.",
+   "purpose": "입꼬리가 처져 보이는 것을 줄이려고 받아요.",
+   "areas": "입꼬리 아래",
+   "method": "근육에 놓아요.",
+   "extra_side_effects": [
+    "웃는 모양이 잠시 어색하거나 비대칭으로 보일 수 있어요"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-nose",
+   "title": "콧볼 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "콧볼 보톡스"
+   ],
+   "one_liner": "콧볼 근육에 놓는 보톡스예요.",
+   "purpose": "웃을 때 콧볼이 넓어지는 것을 줄이려고 받아요.",
+   "areas": "콧볼",
+   "method": "근육에 놓아요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-gum",
+   "title": "잇몸 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "잇몸 보톡스"
+   ],
+   "one_liner": "윗입술을 들어 올리는 근육에 놓는 보톡스예요.",
+   "purpose": "웃을 때 잇몸이 많이 보이는 것(거미 스마일)을 줄이려고 받아요.",
+   "areas": "코 옆~윗입술 위",
+   "method": "근육에 놓아요.",
+   "extra_side_effects": [
+    "웃는 모양이 잠시 어색하거나 비대칭으로 보일 수 있어요"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-chin",
+   "title": "자갈턱 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "자갈턱 보톡스"
+   ],
+   "one_liner": "턱끝 근육에 놓는 보톡스예요.",
+   "purpose": "입을 다물 때 턱끝이 오돌토돌해지는 것을 줄이려고 받아요.",
+   "areas": "턱끝",
+   "method": "근육에 놓아요.",
+   "extra_side_effects": [],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "toxin-neck",
+   "title": "목주름 보톡스",
+   "base": "base-toxin",
+   "families": [
+    "목주름 보톡스",
+    "목 광경근 보톡스"
+   ],
+   "one_liner": "목 근육(광경근)과 목 주름 쪽에 놓는 보톡스예요.",
+   "purpose": "목 주름이나 목에 세로로 도드라지는 근육 띠를 줄이려고 받아요.",
+   "areas": "목 앞쪽·옆쪽",
+   "method": "근육 또는 피부 얕은 층에 놓아요. 목 가로주름은 필러나 부스터로 하는 병원도 있어요.",
+   "extra_side_effects": [
+    "목에 많은 양을 놓으면 드물게 삼킴이 불편하거나 목소리가 쉴 수 있어요"
+   ],
+   "extra_cautions": [],
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "base-filler",
+   "title": "필러",
+   "base": null,
+   "fids": [
+    "filler"
+   ],
+   "one_liner": "히알루론산(HA) 같은 젤을 넣어 꺼진 곳을 채우거나 모양을 만드는 주사예요.",
+   "purpose": "부위별로 볼륨이나 모양을 바꾸려고 받아요.",
+   "areas": "부위별로 따로 팔아요(코·턱끝·애교·입술·눈밑·팔자 등).",
+   "method": "젤을 피부 아래에 넣어요. 히알루론산 필러는 녹이는 주사(히알라제)로 줄일 수 있어요.",
+   "kinds": "국산(아띠에르·뉴라미스·리쥬비엘 등)과 수입(벨로테로·쥬비덤·레스틸렌)이 있어요. cc(또는 시린지)는 넣는 양이고, 같은 cc라도 제품마다 값이 크게 달라요.",
+   "side_effects": [
+    "붓기·멍·통증·누르면 아픔·가려움 (대개 며칠~몇 주 안에 가라앉아요)",
+    "몇 주~몇 년 뒤 멍울(결절·육아종)이나 염증이 생길 수 있어요",
+    "감염, 알레르기 반응",
+    "드물지만 심각한 위험: 필러가 혈관으로 들어가면 피부 괴사, 시력 이상(실명), 뇌졸중이 생길 수 있어요 — 시술 중·후 심한 통증, 피부색 변화, 시야 이상이 있으면 바로 알리세요"
+   ],
+   "cautions": [
+    "피가 잘 멈추지 않는 질환이나 알레르기가 있으면 미리 말하세요",
+    "허가받지 않은 필러나 바늘 없는 주입기(펜)로 맞지 마세요",
+    "필러를 녹이거나 빼는 시술에도 따로 위험이 있어요"
+   ],
+   "sources": [
+    "fda-fillers",
+    "fda-filler-dos",
+    "review-filler"
+   ],
+   "evidence_note": "위험 목록은 FDA 자료와 리뷰 논문 요약을 따랐어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-nose",
+   "title": "코 필러",
+   "base": "base-filler",
+   "families": [
+    "코 필러"
+   ],
+   "one_liner": "콧대·코끝에 넣는 필러예요.",
+   "purpose": "콧대를 세우거나 코 모양을 다듬으려고 받아요.",
+   "areas": "콧대, 코끝",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-chin",
+   "title": "턱끝 필러",
+   "base": "base-filler",
+   "families": [
+    "턱끝 필러"
+   ],
+   "one_liner": "턱끝에 넣는 필러예요.",
+   "purpose": "턱끝을 앞·아래로 채워 옆모습과 턱선을 다듬으려고 받아요.",
+   "areas": "턱끝",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-aegyo",
+   "title": "애교 필러",
+   "base": "base-filler",
+   "families": [
+    "애교 필러"
+   ],
+   "one_liner": "눈 바로 아래 애교살 자리에 넣는 필러예요.",
+   "purpose": "애교살을 도톰하게 만들려고 받아요. 눈밑 필러는 그 아래 꺼진 곳을 채우는 것이라 목적이 달라요.",
+   "areas": "눈 바로 아래",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-lip",
+   "title": "입술 필러",
+   "base": "base-filler",
+   "families": [
+    "입술 필러"
+   ],
+   "one_liner": "입술에 넣는 필러예요.",
+   "purpose": "입술 볼륨이나 모양을 바꾸려고 받아요.",
+   "areas": "입술",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-under",
+   "title": "눈밑 필러",
+   "base": "base-filler",
+   "families": [
+    "눈밑 필러"
+   ],
+   "one_liner": "눈 아래 꺼진 곳에 넣는 필러예요.",
+   "purpose": "꺼져서 그늘져 보이는 눈밑을 채우려고 받아요.",
+   "areas": "눈밑(애교살 아래)",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-nasolabial",
+   "title": "팔자 필러",
+   "base": "base-filler",
+   "families": [
+    "팔자 필러"
+   ],
+   "one_liner": "코 옆에서 입가로 이어지는 팔자 주름 부위에 넣는 필러예요.",
+   "purpose": "팔자 주름이 깊어 보이는 것을 줄이려고 받아요.",
+   "areas": "코 옆~입가",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-forehead",
+   "title": "이마 필러",
+   "base": "base-filler",
+   "families": [
+    "이마 필러"
+   ],
+   "one_liner": "이마에 넣는 필러예요.",
+   "purpose": "이마를 둥글게 채우려고 받아요.",
+   "areas": "이마",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-cheek",
+   "title": "앞볼 필러",
+   "base": "base-filler",
+   "families": [
+    "앞볼 필러"
+   ],
+   "one_liner": "앞볼에 넣는 필러예요.",
+   "purpose": "앞볼 볼륨을 채우려고 받아요.",
+   "areas": "눈 아래 앞볼",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-temple",
+   "title": "관자 필러",
+   "base": "base-filler",
+   "families": [
+    "관자 필러"
+   ],
+   "one_liner": "관자놀이에 넣는 필러예요.",
+   "purpose": "꺼진 관자놀이를 채우려고 받아요.",
+   "areas": "관자놀이",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-ear",
+   "title": "귀 필러",
+   "base": "base-filler",
+   "families": [
+    "귀 필러"
+   ],
+   "one_liner": "귀 연골 부위에 넣는 필러예요.",
+   "purpose": "귀 모양(요정귀 등)을 만들려고 받아요.",
+   "areas": "귀",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-neck",
+   "title": "목주름 필러",
+   "base": "base-filler",
+   "families": [
+    "목주름 필러"
+   ],
+   "one_liner": "목 가로주름에 넣는 필러예요.",
+   "purpose": "목 주름을 채우려고 받아요.",
+   "areas": "목 가로주름",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-general",
+   "title": "필러(부위 미표기·주름·얼굴)",
+   "base": "base-filler",
+   "families": [
+    "필러",
+    "주름 필러",
+    "얼굴 필러",
+    "손등 필러"
+   ],
+   "one_liner": "히알루론산 필러를 원하는 부위에 넣는 상품이에요.",
+   "purpose": "부위가 이름에 적혀 있지 않거나 여러 부위를 함께 하는 상품이에요.",
+   "areas": "상품마다 달라요 — 병원에 부위를 확인하세요",
+   "sources": [],
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "filler-dissolve",
+   "title": "필러 녹이는 주사(히알라제)",
+   "families": [
+    "필러 녹이는 주사(히알라제)"
+   ],
+   "one_liner": "히알루론산 필러를 녹이는 효소 주사예요.",
+   "purpose": "넣은 필러의 모양을 되돌리거나 줄일 때 써요.",
+   "areas": "필러를 넣은 부위",
+   "method": "히알루론산 필러에만 작용해요. 칼슘·PLLA 같은 다른 성분 필러는 녹이지 못해요.",
+   "kinds": "",
+   "side_effects": [
+    "붓기·붉어짐·가려움",
+    "드물게 알레르기 반응"
+   ],
+   "cautions": [
+    "필러를 녹이는 시술에도 따로 위험이 있어요"
+   ],
+   "sources": [
+    "fda-fillers"
+   ],
+   "evidence_note": "FDA 자료는 '필러를 줄이거나 빼는 시술에도 위험이 있다'는 내용까지 확인했어요. 효소 자체의 부작용 목록은 근거 자료와 대조하지 못했어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "base-collagen",
+   "title": "콜라겐 자극 주사",
+   "fids": [],
+   "families": [
+    "레디어스",
+    "스컬트라",
+    "엘란쎄",
+    "쥬베룩",
+    "올리디아"
+   ],
+   "one_liner": "몸이 콜라겐을 만들도록 자극하는 성분(칼슘·PLLA·PDLLA·PCL 등)을 넣는 주사예요.",
+   "purpose": "볼륨이나 피부 탄력·피부결 개선 목적으로 받아요.",
+   "areas": "얼굴의 꺼진 곳, 피부결(제품·용량마다 달라요)",
+   "method": "바로 채우는 히알루론산 필러와 달리 서서히 차오르는 방식이 많고, 히알라제로 녹지 않아요. 레디어스=칼슘(CaHA), 스컬트라·올리디아=PLLA, 쥬베룩=PDLLA, 엘란쎄=PCL로 알려져 있어요.",
+   "kinds": "레디어스, 스컬트라, 엘란쎄, 쥬베룩(스킨·볼륨), 올리디아 등",
+   "side_effects": [
+    "붓기·멍·통증",
+    "피부 아래 멍울(결절)이나 육아종이 생길 수 있어요",
+    "알레르기·피부염 같은 반응"
+   ],
+   "cautions": [
+    "히알루론산 필러처럼 녹여서 되돌리기 어려워요"
+   ],
+   "sources": [
+    "review-filler",
+    "fda-fillers"
+   ],
+   "evidence_note": "결절·육아종·알레르기 반응은 필러 부작용 리뷰 논문(레디어스·엘란쎄 언급) 요약을 따랐어요. 제품별 성분 설명은 병원 표기와 일반 정보예요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "base-fatinj",
+   "title": "지방·윤곽 주사",
+   "fids": [
+    "contour",
+    "accu",
+    "ps",
+    "sculpt",
+    "chin2",
+    "cheek",
+    "girlgroup",
+    "velyv",
+    "carboxy",
+    "miniskirt",
+    "ss",
+    "slimcut",
+    "calf",
+    "eyefat"
+   ],
+   "families": [
+    "윤곽주사",
+    "아큐주사",
+    "PS주사",
+    "조각주사",
+    "코 조각주사",
+    "민소매 조각주사",
+    "종아리 조각주사",
+    "바디 조각주사",
+    "이중턱 주사",
+    "광대주사",
+    "걸그룹주사",
+    "블리비V주사",
+    "카복시·지방분해주사",
+    "미니스커트주사",
+    "SS주사",
+    "슬림컷주사",
+    "종아리성형주사",
+    "DCA주사",
+    "제로핏 주사",
+    "빼빼주사",
+    "눈밑 주사",
+    "이중턱지방파괴주사",
+    "바디 윤곽주사"
+   ],
+   "one_liner": "지방을 줄이는 성분 등을 섞은 주사예요. 병원마다 이름과 성분이 달라요.",
+   "purpose": "얼굴·몸의 부분 지방을 줄여 라인을 정리해 보이게 하려고 받아요.",
+   "areas": "볼, 턱 아래, 팔뚝, 복부, 종아리 등",
+   "method": "성분과 용량이 병원마다 달라서 이름이 다르면 다른 상품으로 따로 비교해요. 어떤 성분인지, 허가받은 의약품인지 병원에 물어보세요.",
+   "kinds": "윤곽주사, 아큐주사, PS주사, 조각주사, 이중턱 주사, 카복시(이산화탄소 가스) 등",
+   "side_effects": [
+    "붓기·멍·통증·뻐근함",
+    "만져지는 멍울",
+    "드물게 감염"
+   ],
+   "cautions": [
+    "성분을 알 수 없는 주사는 부작용을 예측하기 어려워요 — 성분과 허가 여부를 확인하세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요. 성분이 병원마다 달라 하나로 정리하기 어려워요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "base-hifu",
+   "title": "초음파(HIFU) 리프팅",
+   "fids": [
+    "shrink",
+    "ulthera",
+    "liftera"
+   ],
+   "families": [
+    "슈링크 유니버스",
+    "울쎄라",
+    "리프테라2",
+    "바디 슈링크",
+    "바디 울쎄라",
+    "초음파 울트라인"
+   ],
+   "one_liner": "고강도 집속 초음파로 피부 깊은 층에 열을 모으는 리프팅 장비예요.",
+   "purpose": "피부 탄력과 처짐 개선 목적으로 받아요.",
+   "areas": "얼굴 전체, 눈가(아이), 턱 아래, 목, 바디",
+   "method": "피부를 째지 않아요. 샷 수(100·300샷 …)로 양을 정해요. 장비마다 깊이와 방식이 달라 같은 샷 수라도 값이 달라요. 울쎄라는 화면으로 피부 층을 보면서 하는 방식으로 알려져 있어요.",
+   "kinds": "슈링크 유니버스(울트라·울트라F·부스터 모드), 울쎄라·울쎄라피 프라임, 리프테라2 등",
+   "side_effects": [
+    "시술 중 통증·뜨거운 느낌",
+    "붉어짐·붓기·멍 (대개 몇 시간~며칠 안에 가라앉아요)",
+    "드물게 저림 같은 감각 이상, 지방이 꺼져 보임, 색소침착",
+    "눈 가까이는 특히 조심해야 해요"
+   ],
+   "cautions": [
+    "최근 보톡스·필러를 맞았다면 의료진에게 알리세요",
+    "시술 뒤 햇빛과 강한 열(사우나 등)을 피하라는 안내를 따르세요"
+   ],
+   "sources": [
+    "review-hifu"
+   ],
+   "evidence_note": "부작용·주의사항은 HIFU 합병증 리뷰 논문(2025) 요약을 따랐어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "base-rf",
+   "title": "고주파(RF) 리프팅",
+   "fids": [
+    "thermage",
+    "oligio",
+    "volnewmer",
+    "density",
+    "inmode",
+    "tensurma"
+   ],
+   "families": [
+    "써마지 FLX",
+    "올리지오",
+    "볼뉴머",
+    "덴서티",
+    "인모드",
+    "텐써마",
+    "바디 인모드",
+    "세르프 리프팅",
+    "브이로 어드밴스 리프팅 시너지 모드"
+   ],
+   "one_liner": "고주파(RF) 에너지로 피부 속을 데우는 장비예요.",
+   "purpose": "피부 탄력·잔주름 개선 목적으로 받아요. 인모드는 윤곽(지방) 쪽 모드도 있어요.",
+   "areas": "얼굴 전체, 눈가(아이), 바디",
+   "method": "피부를 째지 않아요. 써마지·올리지오·볼뉴머·덴서티는 샷 수로, 인모드는 부위·모드(FX·FORMA)로 팔아요. 초음파 장비(슈링크·울쎄라)와 에너지 방식이 달라요.",
+   "kinds": "써마지 FLX, 올리지오, 볼뉴머, 덴서티, 인모드(FX·FORMA) 등",
+   "side_effects": [
+    "붉어짐·붓기 (대개 하루 안에 가라앉아요)",
+    "드물게 화상"
+   ],
+   "cautions": [
+    "시술 중 너무 뜨겁거나 아프면 바로 말하세요"
+   ],
+   "sources": [
+    "cc-rf"
+   ],
+   "evidence_note": "부작용은 Cleveland Clinic 고주파 시술 안내 요약을 따랐어요. 장비별 차이는 병원 표기와 일반 정보예요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "lift-onda",
+   "title": "온다 리프팅",
+   "families": [
+    "온다 리프팅",
+    "바디 온다 리프팅"
+   ],
+   "one_liner": "극초단파(마이크로웨이브) 에너지를 쓰는 장비예요.",
+   "purpose": "지방층과 탄력 개선 목적으로 받아요.",
+   "areas": "얼굴, 바디",
+   "method": "에너지 양(KJ)으로 팔아요. 고주파·초음파와 에너지 종류가 달라요.",
+   "kinds": "",
+   "side_effects": [
+    "붉어짐·붓기·열감"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "lift-thread",
+   "title": "실리프팅",
+   "fids": [
+    "thread",
+    "jamber",
+    "bluerose"
+   ],
+   "families": [
+    "실리프팅",
+    "잼버",
+    "블루로즈 포르테",
+    "모노실",
+    "바비코",
+    "울트라V리프팅",
+    "이마거상 리프팅",
+    "압토스 리프팅 NAMICA19",
+    "콘셀티나 리프팅"
+   ],
+   "one_liner": "녹는 실을 피부 아래에 넣어 처진 부위를 당겨 올리는 시술이에요.",
+   "purpose": "처진 볼·턱선을 올리거나, 코 모양을 다듬으려고(코 실) 받아요.",
+   "areas": "볼, 턱선, 이마, 코",
+   "method": "실 종류(PDO·PCL·PLLA 등)와 개수(줄)로 값이 달라요. 같은 '실리프팅'이라도 실 종류가 다르면 다른 상품이에요.",
+   "kinds": "민트실, 실루엣소프트, 블루로즈 포르테, 잼버, 하이코(코) 등",
+   "side_effects": [
+    "붓기·멍·당기는 느낌·통증",
+    "비대칭, 실이 만져지거나 비쳐 보임",
+    "드물게 감염"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "booster-pn",
+   "title": "PN·PDRN 주사(리쥬란 등)",
+   "fids": [
+    "rejuran",
+    "rejevan",
+    "filod",
+    "pdrn",
+    "salmon"
+   ],
+   "families": [
+    "리쥬란",
+    "리제반PN",
+    "필로드",
+    "PDRN 재생주사",
+    "연어주사"
+   ],
+   "one_liner": "연어에서 얻은 PN(폴리뉴클레오티드)·PDRN 성분을 피부에 넣는 주사예요.",
+   "purpose": "피부결·탄력·재생 목적으로 받아요.",
+   "areas": "얼굴 전체, 눈가(아이), 목",
+   "method": "피부 얕은 층에 여러 번 나눠 놓아요. 리쥬란은 힐러(기본), HB 플러스(통증을 줄인 제품), 아이(눈가 전용) 등으로 나눠 팔아요.",
+   "kinds": "리쥬란(힐러·HB 플러스·아이·스킨부스터), 리제반PN, 필로드, PDRN 주사 등",
+   "side_effects": [
+    "통증·붓기·멍",
+    "시술 뒤 한동안 작은 오돌토돌함(엠보싱)",
+    "드물게 알레르기·감염"
+   ],
+   "cautions": [
+    "생선(연어) 성분에 알레르기가 있으면 미리 말하세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "booster-ha",
+   "title": "히알루론산 스킨부스터",
+   "fids": [
+    "mulgwang",
+    "skinvive",
+    "revive",
+    "ha",
+    "lilyid"
+   ],
+   "families": [
+    "물광주사",
+    "스킨바이브",
+    "벨로테로 리바이브",
+    "히알루론산 주사",
+    "릴리이드M",
+    "뉴라미스 스킨 인핸서",
+    "엘라비에 밸런스"
+   ],
+   "one_liner": "히알루론산을 피부 얕은 층에 넣는 주사예요.",
+   "purpose": "보습·윤기·피부결 개선 목적으로 받아요.",
+   "areas": "얼굴 전체, 목",
+   "method": "볼륨을 만드는 필러와 달리 피부 얕은 층에 소량씩 넣어요.",
+   "kinds": "물광주사, 스킨바이브, 벨로테로 리바이브 등",
+   "side_effects": [
+    "붓기·멍·통증·작은 오돌토돌함",
+    "드물게 멍울·감염·알레르기",
+    "히알루론산 제품이라 매우 드물게 혈관 관련 합병증 가능성이 있어요"
+   ],
+   "cautions": [
+    "허가받은 제품인지 확인하세요"
+   ],
+   "sources": [
+    "fda-fillers"
+   ],
+   "evidence_note": "히알루론산 주입 제품의 일반 위험은 FDA 필러 자료를 따랐어요. 스킨부스터 용량에서의 빈도는 근거와 대조하지 못했어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "booster-exo",
+   "title": "엑소좀 부스터",
+   "fids": [
+    "exosome",
+    "curestem",
+    "asce"
+   ],
+   "families": [
+    "엑소좀",
+    "큐어스템 엑소좀",
+    "ASCE 엑소좀"
+   ],
+   "one_liner": "줄기세포 배양액에서 얻은 엑소좀 성분을 피부에 쓰는 시술이에요.",
+   "purpose": "피부 재생 목적으로 판매돼요.",
+   "areas": "얼굴 전체",
+   "method": "주사로 넣거나 레이저·MTS 뒤에 바르는 방식 등 병원마다 달라요. 제품마다 성분·농도·허가 상태가 달라 이름이 다르면 따로 비교해요.",
+   "kinds": "큐어스템, ASCE 등",
+   "side_effects": [
+    "붉어짐·따가움"
+   ],
+   "cautions": [
+    "어떤 제품을 어떤 방식으로 쓰는지 병원에 확인하세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-toning",
+   "title": "레이저 토닝(레이저토닝·피코토닝)",
+   "fids": [
+    "toning",
+    "pico",
+    "revlite",
+    "accutoning",
+    "pigment"
+   ],
+   "families": [
+    "레이저토닝",
+    "피코토닝",
+    "레블라이트SI 토닝",
+    "아큐토닝",
+    "착색토닝"
+   ],
+   "one_liner": "낮은 에너지 레이저를 얼굴(또는 착색 부위)에 고르게 쏘아 색소를 옅게 하는 시술이에요.",
+   "purpose": "기미·잡티 같은 색소와 피부톤 개선 목적으로 받아요.",
+   "areas": "얼굴 전체, 겨드랑이·비키니라인 등 착색 부위",
+   "method": "보통 여러 번(5·10회) 받아요. 피코토닝은 더 짧은 시간(피코초) 단위로 쏘는 레이저예요. '듀얼'은 레이저 두 가지를 함께 하는 상품이에요.",
+   "kinds": "레이저토닝, 피코토닝, 듀얼토닝, 레블라이트SI 토닝 등",
+   "side_effects": [
+    "붉어짐·화끈거림",
+    "자주 받으면 드물게 하얀 반점(저색소)이 생길 수 있어요",
+    "색소가 오히려 짙어질 수 있어요"
+   ],
+   "cautions": [
+    "시술 뒤 자외선 차단을 지키세요"
+   ],
+   "sources": [
+    "review-toning"
+   ],
+   "evidence_note": "저색소 반점은 레이저토닝 합병증 논문 요약을 따랐어요. 나머지는 일반적으로 알려진 내용이라 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-vascular",
+   "title": "혈관·홍조 레이저",
+   "fids": [
+    "genesis",
+    "excelv",
+    "vlaser",
+    "vessel",
+    "ipl",
+    "clarity"
+   ],
+   "families": [
+    "제네시스",
+    "엑셀V",
+    "V레이저",
+    "모세혈관 레이저",
+    "IPL",
+    "클라리티"
+   ],
+   "one_liner": "혈관·홍조나 잡티를 다루는 레이저·빛 장비예요.",
+   "purpose": "홍조, 실핏줄, 잡티, 피부결 개선 목적으로 받아요.",
+   "areas": "얼굴",
+   "method": "장비마다 파장과 방식이 달라요(제네시스는 피부를 가볍게 데우는 방식, IPL은 넓은 파장의 빛).",
+   "kinds": "제네시스, 엑셀V, V레이저, IPL, 클라리티 등",
+   "side_effects": [
+    "붉어짐·붓기",
+    "드물게 물집·색소 변화"
+   ],
+   "cautions": [
+    "시술 뒤 자외선 차단을 지키세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-resurface",
+   "title": "프락셔널 레이저(프락셀 등)",
+   "fids": [
+    "fraxel",
+    "picofrax"
+   ],
+   "families": [
+    "프락셀",
+    "피코프락셀",
+    "인라이튼 니플스",
+    "스타워커 FRAC3",
+    "Stellar M22 Resurfx"
+   ],
+   "one_liner": "피부에 아주 작은 구멍(점)을 내서 재생을 유도하는 레이저예요.",
+   "purpose": "흉터·모공·피부결 개선 목적으로 받아요.",
+   "areas": "얼굴 전체, 코, 볼(나비존)",
+   "method": "레이저 종류(CO2·피코 등)와 세기에 따라 회복 기간이 달라요.",
+   "kinds": "프락셀, CO2 프락셔널, 피코프락셀 등",
+   "side_effects": [
+    "붉어짐·붓기·딱지",
+    "색소침착",
+    "드물게 흉터·감염"
+   ],
+   "cautions": [
+    "딱지를 뜯지 말고 자외선 차단을 지키세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-mnrf",
+   "title": "미세바늘 고주파(포텐자 등)",
+   "fids": [
+    "potenza",
+    "secret",
+    "sylfirm",
+    "agnes"
+   ],
+   "families": [
+    "포텐자",
+    "시크릿 레이저",
+    "실펌X",
+    "아그네스"
+   ],
+   "one_liner": "미세바늘로 피부 속에 고주파를 넣는 장비예요.",
+   "purpose": "모공·흉터·여드름 개선 목적으로 받아요. 아그네스는 여드름 피지선이나 눈밑 지방에 쓰는 곳이 많아요.",
+   "areas": "얼굴 전체, 부분, 여드름 부위(개당)",
+   "method": "팁 종류와 범위(얼굴전체·부분·개당)에 따라 값이 달라요. 개당 가격과 1회 가격은 서로 비교할 수 없어요.",
+   "kinds": "포텐자(일반·펌핑·아크네 팁), 시크릿, 실펌X, 아그네스",
+   "side_effects": [
+    "붉어짐·붓기·작은 딱지",
+    "드물게 색소침착·감염"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-peel",
+   "title": "필링",
+   "fids": [
+    "lalapeel",
+    "blackpeel",
+    "milkpeel",
+    "aladdin"
+   ],
+   "families": [
+    "라라필",
+    "블랙필",
+    "밀크필",
+    "알라딘필",
+    "바디 알라딘필",
+    "도트필 개당",
+    "도트필 부분",
+    "도트필 얼굴전체",
+    "아크네필링",
+    "꿀광필",
+    "시카필",
+    "산소필",
+    "호박필",
+    "PHA물광필링",
+    "얼굴 로즈필",
+    "가슴 로즈필",
+    "등 로즈필",
+    "스펙트라필",
+    "플라필"
+   ],
+   "one_liner": "약제를 발라 묵은 각질을 벗겨내는 관리예요.",
+   "purpose": "각질·여드름·피부결·톤 개선 목적으로 받아요.",
+   "areas": "얼굴, 등·가슴(바디)",
+   "method": "약제 종류와 깊이에 따라 회복 기간이 달라요. 도트필(TCA)처럼 특정 부위에만 하는 것도 있어요.",
+   "kinds": "라라필, 블랙필, 밀크필, 알라딘필, 도트필 등",
+   "side_effects": [
+    "붉어짐·따가움·각질",
+    "피부색이 일시적으로 짙어지거나 옅어질 수 있어요",
+    "드물게 감염(입술 헤르페스 재발 포함)·흉터"
+   ],
+   "cautions": [
+    "시술 뒤 햇빛을 피하고 안내받은 관리를 지키세요",
+    "딱지·각질을 뜯지 마세요",
+    "피부가 나을 때까지 화장을 미루라는 안내를 따르세요"
+   ],
+   "sources": [
+    "aad-peel",
+    "mayo-peel"
+   ],
+   "evidence_note": "부작용·주의사항은 미국피부과학회와 Mayo Clinic의 필링 안내 요약을 따랐어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-aqua",
+   "title": "아쿠아필",
+   "families": [
+    "아쿠아필",
+    "비타민관리/수분관리/크라이오셀",
+    "비타민관리/수분관리/이온토/크라이오셀"
+   ],
+   "one_liner": "물과 약제로 각질·피지를 빨아들이며 닦아내는 관리예요.",
+   "purpose": "모공·피지 관리 목적으로 받아요.",
+   "areas": "얼굴",
+   "method": "",
+   "kinds": "",
+   "side_effects": [
+    "일시적인 붉어짐"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-mole",
+   "title": "점·비립종·사마귀·쥐젖 제거",
+   "fids": [
+    "mole"
+   ],
+   "families": [
+    "점 빼기",
+    "비립종",
+    "비립종 목 전체",
+    "비립종 얼굴 전체",
+    "비립종/쥐젖/사마귀",
+    "사마귀",
+    "사마귀 목 전체",
+    "사마귀 얼굴 전체",
+    "쥐젖",
+    "쥐젖 목 전체",
+    "쥐젖 얼굴 전체",
+    "리팟 레이저 - 이하",
+    "리팟레이저"
+   ],
+   "one_liner": "레이저(주로 CO2) 등으로 점이나 작은 돌기를 없애는 시술이에요.",
+   "purpose": "점, 비립종, 사마귀, 쥐젖을 없애려고 받아요.",
+   "areas": "얼굴, 목, 몸",
+   "method": "크기(小·中·大)와 개수로 값이 달라요. 얼굴전체·목전체처럼 개수 제한이 있는 상품도 있어요.",
+   "kinds": "",
+   "side_effects": [
+    "딱지·붉은 자국",
+    "색소침착",
+    "드물게 흉터·재발"
+   ],
+   "cautions": [
+    "모양이나 색이 변하는 점은 먼저 진료로 확인하세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-acneinj",
+   "title": "염증주사",
+   "fids": [
+    "acneinj"
+   ],
+   "families": [
+    "염증주사"
+   ],
+   "one_liner": "붉게 곪은 여드름에 놓는 주사예요.",
+   "purpose": "염증을 빨리 가라앉히려고 받아요.",
+   "areas": "여드름 부위(개당·얼굴전체)",
+   "method": "개당 가격과 얼굴전체 가격이 따로 있어요.",
+   "kinds": "",
+   "side_effects": [
+    "드물게 주사 자리가 움푹 꺼지거나 하얗게 될 수 있어요"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-tattoo",
+   "title": "문신제거",
+   "fids": [
+    "tattoo"
+   ],
+   "families": [
+    "문신제거",
+    "레이저 피코지우개"
+   ],
+   "one_liner": "레이저로 문신 색소를 잘게 깨뜨려 옅게 만드는 시술이에요.",
+   "purpose": "문신·반영구 화장을 지우려고 받아요.",
+   "areas": "몸, 눈썹, 아이라인",
+   "method": "크기와 횟수로 값이 달라요. 보통 여러 번 받아요.",
+   "kinds": "",
+   "side_effects": [
+    "붉어짐·붓기·물집·딱지",
+    "피부색 변화",
+    "드물게 흉터"
+   ],
+   "cautions": [],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "skin-iv",
+   "title": "영양·미백 주사",
+   "fids": [
+    "drip",
+    "baekok",
+    "cinderella",
+    "garlic",
+    "placenta",
+    "gluta",
+    "thioctic",
+    "vitinj",
+    "licorice"
+   ],
+   "families": [
+    "영양 수액주사",
+    "백옥주사",
+    "신데렐라주사",
+    "마늘주사",
+    "태반주사",
+    "글루타치온주사",
+    "티옥트산주사",
+    "비타민주사",
+    "감초주사",
+    "비타민D 주사",
+    "비타민D주사"
+   ],
+   "one_liner": "비타민·글루타치온 같은 성분을 정맥이나 근육으로 넣는 주사예요.",
+   "purpose": "피로 회복·피부톤 등 목적으로 판매돼요.",
+   "areas": "팔(정맥) 또는 근육",
+   "method": "병원마다 성분과 용량이 달라요. 백옥주사=글루타치온, 신데렐라주사=티옥트산, 마늘주사=비타민 B1 계열로 알려져 있어요.",
+   "kinds": "",
+   "side_effects": [
+    "주사 부위 통증·멍",
+    "드물게 알레르기 반응"
+   ],
+   "cautions": [
+    "복용 중인 약과 알레르기를 알리세요"
+   ],
+   "sources": [],
+   "evidence_note": "이 항목의 부작용·주의사항은 아직 공개 근거 자료와 대조하지 못했어요. 일반적으로 알려진 내용만 적었고, 전문가 검수가 필요해요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  },
+  {
+   "id": "hair-laser",
+   "title": "레이저 제모",
+   "fids": [
+    "hair"
+   ],
+   "families": [],
+   "one_liner": "레이저로 털뿌리를 약하게 만들어 털을 줄이는 시술이에요.",
+   "purpose": "털 관리가 번거로운 부위의 털을 줄이려고 받아요.",
+   "areas": "겨드랑이, 인중, 다리, 팔, 비키니·브라질리언 등",
+   "method": "털이 자라는 주기 때문에 보통 여러 번(5회 등) 받아요. 부위·성별·횟수로 값이 달라요.",
+   "kinds": "장비 이름(아포지 플러스, 젠틀맥스 프로 플러스, 클라리티 등)은 병원 표기에 적혀 있어요.",
+   "side_effects": [
+    "시술 뒤 1~3일 정도 불편감·붓기·붉어짐",
+    "드물게 물집, 입술 헤르페스 재발, 감염, 흉터",
+    "피부색이 밝아지거나 어두워질 수 있어요 — 대개 돌아오지만 영구적인 경우도 있어요",
+    "드물게 주변 털이 오히려 굵어질 수 있어요"
+   ],
+   "cautions": [
+    "시술 전후 햇빛 노출을 줄이고 안내를 따르세요"
+   ],
+   "sources": [
+    "aad-lhr",
+    "mayo-lhr"
+   ],
+   "evidence_note": "부작용은 미국피부과학회와 Mayo Clinic 레이저 제모 안내 요약을 따랐어요.",
+   "review": {
+    "status": "draft",
+    "reviewer": "",
+    "reviewed_at": "",
+    "notes": ""
+   },
+   "updated": "2026-10-13"
+  }
+ ]
+}

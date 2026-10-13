@@ -19,7 +19,8 @@ data.json (compact, strings interned in `s`):
   meta.fam  procedure families (build2/taxonomy.py) for the compare picker and option switch: [name, regex for related rows
             at a branch (tested on the name without spaces), [[key id, variant label]...], compare category, base family id,
             [the clinics' own short explanations from the names]]
-  meta.guide plain-language notes per family (build2/guide.py): {family name or 'id:<base id>': [what it is, what it is used for, how it differs]}
+  meta.kb   Treatment Knowledge Base (knowledge/treatments.json via build2/knowledge.py): resolved entries with one-liner,
+            purpose, areas, method, kinds, side effects, cautions, sources, review status; matched to families by name or base id
   keys      [id, cat, label] — hand-made X01..X36 (xkeys.py) first, then variant keys T… (taxonomy.py, data2/variants.json)
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
@@ -32,7 +33,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match as xmatch  # noqa: E402
 import groups as G  # noqa: E402
-from guide import GUIDE  # noqa: E402
+import knowledge  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -222,6 +223,32 @@ def region(addr):
     return ""
 
 
+CHECK_CODES = {"FOUND": 1, "NAME_ONLY": 2, "NOT_FOUND": 3, "FETCH_ERROR": 4}
+
+
+def price_checks(rows, date):
+    """source re-checks of low prices (scrape/verify_prices.py → data2/price_checks.csv) → [[row index, status code, date]].
+    Matched on brand, branch, product name and listed price, so a price that changed after the check gets nothing.
+    Checks older than 21 days are dropped. Codes: CHECK_CODES."""
+    p = os.path.join(ROOT, "data2", "price_checks.csv")
+    if not os.path.exists(p):
+        return []
+    got = {}
+    for x in csv.DictReader(open(p, encoding="utf-8-sig")):
+        d = (x.get("checked_at") or "")[:10]
+        if x.get("status") not in CHECK_CODES or not re.match(r"\d{4}-\d{2}-\d{2}$", d):
+            continue
+        if (datetime.date.fromisoformat(date) - datetime.date.fromisoformat(d)).days > 21:
+            continue
+        got[(x["brand"], x["branch"], x["name"], int(x["listed_price"]))] = [CHECK_CODES[x["status"]], d]
+    out = []
+    for i, r in enumerate(rows):
+        k = (r["brand"], r["branch"], r["name"], int(r["sale"]))
+        if k in got:
+            out.append([i] + got[k])
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=datetime.date.today().isoformat())
@@ -248,7 +275,9 @@ def main():
             bi[k] = len(branches)
             branches.append([bnames.index(r["brand"]), S(r["branch"]), S(g.get("address_full") or g.get("address", "")),
                              float(g["lat"]) if g.get("lat") else None, float(g["lng"]) if g.get("lng") else None,
-                             S(region(g.get("address", ""))), S(site), "", ""])
+                             S(region(g.get("address", ""))), S(site), "", "",
+                             # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
+                             {"road": 0, "street": 1, "district": 2}.get(g.get("geo_level"), 3)])
     # freshness: newest fetch date per branch; older than the build date by more than a day = previous data kept
     for r in rows:
         b = branches[bi[(r["brand"], r["branch"])]]
@@ -288,13 +317,14 @@ def main():
                 k, brand, branch = kk.split("|")
                 if k in kid:
                     changes.append([kid[k], bi[(brand, branch)], before, after])
+    checks = price_checks(rows, a.date)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "guide": GUIDE},
+                 "fam": VFAM, "kb": knowledge.export(), "checks": checks},
         "branches": branches, "rows": out_rows, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, a.date, rows),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
@@ -305,7 +335,7 @@ def main():
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
     nogeo = [s[b[1]] for b in branches if b[3] is None]
     print(f"wrote {a.out}: {len(txt) / 1e6:.2f} MB | rows {len(out_rows)} | branches {len(branches)} (no map position: {len(nogeo)})"
-          f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)} | review pending {review}")
+          f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)} | review pending {review} | source re-checks matched {len(checks)}")
     if nogeo:
         print("  no position:", nogeo)
 
