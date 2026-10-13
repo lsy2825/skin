@@ -228,6 +228,12 @@ ul.warns { margin: 8px 0 0; padding: 8px 12px 8px 26px; background: var(--tag-bg
 .pchip button { border: 0; background: none; font: inherit; color: inherit; padding: 8px 4px; }
 .pchip .px { color: var(--muted); font-weight: 800; }
 .sugsec { padding: 6px 12px 2px; font-size: 12px; font-weight: 700; color: var(--muted); list-style: none; }
+.favbtn { border: 0; background: none; font-size: 24px; line-height: 1; color: var(--faint); padding: 4px 6px; flex: none; }
+.favbtn[aria-pressed="true"] { color: #f5a700; }
+.sibs { display: inline-flex; align-items: center; gap: 2px; flex: none; }
+.sibs button { border: 0; background: var(--fill); width: 32px; height: 32px; border-radius: 10px; font-size: 18px; font-weight: 800; color: var(--ink-2); }
+.warnnote { background: var(--pricey-soft); color: var(--pricey); }
+.keyhead .row .pick { flex: 1; min-width: 0; }
 /* home extras */
 .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .qbtn { display: grid; justify-items: center; gap: 1px; border: 0; background: var(--surface); border-radius: 18px; padding: 12px 4px 10px; min-width: 0; }
