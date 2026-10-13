@@ -1040,6 +1040,8 @@
   // 비교 tab sub-navigation: 시술별 / 지점 순위 / 지점 비교 / 전체 가격표
   const cmpNav = (cur) => h("div", { class: "seg seg4", role: "tablist" }, [["compare", "시술별"], ["rank", "지점 순위"], ["versus", "지점 비교"], ["table", "전체 가격표"]].map(([v, l]) =>
     h("button", { type: "button", role: "tab", "aria-selected": cur === v ? "true" : "false", onclick: () => nav(v) }, l)));
+  // the chosen procedure lives in the URL (#compare?k=X12): change both, or the old ?k= wins on the next render
+  function pickKey(i) { st.key = i; history.replaceState(null, "", `#compare?k=${KEYS[i].id}`); render(); }
   views.compare = (arg, params) => {
     const box = h("div", { class: "view" });
     if (params && params.get("k") && KI[params.get("k")] != null) st.key = KI[params.get("k")];
@@ -1051,15 +1053,15 @@
     const k = KEYS[st.key];
     const cats = [...new Set(KEYS.map((x) => x.cat))];
     box.append(h("div", { class: "chips" }, cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": c === k.cat ? "true" : "false",
-      onclick: () => { st.key = KEYS.find((x) => x.cat === c).i; render(); } }, c))));
-    const sel = h("select", { class: "pick", "aria-label": "시술 고르기", onchange: (e) => { st.key = +e.target.value; render(); } },
+      onclick: () => pickKey(KEYS.find((x) => x.cat === c).i) }, c))));
+    const sel = h("select", { class: "pick", "aria-label": "시술 고르기", onchange: (e) => pickKey(+e.target.value) },
       KEYS.filter((x) => x.cat === k.cat).map((x) => h("option", { value: x.i, selected: x.i === k.i }, x.label)));
     const rk = ranking(k.i);
     const card = h("div", { class: "card" });
     card.append(h("div", { class: "keyhead" }, sel));
     const fam = famOf[k.i];
     if (fam && fam.f.vs.length > 1) card.append(h("div", { class: "opts", style: "margin-top:10px" }, fam.f.vs.map((v) => { const tp = ranking(v.k, "price")[0];
-      return h("button", { class: "opt", type: "button", "aria-pressed": v.k === k.i ? "true" : "false", onclick: () => { st.key = v.k; render(); } },
+      return h("button", { class: "opt", type: "button", "aria-pressed": v.k === k.i ? "true" : "false", onclick: () => pickKey(v.k) },
         h("b", {}, `${fam.f.name} ${v.label}`), h("span", { class: "num" }, tp ? `최저 ${won(tp.p)}` : "가격 없음")); })));
     const controls = h("div", { class: "row", style: "margin-top:12px" },
       h("button", { class: "chip", type: "button", "aria-pressed": st.sort === "price" ? "true" : "false", onclick: () => { st.sort = "price"; render(); } }, "가격순"),
