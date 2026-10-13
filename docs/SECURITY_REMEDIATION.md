@@ -33,7 +33,7 @@
 | R21 | 비밀 정보 검사 수동 | `tests/security/scan_secrets.py`를 배포 전 테스트에 넣었어요. 찾은 값은 로그에 쓰지 않아요 | ✅ |
 | R22 | DB 보안 테스트 자동화 | `.github/workflows/db-security.yml`: PostgreSQL 16 서비스에서 정책 시험과 실제 데이터 백업·복구 | ✅ GitHub 첫 실행(run 38387214542) 성공. 로컬과 다른 환경에서 같은 결과 |
 | R23 | 클릭재킹(헤더를 못 보내는 대신) | `app/gate.js` 맨 앞: 다른 사이트의 프레임 안에서 열리면 화면을 숨기고 "새 창에서 열기" 링크만 보여줘요. 같은 사이트 프레임은 그대로. 비밀번호 키패드·앱 코드는 실행하지 않아요 | ✅ `tests/e2e/frame.js` 9/9(다른 출처 서버에서 투명 프레임으로 띄워 확인). 검사를 끄면 4개가 실패하는 것도 확인. 🟡 헤더가 아니라 스크립트라 완전한 대책은 아니에요(R-open-4) |
-| R24 | 액션 런타임(Node 20 지원 종료 경고) | Dependabot PR 4개(#1~#4)의 버전을 반영: checkout v7.0.1, setup-python v7.0.0, upload-pages-artifact v5.0.0, deploy-pages v5.0.1. 커밋 해시가 공식 태그와 같은지 `git ls-remote`로 확인 | 배포 실행 결과는 아래 기록 |
+| R24 | 액션 런타임(Node 20 지원 종료 경고) | Dependabot PR 4개(#1~#4)의 버전을 반영: checkout v7.0.1, setup-python v7.0.0, upload-pages-artifact v5.0.0, deploy-pages v5.0.1. 커밋 해시가 공식 태그와 같은지 `git ls-remote`로 확인 | ✅ 새 버전으로 빌드·배포 성공(run 38408571780), DB 보안 시험 성공(run 38408572191), Node 20 경고 사라짐 |
 
 ## 남은 것 (사용자 조치 또는 결정 필요)
 | ID | 할 일 | 왜 | 방법 |

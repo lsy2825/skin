@@ -54,8 +54,8 @@
   - **보안 R13 확인:** 잘못된 입력(`1;id`, `500`)으로 `price-check`를 실제로 돌려 입력 검사 단계에서 멈추는 것을 확인했어요(수집·저장은 건너뜀). 정상값은 성공(`SECURITY_REMEDIATION.md`).
   - **원본 대조 NAME_ONLY 2개 해결:** 검사 스크립트가 놓친 것이었어요(공백을 모두 지워 '49% 990 1,950'이 한 숫자로 붙음, 긴 설명 때문에 160자 밖). 고친 뒤 GitHub에서 다시 돌리니 FOUND 39 · IN_BLOCK 1 · NAME_ONLY 0(`DATA_QUALITY_REPORT.md` §6, 시험 `tests/verify_prices_test.py` 7개).
   - **클릭재킹 일부 완화:** 헤더를 못 보내는 대신, 다른 사이트 프레임 안이면 화면을 숨기고 새 창 링크만 보여줘요(`app/gate.js`, `tests/e2e/frame.js` 9/9).
-  - **GitHub 액션 업데이트:** Dependabot PR 4개 내용(checkout·setup-python·upload-pages-artifact·deploy-pages, Node 20 지원 종료 경고 해소)을 반영했어요. 커밋 해시가 공식 태그와 같은지 확인했어요.
-  - **첫 화면 속도 측정과 개선:** 측정 스크립트 `tests/perf/first_load.js`. 가격 파일을 열 단위로 바꿔 압축 크기를 27% 줄이고, 미리 받기를 넣었어요(아래 '첫 화면 속도').
+  - **GitHub 액션 업데이트:** Dependabot PR 4개 내용(checkout·setup-python·upload-pages-artifact·deploy-pages)을 반영했어요. 커밋 해시가 공식 태그와 같은지 확인했어요. 새 버전으로 빌드·배포 성공(run 38408571780), Node 20 경고 사라짐, DB 보안 시험 성공(run 38408572191). Dependabot이 PR 4개를 스스로 닫았어요.
+  - **첫 화면 속도 측정과 개선:** 측정 스크립트 `tests/perf/first_load.js`. 가격 파일을 열 단위로 바꿔 압축 크기를 27% 줄이고(1,031KB → 757KB), 미리 받기를 넣었어요. 느린 4G 첫 방문에서 가격이 보이기까지 12.0초 → 8.8초, LCP 0.86초, CLS 0(`DESIGN_SYSTEM.md` '첫 화면 속도'). 실제 GitHub Pages 주소와 실제 휴대폰으로는 재지 못했어요.
   - **전체 가격표 '세부 구분' 필터:** 원산지·성별·부위·등급(`tests/e2e/table_attr.js` 13/13).
   - **시술별 비교 카드 보기:** 목록과 같은 순서로 옆으로 넘겨 보기(`tests/e2e/compare_cards.js` 14/14).
   - **계산 분리:** 묶음 통계·가격 위치·지점 수준·목록 정렬을 `app/domain/stats.js`로 옮기고 단위 테스트 10개(`tests/stats.test.js`).
@@ -234,7 +234,7 @@
 5. **LLM 보조 추출:** JSON Schema 검증, REVIEW_REQUIRED. 새 병원을 넣을 때 써요.
 6. **실기기·스크린리더 검사:** iPhone Safari, Android, VoiceOver, TalkBack.
 7. **병원 공통 안내문 수집:** 체험가 1인 1회, 최소 결제 같은 페이지 공통 조건은 지금 수집하지 않아요. 상품명에 적힌 것만 알 수 있어요.
-8. **가격 파일 나눠 받기:** 느린 회선 첫 방문은 가격이 보이기까지 아직 수 초 걸려요(위 측정). 지역별로 나누거나 처음엔 요약만 받는 방식은 구조 변경이 커서 하지 않았어요.
+8. **가격 파일 나눠 받기:** 느린 4G 첫 방문은 가격이 보이기까지 아직 약 8.8초 걸려요(`DESIGN_SYSTEM.md` 측정). 지역별로 나누거나 처음엔 요약만 받는 방식은 구조 변경이 커서 하지 않았어요.
 
 ## 원본 대조 실행 기록
 - **2026-10-13** (GitHub Actions `price-check` run 38378206515, 결과 커밋 601a01e, 이어서 수집 없이 재빌드)
