@@ -67,10 +67,34 @@
     - 2026-10-13 객관적 배치(`OBJECTIVE_DISPLAY_POLICY.md`)로 바꿨어요. `lowestHighlight`를 켜면 예전의 최저가·지점 헤드라인이에요.
   - `.checks`: 가격과 함께 확인할 것 — 시술 조건·정품 표기·의료진·부작용·주의사항
   - `.condlow`: 조건부 최저, 확인 필요 초저가
-  - `.actions`: 화면 아래 고정 — 알림·지도·복사·담기
+  - `.actions`: 화면 아래 고정 — 알림·지도·복사·공유·담기 (400px 이하에선 '알림' 글자를 숨기고 아이콘만)
 - **장바구니** `.ci`(상품 행), `.qty`(수량), `.cartsum`(예상 총액·최저 지점·요약 줄·병원별 비교 버튼·공유·합계 알림)
 - **고민 가이드** `.msg.bot` / `.msg.user`(말풍선), `.composer`(아래 고정 입력창), `.infotag`
 - **시트·토스트·빈 화면** `.sheet`(위로 올라오는 시트, 손잡이 막대), `.toast`(되돌리기 버튼), `.empty`(아이콘 원 + 제목 + 안내 + 다음 행동)
+- **A/B 비교(2026-10-13 v5.0)** `.vshead`(목록 위에 붙는 A·B 이름), `.pbars`(항목별 두 막대 — 비싼 쪽 = 전체 폭, 싼 쪽만 진하게, 같으면 강조 없음), `.vwin`("○○점이 N원 저렴")
+- **장바구니 아래 고정 요약** `.cartbar`: 위 요약 카드가 화면에서 사라지면 나타나는 '예상 총액 + 병원별 비교' 막대
+
+### 지시서 컴포넌트 이름 ↔ 이 앱
+프레임워크가 없는 앱이라 컴포넌트는 `h()`로 만드는 함수와 CSS 클래스예요.
+
+| 지시서 | 이 앱 | 상태 |
+|---|---|---|
+| AppHeader | `header.top` (index.html) | 있음 |
+| BottomNavigation | `nav.tabs` 5개 | 있음 |
+| SearchField | `.search` + `withSuggest()`(자동완성) | 있음 |
+| TreatmentCard | `.pc`(홈 인기 시술), `.disc-row` | 있음 |
+| PriceHero | `.pricecard` | 있음(②에 따라 범위·중간값) |
+| ClinicPriceCard | `.rank`(목록) · `.ccard`(카드 보기) | 있음 |
+| ComparisonTable | A/B 목록(`views.versus`), 가격표 `priceTable()` | 있음 |
+| ComparisonDifferenceBar | `.pbars` · `.vbar` · `.mrange` · `.dbar` | 있음 |
+| FilterChip | `.chip`(aria-pressed), `.seg` | 있음 |
+| FilterBottomSheet | `sheet()` | 부분 — 가격표 필터는 시트가 아니라 화면 안 카드예요(한 화면에서 결과 수를 같이 보려고) |
+| QuantityStepper | `qtyEl()` `.qty` | 있음 |
+| StickyCartSummary | `.fcart`(떠 있는 장바구니) · `.cartbar` | 있음 |
+| AlertConfirmation | `alertSheet()` + 저장 확인 뒤 죠미 토스트 | 있음 |
+| LoadingSkeleton | `.skel`, `.jomi-load` | 있음 |
+| EmptyState | `.empty` · `jomiEmpty()` | 있음 |
+| ErrorState | 시작 오류 카드(`boot()` — 무엇이 안 됐는지 + 다시 시도) | 있음 |
 
 ## 4. 그래프
 - **병원별 가격 분포** (`distChart`)

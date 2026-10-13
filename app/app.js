@@ -47,6 +47,12 @@
   };
   let toastT;
   const toast = (t) => { const el = $("#toast"); el.classList.remove("act", "jt"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 1800); };
+  // a link to this exact screen (the receiver still needs the PIN); the phone's share sheet when there is one
+  async function shareLink(title, hash) {
+    const url = `${location.origin}${location.pathname}#${hash}`;
+    try { if (navigator.share) { await navigator.share({ title, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+    copyText(url, "링크를 복사했어요 — 받는 사람도 비밀번호가 필요해요");
+  }
   async function copyText(text, done = "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
   // a toast with a '되돌리기' button for 6 s (deleting carts, items, alerts, records, presets)
   function undoToast(text, undo) {
@@ -358,6 +364,10 @@
       st.loc ? h("div", { class: "row", style: "margin-top:12px" },
         ["집", "직장"].map((n) => h("button", { class: "btn sm gray", type: "button", onclick: () => { savePlace(n, st.loc.lat, st.loc.lng); close(); render(); } }, `지금 기준을 ${n}으로 저장`)),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { st.loc = null; st.locName = ""; store.set("locPlace", ""); $("#locbtn").classList.remove("on"); $("#locbtn span").textContent = "내 위치"; close(); render(); } }, "위치 끄기")) : null,
+      p["집"] || p["직장"] ? h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "linkbtn", type: "button", onclick: () => {
+        const before = places(); store.set("places", {});
+        if (st.locName === "집" || st.locName === "직장") { st.loc = null; st.locName = ""; store.set("locPlace", ""); $("#locbtn").classList.remove("on"); $("#locbtn span").textContent = "내 위치"; }
+        close(); render(); undoToast("저장한 집·직장을 지웠어요", () => { store.set("places", before); render(); }); } }, "저장한 집·직장 지우기")) : null,
       h("div", { class: "flabel", style: "margin-top:12px" }, "동네·역 이름으로 (위치 권한 없이)"), areaSearch(close),
       h("div", { class: "sub", style: "margin-top:10px" }, "지도 탭에서 원하는 곳으로 옮긴 뒤 '지도 가운데를 집/직장으로'를 눌러도 돼요.")));
   }
@@ -392,6 +402,7 @@
     if (on) undoToast(`관심에서 뺐어요: ${label}`, () => { const g = favs(); g[kind] = [id, ...g[kind]]; store.set("favs", g); render(); });
     else jomiToast("happy", J.lines.saved || "저장했어요", ["관심 보기", () => nav("saved")]);
   }
+  let cartIO = null;   // the cart's sticky-summary observer (views.cart)
   let favPop = null;   // the heart just filled pops once
   const favBtn = (kind, id, label) => h("button", { class: favPop === `${kind}:${id}` ? "favbtn pop" : "favbtn", type: "button", "aria-pressed": isFav(kind, id) ? "true" : "false", "aria-label": isFav(kind, id) ? `${label} 관심 빼기` : `${label} 관심 등록`,
     onclick: (e) => { e.stopPropagation(); toggleFav(kind, id, label); } }, icon("heart"));
@@ -1068,7 +1079,11 @@
     return out.filter((x) => BR[x.b] && brandOn(x.b) && regionOk(x.b));
   }
   // recently viewed procedures / branches (this phone)
+  // browsing history on this phone (최근 본 것, 최근 검색, 이어서 보기): the user can stop recording it or clear it (마이 → 내 설정)
+  const HIST_KEYS = ["recent", "recentQ", "lastRoute"];
+  const histOn = () => store.get("histOff", false) !== true;
   function remember(kind, id) {
+    if (!histOn()) return;
     const v = `${kind}:${id}`;
     const list = [v, ...store.get("recent", []).filter((x) => x !== v)].slice(0, 8);
     store.set("recent", list);
@@ -1149,6 +1164,8 @@
     box.append(secHead(st.loc ? "내 주변 인기 시술" : "인기 시술", st.loc ? `10km 안 · ${basisL}` : `${regionName()} · ${basisL}`));
     box.append(h("div", { class: "chips" }, h("button", { class: "chip", type: "button", "aria-pressed": !st.hcat ? "true" : "false", onclick: () => { st.hcat = null; render(); } }, "인기"),
       cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": st.hcat === c ? "true" : "false", onclick: () => { st.hcat = c; render(); } }, catIcon(c, "sm"), c))));
+    // what '인기' means here: the most widely sold, not searches or bookings (the app has no such numbers)
+    box.append(h("p", { class: "tiny", style: "margin:-2px 2px 8px" }, st.hcat ? `${st.hcat}에서 파는 지점이 많은 시술 순이에요.` : "‘인기’는 파는 지점이 많은 순이에요. 검색량·예약 수가 아니에요(앱은 그런 숫자를 모으지 않아요)."));
     const grid = h("div", { class: "grid" });
     for (const k of keys) {
       let rk = ranking(k.i, "price"), pl = plainRanking(k.i);
@@ -1181,7 +1198,8 @@
         h("span", { class: "t" }, KEYS[x.k].label), h("span", { class: "p num" }, `최대 ${x.spread.toFixed(1)}배`),
         h("span", { class: "mrange", role: "img", "aria-label": `가격 범위 ${won(x.lo)}~${won(x.hi)}, 중간값 ${won(x.med)}` }, h("b", { style: `left:${x.hi > x.lo ? (x.med - x.lo) / (x.hi - x.lo) * 100 : 50}%` })),
         h("span", { class: "m" }, h("span", { class: "num" }, `${won(x.lo)} ~ ${won(x.hi)}`), h("span", {}, `중간값 ${won(x.med)}`), h("span", {}, `${x.n}곳`))))))),
-      h("p", { class: "foot", style: "margin-top:-6px" }, "같은 용량·회차인데도 병원마다 가격이 이만큼 달라요. 막대는 가장 낮은 값부터 높은 값까지, 세로선은 중간값이에요. 가격 차이의 이유(조건·구성)는 시술 화면에서 확인하세요."));
+      h("p", { class: "foot", style: "margin-top:-6px" }, "같은 용량·회차인데도 병원마다 가격이 이만큼 달라요. 막대는 가장 낮은 값부터 높은 값까지, 세로선은 중간값이에요. 가격 차이의 이유(조건·구성)는 시술 화면에서 확인하세요."),
+      h("p", { class: "foot", style: "margin-top:-10px" }, `고르는 기준: 조건 없는 가격이 5곳 이상인 시술 중 '가장 높은 가격 ÷ 가장 낮은 가격'이 큰 순서(1.5~10배, 확인이 필요한 초저가는 뺌). ${D.meta.updated} 데이터로 자동으로 골라요 — 사람이 고르거나 광고로 정하지 않아요.`));
     const finds = FLAGS.discountEmphasis ? lowFinds() : [];
     if (finds.length) box.append(secHead("죠미의 오늘의 발견", "중간값보다 많이 낮은 곳"), h("div", { class: "card flush" }, h("ul", { class: "list" }, finds.map((x) =>
       h("li", {}, h("button", { class: "disc-row", type: "button", onclick: () => { st.key = x.k; nav("compare"); } },
@@ -1361,7 +1379,7 @@
   // popular = procedure families sold at the most branches
   let POP = null;
   const popularTerms = () => POP || (POP = FAM.map((f) => [f.name, new Set(f.vs.flatMap((v) => [...byKB[v.k].keys()])).size]).sort((a, b) => b[1] - a[1]).slice(0, 8).map((x) => x[0]));
-  function rememberQuery(q) { if (!q) return; store.set("recentQ", [q, ...store.get("recentQ", []).filter((x) => x !== q)].slice(0, 8)); }
+  function rememberQuery(q) { if (!q || !histOn()) return; store.set("recentQ", [q, ...store.get("recentQ", []).filter((x) => x !== q)].slice(0, 8)); }
   // words the natural-language search recognises as places: branch names and 구 names in addresses
   let NLCTX = null;
   function nlCtx() {
@@ -1473,7 +1491,6 @@
       if ("sort" in patch && patch.sort) store.set("tableSort", patch.sort);     // remember the sort for next time
       const s = np.toString();
       history.replaceState(null, "", `#${route}${s ? "?" + s : ""}`);    // filter change: same page, keep the scroll position
-      if (route === "table") store.set("lastTable", s);
       render();
     };
     const idx = searchIndex();
@@ -2140,58 +2157,69 @@
       h("div", { class: "sub" }, `병원이 상품에 적은 정가와 판매가를 비교한 값이에요. 정가가 적힌 가격만 계산하고, 위 '가격 이력'(실제로 관측한 과거 가격)과는 다른 숫자예요.`),
       h("div", { class: "tiles", style: "margin-top:8px" }, h("div", { class: "tile" }, h("span", { class: "k" }, "할인율 중간값"), h("b", { class: "num" }, `${trd}%`), h("span", { class: "w" }, "병원 표기 정가 기준")))));
     // 5) every clinic, in the order the user picked (default: region · name; nearest once a location is set)
-    const list = h("ul", { class: "list" });
-    const medAll = median(rk.map((x) => x.p)), min0 = rk.length ? Math.min(...rk.map((x) => x.p)) : 0;
-    rk.slice(0, 300).forEach((x, n) => {
-      const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
-      // positions (1, 2, 3 …) read as a ranking: shown only with flags.lowestHighlight
-      list.append(h("li", { class: "rk" }, h("button", { class: "rank" + (FLAGS.lowestHighlight ? (n < 3 && st.sort === "price" ? " top" : "") : " nonum"), type: "button", onclick: () => nav(`branch/${x.b}`) },
-        h("span", { class: "n num" }, n + 1), h("span", { class: "b" }, bdot(x.b), h("span", {}, bname(x.b))),
-        h("span", { class: "p num" }, won(x.p)),
-        h("span", { class: "m" }, S[r[2]], listS(r), low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx", title: `중간값 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%` }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
-          kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, FLAGS.lowestHighlight && x.p > min0 ? h("span", { class: "gap" }, `최저 +${won(x.p - min0)}`) : null, x.d != null ? h("b", {}, km(x.d)) : null)),
-        h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info"))));
-    });
-    // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date)
-    const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
-    rk.slice(0, 300).forEach((x, n) => {
-      const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
-      cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${Math.min(rk.length, 300)}: ${bname(x.b)}` },
-        h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${Math.min(rk.length, 300)}`)),
-        h("div", { class: "ccard-p num" }, won(x.p), listS(r)),
-        h("div", { class: "ccard-n" }, S[r[2]]),
-        h("div", { class: "m" }, low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx" }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
-          kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, x.d != null ? h("b", {}, km(x.d)) : null),
-        h("div", { class: "tiny" }, `${BR[x.b].region || ""} · 가격 확인 ${verified(x.b)}`),
-        h("div", { class: "row ccard-a" }, h("button", { class: "btn sm gray", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info", "sm"), "가격 근거"),
-          h("button", { class: "btn sm gray", type: "button", onclick: () => nav(`branch/${x.b}`) }, "지점 보기"))));
-    });
-    const step = (d) => { const c = cards.querySelector(".ccard"); if (c) cards.scrollBy({ left: d * (c.offsetWidth + 10), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); };
-    const cardBox = h("div", { class: "ccwrap" }, cards, rk.length > 1 ? h("div", { class: "row ccnav" }, h("span", { class: "tiny" }, "옆으로 넘겨 보세요"), h("span", { class: "sp" }),
-      h("button", { class: "tbtn-i", type: "button", "aria-label": "이전 지점", onclick: () => step(-1) }, icon("chevron-left")),
-      h("button", { class: "tbtn-i", type: "button", "aria-label": "다음 지점", onclick: () => step(1) }, icon("chevron-right"))) : null);
-    const setView = (v) => { st.cview = v; store.set("cmpView", v); render(); };
-    const viewSw = h("div", { class: "seg vsw", role: "group", "aria-label": "보기 방식" }, [["list", "목록"], ["cards", "카드"]].map(([v, l]) =>
-      h("button", { type: "button", "aria-pressed": st.cview === v ? "true" : "false", onclick: () => { if (st.cview !== v) setView(v); } }, l)));
-    const have = new Set(rk.map((y) => y.b));
-    const none = BR.filter((y) => brandOn(y.i) && regionOk(y.i) && !have.has(y.i));
-    const setSort = (v) => { if (v === "near" && !st.loc) locSheet(); st.sort = v; store.set("sort", v); render(); };
-    box.append(h("div", { class: "card flush", id: "clinics" }, h("div", { style: "padding:14px 14px 6px" }, h("div", { class: "row" }, h("h3", {}, `지점별 가격 ${rk.length}곳`), h("span", { class: "sp" }), rk.length > 1 ? viewSw : null),
-      h("div", { style: "margin-top:10px" }, sortChips(st.sort, setSort)),
-      h("p", { class: "tiny", style: "margin-top:8px" }, `${SORT_L[st.sort] || "정렬"}으로 보여줘요${st.sort === "near" && !st.loc ? "(기준 위치를 정하면 가까운 순)" : ""}. 기본은 지역·이름순이고, 광고·제휴로 순서가 바뀌지 않아요. 같은 용량·회차의 1회 가격끼리예요.`)),
-      rk.length ? (st.cview === "cards" && rk.length > 1 ? cardBox : list) : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("search")), h("b", {}, "조건에 맞는 지점이 없어요"), "브랜드나 특가 설정을 바꿔 보세요."),
-      none.length ? h("details", { class: "fold small", style: "padding:0 12px" }, h("summary", {}, `이 시술 가격이 없는 지점 ${none.length}곳`),
-        h("div", { class: "sub", style: "padding:0 2px 12px" }, none.map((y) => bname(y.i)).join(", "), " — 같은 시술을 팔지 않거나, 용량·회차가 달라 묶지 않은 곳이에요.")) : null));
+    // only this card is redrawn when the order or the view changes (the charts above stay): a quick tap response
+    const clinicsCard = (rk) => {
+      const medAll = median(rk.map((x) => x.p)), min0 = rk.length ? Math.min(...rk.map((x) => x.p)) : 0;
+      // only the view on screen is built (list or cards)
+      const buildList = () => { const list = h("ul", { class: "list" });
+      rk.slice(0, 300).forEach((x, n) => {
+        const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
+        // positions (1, 2, 3 …) read as a ranking: shown only with flags.lowestHighlight
+        list.append(h("li", { class: "rk" }, h("button", { class: "rank" + (FLAGS.lowestHighlight ? (n < 3 && st.sort === "price" ? " top" : "") : " nonum"), type: "button", onclick: () => nav(`branch/${x.b}`) },
+          h("span", { class: "n num" }, n + 1), h("span", { class: "b" }, bdot(x.b), h("span", {}, bname(x.b))),
+          h("span", { class: "p num" }, won(x.p)),
+          h("span", { class: "m" }, S[r[2]], listS(r), low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx", title: `중간값 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%` }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
+            kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, FLAGS.lowestHighlight && x.p > min0 ? h("span", { class: "gap" }, `최저 +${won(x.p - min0)}`) : null, x.d != null ? h("b", {}, km(x.d)) : null)),
+          h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info"))));
+      });
+      return list; };
+      // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date)
+      const buildCards = () => { const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
+      rk.slice(0, 300).forEach((x, n) => {
+        const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
+        cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${Math.min(rk.length, 300)}: ${bname(x.b)}` },
+          h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${Math.min(rk.length, 300)}`)),
+          h("div", { class: "ccard-p num" }, won(x.p), listS(r)),
+          h("div", { class: "ccard-n" }, S[r[2]]),
+          h("div", { class: "m" }, low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx" }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
+            kindBadge(r), fresh(x.b).stale ? h("span", { class: "k kx" }, "지난 자료") : null, x.d != null ? h("b", {}, km(x.d)) : null),
+          h("div", { class: "tiny" }, `${BR[x.b].region || ""} · 가격 확인 ${verified(x.b)}`),
+          h("div", { class: "row ccard-a" }, h("button", { class: "btn sm gray", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info", "sm"), "가격 근거"),
+            h("button", { class: "btn sm gray", type: "button", onclick: () => nav(`branch/${x.b}`) }, "지점 보기"))));
+      });
+      const step = (d) => { const c = cards.querySelector(".ccard"); if (c) cards.scrollBy({ left: d * (c.offsetWidth + 10), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); };
+      const cardBox = h("div", { class: "ccwrap" }, cards, rk.length > 1 ? h("div", { class: "row ccnav" }, h("span", { class: "tiny" }, "옆으로 넘겨 보세요"), h("span", { class: "sp" }),
+        h("button", { class: "tbtn-i", type: "button", "aria-label": "이전 지점", onclick: () => step(-1) }, icon("chevron-left")),
+        h("button", { class: "tbtn-i", type: "button", "aria-label": "다음 지점", onclick: () => step(1) }, icon("chevron-right"))) : null);
+      return cardBox; };
+      const setView = (v) => { st.cview = v; store.set("cmpView", v); redrawClinics(); };
+      const viewSw = h("div", { class: "seg vsw", role: "group", "aria-label": "보기 방식" }, [["list", "목록"], ["cards", "카드"]].map(([v, l]) =>
+        h("button", { type: "button", "aria-pressed": st.cview === v ? "true" : "false", onclick: () => { if (st.cview !== v) setView(v); } }, l)));
+      const have = new Set(rk.map((y) => y.b));
+      const none = BR.filter((y) => brandOn(y.i) && regionOk(y.i) && !have.has(y.i));
+      const setSort = (v) => { if (v === "near" && !st.loc) locSheet(); st.sort = v; store.set("sort", v); redrawClinics(); };
+      return h("div", { class: "card flush", id: "clinics" }, h("div", { style: "padding:14px 14px 6px" }, h("div", { class: "row" }, h("h3", {}, `지점별 가격 ${rk.length}곳`), h("span", { class: "sp" }), rk.length > 1 ? viewSw : null),
+        h("div", { style: "margin-top:10px" }, sortChips(st.sort, setSort)),
+        h("p", { class: "tiny", style: "margin-top:8px" }, `${SORT_L[st.sort] || "정렬"}으로 보여줘요${st.sort === "near" && !st.loc ? "(기준 위치를 정하면 가까운 순)" : ""}. 기본은 지역·이름순이고, 광고·제휴로 순서가 바뀌지 않아요. 같은 용량·회차의 1회 가격끼리예요.`)),
+        rk.length ? (st.cview === "cards" && rk.length > 1 ? buildCards() : buildList()) : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("search")), h("b", {}, "조건에 맞는 지점이 없어요"), "브랜드나 특가 설정을 바꿔 보세요."),
+        none.length ? h("details", { class: "fold small", style: "padding:0 12px" }, h("summary", {}, `이 시술 가격이 없는 지점 ${none.length}곳`),
+          h("div", { class: "sub", style: "padding:0 2px 12px" }, none.map((y) => bname(y.i)).join(", "), " — 같은 시술을 팔지 않거나, 용량·회차가 달라 묶지 않은 곳이에요.")) : null);
+    };
+    const redrawClinics = () => { const old = box.querySelector("#clinics"), lbl = document.activeElement && old && old.contains(document.activeElement) ? document.activeElement.textContent : null;
+      if (!old) { render(); return; } const fresh = clinicsCard(ranking(k.i)); old.replaceWith(fresh);
+      const again = lbl != null && [...fresh.querySelectorAll("button")].find((x) => x.textContent === lbl); if (again) again.focus({ preventScroll: true }); };
+    box.append(clinicsCard(rk));
     box.append(h("p", { class: "foot" }, `${vatNote()} 같은 시술로 묶는 기준: 용량·샷 수·회차·원산지가 같은 1회 가격. 다른 시술과 묶인 패키지, 추가 옵션, 구독권은 빠져요. 종료일이 지난 이벤트와 확인 중인 급변 가격도 빠져요.`));
     // 6) actions, kept at the bottom of the screen while scrolling
     if (rk.length) box.append(h("div", { class: "actions" },
-      h("button", { class: "btn gray", type: "button", onclick: () => alertSheet({ k: k.id }) }, icon("bell", "sm"), "알림"),
+      h("button", { class: "btn gray", type: "button", "aria-label": "가격 알림", onclick: () => alertSheet({ k: k.id }) }, icon("bell", "sm"), h("span", { class: "bl", "aria-hidden": "true" }, "알림")),
       h("button", { class: "btn gray", type: "button", "aria-label": "지도에서 보기", title: "지도에서 보기", onclick: () => { st.mapKey = k.i; nav("map"); } }, icon("map", "sm")),
       h("button", { class: "btn gray", type: "button", "aria-label": "가격 요약 복사", title: "가격 요약 복사", onclick: () => { const ps = rk.map((x) => x.p).sort((a, c) => a - c);
         copyText(FLAGS.lowestHighlight ? [`[${k.label}] ${regionName()} 최저가 (${D.meta.updated} 기준, ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"})`,
           ...[...rk].sort((x, y) => x.p - y.p).slice(0, 3).map((x, n) => `${n + 1}. ${bname(x.b)} ${won(x.p)} — ${S[ROWS[x.i][2]]}${S[ROWS[x.i][11]] ? ` (${S[ROWS[x.i][11]]})` : ""}`)].join("\n")
           : [`[${k.label}] ${regionName()} 가격 요약 (${D.meta.updated} 수집, ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"})`,
             `${ps.length}곳 · ${won(ps[0])} ~ ${won(ps[ps.length - 1])} · 중간값 ${won(median(ps))}`, "용량·조건·정품 여부·시술 의료진·부작용은 병원에 확인하세요. — 윤실장"].join("\n"), "가격 요약을 복사했어요"); } }, icon("copy", "sm")),
+      h("button", { class: "btn gray", type: "button", "aria-label": "이 비교 링크 공유", title: "이 비교 링크 공유", onclick: () => shareLink(`윤실장 · ${k.label}`, `compare?k=${encodeURIComponent(k.id)}`) }, icon("share-2", "sm")),
       addBtn(k.i)));
     return box;
   };
@@ -2296,7 +2324,7 @@
       prices = new Map(ranking(st.mapKey, "price").map((x) => [x.b, x]));
       for (const x of prices.values()) min = Math.min(min, x.p);
     }
-    const pts = BR.filter((b) => b.lat != null && brandOn(b.i) && (!prices || prices.has(b.i)));
+    const pts = BR.filter((b) => b.lat != null && brandOn(b.i) && (!prices || prices.has(b.i)) && kmOk(b.i));
     // grid clustering in screen space: branches closer than ~48px at this zoom become one marker with a count
     const z = map.getZoom(), cell = 48, cells = new Map();
     for (const b of pts) { const q = map.project([b.lat, b.lng], z); const key = `${Math.floor(q.x / cell)}:${Math.floor(q.y / cell)}`; if (!cells.has(key)) cells.set(key, []); cells.get(key).push(b); }
@@ -2361,17 +2389,22 @@
     setTimeout(() => { layer.eachLayer((m) => { if (m.bi === i && m.getPopup) m.openPopup(); }); markListSel(false); }, 350);
     document.getElementById("map").scrollIntoView({ block: "center", behavior: "smooth" });
   }
+  // distance limit for the map (pins and list), only once a place to measure from is set
+  const kmOk = (b) => !st.mapKm || !st.loc || (dist(b) != null && dist(b) <= st.mapKm);
+  const kmChips = () => !st.loc ? null : h("div", { class: "chips", role: "group", "aria-label": "거리", style: "margin-top:8px" },
+    [[0, "거리 전체"], [1, "1km"], [3, "3km"], [5, "5km"], [10, "10km"]].map(([v, l]) => h("button", { class: "chip", type: "button", "aria-pressed": (st.mapKm || 0) === v ? "true" : "false",
+      onclick: () => { st.mapKm = v; drawMap(); paintNear(); } }, l)));
   function paintNear() {
     const el = $("#near");
     if (!el || !map) return;
     const bounds = map.getBounds();
-    let list = BR.filter((b) => b.lat != null && brandOn(b.i) && bounds.contains([b.lat, b.lng]));
+    let list = BR.filter((b) => b.lat != null && brandOn(b.i) && bounds.contains([b.lat, b.lng]) && kmOk(b.i));
     const price = st.mapKey != null ? new Map(ranking(st.mapKey, "price").map((x) => [x.b, x])) : null;
     if (price) list = list.filter((b) => price.has(b.i));
     list = list.map((b) => ({ b, d: dist(b.i), p: price ? price.get(b.i).p : null }))
       .sort((x, y) => st.loc ? (x.d - y.d) : price && FLAGS.lowestHighlight ? x.p - y.p : regionCmp(x.b.i, y.b.i));
     el.replaceChildren(h("div", { style: "padding:12px 12px 4px" }, h("h3", {}, st.loc ? `가까운 지점${st.locName ? ` · ${st.locName} 기준` : ""}` : "지도에 보이는 지점"),
-      h("div", { class: "sub" }, `${list.length}곳 · 지도를 옮긴 뒤 '이 지역 재검색'을 누르면 목록이 바뀌어요${st.loc ? "" : " · 위치나 동네를 정하면 거리순"}`)),
+      h("div", { class: "sub" }, `${list.length}곳${st.mapKm && st.loc ? ` · ${st.mapKm}km 안` : ""} · 지도를 옮긴 뒤 '이 지역 재검색'을 누르면 목록이 바뀌어요${st.loc ? "" : " · 위치나 동네를 정하면 거리순·거리 제한"}`), kmChips()),
       list.length ? h("ul", { class: "list" }, (() => { const top = list.slice(0, 40), sel = list.findIndex((x) => x.b.i === st.mapSel);   // the chosen marker's branch is always listed
         return sel >= 40 ? [...top, list[sel]] : top; })().map((x) => h("li", { class: "rk" + (x.b.i === st.mapSel ? " sel" : ""), "data-b": x.b.i },
         h("button", { class: "item", type: "button", onclick: () => nav(`branch/${x.b.i}`) },
@@ -2489,6 +2522,19 @@
   };
 
   // ---------------- 지점 비교: two branches side by side over the options both sell
+  // Korean subject particle for a name: 강남점이 / 서면이 … (final consonant → 이, else 가)
+  const iga = (w) => { const c = String(w).charCodeAt(String(w).length - 1); return c >= 0xac00 && c <= 0xd7a3 && (c - 0xac00) % 28 ? "이" : "가"; };
+  // 'OO점이 23,100원 저렴' between two branches (no sentence when equal)
+  const cheaperTxt = (a, b, pa, pb) => { if (pa === pb) return "같은 가격"; const w = pa < pb ? a : b, nm = BR[a].name === BR[b].name ? bname(w) : BR[w].name; /* 블리비 안산점 vs 쁨 안산점: full names */ return `${nm}${iga(nm)} ${won(Math.abs(pa - pb))} 저렴`; };
+  // two thin bars on one scale (the dearer price = full width); equal prices get no emphasis
+  const pairBars = (pa, pb) => { const m = Math.max(pa, pb) || 1;
+    return h("span", { class: "pbars", "aria-hidden": "true" }, h("i", { class: "a" + (pa < pb ? " lo" : ""), style: `width:${Math.max(4, pa / m * 100)}%` }), h("i", { class: "b" + (pb < pa ? " lo" : ""), style: `width:${Math.max(4, pb / m * 100)}%` })); };
+  // the cart's lines at one branch, priced like the cart does (first-visit prices at most once per branch when st.noStack)
+  function cartLinesAt(b, items) {
+    let lines = items.map((it) => lineAt(it, b));
+    if (st.noStack) lines = Pricing.limitOnce(lines, lines.map((l) => !!l && hasTag(l.rows[0], "첫 방문")), (j) => lineAt(items[j], b, true));
+    return lines;
+  }
   views.versus = (arg) => {
     const [a0, b0] = (arg || "").split("/").map((x) => (x === "" || x == null ? null : +x));
     if (a0 != null && BR[a0]) st.vsA = a0;
@@ -2508,7 +2554,33 @@
           const sib = BR.filter((y) => y.brand === BR[cur0].brand && regionOk(y.i) && y.i !== other).sort((p, q) => p.name.localeCompare(q.name, "ko"));
           const n = sib.findIndex((y) => y.i === cur0), nx = sib[(n + 1) % sib.length]; if (!nx) return; if (w === "A") st.vsA = nx.i; else st.vsB = nx.i; render(); } }, `${w}: 같은 브랜드 다음 지점`))),
       h("div", { class: "row", style: "margin-top:10px" }, switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }),
-        switchEl("차이 있는 것만", st.vsDiff, (v) => { st.vsDiff = v; render(); }))));
+        switchEl("차이 있는 것만", st.vsDiff, (v) => { st.vsDiff = v; render(); }),
+        cur().items.length ? switchEl("장바구니 시술만", !!st.vsCart, (v) => { st.vsCart = v; render(); }) : null)));
+    // sticky A/B legend for the long lists below (the colour keys alone don't say which clinic is which)
+    const vsHead = () => h("div", { class: "vshead", "aria-hidden": "true" }, h("span", { class: "row" }, h("span", { class: "key", style: "background:var(--s1)" }), h("b", {}, "A"), h("span", {}, bname(A))),
+      h("span", { class: "row" }, h("span", { class: "key", style: "background:var(--s2)" }), h("b", {}, "B"), h("span", {}, bname(B))));
+    // cart-only: the user's own items at A and at B, priced like the cart; a missing item never counts as 0원
+    if (st.vsCart && cur().items.length) {
+      const its = cur().items, la = cartLinesAt(A, its), lb = cartLinesAt(B, its);
+      const both = its.map((it, j) => ({ it, a: la[j], b: lb[j] })), shared = both.filter((x) => x.a && x.b);
+      const ta = shared.reduce((t, x) => t + x.a.total, 0), tb = shared.reduce((t, x) => t + x.b.total, 0);
+      const onlyA = both.filter((x) => x.a && !x.b), onlyB = both.filter((x) => !x.a && x.b), none = both.filter((x) => !x.a && !x.b);
+      box.append(h("div", { class: "card" }, h("h3", {}, `'${cur().name}' ${its.length}개 시술로 비교`),
+        shared.length ? h("div", { class: "vsum", style: "margin-top:6px" }, ta === tb ? "두 지점 합계가 같아요" : cheaperTxt(A, B, ta, tb)) : h("div", { class: "vsum", style: "margin-top:6px" }, "두 지점이 함께 하는 시술이 없어요"),
+        shared.length ? h("dl", { class: "kv", style: "margin-top:8px" }, h("dt", {}, "A 합계"), h("dd", { class: "num" }, won(ta)), h("dt", {}, "B 합계"), h("dd", { class: "num" }, won(tb))) : null,
+        h("div", { class: "sub", style: "margin-top:6px" }, `둘 다 하는 ${shared.length}개만 더했어요. 한쪽에 없는 시술은 0원으로 치지 않고 아래에 따로 적었어요.${st.noStack ? " 첫 방문가는 지점마다 하나만 넣었어요." : ""}`)));
+      const row = (x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, `${itemLabel(x.it)} ×${x.it.q || 1}`),
+        h("span", { class: "p num" }, x.a && x.b ? (x.a.total === x.b.total ? "같음" : won(Math.abs(x.a.total - x.b.total)) + " 차이") : "한쪽 없음"),
+        h("span", { class: "m" }, x.a && x.b ? pairBars(x.a.total, x.b.total) : null,
+          h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s1)" }), x.a ? h("b", {}, won(x.a.total)) : h("span", { class: "up" }, "없음")),
+          h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s2)" }), x.b ? h("b", {}, won(x.b.total)) : h("span", { class: "up" }, "없음")),
+          x.a && x.b && x.a.total !== x.b.total ? h("span", { class: "vwin" }, cheaperTxt(A, B, x.a.total, x.b.total)) : null)));
+      box.append(h("div", { class: "card flush" }, vsHead(), h("ul", { class: "list" }, [...shared, ...onlyA, ...onlyB, ...none].map(row)),
+        onlyA.length || onlyB.length || none.length ? h("div", { class: "sub", style: "padding:10px 14px 14px" },
+          [onlyA.length ? `A에만 있음: ${onlyA.map((x) => itemLabel(x.it)).join(", ")}` : "", onlyB.length ? `B에만 있음: ${onlyB.map((x) => itemLabel(x.it)).join(", ")}` : "",
+            none.length ? `둘 다 없음: ${none.map((x) => itemLabel(x.it)).join(", ")}` : ""].filter(Boolean).join(" · ")) : null));
+      return box;
+    }
     // shared options: auto groups + cross-brand keys
     const items = [];
     const seen = new Set();
@@ -2532,7 +2604,15 @@
       h("button", { class: "btn sm gray", type: "button", style: "margin-top:10px", onclick: () => copyText([`[지점 비교] A ${bname(A)} vs B ${bname(B)} (${D.meta.updated} 기준)`,
         `함께 파는 옵션 ${items.length}개 · A가 더 쌈 ${win} · 같음 ${tie} · B가 더 쌈 ${lose}`,
         ratio < 1 ? `A가 평균 ${Math.round((1 - ratio) * 100)}% 쌈` : ratio > 1 ? `B가 평균 ${Math.round((1 - 1 / ratio) * 100)}% 쌈` : "평균 같음",
-        ...items.filter((x) => x.a !== x.b).sort((p, q) => Math.abs(q.a - q.b) - Math.abs(p.a - p.b)).slice(0, 5).map((x) => `- ${x.name}: A ${won(x.a)} / B ${won(x.b)}`)].join("\n"), "비교 결과를 복사했어요") }, "비교 결과 복사")));
+        ...items.filter((x) => x.a !== x.b).sort((p, q) => Math.abs(q.a - q.b) - Math.abs(p.a - p.b)).slice(0, 5).map((x) => `- ${x.name}: A ${won(x.a)} / B ${won(x.b)}`)].join("\n"), "비교 결과를 복사했어요") }, "비교 결과 복사"),
+      h("button", { class: "btn sm gray", type: "button", style: "margin:10px 0 0 6px", onclick: () => shareLink(`윤실장 · ${bname(A)} vs ${bname(B)}`, `versus/${A}/${B}`) }, icon("share-2", "sm"), "링크 공유")));
+    // treatments only one of the two sells (same comparison key) — shown, not silently dropped
+    const onlyAt = (x, y) => KEYS.filter((k) => bestAt(k.i, x) >= 0 && bestAt(k.i, y) < 0);
+    const oa = onlyAt(A, B), ob = onlyAt(B, A);
+    if (oa.length || ob.length) box.append(h("details", { class: "card flush fold" }, h("summary", {}, `한쪽에만 있는 시술: A에만 ${oa.length}개 · B에만 ${ob.length}개`),
+      h("div", { style: "padding:0 14px 14px" }, h("div", { class: "sub" }, "같은 용량·회차로 묶은 시술 기준이에요. 아래 목록은 두 지점이 함께 파는 것만 맞대요."),
+        oa.length ? h("p", { class: "sub" }, h("b", {}, `A ${bname(A)}: `), oa.slice(0, 30).map((k) => k.label).join(", "), oa.length > 30 ? ` 외 ${oa.length - 30}개` : "") : null,
+        ob.length ? h("p", { class: "sub" }, h("b", {}, `B ${bname(B)}: `), ob.slice(0, 30).map((k) => k.label).join(", "), ob.length > 30 ? ` 외 ${ob.length - 30}개` : "") : null)));
     const cats = [...new Set(items.map((x) => x.cat))].sort((p, q) => p - q);
     if (st.vcat >= 0 && !cats.includes(st.vcat)) st.vcat = -1;
     const q = h("input", { type: "search", placeholder: "옵션 이름으로 찾기", "aria-label": "옵션 찾기" });
@@ -2544,8 +2624,9 @@
       shown = shown.sort(so);
       list.replaceChildren(...shown.slice(0, 300).map((x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, x.name),
         h("span", { class: "p num" }, x.a === x.b ? "같음" : `${x.a < x.b ? "A" : "B"} ${won(Math.abs(x.a - x.b))}↓`),
-        h("span", { class: "m" }, h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s1)" }), h("b", { class: x.a < x.b ? "down" : "" }, won(x.a))),
-          h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s2)" }), h("b", { class: x.b < x.a ? "down" : "" }, won(x.b))), h("span", {}, D.meta.cats[x.cat]))))));
+        h("span", { class: "m" }, pairBars(x.a, x.b), h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s1)" }), h("b", { class: x.a < x.b ? "down" : "" }, won(x.a))),
+          h("span", { class: "row", style: "gap:4px" }, h("span", { class: "key", style: "background:var(--s2)" }), h("b", { class: x.b < x.a ? "down" : "" }, won(x.b))),
+          x.a !== x.b ? h("span", { class: "vwin" }, cheaperTxt(A, B, x.a, x.b)) : null, h("span", {}, D.meta.cats[x.cat]))))));
       if (!shown.length) list.replaceChildren(h("div", { class: "empty" }, "찾는 옵션이 없어요"));
     };
     q.addEventListener("input", paint);
@@ -2554,7 +2635,7 @@
         cats.map((ci) => h("button", { class: "chip", type: "button", "aria-pressed": st.vcat === ci ? "true" : "false", onclick: () => { st.vcat = ci; render(); } }, D.meta.cats[ci]))),
       h("div", { class: "chips", style: "margin-top:8px" }, [["diff", "차이 큰 순"], ["a", "A가 싼 것"], ["b", "B가 싼 것"], ["name", "이름순"]].map(([v, l]) =>
         h("button", { class: "chip", type: "button", "aria-pressed": st.vsort === v ? "true" : "false", onclick: () => { st.vsort = v; render(); } }, l)))));
-    box.append(h("div", { class: "card flush" }, list));
+    box.append(h("div", { class: "card flush" }, vsHead(), list));
     paint();
     return box;
   };
@@ -2698,6 +2779,12 @@
     const totalNow = HL ? (best ? best.total : null) : `${tmin}-${tmax}`, tick = lastTotal && lastTotal.id === c.id && lastTotal.t !== totalNow;
     lastTotal = { id: c.id, t: totalNow };
     const sumrow = (l, v) => h("div", { class: "sumrow" }, h("span", {}, l), h("b", { class: "num" }, v));
+    // sticky summary at the bottom once the summary card has scrolled away (hidden while the card is on screen)
+    const endBar = h("div", { class: "actions cartbar", hidden: true },
+      h("div", { class: "cb-t" }, h("span", { class: "tiny" }, best ? `예상 총액 · ${plan.full.length}곳` : "예상 총액"),
+        h("b", { class: "num" }, best ? (HL || tmin === tmax ? won(HL ? best.total : tmin) : `${won(tmin)} ~ ${won(tmax)}`) : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`)),
+      h("button", { class: "btn", type: "button", onclick: () => { if (!st.cartCmp) { st.cartCmp = true; render(); } setTimeout(() => { const t = $("#main .seg[role=tablist]") || $("#main .cartsum"); if (t) t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 50); } },
+        st.cartCmp ? "병원별 비교로" : "병원별 비교 보기"));
     box.append(h("div", { class: "card cartsum lift", "aria-live": "polite" },
       h("span", { class: "hl" }, best ? (HL ? "한 곳에서 다 받을 때 예상 총액" : `한 곳에서 다 받을 때 예상 총액 · ${plan.full.length}곳`) : "한 곳에서 모두 받는 지점이 없어요"),
       best ? h("span", { class: `hp num${tick ? " tick" : ""}${HL ? "" : " range"}` }, HL ? won(best.total) : tmin === tmax ? won(tmin) : [h("span", { class: "nw" }, won(tmin)), h("span", { class: "to" }, " ~ "), h("span", { class: "nw" }, won(tmax))])
@@ -2737,7 +2824,10 @@
         h("div", { class: "sub" }, `지역: ${regionName()} (화면 위 지역 버튼에서 바꿔요)`)));
     adv.addEventListener("toggle", () => { st.cartAdv = adv.open; });
     box.append(adv);
-    if (!st.cartCmp) return box;
+    // watched once the view is on the page (a detached card reports a zero box); one observer at a time
+    const watchSum = () => setTimeout(() => { const sc = box.querySelector(".cartsum"); if (cartIO) cartIO.disconnect(); if (!sc || !sc.isConnected || !("IntersectionObserver" in window)) return;
+      cartIO = new IntersectionObserver(([e]) => { endBar.hidden = e.isIntersecting || e.boundingClientRect.top > 0; }); cartIO.observe(sc); }, 0);
+    if (!st.cartCmp) { box.append(endBar); watchSum(); return box; }
     const tabs = [["one", "한 곳에서"], ["mix", FLAGS.lowestHighlight ? "여러 곳 섞기" : "나눠 받기"], ["pkg", "병원 패키지"], ["sum", "브랜드·지역"]];
     box.append(h("div", { class: "seg", role: "tablist" }, tabs.map(([v, l]) => h("button", { type: "button", role: "tab", "aria-selected": st.cartTab === v ? "true" : "false", onclick: () => { st.cartTab = v; render(); } }, l))));
     if (st.cartTab === "one") box.append(oneView(items, plan.full, plan.partial));
@@ -2748,6 +2838,7 @@
       "• 특가(체험가·한정가)는 첫 1회만, 2회째부터는 그 지점 일반가로 계산해요.", h("br"),
       "• 지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.", h("br"),
       `• ${vatNote()} 방문 전에 병원에 꼭 확인하세요.`));
+    box.append(endBar); watchSum();
     return box;
   };
   // one branch's quote, expandable, with a per-line option picker
@@ -3161,6 +3252,14 @@
         radios("화면 테마", [["auto", "기기 설정"], ["light", "밝게"], ["dark", "어둡게"]], theme, (t) => { store.set("theme", t); applyTheme(); render(); })),
       h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "지역"), h("b", { class: "now" }, `지금: ${regionName()} ${regionCount()}곳`)),
         regionSelect(), h("div", { class: "sub" }, "고르면 비교·장바구니·검색·순위가 이 지역 지점만 보여줘요(데이터는 전국을 모두 모아요).")),
+      h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "보기 기록"), h("b", { class: "now" }, histOn() ? "지금: 남김" : "지금: 남기지 않음")),
+        switchEl("최근 본 것·최근 검색·이어서 보기 기록 남기기", histOn(), (v) => { store.set("histOff", !v); render(); toast(v ? "다시 기록해요" : "이제 기록하지 않아요(이미 있는 기록은 그대로)"); }),
+        h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => {
+          const before = Object.fromEntries(HIST_KEYS.map((k) => [k, store.get(k, null)]));
+          for (const k of HIST_KEYS) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* storage unavailable */ } }
+          try { localStorage.removeItem("pc:lastTable"); } catch (e) { /* an older version's key */ }
+          render(); undoToast("보기 기록을 지웠어요", () => { for (const [k, v] of Object.entries(before)) if (v != null) store.set(k, v); render(); }); } }, "기록 지우기")),
+        h("div", { class: "sub" }, "이 휴대폰에만 있어요(서버로 보내지 않아요). 장바구니·관심·알림은 지우지 않아요.")),
       h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => window.lockApp && window.lockApp() }, "지금 잠그기"),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { store.set("brands", null); store.set("special", true); location.reload(); } }, "설정 초기화"))));
     // ---- 데이터 안내 (information, not settings)
@@ -3233,7 +3332,7 @@
     const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
     if (!same) for (const c of [...openSheets]) c(true);
     current = view; lastPath = path;
-    if (ROUTE_NAME[view] || view === "branch") store.set("lastRoute", path + (qs ? `?${qs}` : ""));
+    if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
       map: "explore", branch: "explore", about: "me", ops: "me" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
@@ -3243,7 +3342,7 @@
     // the page itself so the next Tab starts in the new content instead of the header
     if (mark) { if (same) focusBack(main, mark); else main.focus({ preventScroll: true }); }
     paintFloatCart(view);
-    document.body.classList.toggle("has-bar", view === "compare" || view === "concern");
+    document.body.classList.toggle("has-bar", view === "compare" || view === "concern" || view === "cart");
   }
   window.addEventListener("popstate", render);
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => nav(b.dataset.tab)));
