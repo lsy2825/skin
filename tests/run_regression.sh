@@ -23,6 +23,7 @@ run "secret scan" python3 tests/security/scan_secrets.py
 run "comparison keys (xkeys)" python3 build2/xkeys.py
 run "weekly value guard" python3 tests/weekly_guard_test.py
 run "brand collectors (parsers on saved public pages)" python3 tests/brand_parsers_test.py
+run "branch addresses (own address, loose forms, on saved public pages)" python3 tests/branch_addr_test.py
 run "backup / restore (incl. ledger)" bash tests/db/backup_restore_test.sh
 for t in accounts_r2 commerce50 admin51 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets; do
   run "e2e $t" node tests/e2e/$t.js

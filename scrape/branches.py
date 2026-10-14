@@ -22,9 +22,22 @@ ADDR_LOT = re.compile(SIDO + r"\s+(?:[가-힣]+[시군구]\s+)?(?:[가-힣]+[구
 JUNK = re.compile(r"\s*(네이버|카카오|지도|약도|전화|TEL|Tel|☎|오시는|주차|대표|사업자|\d{2,4}-\d{3,4}-\d{4}|0\d{2}).*$")
 
 
+# last resort (2026-10-15): an address with no 시군구 (세종특별자치시 나성북로 15) or with 읍·면 before the road (경남 양산시 물금읍
+# 범어로 96) — tried only when the two patterns above find nothing on the page
+ADDR_LOOSE = re.compile(SIDO + r"\s+(?:[가-힣]+[시군구]\s+)?(?:[가-힣]+[구군]\s+)?(?:[가-힣]+[읍면]\s+)?[가-힣0-9]+(?:로|길)(?:\s*\d+(?:번)?길)?\s*\d+(?:-\d+)?")
+
+
 def first_addr(text):
-    m = ADDR.search(text) or ADDR_LOT.search(text)
+    m = ADDR.search(text) or ADDR_LOT.search(text) or ADDR_LOOSE.search(text)
     return clean(m.group(0)) if m else ""
+
+
+def addr_candidates(text):
+    """every address on the page in page order (road and lot-number forms; the loose form only when those find none)"""
+    found = sorted([(m.start(), m.group(0)) for rx in (ADDR, ADDR_LOT) for m in rx.finditer(text)])
+    if not found:
+        found = [(m.start(), m.group(0)) for m in ADDR_LOOSE.finditer(text)]
+    return list(dict.fromkeys(clean(x) for _, x in found))
 
 
 def velyb(f):
@@ -42,17 +55,41 @@ def from_log(brand, key):
     return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
 
 
+def _full(a, t):
+    return JUNK.sub("", t[t.index(a):][:len(a) + 40]).rstrip(" ,·|/") if a and a in t else a
+
+
 def page_addr(f, url):
     r = f.get(url)
     if not r:
         return "", ""
     text = BeautifulSoup(r.text, "html.parser").get_text(" ")
     a = first_addr(text)
-    full = a
+    return a, _full(a, clean(text))
+
+
+def page_addrs(f, url):
+    """[(address, full text)] for every address on the page, in page order (pick_own chooses the branch's own)"""
+    r = f.get(url)
+    if not r:
+        return []
+    text = BeautifulSoup(r.text, "html.parser").get_text(" ")
     t = clean(text)
-    if a and a in t:
-        full = JUNK.sub("", t[t.index(a):][:len(a) + 40]).rstrip(" ,·|/")
-    return a, full
+    return [(a, _full(a, t)) for a in addr_candidates(text)]
+
+
+def pick_own(rows):
+    """rows with 'cands' (page_addrs): the first address on the page that no other branch of the brand shows — the
+    branch's own, not the company footer (2026-10-15: 유앤아이 수원·광교 pages show 선릉로 614-1 first, their own lot-number
+    address after it). No such address → empty (listed without a region rather than in the wrong one)."""
+    from collections import Counter
+    seen = Counter((r["brand"], a) for r in rows for a in {a for a, _ in r.get("cands") or []})
+    for r in rows:
+        if r.get("cands") is None:
+            continue
+        own = next(((a, full) for a, full in r["cands"] if seen[(r["brand"], a)] == 1), ("", ""))
+        r["address"], r["address_full"] = own
+    return rows
 
 
 def others(f):
@@ -75,13 +112,18 @@ def others(f):
             a, full = page_addr(f, f"https://{s['code']}.4-ever.co.kr/ko")
             out.append(("포에버", s["branch"], a, full))
     # brands added 2026-10-14 (probe: scrape/probe.py): the page each collector already reads carries the branch address
-    for brand, key, path in (("밴스", "vands", "/web/product"), ("유앤아이", "uandi", "/direction/"),
+    for brand, key, path in (("밴스", "vands", ""), ("유앤아이", "uandi", "/direction/"),
                              ("데이뷰", "daybeau", "/branch/event.php"), ("닥터에버스", "drevers", "/event/")):
         for p in from_log(brand, key).get("pages", []):
             if p.get("rows") and p.get("site"):
-                a, full = page_addr(f, p["site"] + path)
-                out.append((brand, p["branch"], a, full))
+                out.append((brand, p["branch"], vands_addrs(f, p["site"]) if key == "vands" else page_addrs(f, p["site"] + path)))
     return out
+
+
+def vands_addrs(f, site):
+    """밴스: '오시는길/진료시간' (/web/sub/location) first — 세종·양산 have their address only there (2026-10-15 probe) —
+    then the price page the collector reads, where the other branches' addresses were found"""
+    return page_addrs(f, site + "/web/sub/location") or page_addrs(f, site + "/web/product")
 
 
 def drop_shared(rows):
@@ -122,10 +164,12 @@ def main():
     cache = json.load(open(CACHE, encoding="utf-8")) if os.path.exists(CACHE) else {}
     s = requests.Session()
     s.headers["User-Agent"] = UA  # same self-identifying name as the price collector (round-2 DATA02)
+    # (brand, branch, address, full) or (brand, branch, [candidates]) → the branch's own address first, then its point
+    base = [{"brand": x[0], "branch": x[1], "address": x[2], "address_full": x[3]} if len(x) == 4 else {"brand": x[0], "branch": x[1], "cands": x[2]} for x in rows]
     out = []
-    for brand, branch, addr, full in rows:
-        g = geocode(addr, cache, s) if addr else None
-        out.append({"brand": brand, "branch": branch, "address": addr, "address_full": full,
+    for r in pick_own(base):
+        g = geocode(r["address"], cache, s) if r["address"] else None
+        out.append({"brand": r["brand"], "branch": r["branch"], "address": r["address"], "address_full": r["address_full"],
                     "lat": g["lat"] if g else "", "lng": g["lng"] if g else "", "geo_level": g["level"] if g else "none"})
         json.dump(cache, open(CACHE, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=0)
     out = drop_shared(out)

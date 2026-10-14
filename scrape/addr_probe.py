@@ -28,9 +28,7 @@ MAX_LINKS = 6
 
 
 def candidates(html):
-    text = re.sub(r"\s+", " ", BeautifulSoup(html, "html.parser").get_text(" "))
-    found = [m.group(0) for rx in (branches.ADDR, branches.ADDR_LOT) for m in rx.finditer(text)]
-    return list(dict.fromkeys(branches.clean(x) for x in found))
+    return branches.addr_candidates(re.sub(r"\s+", " ", BeautifulSoup(html, "html.parser").get_text(" ")))
 
 
 def site(brand, name, home):

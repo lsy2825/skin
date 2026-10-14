@@ -11,7 +11,7 @@ import requests
 import branches
 from common import Fetcher, UA
 
-PAGES = {"vands": ("밴스", "/web/product"), "uandi": ("유앤아이", "/direction/"),
+PAGES = {"vands": ("밴스", ""), "uandi": ("유앤아이", "/direction/"),
          "daybeau": ("데이뷰", "/branch/event.php"), "drevers": ("닥터에버스", "/event/")}
 
 
@@ -21,14 +21,12 @@ def main(key, out):
     cache = json.load(open(branches.CACHE, encoding="utf-8")) if os.path.exists(branches.CACHE) else {}
     s = requests.Session()
     s.headers["User-Agent"] = UA
-    rows = []
-    for p in branches.from_log(brand, key).get("pages", []):
-        if not (p.get("rows") and p.get("site")):
-            continue
-        a, full = branches.page_addr(f, p["site"] + path)
-        g = branches.geocode(a, cache, s) if a else None
-        rows.append({"brand": brand, "branch": p["branch"], "address": a, "address_full": full,
-                     "lat": g["lat"] if g else "", "lng": g["lng"] if g else "", "geo_level": g["level"] if g else "none"})
+    rows = [{"brand": brand, "branch": p["branch"], "cands": branches.vands_addrs(f, p["site"]) if key == "vands" else branches.page_addrs(f, p["site"] + path)}
+            for p in branches.from_log(brand, key).get("pages", []) if p.get("rows") and p.get("site")]
+    for r in branches.pick_own(rows):
+        g = branches.geocode(r["address"], cache, s) if r["address"] else None
+        r.update(lat=g["lat"] if g else "", lng=g["lng"] if g else "", geo_level=g["level"] if g else "none")
+        r.pop("cands", None)
     rows = branches.drop_shared(rows)
     with open(out, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["brand", "branch", "address", "address_full", "lat", "lng", "geo_level"])
