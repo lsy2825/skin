@@ -9,7 +9,7 @@ looked up once). Lookup tries the road address, then without the building number
 """
 import csv, json, os, re, sys, time
 from bs4 import BeautifulSoup
-from common import Fetcher, ROOT, clean, now_iso
+from common import Fetcher, ROOT, UA, clean, now_iso
 import requests
 
 OUT = os.path.join(ROOT, "data2", "branches.csv")
@@ -102,7 +102,7 @@ def main():
     rows = velyb(f) + others(f)
     cache = json.load(open(CACHE, encoding="utf-8")) if os.path.exists(CACHE) else {}
     s = requests.Session()
-    s.headers["User-Agent"] = "skin-clinic-price-compare/1.0 (personal, non-commercial; weekly)"
+    s.headers["User-Agent"] = UA  # same self-identifying name as the price collector (round-2 DATA02)
     out = []
     for brand, branch, addr, full in rows:
         g = geocode(addr, cache, s) if addr else None

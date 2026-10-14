@@ -10,7 +10,9 @@ RAW = os.path.join(ROOT, "data2", "raw")
 os.makedirs(RAW, exist_ok=True)
 
 RAW_FIELDS = ["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"]
-UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+# round-2 DATA02: the collector says who it is (it used to present itself as a desktop Chrome browser). A site that refuses
+# this name is NOT retried under another one: that brand keeps its previous data (weekly guard) and is reviewed by a person.
+UA = "YoonSiljangBot/1.0 (+https://lsy2825.github.io/skin/; weekly public price comparison; robots.txt respected)"
 
 
 class Fetcher:

@@ -23,7 +23,7 @@ insert into auth.users (id) values ('00000000-0000-4000-8000-000000000051');
 set role service_role;
 select public.commerce_fulfill_payment(jsonb_build_object('order_id', (public.commerce_create_order('{"user_id":"00000000-0000-4000-8000-000000000051","product_code":"STANDARD","channel":"DEMO","idempotency_key":"backup-test-1"}') ->> 'id'),
   'provider', 'DEMO', 'provider_payment_id', 'backup-pay-1', 'amount', 1990, 'currency', 'KRW', 'status', 'DONE'));
-select public.commerce_capture(jsonb_build_object('job_id', public.commerce_reserve('{"user_id":"00000000-0000-4000-8000-000000000051","feature_code":"REGIONAL_PRICE_REPORT","idempotency_key":"backup-job-1"}') -> 'job' ->> 'id',
+select public.commerce_capture(jsonb_build_object('job_id', public.commerce_reserve('{"user_id":"00000000-0000-4000-8000-000000000051","feature_code":"EVENT_URL_DECODER","idempotency_key":"backup-job-1"}') -> 'job' ->> 'id',
   'report', '{"title":"backup test","payload":{}}'::jsonb));
 select public.commerce_refund('{"provider":"DEMO","provider_payment_id":"backup-pay-1","provider_refund_id":"backup-refund-1","amount":995,"kind":"REFUND","provider_done":true}');
 SQL
