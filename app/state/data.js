@@ -11,8 +11,10 @@
   // says whether a newer data.json exists; a download shows real progress, is checked (layout, counts, SHA-256) before it is
   // saved, and replaces the saved copy only when it passed. A newer version found while the old one is on screen waits for
   // the user ('새 가격 보기' = reopen with the new copy). Offline: the saved copy with "저장된 가격 정보입니다…".
+  // round-2 O2: with no saved copy, home.json (the home screen's rows, ~1/10 of the size, same build — its checksum is in
+  // data-meta.json) is read first and shown (SYNC.partial); data.json follows and replaces it. home.json is never saved.
   const DATA_CACHE = "pc-data-v1";
-  const SYNC = { have: false, loading: false, fromCache: false, metaOk: false, newer: false, failed: "", got: 0, total: 0, version: "", local: null, server: null, ready: false, at: "", tries: 0 };
+  const SYNC = { have: false, loading: false, fromCache: false, metaOk: false, newer: false, failed: "", got: 0, total: 0, version: "", local: null, server: null, ready: false, at: "", tries: 0, partial: false };
   let loadP = null, loadCtl = null;
   const canCache = () => typeof caches !== "undefined" && window.isSecureContext !== false;
   async function cacheGet() {
@@ -53,10 +55,17 @@
     } catch (e) { return { ok: false, net: true, timeout: ctl.signal.aborted && !(signal && signal.aborted) }; }
     finally { clearTimeout(t); if (signal) signal.removeEventListener("abort", stop); }
   }
+  // first visit: gate.js already started home.json (round-2 O2) — taken here once, whatever happens to it
+  async function earlyHome() { const e = window.__pcEarly ? await window.__pcEarly : null; window.__pcEarly = null; return e; }
+  async function downloadHome(signal) {
+    const early = await earlyHome();
+    const r = early && early.ok ? early : await fetch("home.json", { cache: "no-cache", signal });
+    if (!r.ok) throw new Error(`홈 요약 응답 ${r.status}`);
+    return new Uint8Array(await r.arrayBuffer());
+  }
   async function download(total, signal) {
-    const early = window.__pcEarly ? await window.__pcEarly : null;   // first visit: gate.js already started it
-    window.__pcEarly = null;
-    const r = early && early.ok ? early : await fetch("data.json", { cache: "no-cache", signal });
+    await earlyHome();
+    const r = await fetch("data.json", { cache: "no-cache", signal });
     if (!r.ok) throw new Error(`가격 파일 응답 ${r.status}`);
     if (!r.body || !r.body.getReader) return new Uint8Array(await r.arrayBuffer());
     const rd = r.body.getReader(), parts = [];
@@ -101,6 +110,13 @@
         if (SYNC.have && (!mr.ok || mr.m.version === SYNC.version)) { SYNC.loading = false; hooks.paint(); ready(); return; }   // up to date, or offline / slow
         const m = mr.ok ? mr.m : null;
         if (SYNC.have) { SYNC.newer = true; hooks.paint(); ready(); }   // old prices stay on screen while the new file comes
+        // nothing on screen yet: the home screen's rows first (same build as the meta), then the full file below
+        if (!SYNC.have && !SYNC.partial && m && m.home) {
+          try {
+            const hb = await io.downloadHome(sig), hsha = await sha256(hb), hd = JSON.parse(new TextDecoder().decode(hb));
+            if (!Sync.checkHome(hd, m, hsha).length && !sig.aborted) { SYNC.partial = true; hooks.apply(hd); hooks.paint(); ready(); }
+          } catch (e) { console.warn("home.json not used:", e); }   // no home.json, or a broken one: the full file comes next anyway
+        }
         let err = null;
         for (let t = 0; t <= Sync.RETRY_MS.length; t++) {
           if (t) await new Promise((res) => setTimeout(res, Sync.RETRY_MS[t - 1]));
@@ -116,7 +132,8 @@
             if (bad.length) { err = new Error(bad.join(" · ")); continue; }       // broken transfer: try again; the saved copy stays
             if (m) await cachePut(m, bytes);
             if (SYNC.have) { Object.assign(SYNC, { loading: false, newer: false, ready: true }); hooks.paint(); return; }   // '새 가격 보기' reopens with it
-            hooks.apply(d); Object.assign(SYNC, { have: true, fromCache: false, version: m ? m.version : "", local: m, loading: false, newer: false });
+            Object.assign(SYNC, { have: true, partial: false, fromCache: false, version: m ? m.version : "", local: m, loading: false, newer: false });
+            hooks.apply(d);
             hooks.paint(); ready(); return;
           } catch (e) { err = e.name === "AbortError" ? new Error("취소했어요") : e; if (sig.aborted) break; }
         }
@@ -126,7 +143,7 @@
     });
     return loadP;
   }
-  const io = { cacheGet, fetchMeta, download };
+  const io = { cacheGet, fetchMeta, download, downloadHome };
   const abort = () => { if (loadCtl) loadCtl.abort(); };
   App.Data = { SYNC, loadData, abort, cacheClear, cacheInfo, canCache, io, setHooks: (x) => Object.assign(hooks, x) };
 })();

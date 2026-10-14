@@ -1,6 +1,6 @@
-// Offline cache: the app shell (code network-first, images cache-first) and map tiles. data.json / data-meta.json are not
+// Offline cache: the app shell (code network-first, images cache-first) and map tiles. data.json / data-meta.json / home.json are not
 // handled here: app.js saves a checked copy of the price file itself and says when it shows that saved copy offline.
-const VER = "pc-v21";
+const VER = "pc-v22";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use).
 // round-2 O5: the install list is what the app needs to START and to run offline. Code loaded later (commerce screens, the
 // map library, large Jomi portraits) is cached the first time it is used — installing it up front undid the lazy loading.
@@ -17,7 +17,7 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  if (u.origin === location.origin && /\/(data(-meta)?|review)\.json$/.test(u.pathname)) return;   // price files: app.js keeps its own checked copy (PRICE_SYNC_ARCHITECTURE.md); review.json: always the latest build
+  if (u.origin === location.origin && /\/(data(-meta)?|home|review)\.json$/.test(u.pathname)) return;   // price files: app.js keeps its own checked copy (PRICE_SYNC_ARCHITECTURE.md); home.json: read once on a first visit, never kept (O2); review.json: always the latest build
   if (u.hostname === "api.github.com") return;   // collection-run status: live from GitHub, never from a cache (ADMIN_OPERATIONS_SPEC.md)
   // other origins (sign-in, the commerce API, anything with a user's token) are never cached; map tiles are the one exception
   if (u.origin !== location.origin && !u.hostname.endsWith("tile.openstreetmap.org")) return;

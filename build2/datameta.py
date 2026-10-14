@@ -12,6 +12,8 @@ data-meta.json:
   rows, branches, verified, stale   counts the app checks after reading (stale = branch kept from an earlier run because
              this run's collection failed)
   brands     per brand: [name, branches, verified, stale, oldest verified date, newest verified date]
+  home       {bytes, sha256, rows} of app/home.json (build2/homedata.py: the home screen's rows, read first on a phone with
+             no saved copy) — the app takes home.json only when its checksum is this one, i.e. from the same build
   changes    price rows that differ from the previous data.json (resolved names, not indexes):
              {from: previous version, price: [[brand, branch, name, before, after]], added: [[brand, branch, name, price]],
               removed: [[brand, branch, name, price]], counts: {price, added, removed}} — lists capped at CAP each
@@ -70,7 +72,7 @@ def changes(prev, cur, prev_version):
             "counts": {"price": len(price), "added": len(added), "removed": len(removed)}}
 
 
-def build(txt, prev_txt=None):
+def build(txt, prev_txt=None, home_txt=None):
     data = json.loads(txt)
     raw = txt.encode("utf-8")
     s, brands = data["s"], [b[0] for b in data["meta"]["brands"]]
@@ -86,6 +88,9 @@ def build(txt, prev_txt=None):
             "built": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
             "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest(), "rows": data["meta"]["rows"], "branches": len(data["branches"]),
             "verified": sum(x[2] != "STALE" for x in st), "stale": sum(x[2] == "STALE" for x in st), "brands": per}
+    if home_txt:
+        hraw = home_txt.encode("utf-8")
+        meta["home"] = {"bytes": len(hraw), "sha256": hashlib.sha256(hraw).hexdigest(), "rows": json.loads(home_txt)["meta"]["rows"]}
     if prev_txt:
         try:
             prev = json.loads(prev_txt)
@@ -95,8 +100,8 @@ def build(txt, prev_txt=None):
     return meta
 
 
-def write_meta(data_path, txt, prev_txt=None):
-    meta = build(txt, prev_txt)
+def write_meta(data_path, txt, prev_txt=None, home_txt=None):
+    meta = build(txt, prev_txt, home_txt)
     out = os.path.join(os.path.dirname(data_path), "data-meta.json")
     open(out, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
     c = meta.get("changes", {}).get("counts")

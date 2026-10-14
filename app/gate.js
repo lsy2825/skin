@@ -4,13 +4,14 @@
 // only keeps casual viewers out; data.json and the repo stay public.
 // 5th wrong try locks 5 min, each further wrong try doubles it (cap 24 h). Unlock lasts for this tab (sessionStorage).
 
-// First visit (no checked price copy saved on this phone yet): start the price-file download now, before the app scripts
-// load, so prices appear sooner on a slow line. app.js takes this response over (docs/PRICE_SYNC_ARCHITECTURE.md). With a
-// saved copy nothing starts here: app.js asks data-meta.json first and downloads only a newer version.
+// First visit (no checked price copy saved on this phone yet): start the download of home.json — the home screen's prices,
+// about a tenth of data.json (round-2 O2) — now, before the app scripts load, so prices appear sooner on a slow line.
+// state/data.js takes this response over and fetches data.json after it (docs/PRICE_SYNC_ARCHITECTURE.md). With a saved
+// copy nothing starts here: the app asks data-meta.json first and downloads only a newer version.
 window.__pcEarly = (function () {
   try {
     if (typeof caches === "undefined" || window.isSecureContext === false || window.top !== window.self) return null;
-    return caches.open("pc-data-v1").then((c) => c.match("current-meta")).then((m) => m ? null : fetch("data.json", { cache: "no-cache" })).catch(() => null);
+    return caches.open("pc-data-v1").then((c) => c.match("current-meta")).then((m) => m ? null : fetch("home.json", { cache: "no-cache" })).catch(() => null);
   } catch (e) { return null; }
 })();
 

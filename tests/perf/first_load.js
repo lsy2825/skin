@@ -1,5 +1,6 @@
 // First-load measurement in Chromium (lab, not field data): FCP, LCP, CLS, long tasks and transferred bytes of the
-// PIN screen, then how long until the home screen shows prices when the PIN is typed right away, then an INP-like
+// PIN screen, then how long until the home screen shows prices when the PIN is typed right away (round-2 O2: on a first
+// visit that is home.json; 'full' = until data.json is read and every screen can open), then an INP-like
 // number: the slowest of 7 scripted taps (tabs, sort, card/list view, price evidence, cart), from Event Timing.
 // Profiles: 'slow4g' = the Lighthouse mobile preset (150 ms RTT, 1.6 Mbps down, 750 kbps up, CPU 4x slower), 'fast' = no throttling.
 // Serve app/ gzipped like GitHub Pages (tests/perf/gzserve.js), then:
@@ -41,14 +42,16 @@ async function once(b, prof, warm) {
   for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`);
   await p.waitForSelector('.pc', { timeout: 120000 });
   const homeAt = Date.now() - t0;
+  await p.waitForFunction(() => window.App && window.App.Data && window.App.Data.SYNC.have, null, { timeout: 120000 });
+  const fullAt = Date.now() - t0;
   await p.waitForTimeout(800);
   const m = await p.evaluate(() => {
     const nav = performance.getEntriesByType('navigation')[0], res = performance.getEntriesByType('resource');
     const fcp = (performance.getEntriesByName('first-contentful-paint')[0] || {}).startTime || 0;
-    const data = res.find((r) => /data\.json/.test(r.name));
+    const data = res.find((r) => /data\.json/.test(r.name)), home = res.find((r) => /home\.json/.test(r.name));
     return { fcp, lcp: window.__m.lcp, cls: window.__m.cls, tbt: window.__m.lt, longtasks: window.__m.ltn,
       bytes: (nav.transferSize || 0) + res.reduce((s, r) => s + (r.transferSize || 0), 0), requests: res.length + 1,
-      dataBytes: data ? data.transferSize : 0, dataDecoded: data ? data.decodedBodySize : 0, dataEnd: data ? data.responseEnd : 0 };
+      dataBytes: data ? data.transferSize : 0, dataDecoded: data ? data.decodedBodySize : 0, dataEnd: data ? data.responseEnd : 0, homeBytes: home ? home.transferSize : 0 };
   });
   // taps a person makes in the first minute (same throttling); real clicks so Event Timing sees them
   const per = [];
@@ -65,7 +68,7 @@ async function once(b, prof, warm) {
   await tap('nav.tabs button[data-tab="home"]', null, '홈 탭');
   const inp = { inp: Math.max(0, ...per.map((x) => x[1])), taps: per.length, slowest: (per.slice().sort((a, b) => b[1] - a[1])[0] || [''])[0] };
   await ctx.close();
-  return { ...m, ...inp, gateAt, homeAt };
+  return { ...m, ...inp, gateAt, homeAt, fullAt };
 }
 
 (async () => {
@@ -77,7 +80,7 @@ async function once(b, prof, warm) {
     const k = `${name} ${warm ? '재방문' : '첫 방문'}`;
     out[k] = Object.fromEntries(Object.keys(runs[0]).map((f) => [f, typeof runs[0][f] === 'string' ? runs.map((r) => r[f]).sort().find((x, i, a) => a.filter((y) => y === x).length > a.length / 2) || runs[0][f] : med(runs.map((r) => r[f]))]));
     const r = out[k];
-    console.log(`${k.padEnd(14)} | FCP ${Math.round(r.fcp)}ms | LCP ${Math.round(r.lcp)}ms | CLS ${r.cls.toFixed(3)} | TBT≈${Math.round(r.tbt)}ms (${r.longtasks}) | 비밀번호 화면 ${r.gateAt}ms | 가격이 보이기까지 ${r.homeAt}ms | 전송 ${(r.bytes / 1024).toFixed(0)}KB / ${r.requests}요청 | data.json ${(r.dataBytes / 1024).toFixed(0)}KB(압축) ${(r.dataDecoded / 1048576).toFixed(2)}MB(원본) 도착 ${Math.round(r.dataEnd)}ms | 누르기 반응(INP 유사) 최대 ${Math.round(r.inp)}ms(${r.slowest}) / ${r.taps}번`);
+    console.log(`${k.padEnd(14)} | FCP ${Math.round(r.fcp)}ms | LCP ${Math.round(r.lcp)}ms | CLS ${r.cls.toFixed(3)} | TBT≈${Math.round(r.tbt)}ms (${r.longtasks}) | 비밀번호 화면 ${r.gateAt}ms | 가격이 보이기까지 ${r.homeAt}ms | 전체 가격 ${r.fullAt}ms | 전송 ${(r.bytes / 1024).toFixed(0)}KB / ${r.requests}요청 | data.json ${(r.dataBytes / 1024).toFixed(0)}KB(압축) ${(r.dataDecoded / 1048576).toFixed(2)}MB(원본) 도착 ${Math.round(r.dataEnd)}ms | home.json ${(r.homeBytes / 1024).toFixed(0)}KB | 누르기 반응(INP 유사) 최대 ${Math.round(r.inp)}ms(${r.slowest}) / ${r.taps}번`);
   }
   if (process.env.OUT) require('fs').writeFileSync(process.env.OUT, JSON.stringify(out, null, 1));
   await b.close();

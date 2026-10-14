@@ -101,7 +101,25 @@
   }
   // price data sync lives in state/data.js (docs/APP_JS_SPLIT_PLAN.md 2단계); this file gives it the two screen hooks
   const { SYNC, loadData, cacheClear, cacheInfo, canCache } = App.Data;
-  App.Data.setHooks({ apply: (d) => applyData(d), paint: (parsing) => paintSync(parsing) });
+  App.Data.setHooks({ apply: (d) => { const was = partial(); applyData(d); if (was && !partial()) fullArrived(); }, paint: (parsing) => paintSync(parsing) });
+  // round-2 O2: on a first visit the home screen is drawn from home.json (every row of the ids it shows, nothing else) while
+  // data.json downloads. Until it arrives, every other screen waits (fullWait) and actions that need all rows are queued.
+  const partial = () => !!(D && D.meta.partial);
+  let pending = null;   // one action waiting for the full file (a search typed on 홈, 담기 on a home card)
+  const fullPct = () => SYNC.total ? Math.min(99, Math.floor((SYNC.got / SYNC.total) * 100)) : 0;
+  const fullMsg = () => SYNC.failed ? "전체 가격을 받지 못했어요" : `전체 가격을 받는 중… ${SYNC.total ? `${fullPct()}%` : ""}`.trim();
+  function fullWait() {
+    return h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg(SYNC.failed ? "empty" : "thinking", "face", 40), h("span", { id: "load-msg" }, fullMsg())),
+      SYNC.failed ? h("button", { class: "btn block", type: "button", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); render(); } }, icon("refresh-cw", "sm"), "다시 시도")
+        : h("p", { class: "sub" }, "홈 화면에 필요한 가격만 먼저 받았어요. 이 화면은 전체 가격이 오면 바로 열려요."), h("div", { class: "skel", style: "height:160px" }));
+  }
+  function whenFull(fn, msg) { if (!partial()) return fn(); pending = fn; if (msg) toast(msg); }
+  function fullArrived() {
+    const fn = pending; pending = null;
+    if (fn) { render(); fn(); } else render();
+    checkAlerts();
+    if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user);
+  }
   // live readers for screen files split out later: functions, never copies (D and ROWS are replaced when new data arrives)
   App.data = () => D; App.rows = () => ROWS;
   // state → header dot + text, the loading line, and the notice bar under the header (offline / new prices ready / failed)
@@ -112,12 +130,15 @@
     if (up) up.dataset.state = ss.state;
     const lm = $("#load-msg");
     const jl = jline("loading") || "오늘의 가격을 살펴보는 중…";   // 죠미's line first, the real progress after it
-    if (lm && !D) lm.textContent = parsing ? "받은 가격을 정리하는 중…" : SYNC.total ? `${jl} ${Math.min(99, Math.floor((SYNC.got / SYNC.total) * 100))}% (${(SYNC.got / 1e6).toFixed(1)}/${(SYNC.total / 1e6).toFixed(1)}MB)` : SYNC.got ? `${jl} ${(SYNC.got / 1e6).toFixed(1)}MB` : jl;
+    if (lm && partial()) lm.textContent = fullMsg();
+    else if (lm && !D) lm.textContent = parsing ? "받은 가격을 정리하는 중…" : SYNC.total ? `${jl} ${Math.min(99, Math.floor((SYNC.got / SYNC.total) * 100))}% (${(SYNC.got / 1e6).toFixed(1)}/${(SYNC.total / 1e6).toFixed(1)}MB)` : SYNC.got ? `${jl} ${(SYNC.got / 1e6).toFixed(1)}MB` : jl;
     const bar = $("#netbar");
     if (!bar || !D) return;
     if (SYNC.ready && !toldReady) { toldReady = true; const t = jline("newPrices"); if (t) setTimeout(() => jomiToast("happy", t), 300); }
     let kids = null;
-    if (ss.offline) kids = [icon("wifi-off", "sm"), h("span", {}, `저장된 가격 정보입니다. 현재 가격과 다를 수 있습니다. (${D.meta.updated} 수집)`)];
+    if (partial()) kids = SYNC.failed ? [icon("triangle-alert", "sm"), h("span", {}, "전체 가격을 받지 못했어요. 홈 가격만 보여요"), h("button", { type: "button", class: "nb-act", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); paintSync(); } }, "다시 시도")]
+      : [h("span", { class: "nb-dot" }), h("span", {}, `홈 가격을 먼저 보여줘요 · ${fullMsg()}`)];
+    else if (ss.offline) kids = [icon("wifi-off", "sm"), h("span", {}, `저장된 가격 정보입니다. 현재 가격과 다를 수 있습니다. (${D.meta.updated} 수집)`)];
     else if (SYNC.ready) kids = [icon("refresh-cw", "sm"), h("span", {}, `새 가격(${SYNC.server ? SYNC.server.updated : ""})이 준비됐어요`), h("button", { type: "button", class: "nb-act", onclick: () => location.reload() }, "새 가격 보기")];
     else if (ss.state === "PARTIALLY_READY") kids = [h("span", { class: "nb-dot" }), h("span", {}, Sync.label(ss, SYNC))];
     else if (SYNC.failed && SYNC.have) kids = [icon("triangle-alert", "sm"), h("span", {}, "새 가격을 받지 못해 저장된 가격을 보여줘요"), h("button", { type: "button", class: "nb-act", onclick: () => { loadData().catch(() => {}); } }, "다시 시도")];
@@ -153,7 +174,7 @@
     ROWS.forEach((r, i) => {
       byB[r[0]].push(i);
       const ks = S[r[7]];
-      if (ks) for (const id of ks.split(" ")) { const m = byKB[KI[id]]; if (!m.has(r[0])) m.set(r[0], []); m.get(r[0]).push(i); }
+      if (ks) for (const id of ks.split(" ")) { const m = byKB[KI[id]]; if (!m) continue; if (!m.has(r[0])) m.set(r[0], []); m.get(r[0]).push(i); }   // home.json: ids not shipped
     });
     nameIdx = null; prodIdx = null;
     GR = (D.groups || []).map(([s, cat, nb, med, mn, mx], i) => ({ i, label: S[s], cat, nb, med, mn, mx }));
@@ -165,13 +186,14 @@
     // families (build2/taxonomy.py): name, regex for related rows (written for names without spaces), variants, compare
     // category, base family id, the clinics' own explanations. n = branches selling any variant, main = default variant
     const spaceless = (src) => { let re; try { re = new RegExp(src); } catch (e) { re = /$^/; } return { source: src, test: (x) => re.test(x) || re.test(String(x).replace(/\s+/g, "")) }; };
-    FAM = (D.meta.fam || []).map(([name, rx, vs, cat, fid, desc]) => ({ name, rx: spaceless(rx), cat: cat || "", fid: fid || "", desc: desc || [],
+    const PN = D.meta.partial ? D.meta.partial.fn : null;   // home.json: branches per family counted in the full file
+    FAM = (D.meta.fam || []).map(([name, rx, vs, cat, fid, desc], fi) => ({ name, rx: spaceless(rx), cat: cat || "", fid: fid || "", desc: desc || [], pn: PN ? PN[fi] : null,
       vs: vs.map(([id, label]) => ({ k: KI[id], label })).filter((v) => v.k != null) })).filter((f) => f.vs.length);
     famOf = KEYS.map(() => null);
     FAM.forEach((f) => f.vs.forEach((v) => { if (!famOf[v.k]) famOf[v.k] = { f, label: v.label }; }));
     FAM.forEach((f, i) => { f.idx = i; });
     for (const f of FAM) {
-      f.n = new Set(f.vs.flatMap((v) => [...byKB[v.k].keys()])).size;
+      f.n = f.pn != null ? f.pn : new Set(f.vs.flatMap((v) => [...byKB[v.k].keys()])).size;
       const one = f.vs.filter((v) => !/\d+회$/.test(v.label));
       f.main = (one.length ? one : f.vs).reduce((a, v) => (byKB[v.k].size > byKB[a.k].size ? v : a)).k;
       if (!f.cat) f.cat = KEYS[f.main].cat;
@@ -192,7 +214,7 @@
     const added = D.meta.brands.map((_, i) => i).filter((i) => i >= store.get("nbrands", 4) && !st.brands.includes(i));
     if (added.length && store.get("brands", null)) { st.brands.push(...added); store.set("brands", st.brands); }
     store.set("nbrands", D.meta.brands.length);
-    migrateKeys();
+    if (!D.meta.partial) migrateKeys();   // home.json has only some ids: saved items move only with the full list
     paintUpd();
     paintSync();
   }
@@ -532,7 +554,7 @@
   const addBtn = (k) => {
     const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false", "aria-label": `${KEYS[k].label} ${inCart(k) ? "담김 · 횟수 바꾸기" : "장바구니에 담기"}` },
       icon(inCart(k) ? "check" : "plus", "sm"), inCart(k) ? "담김" : "담기");
-    b.addEventListener("click", (e) => { e.stopPropagation(); addKeySheet(k); });
+    b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => addKeySheet(k), "전체 가격을 받는 대로 담기 화면을 열게요"); });
     return b;
   };
   const rowAddBtn = (i) => h("button", { class: "addbtn", type: "button", onclick: (e) => { e.stopPropagation(); addRowSheet(i); } }, icon("plus", "sm"), "담기");
@@ -1390,6 +1412,7 @@
   function routeQuery(v) {
     const t = String(v || "").trim();
     if (!t) return;
+    if (partial()) { pending = () => routeQuery(t); $("#main").replaceChildren(fullWait()); return; }
     if (FLAGS.concernSearch && CONC.concerns.length && !famFind(t).length) {
       const r = Concern.classify(t, CONC);
       if (r.safety.length || r.matches.length) { concernText = t; nav("concern"); return; }
@@ -1443,10 +1466,10 @@
     box.append(h("button", { class: "trustline", type: "button", onclick: () => nav("principles") }, icon("shield-check", "sm"),
       h("span", {}, "병원에게 돈을 받고 순서를 바꾸지 않아요 · 수집 범위와 출처를 공개해요"), icon("chevron-right", "xs")));
     if (!FLAGS.concernSearch) box.lastChild.style.gridTemplateColumns = "1fr";
-    const cont = continueChips();
+    const cont = partial() ? null : continueChips();
     if (cont) box.append(secHead("이어서 보기"), cont);
     // 인기 시술: cheapest plain price per treatment, how far below the middle, + 담기
-    const cats = [...new Set(KEYS.map((k) => k.cat))];
+    const cats = partial() ? D.meta.partial.cats : [...new Set(KEYS.map((k) => k.cat))];
     if (st.hcat && !cats.includes(st.hcat)) st.hcat = null;
     const popular = [...KEYS].sort((a, b) => byKB[b.i].size - byKB[a.i].size).slice(0, 6);
     // a category tab: the main variant of its most-sold families (not every variant — 톡신 alone has 250+)
@@ -1480,7 +1503,7 @@
         HL ? h("span", { class: "w" }, `${bname(top.b)}${top.d != null ? " · " + km(top.d) : ""}`) : null), addBtn(k.i)));
     }
     box.append(grid, h("p", { class: "foot", style: "margin-top:-6px" }, "가격은 참고용이에요. 같은 시술도 병원마다 용량·조건·정품 여부·시술 의료진이 다를 수 있고, 부작용·주의사항이 있어요. 시술 화면에서 함께 확인하세요."),
-      h("button", { class: "btn line block", type: "button", onclick: () => nav("compare") }, `시술 ${KEYS.length.toLocaleString()}개 전체 비교`, icon("chevron-right", "sm")));
+      h("button", { class: "btn line block", type: "button", onclick: () => nav("compare") }, `시술 ${(partial() ? D.meta.partial.keys : KEYS.length).toLocaleString()}개 전체 비교`, icon("chevron-right", "sm")));
     // 죠미의 오늘의 발견. Default: treatments whose same-condition prices differ most between clinics (no clinic named) —
     // 'compare before you choose'. With flags.discountEmphasis: the biggest gaps below the middle (the earlier list).
     const spreads = FLAGS.discountEmphasis ? [] : spreadFinds();
@@ -1698,6 +1721,7 @@
     const show = () => {
       const v = input.value.trim();
       n = -1;
+      if (partial()) { list.hidden = true; return; }   // suggestions come from every name: after the full file
       if (v) {
         const items = Search.suggest(v, searchIndex(), suggestTerms());
         list.replaceChildren(...items.map(opt));
@@ -4410,6 +4434,7 @@
   function paintFloatCart(view) {
     const el = $("#fcart");
     if (!el) return;
+    if (partial()) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }   // totals need every row
     const items = cur().items.filter(itemOk);
     // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings and the map don't show it
     if (["cart", "import", "compare", "concern", "me", "about", "ops", "map", "wallet", "premium", "report", "admin"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
@@ -4433,15 +4458,15 @@
     const params = new URLSearchParams(qs || "");
     const view = views[name] ? name : name === "more" ? "me" : name === "favorites" ? "saved" : name === "data" ? "about" : "home";
     const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
-    if (!same) for (const c of [...openSheets]) c(true);
+    if (!same) { for (const c of [...openSheets]) c(true); pending = null; }
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
       map: "explore", branch: "explore", about: "me", principles: "me", ops: "me", wallet: "me", premium: "me", report: "me", admin: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     // one screen failing must not leave the previous one up or a blank page (round-2 D5): show what happened and a way back
-    let node;
-    try { node = views[view](rest.join("/"), params); }
+    let node = partial() && view !== "home" ? fullWait() : null;
+    if (!node) try { node = views[view](rest.join("/"), params); }
     catch (e) {
       console.error(e);
       node = h("div", { class: "view" }, jomiEmpty("error", "이 화면을 그리다가 문제가 생겼어요. 링크가 잘못됐거나 앱 오류일 수 있어요."),
@@ -4516,7 +4541,8 @@
     loadData().then(() => { clearTimeout(slow);
       // a stored region no branch has (an old version's value, a typo) would empty every list: back to the default
       if (st.region && st.region !== "수도권" && !BR.some((b) => b.region === st.region)) { st.region = "수도권"; store.set("region", st.region); paintRegion(); }
-      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); loadJomiLines(); checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); }).catch((e) => {
+      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); loadJomiLines();
+      if (!partial()) { checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); } }).catch((e) => {   // with home.json first: fullArrived
       clearTimeout(slow); D = null; console.error(e);
       const main = $("#main"); main.removeAttribute("aria-busy");
       main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", jline("error") || "문제가 생겼어요",

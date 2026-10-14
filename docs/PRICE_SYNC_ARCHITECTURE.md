@@ -20,8 +20,9 @@
 ```
 빌드(GitHub Actions, build2/appdata.py)
   ├─ app/data.json            (가격 전체)
+  ├─ app/home.json            (홈 화면이 쓰는 비교 키의 모든 줄만, build2/homedata.py — O2, 약 1/10)
   └─ app/data-meta.json       (≈1KB: schema, version, updated, built, bytes, sha256, rows, branches,
-                               verified, stale, brands[], changes{from, price[], added[], removed[], counts})
+                               verified, stale, brands[], home{bytes, sha256, rows}, changes{from, price[], added[], removed[], counts})
 
 앱(app.js loadData) — 한 번에 하나만 실행(두 번째 '다시 시도'는 같은 작업에 합류)
   1. 휴대폰 사본 읽기(Cache Storage 'pc-data-v1': current-meta → data-<version>)  ┐ 동시에
@@ -30,14 +31,19 @@
   4-a. 서버 버전 = 사본 버전 → 끝(가격 파일 요청 0번)
   4-b. 서버에 닿지 못함 → 사본 + "저장된 가격 정보입니다. 현재 가격과 다를 수 있습니다."
   4-c. 새 버전 → 사본을 보여둔 채 뒤에서 받기(PARTIALLY_READY) → 검사 → 저장 → '새 가격 보기'
-  4-d. 사본 없음(첫 방문) → 진행률을 보이며 받기 → 검사 → 저장 → 표시
+  4-d. 사본 없음(첫 방문) → home.json 받기 → 메타의 home.sha256과 같으면 홈 화면 표시(저장 안 함)
+       → data.json을 진행률과 함께 받기 → 검사 → 저장 → 전체로 바꿔 다시 그림
+       (home.json이 없거나 체크섬이 다르면 예전처럼 data.json만 기다림)
 ```
-- 첫 방문에는 `gate.js`가 앱 스크립트보다 먼저 `data.json` 요청을 시작해요(사본이 없을 때만). 예전 HTML 미리 받기(`<link rel=preload>`)는 재방문에도 요청을 보내서 뺐어요.
+- 첫 방문에는 `gate.js`가 앱 스크립트보다 먼저 `home.json` 요청을 시작해요(사본이 없을 때만). data.json은 home.json을 받은 다음에 시작해요(둘이 대역폭을 나눠 홈이 늦어지지 않게). 예전 HTML 미리 받기(`<link rel=preload>`)는 재방문에도 요청을 보내서 뺐어요.
+- **home.json으로 그린 홈의 숫자는 전체 파일과 같아요.** 홈이 보여줄 수 있는 비교 키(인기 6개, 분류 탭마다 큰 시술 6개의 대표 옵션, 오늘의 발견 후보 80개, 가격 변동 키)의 줄을 **지점 전부** 담아서, 지역·브랜드·부가세·위치 설정이 무엇이든 앱이 같은 코드로 같은 값을 계산해요. 줄에서 셀 수 없는 것(전체 시술 개수, 분류 목록, 시술군별 판매 지점 수)은 `meta.partial`에 전체 파일 기준으로 넣었어요. 확인: `tests/homedata.test.js`(파일 대조), `tests/e2e/o2_home.js`(홈 탭 9개·발견 목록을 home.json 상태와 전체 상태에서 비교, 기본·전국+부가세 포함 설정).
+- 전체 파일이 오기 전에는 홈만 열려요. 다른 화면은 "전체 가격을 받는 중… N%"를 보여주다가 도착하면 바로 열리고, 홈에서 친 검색과 '담기'는 도착 뒤에 이어서 해요. 장바구니 합계 띠·알림 검사·계정 동기화·저장 항목 이동(keymap)도 전체 파일 뒤에만 해요.
 - 새 버전이 준비되면 화면의 데이터를 몰래 바꾸지 않아요. 열린 창·보던 목록이 엉키지 않게, 안내 줄의 **'새 가격 보기'**를 누르면 새 사본으로 다시 열어요. 누르지 않아도 다음에 열 때 새 사본이 쓰여요.
 
 ## 3. 상태 (`Sync.stateOf`)
 | 상태 | 언제 | 화면 |
 |---|---|---|
+| (O2) 홈 요약 | 첫 방문, home.json으로 홈을 그리고 data.json을 받는 중(`SYNC.partial`) | 안내 줄 "홈 가격을 먼저 보여줘요 · 전체 가격을 받는 중… N%", 실패하면 "전체 가격을 받지 못했어요. 홈 가격만 보여요 · 다시 시도" |
 | LOADING | 사본 없이 받는 중 | 죠미(졸린 표정) + "오늘의 가격을 살펴보는 중… 45% (2.6/5.7MB)", 다 받으면 "받은 가격을 정리하는 중…" |
 | PARTIALLY_READY | 사본을 보여주며 새 버전을 받는 중 | 머리말 점(깜빡임) + 안내 줄 "저장된 가격 표시 중 · 새 가격 받는 중 N%" |
 | READY | 서버 버전과 같은 데이터, 8일 이내, 실패 지점 없음 | 머리말 점(초록) |
@@ -53,10 +59,11 @@
 | 메타 형식: schema = 1, version = `YYYY-MM-DD.<sha 앞 8자>`, sha256 64자, 크기·줄 수·지점 수 | `Sync.checkMeta` |
 | 데이터 형식: meta·branches·cols·keys·s가 있음, 모든 열이 줄 수와 같음, 같은 지점 두 번 없음 | `Sync.checkData` |
 | 메타와 일치: SHA-256(받은 바이트) = meta.sha256, 날짜·줄 수·지점 수 일치 | 〃 (`crypto.subtle`) |
+| home.json: SHA-256 = meta.home.sha256(같은 빌드), 형식·날짜·줄 수·지점 수, `meta.partial` 모양. 휴대폰에 저장하지 않음 | `Sync.checkHome` |
 | 원자적 교체: 새 파일을 `data-<version>`으로 먼저 저장 → 그다음 `current-meta` 포인터 → 옛 버전 삭제 | `cachePut` |
 | 실패 시: 다시 받기 1초·3초 뒤(모두 3번). 끝내 실패하면 **마지막 정상 사본** 유지 + "새 가격을 받지 못해 저장된 가격을 보여줘요 · 다시 시도" | `loadData` |
 | 읽은 사본이 깨졌으면: 화면에 쓰지 않고 지우고 새로 받음 | 〃 |
-| 서비스 워커는 가격 파일을 건드리지 않음(앱이 검사한 사본만 씀). 새 서비스 워커가 옛 캐시를 지울 때 `pc-data-*`는 남김 | `sw.js` |
+| 서비스 워커는 가격 파일(data·data-meta·home.json)을 건드리지 않음(앱이 검사한 사본만 씀). 새 서비스 워커가 옛 캐시를 지울 때 `pc-data-*`는 남김 | `sw.js` |
 | 취소: 받는 중 '저장된 가격 지우고 다시 받기'를 누르면 진행 중인 요청을 멈춤(AbortController) | `deviceCard` |
 
 ## 5. 하지 않은 것과 조건

@@ -49,6 +49,22 @@
     return bad;
   }
 
+  // home.json (build2/homedata.py, round-2 O2): the home screen's rows, shown while data.json downloads on a phone with no
+  // saved copy. Taken only from the same build as the meta (its checksum is the one data-meta.json names) and with the
+  // layout the app reads; never saved on the phone. sha: hex digest of the bytes.
+  function checkHome(d, m, sha) {
+    if (!m || !m.home || !/^[0-9a-f]{64}$/.test(m.home.sha256 || "")) return ["메타에 홈 요약이 없어요"];
+    if (sha !== m.home.sha256) return ["홈 요약 체크섬이 달라요"];
+    const bad = checkData(d, null);
+    if (bad.length) return bad;
+    const p = d.meta.partial;
+    if (!p || p.rows !== m.rows || !Array.isArray(p.cats) || !Array.isArray(p.fn) || p.fn.length !== (d.meta.fam || []).length) bad.push("홈 요약 형식이 이상해요");
+    if (d.meta.updated !== m.updated) bad.push("홈 요약 날짜가 메타와 달라요");
+    if (d.meta.rows !== m.home.rows) bad.push("홈 요약 가격 수가 메타와 달라요");
+    if (d.branches.length !== m.branches) bad.push("홈 요약 지점 수가 메타와 달라요");
+    return bad;
+  }
+
   const days = (a, b) => Math.round((new Date(b + "T00:00:00Z") - new Date(a + "T00:00:00Z")) / 86400000);
 
   // the state the screen shows. s: {have (data in use), loading (a download running), fromCache (data came from the
@@ -82,5 +98,5 @@
   // the versions to keep in the phone's cache: the one in use and at most one more (the last good one)
   function prune(versions, keep) { return versions.filter((v) => !keep.includes(v)); }
 
-  return { SCHEMA, STALE_DAYS, RETRY_MS, checkMeta, checkData, stateOf, label, prune, days };
+  return { SCHEMA, STALE_DAYS, RETRY_MS, checkMeta, checkData, checkHome, stateOf, label, prune, days };
 });
