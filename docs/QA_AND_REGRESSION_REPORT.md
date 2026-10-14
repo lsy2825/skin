@@ -38,10 +38,10 @@
 | `node --test tests/*.test.js` | 가격 계산·검색(연산자 9개 포함)·이력·알림(지켜보기 6개)·고민 분류·통계·규격·동기화 검사 | 65/65 |
 | `python build2/xkeys.py`·`taxonomy.py`·`knowledge.py`, `tests/security/scan_secrets.py` | 비교 키·분류표·지식 베이스·비밀 정보 | 통과 |
 | `tests/e2e/qa7.js` | QA 7문항 | 32/32 |
-| `tests/e2e/ux_qa.js` | 로딩·오류·키보드·넘침·빈 화면·되돌리기 | 다시 돌리는 중 (앞선 실행 24/25: 오류 화면을 3번 재시도 전에 기다린 테스트 문제, 고침) |
+| `tests/e2e/ux_qa.js` | 로딩·오류·키보드·넘침·빈 화면·되돌리기 | 25/25 (다시 돌린 결과) |
 | `tests/e2e/concern.js` | 피부 고민 찾기 | 23/23 |
-| `tests/e2e/xss.js` | 악성 데이터·주소 | 다시 돌리는 중 (앞선 실행: 오염시킨 파일을 체크섬 검사가 막음, 테스트를 메타 없는 배포로 바꿈) |
-| `tests/e2e/jomi.js` | 죠미 | 다시 돌리는 중 (앞선 실행 36/39: 위와 같은 대기 시간 + 알림 문구 변경, 고침) |
+| `tests/e2e/xss.js` | 악성 데이터·주소 | 7/7 (다시 돌린 결과) |
+| `tests/e2e/jomi.js` | 죠미 | 38/39 → 로딩 문구 수정 뒤 다시 돌리는 중 |
 | `tests/e2e/objective.js` | 객관 표시(②) | 32/32 |
 | `tests/e2e/frame.js` · `table_attr.js` · `compare_cards.js` | 클릭재킹 · 세부 구분 · 카드 보기 | 9/9 · 13/13 · 14/14 |
 | `tests/e2e/v5_features.js` · `demo_features.js` | v5 기능 · 시연 기능 15개 | 27/27 · 47/47 |

@@ -239,7 +239,8 @@
     const ss = syncState(), up = $("#upd");
     if (up) up.dataset.state = ss.state;
     const lm = $("#load-msg");
-    if (lm && !D) lm.textContent = parsing ? "받은 가격을 정리하는 중…" : SYNC.total ? `${Sync.label(ss, SYNC)} (${(SYNC.got / 1e6).toFixed(1)}/${(SYNC.total / 1e6).toFixed(1)}MB)` : SYNC.got ? `가격 받는 중 · ${(SYNC.got / 1e6).toFixed(1)}MB` : (J.lines.loading || "가격을 살펴보는 중…");
+    const jl = J.lines.loading || "오늘의 가격을 살펴보는 중…";   // 죠미's line first, the real progress after it
+    if (lm && !D) lm.textContent = parsing ? "받은 가격을 정리하는 중…" : SYNC.total ? `${jl} ${Math.min(99, Math.floor((SYNC.got / SYNC.total) * 100))}% (${(SYNC.got / 1e6).toFixed(1)}/${(SYNC.total / 1e6).toFixed(1)}MB)` : SYNC.got ? `${jl} ${(SYNC.got / 1e6).toFixed(1)}MB` : jl;
     const bar = $("#netbar");
     if (!bar || !D) return;
     let kids = null;
