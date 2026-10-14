@@ -119,3 +119,185 @@ test("R16: save_cart — one transaction, version-checked, never takes over anot
   assert.match(await err(asUser(v, "save_cart", { id: cid, name: "탈취", items: [], expected_version: null })), /NOT_FOUND/);
   assert.equal((await D.pool.query("select user_id from public.carts where id = $1", [cid])).rows[0].user_id, u);
 });
+
+// ---------------------------------------------------------------- stage 3: payments, deadlines, AI budget, limits
+import { createApp, dataLoader } from "../src/app.mjs";
+import { loadConfig } from "../src/config.mjs";
+import { signHs256 } from "../src/auth.mjs";
+import { tossAdapter } from "../src/payments/toss.mjs";
+import { paymentFlows } from "../src/payments/flow.mjs";
+import { fetchT, readJson, dbRateStore, rateLimiter } from "../src/http.mjs";
+import { fetchPublicText } from "../src/safe.mjs";
+import { openaiVision } from "../src/ai/openai.mjs";
+
+const rpc = (fn, p) => D.call(fn, p);
+await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel = 'WEB_PG' and version = 2");
+function toss() {
+  const pays = new Map();
+  const send = (st, b) => new Response(JSON.stringify(b), { status: st, headers: { "content-type": "application/json" } });
+  const fetch = async (url, o = {}) => {
+    const u = new URL(url), body = o.body ? JSON.parse(o.body) : null; let m;
+    if (u.pathname === "/v1/payments/confirm") { const p = pays.get(body.paymentKey); p.status = "DONE"; return send(200, p); }
+    if ((m = /^\/v1\/payments\/orders\/(.+)$/.exec(u.pathname))) { const p = [...pays.values()].find((x) => x.orderId === decodeURIComponent(m[1])); return p ? send(200, p) : send(404, { code: "NOT_FOUND_PAYMENT" }); }
+    if ((m = /^\/v1\/payments\/([^/]+)$/.exec(u.pathname))) { const p = pays.get(decodeURIComponent(m[1])); return p ? send(200, p) : send(404, {}); }
+    return send(404, {});
+  };
+  const open = (orderId, amount, extra = {}) => { const k = `pk_${Math.random().toString(36).slice(2)}`; pays.set(k, { paymentKey: k, orderId, totalAmount: amount, balanceAmount: amount, currency: "KRW", status: "READY", method: "카드", cancels: [], ...extra }); return k; };
+  return { fetch, open, pays, adapter: tossAdapter({ secretKey: "test_sk_fake", fetch }) };
+}
+
+test("R06: a PARTIAL cancel that arrives before we granted anything keeps the paid remainder (grant, then proportional refund)", async () => {
+  const T = toss(), flows = paymentFlows({ rpc, toss: T.adapter }), u = await D.newUser();
+  const o = await D.call("commerce_create_order", { user_id: u, product_code: "PLUS", channel: "WEB_PG", idempotency_key: key("o") });
+  const pk = T.open(o.id, o.amount_krw, { status: "PARTIAL_CANCELED", balanceAmount: o.amount_krw - 1950,
+    cancels: [{ transactionKey: `tx_${key()}`, cancelAmount: 1950, cancelStatus: "DONE", canceledAt: new Date().toISOString() }] });
+  const r = await flows.applyTossState(T.adapter.normalize(T.pays.get(pk)), "webhook");
+  assert.match(r, /REFUNDS_RECORDED_1/);
+  const w = await D.call("commerce_wallet", { user_id: u });
+  assert.equal(w.paid, 13, "26 credits for 3,900원, half refunded → 13 kept (before: order closed, remainder lost)");
+  assert.equal((await D.call("commerce_get_order", { order_id: o.id })).status, "PARTIAL_REFUNDED");
+  assert.ok((await D.call("commerce_verify_wallet", { user_id: u })).ok);
+  // a FULL cancel before the grant still just closes the order (no money stays with us)
+  const o2 = await D.call("commerce_create_order", { user_id: u, product_code: "MINI", channel: "WEB_PG", idempotency_key: key("o") });
+  const pk2 = T.open(o2.id, o2.amount_krw, { status: "CANCELED", balanceAmount: 0, cancels: [{ transactionKey: `tx_${key()}`, cancelAmount: o2.amount_krw, cancelStatus: "DONE" }] });
+  assert.equal(await flows.applyTossState(T.adapter.normalize(T.pays.get(pk2)), "webhook"), "CLOSED_CANCELED");
+});
+
+test("R06: a refund made at Toss after the grant, with its webhook lost, is found by the reconciliation sweep", async () => {
+  const T = toss(), flows = paymentFlows({ rpc, toss: T.adapter }), u = await D.newUser();
+  const o = await D.call("commerce_create_order", { user_id: u, product_code: "STANDARD", channel: "WEB_PG", idempotency_key: key("o") });
+  const pk = T.open(o.id, o.amount_krw); T.pays.get(pk).status = "DONE";
+  await flows.applyTossState(T.adapter.normalize(T.pays.get(pk)), "confirm");
+  assert.equal((await D.call("commerce_wallet", { user_id: u })).paid, 12);
+  // refunded at Toss (admin console) — no webhook reaches us
+  Object.assign(T.pays.get(pk), { status: "CANCELED", balanceAmount: 0, cancels: [{ transactionKey: `tx_${key()}`, cancelAmount: o.amount_krw, cancelStatus: "DONE" }] });
+  await D.pool.query("update public.payments set last_checked_at = null where provider_payment_id = $1", [pk]);
+  const sweep = await flows.reconcile({ recheckLimit: 500 });
+  assert.ok(sweep.rechecked >= 1);
+  assert.equal((await D.call("commerce_wallet", { user_id: u })).paid, 0, "the refund was applied by the sweep");
+  // a second sweep does not refund twice
+  await D.pool.query("update public.payments set last_checked_at = null where provider_payment_id = $1", [pk]);
+  await flows.reconcile({ recheckLimit: 500 });
+  assert.equal((await D.pool.query("select count(*)::int n from public.payment_refunds r join public.payments p on p.id = r.payment_id where p.provider_payment_id = $1", [pk])).rows[0].n, 1);
+});
+
+test("R16: the refund preview promises what the refund then takes (same cumulative rounding)", async () => {
+  const u = await D.newUser();
+  const o = await D.call("commerce_create_order", { user_id: u, product_code: "STANDARD", channel: "DEMO", idempotency_key: key("o") });
+  const pid = key("pay");
+  await D.call("commerce_fulfill_payment", { order_id: o.id, provider: "DEMO", provider_payment_id: pid, amount: 1990, currency: "KRW", status: "DONE" });
+  for (const amt of [333, 333, 333]) {
+    const pv = await D.call("commerce_preview_refund", { provider: "DEMO", provider_payment_id: pid, amount: amt });
+    const rf = await D.call("commerce_refund", { provider: "DEMO", provider_payment_id: pid, provider_refund_id: key("r"), amount: amt, kind: "REFUND", provider_done: true, reason: "t" });
+    assert.equal(pv.credits_target, rf.refund.credits_target, `amount ${amt}`);
+  }
+});
+
+test("R10: one deadline covers headers AND body; a stalled body or page is cut off; request bodies are byte-limited", async () => {
+  let signal;
+  const slowBody = async (_u, o) => { signal = o.signal; return { ok: true, status: 200, json: () => new Promise((r) => setTimeout(() => r({ ok: true }), 200)) }; };
+  const t0 = Date.now(), res = await fetchT(slowBody, "https://x.invalid", {}, 30);
+  await assert.rejects(res.json(), (e) => e.code === "UPSTREAM_TIMEOUT");
+  assert.ok(Date.now() - t0 < 150, `took ${Date.now() - t0}ms`); assert.equal(signal.aborted, true);
+  // a streamed body that sends one chunk and stalls
+  const stall = async () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("{")); } }), { status: 200 });
+  const r2 = await fetchT(stall, "https://x.invalid", {}, 40);
+  await assert.rejects(r2.json(), (e) => e.code === "UPSTREAM_TIMEOUT");
+  // too large
+  const big = async () => new Response("x".repeat(5000), { status: 200 });
+  await assert.rejects((await fetchT(big, "https://x.invalid", {}, 1000, 1000)).text(), (e) => e.code === "UPSTREAM_TOO_LARGE");
+  // public page: a body that never ends is stopped at the deadline (before: waited for the next chunk forever)
+  const late = async () => new Response(new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("<p>a")); } }), { headers: { "content-type": "text/html" } });
+  const t1 = Date.now();
+  await assert.rejects(fetchPublicText("https://example.com/x", { fetch: late, resolve: async () => true, timeoutMs: 20 }), (e) => e.code === "FETCH_FAILED");
+  assert.ok(Date.now() - t1 < 200);
+  // incoming body without Content-Length larger than the limit
+  const req = new Request("https://api.test/x", { method: "POST", body: new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode("x".repeat(70000))); c.close(); } }), duplex: "half" });
+  await assert.rejects(readJson(req, 64 * 1024), (e) => e.status === 413);
+});
+
+test("R11: Workers DNS (lookup 'Not implemented') falls back to DNS-over-HTTPS; private answers refused; no answer → explicit refusal", async () => {
+  const { resolvesPublic } = await import("../src/safe.mjs");
+  const notImpl = { promises: { lookup: async () => { throw new Error("[unenv] dns.lookup is not implemented yet!"); } } };
+  const doh = (ip) => async (url) => new Response(JSON.stringify({ Answer: url.includes("type=A&") || url.endsWith("type=A") ? [{ type: 1, data: ip }] : [] }), { status: 200 });
+  assert.equal(await resolvesPublic("example.com", { dns: notImpl, fetch: doh("93.184.216.34") }), true);
+  assert.equal(await resolvesPublic("evil.example", { dns: notImpl, fetch: doh("10.0.0.5") }), false);
+  await assert.rejects(resolvesPublic("x.example", { dns: notImpl, fetch: async () => new Response("", { status: 500 }) }), (e) => e.code === "DNS_CHECK_UNAVAILABLE");
+  // Node: a real lookup failure is still 'address not found'
+  const nxd = { promises: { lookup: async () => { const e = new Error("getaddrinfo ENOTFOUND"); e.code = "ENOTFOUND"; throw e; } } };
+  await assert.rejects(resolvesPublic("nope.invalid", { dns: nxd }), (e) => e.code === "PAGE_UNREADABLE");
+});
+
+test("R08: AI spend is reserved before each call — a job never passes its budget, parallel calls never pass the day's", async () => {
+  await D.pool.query(`insert into public.model_cost_config (provider, model, effective_date, input_cost_per_million, cached_input_cost_per_million, output_cost_per_million,
+    image_cost_calculation_method, currency, exchange_rate_used, pricing_source, last_verified_at) values
+    ('OPENAI', 'budget-test', '2026-01-01', 1.0, 0.1, 1.0, 'usage.input_tokens', 'USD', 1000, 'test fixture (not a real price)', now()) on conflict do nothing`);
+  // worst case per call = (20000 + 20000 tokens) × 1 USD/M × 1000 = 40원; the job budget is 60원 → the fallback (another 40원) is refused
+  let calls = 0;
+  const v = openaiVision({ apiKey: "mock", model: "budget-test", strongModel: "budget-test", maxInputTokens: 20000, maxOutputTokens: 20000, maxKrwPerJob: 60, maxServiceKrwPerDay: 1e9,
+    fetch: async () => { calls++; return new Response(JSON.stringify({ error: { code: "server_error" }, usage: { input_tokens: 20000, output_tokens: 20000 } }), { status: 500 }); } }, rpc);
+  const u = await D.newUser();
+  const out = await v.extract("data:image/png;base64,AAAA", { jobId: null, userId: u, year: 2026 });
+  assert.equal(calls, 1, "the second call was refused before it ran (before: both ran, 80원 on a 60원 budget)");
+  assert.ok(out.cost_krw <= 60, String(out.cost_krw));
+  assert.equal(out.calls.find((c) => c.skipped).skipped, "JOB_LIMIT");
+  // service-wide: 10 parallel reservations of 40원 under a 100원 day → at most 2 succeed
+  const rs = await Promise.all(Array.from({ length: 10 }, () => D.call("commerce_ai_reserve", { provider: "OPENAI", model: "budget-test", max_input_tokens: 20000, max_output_tokens: 20000,
+    max_day_krw: 100 })));
+  assert.equal((await D.call("commerce_ai_reserve", { provider: "OPENAI", model: "budget-test", max_day_krw: "NaN" })).ok, false, "a NaN cap refuses");
+  const sumToday = (await D.pool.query("select coalesce(sum(coalesce(settled_krw, est_krw)),0)::numeric s from public.ai_budget_holds where created_at >= date_trunc('day', now())")).rows[0].s;
+  assert.ok(rs.filter((r) => r.ok).length <= 2, JSON.stringify(rs.map((r) => r.reason || "ok")));
+  assert.ok(+sumToday <= 100 + 40, String(sumToday));
+  // an unpriced model is refused, never assumed to cost 0
+  assert.equal((await D.call("commerce_ai_reserve", { provider: "OPENAI", model: "no-price", max_day_krw: 1e9 })).reason, "NOT_PRICED");
+});
+
+test("D3: the data host failing after the cache aged out keeps the last good copy instead of failing every paid job", async () => {
+  const fs = await import("node:fs"); const path = await import("node:path");
+  const body = fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../app/data.json"), "utf8");
+  let up = true;
+  const load = dataLoader({ url: "https://data.test/data.json", ttlMs: 1, fetch: async () => up ? new Response(body, { status: 200 }) : new Response("", { status: 503 }) });
+  const a = await load();
+  up = false; await new Promise((r) => setTimeout(r, 5));
+  const b = await load();
+  assert.equal(b, a, "stale copy served");
+});
+
+test("D4/M7: the database-backed limit is shared by every server instance (two apps, one count)", async () => {
+  const store = dbRateStore(rpc), l1 = rateLimiter(store, 5, 60000), l2 = rateLimiter(store, 5, 60000), k = key("rl");
+  let ok = 0, limited = 0;
+  for (let i = 0; i < 8; i++) { try { await (i % 2 ? l1 : l2)(k); ok++; } catch (e) { if (e.code === "RATE_LIMITED") limited++; else throw e; } }
+  assert.equal(ok, 5); assert.equal(limited, 3);
+  // the in-memory fallback forgets old keys instead of growing forever
+  const m = new Map(), lm = rateLimiter(m, 5, 1);
+  for (let i = 0; i < 10050; i++) m.set(`old:${i}`, [Date.now() - 1000]);
+  await lm("fresh");
+  assert.ok(m.size < 100, String(m.size));
+});
+
+test("R15: empty / safety / not-found follow-ups take no slot; a retried turn key returns the same answer; a failed answer gives the slot back", async () => {
+  const PriceCtx = (await import("../../app/domain/pricectx.js")).default;
+  const fs = await import("node:fs"); const path = await import("node:path");
+  const CTX = PriceCtx.fromData(JSON.parse(fs.readFileSync(path.resolve(path.dirname(new URL(import.meta.url).pathname), "../../app/data.json"), "utf8")), "2026-10-14");
+  const { jobRunner } = await import("../src/jobs.mjs");
+  const u = await D.newUser();
+  await D.call("commerce_grant_promo", { user_id: u, amount: 1, reason: "t", actor: "t", idempotency_key: key("p") });
+  const run = jobRunner({ rpc, ctx: CTX, ai: null });
+  const j = await run.run({ id: u }, "JOMI_QA_SESSION", { question: "리쥬란힐러 2cc 가격 알려줘" }, key("jomi"));
+  const used = async () => (await D.call("commerce_report", { report_id: j.report_id, user_id: u })).payload.turns_used || 1;
+  const before = await used();
+  for (const q of ["", "   ", "보톡스 몇 유닛 맞아야 해요?", "안녕하세요 반가워요", "리쥬란힐러 7cc는요?"]) {
+    const r = await run.ask({ id: u }, j.report_id, q, key("t"));
+    assert.equal(r.free, true, q);
+  }
+  assert.equal(await used(), before, "no slot taken by free answers");
+  const tk = key("turn");
+  const a1 = await run.ask({ id: u }, j.report_id, "국산 사각턱 보톡스 50U는요?", tk);
+  const a2 = await run.ask({ id: u }, j.report_id, "국산 사각턱 보톡스 50U는요?", tk);   // the response was lost; the app retries
+  assert.equal(a2.repeat, true); assert.equal(a2.turn.answer, a1.turn.answer);
+  assert.equal(await used(), before + 1, "a retry is not a second turn");
+  // the answer fails after the slot was taken → the slot comes back
+  const broken = jobRunner({ rpc: async (fn, p) => { if (fn === "commerce_jomi_turn" && p.action === "append") throw new Error("db down"); return rpc(fn, p); }, ctx: CTX, ai: null });
+  await assert.rejects(broken.ask({ id: u }, j.report_id, "리쥬란 힐러 1cc는요?", key("turn")));
+  assert.equal(await used(), before + 1, "released after the failure");
+});

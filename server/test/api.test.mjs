@@ -412,8 +412,13 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
   };
   await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel in ('APPLE_IAP', 'GOOGLE_PLAY') and version = 2");
   const apple = appleAdapter({ bundleId: "kr.yoonsiljang.app", environment: "Sandbox", rootCertsB64: [der("root")] });
-  const tx = { bundleId: "kr.yoonsiljang.app", environment: "Sandbox", type: "Consumable", transactionId: "2000000123", originalTransactionId: "2000000123", productId: "kr.yoonsiljang.credits.mini", purchaseDate: Date.now() };
   const app = makeApp({ apple }), u = await D.newUser(), tok = await tokenFor(u);
+  // round-2 R12: the purchase carries the buyer's account (appAccountToken = user id); another account's receipt is refused
+  const tx = { bundleId: "kr.yoonsiljang.app", environment: "Sandbox", type: "Consumable", transactionId: "2000000123", originalTransactionId: "2000000123", productId: "kr.yoonsiljang.credits.mini", purchaseDate: Date.now(), appAccountToken: u };
+  const other = await tokenFor(await D.newUser());
+  const stolen = await req(app, "POST", "/v1/store/apple", { token: other, body: { signedTransactionInfo: jws(tx) } });
+  assert.equal(stolen.status, 403); assert.equal(stolen.body.error, "STORE_ACCOUNT_MISMATCH");
+  assert.equal((await req(app, "POST", "/v1/store/apple", { token: tok, body: { signedTransactionInfo: jws({ ...tx, transactionId: "2000000999", appAccountToken: undefined }) } })).status, 403, "no account token → refused");
   const g1 = await req(app, "POST", "/v1/store/apple", { token: tok, body: { signedTransactionInfo: jws(tx) } });
   assert.equal(g1.status, 200, JSON.stringify(g1.body)); assert.equal(g1.body.wallet.paid, 5);
   const g2 = await req(app, "POST", "/v1/store/apple", { token: tok, body: { signedTransactionInfo: jws(tx) } });
@@ -425,12 +430,16 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
   const { generateKeyPairSync } = await import("node:crypto");
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const gcalls = [], FAKE_OAUTH = crypto.randomUUID();
+  const { accountRef } = await import("../src/payments/store.mjs");
+  let consumeStatus = 200;
   const gfetch = async (url, o = {}) => {
     gcalls.push(url);
     if (url.startsWith("https://oauth2.googleapis.com/token")) return new Response(JSON.stringify({ access_token: FAKE_OAUTH }), { status: 200 });
-    if (url.endsWith(":consume")) return new Response("{}", { status: 200 });
+    if (url.endsWith(":consume")) return new Response("{}", { status: consumeStatus });
+    if (/tokens\/tok-fail$/.test(url)) return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.5555", purchaseTimeMillis: String(Date.now()), purchaseType: 0, obfuscatedExternalAccountId: accountRef(u) }), { status: 200 });
+    if (/tokens\/tok-other$/.test(url)) return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.6666", purchaseTimeMillis: String(Date.now()), purchaseType: 0, obfuscatedExternalAccountId: accountRef("someone-else") }), { status: 200 });
     if (/tokens\/tok-pending$/.test(url)) return new Response(JSON.stringify({ purchaseState: 2, orderId: "GPA.1" }), { status: 200 });
-    return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.3333-4444", purchaseTimeMillis: String(Date.now()), purchaseType: 0 }), { status: 200 });
+    return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.3333-4444", purchaseTimeMillis: String(Date.now()), purchaseType: 0, obfuscatedExternalAccountId: accountRef(u) }), { status: 200 });
   };
   const google = googleAdapter({ packageName: "kr.yoonsiljang.app", serviceAccountJson: { client_email: "svc@test.iam", private_key: privateKey.export({ type: "pkcs8", format: "pem" }) }, fetch: gfetch, allowTestPurchases: true });   // sandbox: license-tester purchases allowed
   const appG = makeApp({ google });
@@ -440,6 +449,17 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
   const p2 = await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-1" } });
   assert.equal(p2.body.already, true);
   assert.equal((await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-pending" } })).status, 409);
+  // round-2 R12: another account's purchase is refused; a failed consume is reported and queued, not hidden behind 'granted'
+  assert.equal((await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-other" } })).status, 403);
+  consumeStatus = 503;
+  const pf = await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-fail" } });
+  assert.equal(pf.status, 200); assert.equal(pf.body.consumed, false); assert.equal(pf.body.consume_pending, true);
+  assert.equal((await D.pool.query("select count(*)::int n from public.store_consume_queue where purchase_token = 'tok-fail'")).rows[0].n, 1);
+  consumeStatus = 200;
+  await D.pool.query("update public.store_consume_queue set next_try_at = now() where purchase_token = 'tok-fail'");
+  const sw = await appG.scheduled("reconcile");
+  assert.equal(sw.google_consumed_retry, 1);
+  assert.equal((await D.pool.query("select count(*)::int n from public.store_consume_queue where purchase_token = 'tok-fail'")).rows[0].n, 0);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

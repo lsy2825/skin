@@ -12,17 +12,22 @@ import Economics from "../../app/domain/economics.js";
 const kstToday = (ms = Date.now()) => new Date(ms + 9 * 3600000).toISOString().slice(0, 10);
 
 // price data for reports: the published data.json, cached for an hour (the same file the app shows)
-export function dataLoader({ url, fetch: f = fetch, ttlMs = 3600000 }) {
+export function dataLoader({ url, fetch: f = fetch, ttlMs = 3600000, log = () => {} }) {
   let cache = { at: 0, ctx: null, p: null };
   return async function ctx() {
     if (cache.ctx && Date.now() - cache.at < ttlMs) return cache.ctx;
     if (!cache.p) cache.p = (async () => {
-      const r = await fetchT(f, url, { headers: { accept: "application/json" } }, 20000);
+      const r = await fetchT(f, url, { headers: { accept: "application/json" } }, 20000, 20_000_000);
       if (!r.ok) throw new HttpError(503, "DATA_UNAVAILABLE", "가격 데이터를 불러오지 못했어요");
       const c = PriceCtx.fromData(await r.json(), kstToday());
       cache = { at: Date.now(), ctx: c, p: null };
       return c;
-    })().finally(() => { cache.p = null; });
+    })().catch((e) => {
+      // the data host failing after the cache aged out must not stop every paid job (round-2 D3): keep serving the last
+      // good copy (its date is in every report), retry on the next request, and log the failure for the operator
+      if (cache.ctx) { log("data_refresh_failed_serving_stale", { updated: cache.ctx.updated, error: e.code || String(e.message).slice(0, 80) }); cache.at = Date.now() - ttlMs + 300000; return cache.ctx; }
+      throw e;
+    }).finally(() => { cache.p = null; });
     return cache.p;
   };
 }
@@ -57,7 +62,7 @@ export function createApp({ config, rpc: rawRpc, toss = null, demo = null, visio
     return s;
   });
   r.post("/v1/webhooks/toss", async (req) => {
-    limit.hook(`hook:${req.headers.get("cf-connecting-ip") || "ip"}`);
+    await limit.hook(`hook:${req.headers.get("cf-connecting-ip") || "ip"}`);
     const out = await flows.tossWebhook(await readJson(req, 32 * 1024));
     return json(out.status, { result: out.result || null });
   });
@@ -77,25 +82,32 @@ export function createApp({ config, rpc: rawRpc, toss = null, demo = null, visio
 
   // ---- signed-in user
   r.get("/v1/wallet", async (req) => { const u = await auth(req); return rpc("commerce_wallet", { user_id: u.id }); });
-  r.post("/v1/orders", async (req) => { const u = await auth(req); limit.pay(`pay:${u.id}`); return flows.createOrder(u, await readJson(req)); });
-  r.post("/v1/checkout/toss/confirm", async (req) => { const u = await auth(req); limit.pay(`pay:${u.id}`); return flows.confirmToss(u, await readJson(req)); });
-  r.post("/v1/checkout/demo/confirm", async (req) => { const u = await auth(req); limit.pay(`pay:${u.id}`); return flows.confirmDemo(u, await readJson(req)); });
+  r.post("/v1/orders", async (req) => { const u = await auth(req); await limit.pay(`pay:${u.id}`); return flows.createOrder(u, await readJson(req)); });
+  r.post("/v1/checkout/toss/confirm", async (req) => { const u = await auth(req); await limit.pay(`pay:${u.id}`); return flows.confirmToss(u, await readJson(req)); });
+  r.post("/v1/checkout/demo/confirm", async (req) => { const u = await auth(req); await limit.pay(`pay:${u.id}`); return flows.confirmDemo(u, await readJson(req)); });
   r.post("/v1/store/apple", async (req) => {
     if (!apple) throw new HttpError(404, "NOT_FOUND", "없는 주소예요");
-    const u = await auth(req); limit.pay(`pay:${u.id}`);
-    const t = apple.verifyTransaction((await readJson(req)).signedTransactionInfo);
+    const u = await auth(req); await limit.pay(`pay:${u.id}`);
+    const t = apple.verifyTransaction((await readJson(req)).signedTransactionInfo, u.id);   // the purchase must carry this account (R12)
     return rpc("commerce_store_grant", { ...t, user_id: u.id });
   });
   r.post("/v1/store/google", async (req) => {
     if (!google) throw new HttpError(404, "NOT_FOUND", "없는 주소예요");
-    const u = await auth(req); limit.pay(`pay:${u.id}`);
-    const body = await readJson(req), t = await google.verifyPurchase(body);
+    const u = await auth(req); await limit.pay(`pay:${u.id}`);
+    const body = await readJson(req), t = await google.verifyPurchase(body, u.id);
     const out = await rpc("commerce_store_grant", { ...t, user_id: u.id });
-    if (!t.consumed) await google.consume(body);              // after the grant; a failed consume is retried by the app
-    return out;
+    // after the grant. A failed consume is NOT reported as done (round-2 R12): it is queued for the scheduled retry and the
+    // answer says so, so the app does not tell the user the pack can be bought again yet
+    let consumed = !!t.consumed;
+    if (!consumed) {
+      const c = await google.consume(body);
+      consumed = c.ok;
+      if (!c.ok) await rpc("commerce_store_queue", { action: "add", purchase_token: body.purchaseToken, product_id: body.productId, user_id: u.id, error: `HTTP_${c.status}` });
+    }
+    return { ...out, consumed, consume_pending: !consumed };
   });
   r.post("/v1/jobs", async (req) => {
-    const u = await auth(req); limit.job(`job:${u.id}`);
+    const u = await auth(req); await limit.job(`job:${u.id}`);
     const body = await readJson(req, 12 * 1024 * 1024);          // an image job carries the (re-encoded) photo
     return (await runner()).run(u, body.feature, body.input, body.idempotency_key);
   });
@@ -113,11 +125,11 @@ export function createApp({ config, rpc: rawRpc, toss = null, demo = null, visio
     return out;
   });
   r.del("/v1/reports/:id", async (req, p) => { const u = await auth(req); return rpc("commerce_delete_report", { report_id: p.id, user_id: u.id }); });
-  r.post("/v1/reports/:id/corrections", async (req, p) => { const u = await auth(req); limit.any(`any:${u.id}`); return (await runner()).correct(u, p.id, (await readJson(req)).edits); });
-  r.post("/v1/reports/:id/ask", async (req, p) => { const u = await auth(req); limit.job(`job:${u.id}`); const b = await readJson(req); return (await runner()).ask(u, p.id, b.question, b.turn_key); });
-  r.post("/v1/push/subscribe", async (req) => { const u = await auth(req); limit.any(`any:${u.id}`); return rpc("commerce_push_subscribe", { user_id: u.id, ...checkSubscription(await readJson(req)) }); });
+  r.post("/v1/reports/:id/corrections", async (req, p) => { const u = await auth(req); await limit.any(`any:${u.id}`); return (await runner()).correct(u, p.id, (await readJson(req)).edits); });
+  r.post("/v1/reports/:id/ask", async (req, p) => { const u = await auth(req); await limit.job(`job:${u.id}`); const b = await readJson(req); return (await runner()).ask(u, p.id, b.question, b.turn_key); });
+  r.post("/v1/push/subscribe", async (req) => { const u = await auth(req); await limit.any(`any:${u.id}`); return rpc("commerce_push_subscribe", { user_id: u.id, ...checkSubscription(await readJson(req)) }); });
   r.post("/v1/watch/rules", async (req) => {
-    const u = await auth(req); limit.any(`any:${u.id}`);
+    const u = await auth(req); await limit.any(`any:${u.id}`);
     const b = await readJson(req), ctx = await loadCtx();
     if (typeof b.key_id !== "string" || ctx.label(b.key_id) === b.key_id) throw new HttpError(400, "BAD_REQUEST", "지켜볼 시술을 골라 주세요");
     if (!["watch", "target", "newlow", "newmatch"].includes(b.kind)) throw new HttpError(400, "BAD_REQUEST", "알림 종류가 올바르지 않아요");
@@ -175,10 +187,25 @@ export function createApp({ config, rpc: rawRpc, toss = null, demo = null, visio
   async function scheduled(kind = "all") {
     const out = {};
     if (kind === "all" || kind === "reconcile") out.reconcile = await flows.reconcile();
-    if ((kind === "all" || kind === "reconcile") && google) {          // Google refunds (Voided Purchases API, last 3 days) → revocations
-      let n = 0;
-      for (const rv of await google.voided({ startTimeMillis: Date.now() - 3 * 86400000 }).catch(() => [])) { if (await storeRevocation(rv, "google-voided").catch(() => null)) n++; }
-      out.google_voided = n;
+    if ((kind === "all" || kind === "reconcile") && google) {
+      // Google refunds: every page since the last successful read (minus a 1-day overlap; records are idempotent). A failed
+      // read is reported and leaves the cursor where it was (round-2 R12: failures were swallowed as 'no refunds')
+      const cur = await rpc("commerce_store_queue", { action: "cursor_get", name: "google_voided" }).catch(() => ({}));
+      const since = Math.max(Date.now() - 30 * 86400000, cur && cur.value ? +cur.value - 86400000 : Date.now() - 3 * 86400000), started = Date.now();
+      try {
+        let n = 0;
+        for (const rv of await google.voided({ startTimeMillis: since })) { if (await storeRevocation(rv, "google-voided").catch(() => null)) n++; }
+        await rpc("commerce_store_queue", { action: "cursor_set", name: "google_voided", value: String(started) });
+        out.google_voided = n;
+      } catch (e) { out.google_voided_error = e.code || "FAILED"; log("alert_google_voided_failed", { error: e.code || String(e.message).slice(0, 80), since }); }
+      // queued consumes (failed right after a grant)
+      let consumed = 0;
+      for (const q of await rpc("commerce_store_queue", { action: "due" }).catch(() => [])) {
+        const c = await google.consume({ productId: q.product_id, purchaseToken: q.purchase_token });
+        if (c.ok) { consumed++; await rpc("commerce_store_queue", { action: "done", purchase_token: q.purchase_token }); }
+        else await rpc("commerce_store_queue", { action: "add", purchase_token: q.purchase_token, product_id: q.product_id, user_id: null, error: `HTTP_${c.status}` }).catch(() => {});
+      }
+      out.google_consumed_retry = consumed;
     }
     if (kind === "all" || kind === "watch") out.watch = await runWatch({ rpc, ctx: await loadCtx(), vapid: config.push, fetch: f });
     return out;

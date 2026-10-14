@@ -16,7 +16,11 @@ TOSS_CLIENT_KEY = "test_ck_..."            # a client key is public by design; t
 OPENAI_MODEL_DEFAULT = ""                  # set from the provider's current model list; checked against model_cost_config
 OPENAI_MODEL_STRONG = ""
 OPENAI_MODEL_TEXT = ""
+AI_FEATURES_ENABLED = "false"              # round 2: AI stays off until the owner turns it on (a key alone spends nothing)
 AI_MAX_KRW_PER_JOB = "60"
+AI_MAX_USER_CALLS_PER_DAY = "30"
+AI_MAX_SERVICE_KRW_PER_DAY = "30000"
+RATE_LIMIT_STORE = "db"                    # db = shared across Workers instances (commerce_rate_hit); memory = one instance only
 VAPID_PUBLIC_KEY = ""
 VAPID_SUBJECT = "mailto:<operator address>"
 APPLE_BUNDLE_ID = ""

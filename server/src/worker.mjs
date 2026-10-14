@@ -7,6 +7,7 @@ import { tossAdapter, demoAdapter } from "./payments/toss.mjs";
 import { appleAdapter, googleAdapter } from "./payments/store.mjs";
 import { openaiVision } from "./ai/openai.mjs";
 import { createApp, dataLoader } from "./app.mjs";
+import { dbRateStore } from "./http.mjs";
 
 let app = null;
 function build(env) {
@@ -17,11 +18,13 @@ function build(env) {
     config, rpc, log,
     toss: config.toss.secretKey ? tossAdapter({ secretKey: config.toss.secretKey, base: config.toss.base }) : null,
     demo: config.demoPayments ? demoAdapter() : null,
-    vision: config.openai.apiKey && config.openai.model ? openaiVision(config.openai, rpc) : null,
-    ai: config.openai.apiKey ? { apiKey: config.openai.apiKey, base: config.openai.base, model: config.openai.textModel || config.openai.model, timeoutMs: 20000 } : null,
+    vision: config.openai.enabled && config.openai.apiKey && config.openai.model ? openaiVision(config.openai, rpc) : null,
+    ai: config.openai.enabled && config.openai.apiKey ? { apiKey: config.openai.apiKey, base: config.openai.base, model: config.openai.textModel || config.openai.model, timeoutMs: 20000,
+      maxUserCallsPerDay: config.openai.maxUserCallsPerDay, maxServiceKrwPerDay: config.openai.maxServiceKrwPerDay } : null,
     apple: config.apple.bundleId && config.apple.rootCertsB64.length ? appleAdapter(config.apple) : null,
     google: config.google.packageName && config.google.serviceAccountJson ? googleAdapter(config.google) : null,
-    loadCtx: dataLoader({ url: config.dataUrl }),
+    loadCtx: dataLoader({ url: config.dataUrl, log }),
+    rateStore: (env.RATE_LIMIT_STORE || "db") === "db" ? dbRateStore(rpc) : new Map(),
   });
 }
 export default {

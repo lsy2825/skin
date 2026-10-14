@@ -81,7 +81,14 @@ export function paymentFlows({ rpc, toss, demo, log = () => {} }) {
       if (pay.status === "DONE") { const r = await fulfill(order, pay, actor); return r.already ? "ALREADY_FULFILLED" : "FULFILLED"; }
       if (pay.status === "CANCELED" || pay.status === "PARTIAL_CANCELED") {
         const known = await rpc("commerce_payment", { provider: "TOSS", provider_payment_id: pay.provider_payment_id });
-        if (!known) { await rpc("commerce_close_order", { order_id: order.id, status: "CANCELED", reason: "결제 취소" }); return "CLOSED_CANCELED"; }
+        // a FULL cancel before we granted anything: no money stays with us — close the order. A PARTIAL cancel before the
+        // grant (round-2 R06): the customer still paid the rest, so the payment is recorded first (credits for the paid
+        // order) and each cancel is then applied as a proportional refund — the remaining paid value is never lost
+        if (!known && pay.status === "CANCELED") { await rpc("commerce_close_order", { order_id: order.id, status: "CANCELED", reason: "결제 취소" }); return "CLOSED_CANCELED"; }
+        if (!known) {
+          if (Number(pay.amount) !== order.amount_krw) { log("partial_cancel_amount_mismatch", { order: order.id }); return "REVIEW_AMOUNT_MISMATCH"; }
+          await fulfill(order, { ...pay, status: "DONE" }, `${actor}:partial-before-grant`);
+        }
         let n = 0;
         for (const c of pay.cancels || []) {
           if (c.cancelStatus && c.cancelStatus !== "DONE") continue;
@@ -96,7 +103,7 @@ export function paymentFlows({ rpc, toss, demo, log = () => {} }) {
     },
 
     // scheduled: orders still open after 10 minutes are asked about (missed redirect, missed webhook)
-    async reconcile({ minutes = 10, expireAfterMinutes = 60, now = Date.now() } = {}) {
+    async reconcile({ minutes = 10, expireAfterMinutes = 60, recheckLimit = 50, now = Date.now() } = {}) {
       const started = new Date(now).toISOString();
       const open = toss ? await rpc("commerce_open_orders", { channel: "WEB_PG", minutes }) : [];
       let fixed = 0; const mismatches = [];
@@ -111,9 +118,21 @@ export function paymentFlows({ rpc, toss, demo, log = () => {} }) {
         try { const r = await this.applyTossState(p, "reconcile"); if (/FULFILLED$|CLOSED|REFUNDS_RECORDED_[1-9]/.test(r) && r !== "ALREADY_FULFILLED") fixed++; }
         catch (e) { mismatches.push({ order: o.id, error: e.code || e.message }); }
       }
+      // paid payments, oldest check first (round-2 R06): a refund made at Toss whose webhook never arrived is found here
+      let rechecked = 0;
+      const paid = toss ? await rpc("commerce_recheck_payments", { provider: "TOSS", limit: recheckLimit }).catch((e) => { mismatches.push({ error: e.code || "RECHECK_FAILED" }); return []; }) : [];
+      for (const x of paid) {
+        let p;
+        try { p = await toss.get(x.provider_payment_id); } catch (e) { mismatches.push({ payment: x.provider_payment_id, error: e.code || "LOOKUP_FAILED" }); continue; }
+        if (!p) { mismatches.push({ payment: x.provider_payment_id, error: "LOOKUP_FAILED" }); continue; }
+        rechecked++;
+        try { const r = await this.applyTossState(p, "recheck"); if (/REFUNDS_RECORDED_[1-9]/.test(r)) fixed++; }
+        catch (e) { mismatches.push({ payment: x.provider_payment_id, error: e.code || e.message }); }
+      }
       const exp = await rpc("commerce_expire_jobs", {});
-      await rpc("commerce_reconcile_log", { started_at: started, checked: open.length, fixed, mismatches });
-      return { checked: open.length, fixed, mismatches, jobs_released: exp.released };
+      const purge = await rpc("commerce_purge_expired_reports", {}).catch(() => ({ purged: null }));
+      await rpc("commerce_reconcile_log", { started_at: started, checked: open.length + rechecked, fixed, mismatches });
+      return { checked: open.length, rechecked, fixed, mismatches, jobs_released: exp.released, reports_purged: purge.purged };
     },
 
     // admin refund (MFA admin only, checked by the caller): Toss first, the ledger from Toss's answer

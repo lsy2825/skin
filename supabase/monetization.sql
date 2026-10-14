@@ -579,7 +579,10 @@ begin
   select * into o from public.orders where id = pay.order_id;
   select * into w from public.credit_wallets where user_id = o.user_id;
   amt := coalesce((p ->> 'amount')::int, pay.amount_krw - pay.refunded_krw);
-  target := round(o.paid_credits::numeric * amt / pay.amount_krw)::int;
+  -- the same cumulative rule as commerce_refund (round-2 R16: the preview rounded each refund on its own and could promise a
+  -- different number of credits than the refund then took)
+  target := greatest(0, round(o.paid_credits::numeric * (pay.refunded_krw + amt) / pay.amount_krw)::int
+                        - coalesce((select sum(credits_target) from public.payment_refunds where payment_id = pay.id), 0));
   return jsonb_build_object('refundable_krw', pay.amount_krw - pay.refunded_krw, 'credits_target', target,
     'unspent', w.paid_balance - w.paid_reserved, 'automatic', w.paid_balance - w.paid_reserved >= target);
 end $$;
@@ -1175,3 +1178,169 @@ grant execute on function public.delete_me() to authenticated;
 revoke all on function public.commerce_close_account(jsonb) from public, anon, authenticated;
 revoke all on function public.commerce_purge_expired_reports(jsonb) from public, anon, authenticated;
 grant execute on function public.commerce_close_account(jsonb), public.commerce_purge_expired_reports(jsonb) to service_role;
+
+
+-- ============================================================================================================================
+-- Round 2: refunds that never reached us (review R06). The old sweep looked only at CREATED / EXPIRED orders, so a refund made
+-- at Toss after we had granted credits — with its webhook lost — was never seen. Paid payments are now re-read on a rolling
+-- cursor (oldest check first); the sweep records refunds idempotently by Toss transaction key.
+-- ============================================================================================================================
+alter table public.payments add column if not exists last_checked_at timestamptz;
+create index if not exists payments_recheck on public.payments (last_checked_at nulls first) where status in ('DONE', 'PARTIAL_CANCELED');
+create or replace function public.commerce_recheck_payments(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare ids bigint[];
+begin
+  select array_agg(id) into ids from (
+    select id from public.payments
+     where provider = coalesce(p ->> 'provider', 'TOSS') and status in ('DONE', 'PARTIAL_CANCELED')
+       and created_at > now() - make_interval(days => coalesce((p ->> 'days')::int, 400))
+     order by last_checked_at nulls first, created_at
+     limit least(coalesce((p ->> 'limit')::int, 50), 500)
+     for update skip locked) x;
+  if ids is null then return '[]'::jsonb; end if;
+  update public.payments set last_checked_at = now() where id = any(ids);
+  return coalesce((select jsonb_agg(jsonb_build_object('provider_payment_id', provider_payment_id, 'order_id', order_id, 'refunded_krw', refunded_krw, 'amount_krw', amount_krw))
+    from public.payments where id = any(ids)), '[]'::jsonb);
+end $$;
+revoke all on function public.commerce_recheck_payments(jsonb) from public, anon, authenticated;
+grant execute on function public.commerce_recheck_payments(jsonb) to service_role;
+
+-- ============================================================================================================================
+-- Round 2: AI spend is RESERVED before each model call (review R08). The old guard read what had already been recorded, so
+-- parallel requests passed it together and a job's second call ran on 'spent so far' instead of 'spent + this call'. Now:
+-- reserve the call's worst-case cost (max input + max output tokens at the configured price) under one service-wide lock,
+-- against the user's calls today, the service's KRW today, and the job's KRW — then settle with the real usage. An unpriced
+-- model is refused, and a call whose cost cannot be computed is settled at the reserved worst case, never at 0.
+-- ============================================================================================================================
+create table if not exists public.ai_budget_holds (
+  id          bigserial primary key,
+  user_id     uuid,
+  job_id      uuid,
+  provider    text not null,
+  model       text not null,
+  call_kind   text not null,
+  est_krw     numeric not null check (est_krw >= 0),
+  settled_krw numeric,
+  usage_id    bigint references public.ai_usage_records (id),
+  created_at  timestamptz not null default now(),
+  settled_at  timestamptz
+);
+alter table public.ai_budget_holds enable row level security;
+revoke all on public.ai_budget_holds from anon, authenticated;
+create index if not exists ai_budget_holds_day on public.ai_budget_holds (created_at);
+
+create or replace function public.commerce_ai_reserve(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare d0 timestamptz := (date_trunc('day', now() at time zone 'Asia/Seoul')) at time zone 'Asia/Seoul'; c public.model_cost_config;
+        est numeric; uc int; dk numeric; jk numeric; h bigint; u uuid := nullif(p ->> 'user_id', '')::uuid; j uuid := nullif(p ->> 'job_id', '')::uuid;
+begin
+  perform pg_advisory_xact_lock(hashtext('commerce_ai_budget'));     -- one reservation at a time, service-wide
+  select * into c from public.model_cost_config where provider = p ->> 'provider' and model = p ->> 'model' and effective_date <= current_date
+   order by effective_date desc limit 1;
+  if not found then return jsonb_build_object('ok', false, 'reason', 'NOT_PRICED'); end if;
+  est := (coalesce((p ->> 'max_input_tokens')::int, 8000) * c.input_cost_per_million + coalesce((p ->> 'max_output_tokens')::int, 1500) * c.output_cost_per_million)
+         / 1000000 * c.exchange_rate_used;
+  -- calls / money of today = settled holds (their usage rows) + holds still open (at their worst case)
+  select count(*), coalesce(sum(coalesce(settled_krw, est_krw)), 0) into uc, dk from public.ai_budget_holds where created_at >= d0 and user_id is not distinct from u;
+  select coalesce(sum(coalesce(settled_krw, est_krw)), 0) into dk from public.ai_budget_holds where created_at >= d0;
+  dk := dk + coalesce((select sum(cost_krw) from public.ai_usage_records r where r.created_at >= d0
+                         and not exists (select 1 from public.ai_budget_holds b where b.usage_id = r.id)), 0);    -- calls recorded outside holds
+  if u is not null and uc >= coalesce((p ->> 'max_user_calls')::int, 30) then return jsonb_build_object('ok', false, 'reason', 'USER_LIMIT', 'user_calls_today', uc); end if;
+  -- a cap that is not a real number (NaN, negative) refuses instead of passing every comparison
+  if coalesce((p ->> 'max_day_krw')::numeric, 30000) = 'NaN'::numeric or coalesce((p ->> 'max_day_krw')::numeric, 30000) < 0
+     or dk + est > coalesce((p ->> 'max_day_krw')::numeric, 30000) then return jsonb_build_object('ok', false, 'reason', 'DAY_LIMIT', 'service_krw_today', round(dk, 2), 'est_krw', round(est, 2)); end if;
+  if j is not null and p ? 'max_job_krw' then
+    select coalesce(sum(coalesce(settled_krw, est_krw)), 0) into jk from public.ai_budget_holds where job_id = j;
+    if jk + est > (p ->> 'max_job_krw')::numeric then return jsonb_build_object('ok', false, 'reason', 'JOB_LIMIT', 'job_krw', round(jk, 2), 'est_krw', round(est, 2)); end if;
+  end if;
+  insert into public.ai_budget_holds (user_id, job_id, provider, model, call_kind, est_krw) values (u, j, p ->> 'provider', p ->> 'model', coalesce(p ->> 'call_kind', 'PRIMARY'), est)
+  returning id into h;
+  return jsonb_build_object('ok', true, 'hold_id', h, 'est_krw', round(est, 4));
+end $$;
+
+create or replace function public.commerce_ai_settle(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare hd public.ai_budget_holds; rec jsonb; cost numeric;
+begin
+  select * into hd from public.ai_budget_holds where id = (p ->> 'hold_id')::bigint for update;
+  if not found then raise exception 'BAD_REQUEST' using errcode = '22023'; end if;
+  if hd.settled_at is not null then return jsonb_build_object('already', true, 'cost_krw', hd.settled_krw); end if;
+  rec := public.commerce_record_ai_usage(jsonb_build_object('provider', hd.provider, 'model', hd.model, 'call_kind', hd.call_kind,
+           'job_id', (select id from public.premium_jobs where id = hd.job_id),   -- a budget group that is not a paid job is not linked
+           'user_id', hd.user_id, 'image_count', p -> 'image_count', 'ok', p -> 'ok', 'input_tokens', p -> 'input_tokens',
+           'cached_input_tokens', p -> 'cached_input_tokens', 'output_tokens', p -> 'output_tokens'));
+  cost := coalesce((rec ->> 'cost_krw')::numeric, hd.est_krw);          -- unknown cost → the reserved worst case, never 0
+  update public.ai_budget_holds set settled_krw = cost, usage_id = (rec ->> 'id')::bigint, settled_at = now() where id = hd.id;
+  return jsonb_build_object('cost_krw', round(cost, 4), 'priced', (rec ->> 'priced')::boolean, 'estimated', rec ->> 'cost_krw' is null);
+end $$;
+revoke all on function public.commerce_ai_reserve(jsonb), public.commerce_ai_settle(jsonb) from public, anon, authenticated;
+grant execute on function public.commerce_ai_reserve(jsonb), public.commerce_ai_settle(jsonb) to service_role;
+
+-- ============================================================================================================================
+-- Round 2: request limits shared by every server instance (review D4/M7). Fixed windows: one row per (key, window start);
+-- the counter is incremented atomically and old windows are dropped as they are passed.
+-- ============================================================================================================================
+create table if not exists public.rate_buckets (
+  key          text not null,
+  window_start timestamptz not null,
+  hits         int not null default 0,
+  primary key (key, window_start)
+);
+alter table public.rate_buckets enable row level security;
+revoke all on public.rate_buckets from anon, authenticated;
+create or replace function public.commerce_rate_hit(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare w int := greatest(coalesce((p ->> 'window_seconds')::int, 60), 1); ws timestamptz; n int;
+begin
+  ws := to_timestamp(floor(extract(epoch from now()) / w) * w);
+  insert into public.rate_buckets (key, window_start, hits) values (left(p ->> 'key', 200), ws, 1)
+  on conflict (key, window_start) do update set hits = public.rate_buckets.hits + 1 returning hits into n;
+  if random() < 0.01 then delete from public.rate_buckets where window_start < now() - interval '1 day'; end if;
+  return jsonb_build_object('ok', n <= coalesce((p ->> 'limit')::int, 60), 'hits', n);
+end $$;
+revoke all on function public.commerce_rate_hit(jsonb) from public, anon, authenticated;
+grant execute on function public.commerce_rate_hit(jsonb) to service_role;
+
+-- ============================================================================================================================
+-- Round 2: store purchases (review R12). A Google consume that failed is kept and retried by the scheduled job (the grant is
+-- already done and idempotent; an unconsumed purchase only blocks buying the same pack again). Sync cursors remember the last
+-- successful refund-list read, so a failed read is retried from there instead of being taken as 'no refunds'.
+-- ============================================================================================================================
+create table if not exists public.store_consume_queue (
+  purchase_token text primary key,
+  product_id     text not null,
+  user_id        uuid,
+  attempts       int not null default 0,
+  last_error     text,
+  created_at     timestamptz not null default now(),
+  next_try_at    timestamptz not null default now()
+);
+create table if not exists public.store_sync_cursors (name text primary key, value text not null, updated_at timestamptz not null default now());
+alter table public.store_consume_queue enable row level security;
+alter table public.store_sync_cursors enable row level security;
+revoke all on public.store_consume_queue, public.store_sync_cursors from anon, authenticated;
+create or replace function public.commerce_store_queue(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p ->> 'action' = 'add' then
+    insert into public.store_consume_queue (purchase_token, product_id, user_id, last_error) values (p ->> 'purchase_token', p ->> 'product_id', (p ->> 'user_id')::uuid, left(p ->> 'error', 200))
+    on conflict (purchase_token) do update set attempts = public.store_consume_queue.attempts + 1, last_error = excluded.last_error,
+      next_try_at = now() + make_interval(mins => least(power(2, public.store_consume_queue.attempts + 1)::int, 720));
+    return jsonb_build_object('queued', true);
+  elsif p ->> 'action' = 'done' then
+    delete from public.store_consume_queue where purchase_token = p ->> 'purchase_token';
+    return jsonb_build_object('done', true);
+  elsif p ->> 'action' = 'due' then
+    return coalesce((select jsonb_agg(jsonb_build_object('purchase_token', purchase_token, 'product_id', product_id, 'attempts', attempts))
+      from (select * from public.store_consume_queue where next_try_at <= now() order by next_try_at limit 50) q), '[]'::jsonb);
+  elsif p ->> 'action' = 'cursor_get' then
+    return jsonb_build_object('value', (select value from public.store_sync_cursors where name = p ->> 'name'));
+  elsif p ->> 'action' = 'cursor_set' then
+    insert into public.store_sync_cursors (name, value) values (p ->> 'name', p ->> 'value') on conflict (name) do update set value = excluded.value, updated_at = now();
+    return jsonb_build_object('ok', true);
+  end if;
+  raise exception 'BAD_REQUEST' using errcode = '22023';
+end $$;
+revoke all on function public.commerce_store_queue(jsonb) from public, anon, authenticated;
+grant execute on function public.commerce_store_queue(jsonb) to service_role;

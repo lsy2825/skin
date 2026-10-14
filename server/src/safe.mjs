@@ -1,7 +1,7 @@
 // Untrusted input at the edge (docs/SECURITY_AND_PRIVACY_AUDIT.md): public event URLs (SSRF) and uploaded images (file type,
 // size, pixel bombs). The URL decoder reads one public page the user pointed at — no login, no cookies, no CAPTCHA solving,
 // no retry around a block: a page that refuses us is reported as "읽을 수 없음" and the reservation is released.
-import { HttpError } from "./http.mjs";
+import { HttpError, untilDeadline } from "./http.mjs";
 
 const PRIVATE_V4 = [/^0\./, /^10\./, /^127\./, /^169\.254\./, /^172\.(1[6-9]|2\d|3[01])\./, /^192\.168\./, /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./, /^198\.1[89]\./, /^2(2[4-9]|[3-5]\d)\./];
 export function checkPublicUrl(raw) {
@@ -22,15 +22,37 @@ export function checkPublicUrl(raw) {
 }
 export const isPrivateIp = (ip) => PRIVATE_V4.some((rx) => rx.test(ip)) || /^(::1|fc|fd|fe80|::ffff:(10|127|192\.168)\.)/i.test(ip);
 
-// one public HTML page → plain text (≤ maxBytes, ≤ 3 redirects each re-checked, short timeout, no credentials)
-// where DNS can be asked (Node), every address of the host must be public. On Cloudflare Workers this lookup is not
-// available and outbound requests cannot reach private networks — the check then relies on the platform (documented).
-async function resolvesPublic(host) {
-  let dns;
-  try { dns = await import("node:dns"); } catch (e) { return true; }
-  if (!dns || !dns.promises || typeof dns.promises.lookup !== "function") return true;
-  let addrs;
-  try { addrs = await dns.promises.lookup(host, { all: true }); } catch (e) { throw new HttpError(422, "PAGE_UNREADABLE", "주소를 찾지 못했어요"); }
+// one public HTML page → plain text (≤ maxBytes, ≤ 3 redirects each re-checked, one deadline for everything, no credentials).
+// Every address of the host must be public. Node: the system resolver. Cloudflare Workers: node:dns.lookup exists but throws
+// "Not implemented" (developers.cloudflare.com/workers/runtime-apis/nodejs/dns/, round-2 R11) — the old code turned that into
+// "주소를 찾지 못했어요" for EVERY page; now the host is resolved over DNS-over-HTTPS instead, and if that fails too the
+// request is refused with an explicit reason (never silently allowed). Not run on a real Workers deployment yet.
+async function dohLookup(host, f = fetch) {
+  const ask = async (type) => {
+    const r = await f(`https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`, { headers: { accept: "application/dns-json" } });
+    if (!r.ok) throw new Error("DOH_HTTP_" + r.status);
+    const j = await r.json();
+    return (j.Answer || []).filter((a) => a.type === (type === "A" ? 1 : 28)).map((a) => ({ address: a.data }));
+  };
+  const all = [...(await ask("A")), ...(await ask("AAAA").catch(() => []))];
+  if (!all.length) throw new Error("DOH_NO_ANSWER");
+  return all;
+}
+export async function resolvesPublic(host, { dns: dnsMod, fetch: f = fetch } = {}) {
+  let dns = dnsMod;
+  if (!dns) { try { dns = await import("node:dns"); } catch (e) { dns = null; } }
+  let addrs = null;
+  if (dns && dns.promises && typeof dns.promises.lookup === "function") {
+    try { addrs = await dns.promises.lookup(host, { all: true }); }
+    catch (e) {
+      if (!/not.?implemented|ENOTIMP|unsupported/i.test(String(e && (e.message || e.code)))) throw new HttpError(422, "PAGE_UNREADABLE", "주소를 찾지 못했어요");
+      addrs = null;                                                   // Workers: fall through to DNS-over-HTTPS
+    }
+  }
+  if (!addrs) {
+    try { addrs = await dohLookup(host, f); }
+    catch (e) { throw new HttpError(503, "DNS_CHECK_UNAVAILABLE", "주소가 공개 인터넷인지 확인하지 못해 읽지 않았어요. 잠시 후 다시 시도해 주세요"); }
+  }
   return addrs.every((a) => !isPrivateIp(a.address));
 }
 
@@ -41,7 +63,7 @@ export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_
     if (!(await resolve(u.hostname))) throw new HttpError(400, "BAD_URL", "공개 인터넷 주소가 아니에요");
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
     let r;
-    try { r = await f(u.href, { redirect: "manual", signal: ctl.signal, credentials: "omit", headers: { accept: "text/html,text/plain;q=0.9", "user-agent": "YoonSiljangBot/1.0 (+user-requested single page read)" } }); }
+    try { r = await untilDeadline(f(u.href, { redirect: "manual", signal: ctl.signal, credentials: "omit", headers: { accept: "text/html,text/plain;q=0.9", "user-agent": "YoonSiljangBot/1.0 (+user-requested single page read)" } }), Math.min(deadline, Date.now() + timeoutMs), ctl, u.href); }
     catch (e) { clearTimeout(t); throw new HttpError(502, "FETCH_FAILED", "페이지를 읽지 못했어요"); }
     clearTimeout(t);
     if (r.status >= 300 && r.status < 400 && r.headers.get("location")) { u = checkPublicUrl(new URL(r.headers.get("location"), u).href); continue; }
@@ -51,8 +73,11 @@ export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_
     if (!/text\/html|text\/plain|application\/xhtml/.test(ct)) throw new HttpError(422, "PAGE_UNREADABLE", "웹 페이지(HTML)가 아니에요");
     const reader = r.body.getReader(); let got = 0; const parts = [];
     for (;;) {
-      if (Date.now() > deadline) { reader.cancel(); throw new HttpError(504, "FETCH_FAILED", "페이지가 너무 느려요"); }
-      const { done, value } = await reader.read(); if (done) break; got += value.length; if (got > maxBytes) { reader.cancel(); break; } parts.push(value);
+      // the pending read itself is bounded by the deadline (round-2 R10: a stalled body waited past it)
+      let chunk;
+      try { chunk = await untilDeadline(reader.read(), deadline, ctl, u.href); }
+      catch (e) { reader.cancel().catch(() => {}); throw new HttpError(504, "FETCH_FAILED", "페이지가 너무 느려요"); }
+      const { done, value } = chunk; if (done) break; got += value.length; if (got > maxBytes) { reader.cancel().catch(() => {}); break; } parts.push(value);
     }
     const html = new TextDecoder().decode(concat(parts));
     if (/captcha|recaptcha|hcaptcha|cf-challenge|접근이 차단/i.test(html.slice(0, 20000))) throw new HttpError(422, "PAGE_BLOCKED", "자동 접근 확인(CAPTCHA) 페이지라 읽지 않았어요");

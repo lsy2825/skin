@@ -128,3 +128,15 @@ test("R14: a one-time special with no regular price is never multiplied into a f
   const r = Pricing.lineCost([{ i: 1, p: 100, special: true }, { i: 2, p: 300 }], [{ i: 2, p: 300 }], 3, null);
   assert.equal(r.total, 700); assert.equal(r.laterRegular, true);
 });
+
+test("R11: the CSP allows exactly the origins the config calls (an API origin missing from connect-src is caught)", () => {
+  const { check } = require("../tools/check_csp.js");
+  const html = fs.readFileSync(path.join(__dirname, "../app/index.html"), "utf8"), cfg = fs.readFileSync(path.join(__dirname, "../app/config.js"), "utf8");
+  assert.equal(check(html, cfg).ok, true, JSON.stringify(check(html, cfg).problems));
+  const withApi = cfg.replace('apiBase: ""', 'apiBase: "https://api.yoonsiljang.example"');
+  const r = check(html, withApi);
+  assert.equal(r.ok, false); assert.match(r.problems.join(" "), /connect-src is missing the API origin/);
+  const fixed = html.replace("connect-src 'self'", "connect-src 'self' https://api.yoonsiljang.example");
+  assert.equal(check(fixed, withApi).ok, true);
+  assert.equal(check(fixed, withApi.replace('mode: "DEMO"', 'mode: "WEB_PG"')).ok, false, "Toss origins required for web payments");
+});

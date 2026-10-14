@@ -69,7 +69,8 @@ export function postProcess(out, { year }) {
     vat_status: out.vat_status, offers, warnings, not_price_document: out.document_type === "NOT_A_PRICE_DOCUMENT" };
 }
 
-export function openaiVision({ apiKey, base = "https://api.openai.com", model, strongModel, maxOutputTokens = 1500, maxKrwPerJob = 60, timeoutMs = 45000, fetch: f = fetch }, rpc) {
+export function openaiVision({ apiKey, base = "https://api.openai.com", model, strongModel, maxOutputTokens = 1500, maxInputTokens = 8000, maxKrwPerJob = 60, timeoutMs = 45000,
+  maxUserCallsPerDay = 30, maxServiceKrwPerDay = 30000, fetch: f = fetch }, rpc) {
   if (!apiKey || !model) throw new Error("OPENAI_API_KEY / OPENAI_VISION_MODEL are not set");
   async function call(m, imageDataUrl, signal) {
     const r = await f(`${base}/v1/responses`, {
@@ -99,22 +100,26 @@ export function openaiVision({ apiKey, base = "https://api.openai.com", model, s
     // → { ok, result?, error?, cost_krw, calls }. The caller (job runner) captures credits only when ok and the user saw a result.
     async extract(imageDataUrl, { jobId, userId, year }) {
       let spent = 0; const calls = [];
+      const budgetJob = jobId || crypto.randomUUID();                 // the per-job budget applies even to a call outside a job
       const plan = [{ m: model, kind: "PRIMARY" }, { m: strongModel || model, kind: "FALLBACK" }];
       for (const step of plan) {
-        if (spent >= maxKrwPerJob) { calls.push({ kind: step.kind, skipped: "BUDGET" }); break; }
+        // the call's worst-case cost is reserved BEFORE it runs, against the job, the user's day and the service's day
+        // (round-2 R08); the fallback call goes through the same reservation, so a job can never pass maxKrwPerJob
+        const hold = await rpc("commerce_ai_reserve", { provider: "OPENAI", model: step.m, call_kind: step.kind, job_id: budgetJob, user_id: userId,
+          max_input_tokens: maxInputTokens, max_output_tokens: maxOutputTokens, max_job_krw: maxKrwPerJob, max_user_calls: maxUserCallsPerDay, max_day_krw: maxServiceKrwPerDay });
+        if (!hold || !hold.ok) { calls.push({ kind: step.kind, skipped: (hold && hold.reason) || "BUDGET" }); if (!calls.some((c) => c.ok !== undefined)) return { ok: false, error: (hold && hold.reason) || "BUDGET", cost_krw: spent, calls }; break; }
         const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
         let res;
         try { res = await call(step.m, imageDataUrl, ctl.signal); } catch (e) { res = { ok: false, usage: { input_tokens: 0, cached_input_tokens: 0, output_tokens: 0 }, error: e.name === "AbortError" ? "TIMEOUT" : "NETWORK", retryable: true }; }
         finally { clearTimeout(t); }
-        const rec = await rpc("commerce_record_ai_usage", { provider: "OPENAI", model: step.m, call_kind: step.kind, job_id: jobId, user_id: userId, image_count: 1, ok: res.ok, ...res.usage });
+        const rec = await rpc("commerce_ai_settle", { hold_id: hold.hold_id, image_count: 1, ok: res.ok, ...res.usage });
         spent += Number(rec && rec.cost_krw) || 0;
-        if (rec && rec.priced === false) spent = Infinity;     // an unpriced call cannot be budgeted: no second call (5.1 audit)
-        calls.push({ kind: step.kind, model: step.m, ok: res.ok, error: res.error, cost_krw: rec && rec.cost_krw, priced: rec && rec.priced });
+        calls.push({ kind: step.kind, model: step.m, ok: res.ok, error: res.error, cost_krw: rec && rec.cost_krw, priced: rec && rec.priced, estimated: rec && rec.estimated });
         if (res.ok) {
           const result = postProcess(res.out, { year });
           if (result.offers.length || result.not_price_document) return { ok: true, result, cost_krw: spent, calls };
           if (step.kind === "FALLBACK") return { ok: true, result, cost_krw: spent, calls };
-          continue;                                   // nothing read: one stronger attempt (logged, not charged extra)
+          continue;                                   // nothing read: one stronger attempt (reserved like the first)
         }
         if (!res.retryable) return { ok: false, error: res.error, cost_krw: spent, calls };
       }

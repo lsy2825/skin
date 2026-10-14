@@ -7,7 +7,7 @@
 // transactionId. Refunds arrive as App Store Server Notifications V2 (signedPayload, same JWS checks) → REVOCATION.
 // Google Play: the app sends { productId, purchaseToken }. The server reads purchases.products.get with a service account,
 // requires purchaseState 0, grants once per orderId, then consumes the purchase. Refunds: Voided Purchases API → REVOCATION.
-import { X509Certificate, createPublicKey, verify as cverify, createSign } from "node:crypto";
+import { X509Certificate, createPublicKey, verify as cverify, createSign, createHash } from "node:crypto";
 import { HttpError, fetchT } from "../http.mjs";
 
 const b64u = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
@@ -40,11 +40,17 @@ function hasExt(cert, oid) {
   return cert.raw.includes(Buffer.from([0x06, enc.length, ...enc]));
 }
 
-export function appleAdapter({ bundleId, environment = "Sandbox", rootCertsB64, now }) {
+// The account a store purchase belongs to (round-2 R12): the app passes the signed-in user's id when it starts the purchase
+// (Apple appAccountToken = the user UUID; Google obfuscatedAccountId = accountRef(userId)), the store signs it into the
+// transaction, and the server grants only to that same user — someone else's receipt is refused even though it is valid.
+export const accountRef = (userId) => createHash("sha256").update(`yoonsiljang:${userId}`).digest("hex").slice(0, 64);
+export function appleAdapter({ bundleId, environment = "Sandbox", rootCertsB64, now, requireAccount = true }) {
   return {
     // → the store_grant input (the caller passes it to commerce_store_grant with the user id)
-    verifyTransaction(signedTransactionInfo) {
+    verifyTransaction(signedTransactionInfo, userId) {
       const t = verifyAppleJws(signedTransactionInfo, { rootCertsB64, now: now ? now() : Date.now() });
+      if (userId && (t.appAccountToken ? String(t.appAccountToken).toLowerCase() !== String(userId).toLowerCase() : requireAccount))
+        throw new HttpError(403, "STORE_ACCOUNT_MISMATCH", "이 계정으로 한 구매가 아니에요");
       if (t.bundleId !== bundleId) throw new HttpError(400, "BAD_STORE_RECEIPT", "다른 앱의 구매예요");
       if (t.environment !== environment) throw new HttpError(400, "BAD_STORE_RECEIPT", `${environment} 환경의 구매가 아니에요`);
       if (t.type !== "Consumable") throw new HttpError(400, "BAD_STORE_RECEIPT", "크레딧(소모성) 상품이 아니에요");
@@ -64,7 +70,7 @@ export function appleAdapter({ bundleId, environment = "Sandbox", rootCertsB64, 
 }
 
 // Google: service-account JWT → OAuth token → androidpublisher v3
-export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch = fetch, now = () => Date.now(), allowTestPurchases = false }) {
+export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch = fetch, now = () => Date.now(), allowTestPurchases = false, requireAccount = true }) {
   const f = (url, opts) => fetchT(rawFetch, url, opts, 10000);
   const sa = typeof serviceAccountJson === "string" ? JSON.parse(serviceAccountJson) : serviceAccountJson;
   let tok = { at: 0, value: null };
@@ -82,7 +88,7 @@ export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch
   }
   const api = (p) => `https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/purchases/products/${p}`;
   return {
-    async verifyPurchase({ productId, purchaseToken }) {
+    async verifyPurchase({ productId, purchaseToken }, userId) {
       if (!/^[a-z0-9_.]{1,100}$/.test(productId || "") || typeof purchaseToken !== "string" || purchaseToken.length > 2000) throw new HttpError(400, "BAD_STORE_RECEIPT", "구매 정보 형식이 올바르지 않아요");
       const r = await f(api(`${productId}/tokens/${encodeURIComponent(purchaseToken)}`), { headers: { authorization: `Bearer ${await token()}` } });
       if (r.status === 404 || r.status === 410) throw new HttpError(400, "BAD_STORE_RECEIPT", "Google에 없는 구매예요");
@@ -90,6 +96,8 @@ export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch
       const p = await r.json();
       if (p.purchaseState !== 0) throw new HttpError(409, "PURCHASE_NOT_COMPLETED", p.purchaseState === 2 ? "결제 대기 중인 구매예요" : "취소된 구매예요");
       if (!p.orderId) throw new HttpError(400, "BAD_STORE_RECEIPT", "주문 번호가 없는 구매예요");
+      if (userId && (p.obfuscatedExternalAccountId ? p.obfuscatedExternalAccountId !== accountRef(userId) : requireAccount))
+        throw new HttpError(403, "STORE_ACCOUNT_MISMATCH", "이 계정으로 한 구매가 아니에요");
       // license-tester purchases (purchaseType 0) never grant credits in production (5.1 audit)
       if (p.purchaseType === 0 && !allowTestPurchases) throw new HttpError(409, "TEST_PURCHASE", "테스트 구매는 운영 환경에서 크레딧을 받지 않아요");
       return { provider: "GOOGLE", transaction_id: p.orderId, store_product_id: productId, purchased_at: new Date(+p.purchaseTimeMillis).toISOString(),
@@ -98,14 +106,25 @@ export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch
     },
     // after the grant: consume so the user can buy the pack again (a failed consume is retried; the grant is already idempotent)
     async consume({ productId, purchaseToken }) {
-      const r = await f(api(`${productId}/tokens/${encodeURIComponent(purchaseToken)}:consume`), { method: "POST", headers: { authorization: `Bearer ${await token()}` } });
-      return { ok: r.ok };
+      try {
+        const r = await f(api(`${productId}/tokens/${encodeURIComponent(purchaseToken)}:consume`), { method: "POST", headers: { authorization: `Bearer ${await token()}` } });
+        return { ok: r.ok, status: r.status };
+      } catch (e) { return { ok: false, status: 0 }; }
     },
-    async voided({ startTimeMillis }) {
-      const r = await f(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/purchases/voidedpurchases?startTime=${startTimeMillis}`, { headers: { authorization: `Bearer ${await token()}` } });
-      if (!r.ok) throw new HttpError(502, "STORE_LOOKUP_FAILED", "Google 환불 목록을 읽지 못했어요");
-      const j = await r.json();
-      return (j.voidedPurchases || []).map((v) => ({ provider: "GOOGLE", provider_payment_id: v.orderId, provider_refund_id: `google-${v.orderId}-${v.voidedTimeMillis}`, kind: "REVOCATION" }));
+    // every page (round-2 R12: only the first page was read, and a failure looked like 'no refunds'); throws on failure so
+    // the sweep can report it and keep its cursor where it was
+    async voided({ startTimeMillis, maxPages = 20 }) {
+      const out = []; let page = null;
+      for (let i = 0; i < maxPages; i++) {
+        const q = `startTime=${startTimeMillis}&maxResults=1000${page ? `&token=${encodeURIComponent(page)}` : ""}`;
+        const r = await f(`https://androidpublisher.googleapis.com/androidpublisher/v3/applications/${encodeURIComponent(packageName)}/purchases/voidedpurchases?${q}`, { headers: { authorization: `Bearer ${await token()}` } });
+        if (!r.ok) throw new HttpError(502, "STORE_LOOKUP_FAILED", "Google 환불 목록을 읽지 못했어요");
+        const j = await r.json();
+        for (const v of j.voidedPurchases || []) out.push({ provider: "GOOGLE", provider_payment_id: v.orderId, provider_refund_id: `google-${v.orderId}-${v.voidedTimeMillis}`, kind: "REVOCATION", at: +v.voidedTimeMillis || null });
+        page = j.tokenPagination && j.tokenPagination.nextPageToken;
+        if (!page) return out;
+      }
+      throw new HttpError(502, "STORE_LOOKUP_INCOMPLETE", "Google 환불 목록이 너무 길어 다음 실행에서 이어 읽어요");
     },
   };
 }

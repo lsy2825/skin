@@ -30,6 +30,8 @@ export function loadConfig(env) {
     toss: { secretKey: toss, clientKey: E("TOSS_CLIENT_KEY"), base: E("TOSS_API_BASE", "https://api.tosspayments.com") },
     openai: {
       apiKey: E("OPENAI_API_KEY"),
+      // round-2 O7: AI stays OFF unless the operator turns it on explicitly — a key alone does not start spending
+      enabled: E("AI_FEATURES_ENABLED", "false") === "true",
       base: E("OPENAI_API_BASE", "https://api.openai.com").replace(/\/(v1)?\/?$/, ""),   // adapters add /v1/responses
       // model names are configuration: check the provider's current model list and prices before changing them
       model: E("OPENAI_MODEL_DEFAULT"), strongModel: E("OPENAI_MODEL_STRONG"), textModel: E("OPENAI_MODEL_TEXT"),

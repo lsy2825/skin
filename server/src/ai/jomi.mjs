@@ -23,6 +23,10 @@ export async function answer(q, ctx, { ai, rpc, jobId, userId, fetch: f = fetch 
   const fx = facts(q, ctx);
   const plain = deterministicAnswer(fx);
   if (!ai || !ai.apiKey || !ai.model || !fx.groups.length) return { kind: "RULES", answer: plain, facts: fx };
+  // the call's worst case is reserved first (round-2 R08); no reservation → the rule-based answer, nothing spent
+  const hold = rpc ? await rpc("commerce_ai_reserve", { provider: "OPENAI", model: ai.model, call_kind: "PRIMARY", job_id: jobId, user_id: userId,
+    max_input_tokens: 3000, max_output_tokens: 600, max_user_calls: ai.maxUserCallsPerDay ?? 30, max_day_krw: ai.maxServiceKrwPerDay ?? 30000 }).catch(() => null) : { ok: true };
+  if (!hold || !hold.ok) return { kind: "RULES", answer: plain, facts: fx, note: "오늘 AI 한도에 닿아 규칙 기반 답을 보여드려요(추가 차감 없음)" };
   const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ai.timeoutMs || 20000);
   let body = {}, ok = false;
   try {
@@ -35,7 +39,7 @@ export async function answer(q, ctx, { ai, rpc, jobId, userId, fetch: f = fetch 
     body = await r.json().catch(() => ({})); ok = r.ok;
   } catch (e) { ok = false; } finally { clearTimeout(t); }
   const u = body.usage || {};
-  if (rpc) await rpc("commerce_record_ai_usage", { provider: "OPENAI", model: ai.model, call_kind: "PRIMARY", job_id: jobId, user_id: userId, ok,
+  if (rpc && hold.hold_id) await rpc("commerce_ai_settle", { hold_id: hold.hold_id, ok,
     input_tokens: u.input_tokens || 0, cached_input_tokens: (u.input_tokens_details || {}).cached_tokens || 0, output_tokens: u.output_tokens || 0 });
   let text = null;
   try { const m = (body.output || []).find((o) => o.type === "message"); const p = m && m.content.find((c) => c.type === "output_text"); text = p && JSON.parse(p.text).answer; } catch (e) { text = null; }
