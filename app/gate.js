@@ -6,12 +6,19 @@
 
 // First visit (no checked price copy saved on this phone yet): start the download of home.json — the home screen's prices,
 // about a tenth of data.json (round-2 O2) — now, before the app scripts load, so prices appear sooner on a slow line.
-// state/data.js takes this response over and fetches data.json after it (docs/PRICE_SYNC_ARCHITECTURE.md). With a saved
-// copy nothing starts here: the app asks data-meta.json first and downloads only a newer version.
+// data.json starts as soon as home.json has arrived (not in parallel, so the two do not share the line; not later, so the
+// full file is not held back by the app scripts). state/data.js takes both responses over (docs/PRICE_SYNC_ARCHITECTURE.md).
+// With a saved copy nothing starts here: the app asks data-meta.json first and downloads only a newer version.
 window.__pcEarly = (function () {
   try {
     if (typeof caches === "undefined" || window.isSecureContext === false || window.top !== window.self) return null;
-    return caches.open("pc-data-v1").then((c) => c.match("current-meta")).then((m) => m ? null : fetch("home.json", { cache: "no-cache" })).catch(() => null);
+    var home = caches.open("pc-data-v1").then(function (c) { return c.match("current-meta"); })
+      .then(function (m) { return m ? null : fetch("home.json", { cache: "no-cache" }); }).catch(function () { return null; });
+    window.__pcEarlyFull = home.then(function (r) {
+      if (!r) return null;
+      return (r.ok ? r.clone().arrayBuffer() : Promise.resolve()).catch(function () {}).then(function () { return fetch("data.json", { cache: "no-cache" }); });
+    }).catch(function () { return null; });
+    return home;
   } catch (e) { return null; }
 })();
 

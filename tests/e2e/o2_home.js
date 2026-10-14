@@ -50,7 +50,7 @@ async function firstVisit(b, { prefs = {}, breakHome = false } = {}) {
     const shown = await p.waitForSelector('.pc', { timeout: 20000 }).then(() => true).catch(() => false);
     ok('data.json을 붙잡아 둔 동안 홈 가격 카드가 보임', shown);
     ok('홈 요약으로 그린 상태(partial)', await p.evaluate(() => window.App.Data.SYNC.partial === true));
-    ok('알림 줄: 홈 가격 먼저 · 전체 받는 중', /홈 가격을 먼저/.test(await p.locator('#netbar').innerText().catch(() => '')));
+    ok('머리말에 전체 가격 받는 중 표시(알림 줄은 숨김 — 화면 밀림 없음)', /전체 가격을 받는 중/.test(await p.locator('#upd').innerText()) && await p.locator('#netbar').isHidden());
     const before = await homeNumbers(p);
     ok('시술 전체 개수는 전체 파일 기준', /시술 5,?\d{3}개 전체 비교/.test(before.all), before.all);
     // a card → compare waits for the full file
@@ -65,7 +65,7 @@ async function firstVisit(b, { prefs = {}, breakHome = false } = {}) {
     const after = await homeNumbers(p);
     const d = diff(before, after);
     ok(`홈 숫자가 전체 파일과 같음 (탭 ${Object.keys(before).filter((k) => k.startsWith('tab:')).length}개·발견·개수·범위)`, !d.length, d.map((k) => `${k}: ${String(before[k]).slice(0, 60)} ≠ ${String(after[k]).slice(0, 60)}`).join(' / '));
-    ok('알림 줄에서 홈 요약 문구 사라짐', !/홈 가격을 먼저/.test(await p.locator('#netbar').innerText().catch(() => '')));
+    ok('머리말이 날짜·지점 수로 돌아옴', /기준 · \d+곳/.test(await p.locator('#upd').innerText()), await p.locator('#upd').innerText());
     ok('페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
 

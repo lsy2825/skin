@@ -24,13 +24,20 @@ const metaFor = (buf, updated) => { const sha = crypto.createHash('sha256').upda
   const cdp = await ctx.newCDPSession(p);
   await cdp.send('Network.enable');
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 40, downloadThroughput: 1.6 * 1024 * 1024, uploadThroughput: 512 * 1024 });
+  await p.addInitScript(() => { window.__seenTxt = []; document.addEventListener('DOMContentLoaded', () => new MutationObserver(() => {
+    for (const s of ['#load-msg', '#upd']) { const e = document.querySelector(s); if (e && e.textContent && window.__seenTxt[window.__seenTxt.length - 1] !== e.textContent) window.__seenTxt.push(e.textContent); } })
+    .observe(document.body, { subtree: true, childList: true, characterData: true })); });
   await p.goto(BASE); await p.evaluate(async () => { localStorage.clear(); for (const k of await caches.keys()) await caches.delete(k); });
+  await cdp.send('Network.clearBrowserCache');   // a real first visit: the goto above must not leave the price files in the HTTP cache
   dataReq = 0; await p.reload(); await unlock();
   const seen = new Set();
-  for (let t = 0; t < 60; t++) { const m = await p.locator('#load-msg').textContent().catch(() => null); if (m) seen.add(m.replace(/\(.*\)/, '').trim()); if (await p.locator('.pc').count()) break; await p.waitForTimeout(150); }
+  // round-2 O2: the home screen may already be up from home.json — then data.json's progress is in the header caption.
+  // Every text the loading line and the caption show is recorded in the page (polling missed the fast ones)
+  await p.waitForFunction(() => window.App && window.App.Data.SYNC.have, null, { timeout: 30000 }).catch(() => {});
+  for (const m of await p.evaluate(() => window.__seenTxt || [])) seen.add(m.replace(/\(.*\)/, '').trim());
   await p.waitForSelector('.pc', { timeout: 30000 });
   const pcts = [...seen].filter((x) => /\d+%/.test(x));
-  ok('첫 방문: 받는 동안 실제 진행률(%)', pcts.length >= 2, pcts.slice(0, 4).join(' / '));
+  ok('첫 방문: 받는 동안 실제 진행률(%)', pcts.length >= 2, (pcts.length ? pcts : [...seen]).slice(0, 4).join(' / '));
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   const saved = await p.evaluate(async () => { const c = await caches.open('pc-data-v1'); const m = await (await c.match('current-meta')).json(); return { v: m.version, has: !!(await c.match(`data-${m.version}`)) }; });
   const meta = JSON.parse(fs.readFileSync(path.join(APP, 'data-meta.json'), 'utf8'));
@@ -85,12 +92,29 @@ const metaFor = (buf, updated) => { const sha = crypto.createHash('sha256').upda
   await p.evaluate(async () => { for (const k of await caches.keys()) await caches.delete(k); });
   let broken = true;
   await p.route('**/data.json', (r) => broken ? r.fulfill({ status: 200, contentType: 'application/json', body: bad }) : r.continue());
+  await p.route('**/home.json', (r) => broken ? r.fulfill({ status: 404, body: '' }) : r.continue());   // no home summary either (O2 case below)
   await p.reload(); await p.waitForSelector('#main [role=alert]', { timeout: 20000 }).catch(() => {});
   const et = await p.locator('#main').innerText();
   ok('첫 방문 + 손상: 오류 화면에 이유(체크섬)와 다시 시도', /불러오지 못했어요/.test(et) && /체크섬|날짜|수가/.test(et) && /다시 시도/.test(et), et.split('\n').slice(0, 4).join(' / '));
   broken = false;
   await p.locator('#main .btn', { hasText: '다시 시도' }).click(); await p.waitForSelector('.pc', { timeout: 20000 }).catch(() => {});
   ok('다시 시도 → 정상', await p.locator('.pc').count() > 0);
+  await p.unroute('**/home.json');
+
+  // 6b) round-2 O2: the same corrupted data.json, but home.json is fine — the home screen shows the checked home prices,
+  // the notice bar says the full prices failed, and another screen tells why
+  await p.evaluate(async () => { for (const k of await caches.keys()) await caches.delete(k); });
+  broken = true;
+  await p.reload(); await p.waitForSelector('.pc', { timeout: 20000 }).catch(() => {});
+  await p.waitForFunction(() => window.App.Data.SYNC.failed, null, { timeout: 30000 }).catch(() => {});
+  const nb6 = await p.locator('#netbar').innerText().catch(() => '');
+  await p.evaluate(() => { location.hash = '#compare'; }); await p.waitForTimeout(400);
+  const why = await p.locator('#main').innerText();
+  ok('첫 방문 + 손상(홈 요약은 정상): 홈 가격 + "전체 가격을 받지 못했어요" + 다른 화면에 이유와 다시 시도', await p.evaluate(() => window.App.Data.SYNC.partial) && /전체 가격을 받지 못했어요/.test(nb6) && /체크섬|날짜|수가/.test(why) && /다시 시도/.test(why), `${nb6} / ${why.split('\n').slice(0, 3).join(' / ')}`);
+  broken = false;
+  await p.locator('#main .btn', { hasText: '다시 시도' }).click();
+  const back = await p.waitForFunction(() => window.App.Data.SYNC.have && !document.querySelector('#load-msg'), null, { timeout: 30000 }).then(() => true).catch(() => false);
+  ok('다시 시도 → 전체 가격으로 기다리던 화면이 열림', back && /^#compare/.test(await p.evaluate(() => location.hash)));
   ok('스크립트 오류 없음', !errs.length, errs.join(' | '));
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1;
 })();

@@ -65,7 +65,9 @@
   }
   async function download(total, signal) {
     await earlyHome();
-    const r = await fetch("data.json", { cache: "no-cache", signal });
+    const early = window.__pcEarlyFull ? await window.__pcEarlyFull : null;   // gate.js started it right after home.json
+    window.__pcEarlyFull = null;
+    const r = early && early.ok ? early : await fetch("data.json", { cache: "no-cache", signal });
     if (!r.ok) throw new Error(`가격 파일 응답 ${r.status}`);
     if (!r.body || !r.body.getReader) return new Uint8Array(await r.arrayBuffer());
     const rd = r.body.getReader(), parts = [];

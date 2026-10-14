@@ -110,7 +110,8 @@
   const fullMsg = () => SYNC.failed ? "전체 가격을 받지 못했어요" : `전체 가격을 받는 중… ${SYNC.total ? `${fullPct()}%` : ""}`.trim();
   function fullWait() {
     return h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg(SYNC.failed ? "empty" : "thinking", "face", 40), h("span", { id: "load-msg" }, fullMsg())),
-      SYNC.failed ? h("button", { class: "btn block", type: "button", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); render(); } }, icon("refresh-cw", "sm"), "다시 시도")
+      SYNC.failed ? [h("p", { class: "tiny" }, `자세히: ${SYNC.failed}${SYNC.tries > 1 ? ` (${SYNC.tries}번 시도)` : ""}`),
+        h("button", { class: "btn block", type: "button", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); render(); } }, icon("refresh-cw", "sm"), "다시 시도")]
         : h("p", { class: "sub" }, "홈 화면에 필요한 가격만 먼저 받았어요. 이 화면은 전체 가격이 오면 바로 열려요."), h("div", { class: "skel", style: "height:160px" }));
   }
   function whenFull(fn, msg) { if (!partial()) return fn(); pending = fn; if (msg) toast(msg); }
@@ -136,8 +137,10 @@
     if (!bar || !D) return;
     if (SYNC.ready && !toldReady) { toldReady = true; const t = jline("newPrices"); if (t) setTimeout(() => jomiToast("happy", t), 300); }
     let kids = null;
-    if (partial()) kids = SYNC.failed ? [icon("triangle-alert", "sm"), h("span", {}, "전체 가격을 받지 못했어요. 홈 가격만 보여요"), h("button", { type: "button", class: "nb-act", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); paintSync(); } }, "다시 시도")]
-      : [h("span", { class: "nb-dot" }), h("span", {}, `홈 가격을 먼저 보여줘요 · ${fullMsg()}`)];
+    // home.json on screen: the progress goes in the header caption (a text change — a notice bar would push the page down
+    // and back up again when the full file arrives); the bar appears only if the full file could not be read
+    if (partial() && up && !SYNC.failed) up.textContent = fullMsg();
+    if (partial()) kids = SYNC.failed ? [icon("triangle-alert", "sm"), h("span", {}, "전체 가격을 받지 못했어요. 홈 가격만 보여요"), h("button", { type: "button", class: "nb-act", onclick: () => { SYNC.failed = ""; loadData().catch(() => {}); paintSync(); } }, "다시 시도")] : null;
     else if (ss.offline) kids = [icon("wifi-off", "sm"), h("span", {}, `저장된 가격 정보입니다. 현재 가격과 다를 수 있습니다. (${D.meta.updated} 수집)`)];
     else if (SYNC.ready) kids = [icon("refresh-cw", "sm"), h("span", {}, `새 가격(${SYNC.server ? SYNC.server.updated : ""})이 준비됐어요`), h("button", { type: "button", class: "nb-act", onclick: () => location.reload() }, "새 가격 보기")];
     else if (ss.state === "PARTIALLY_READY") kids = [h("span", { class: "nb-dot" }), h("span", {}, Sync.label(ss, SYNC))];
