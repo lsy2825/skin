@@ -12,13 +12,13 @@ const MASK = (p) => p && {
   cancels: (p.cancels || []).map((c) => ({ transactionKey: c.transactionKey, cancelAmount: c.cancelAmount, canceledAt: c.canceledAt, cancelStatus: c.cancelStatus })),
 };
 
-export function tossAdapter({ secretKey, base = "https://api.tosspayments.com", fetch: f = fetch }) {
+export function tossAdapter({ secretKey, base = "https://api.tosspayments.com", fetch: f = fetch, timeoutMs = 10000 }) {
   if (!secretKey) throw new Error("TOSS_SECRET_KEY is not set");
   const auth = "Basic " + btoa(secretKey + ":");
   async function call(method, path, body, idem) {
     const headers = { authorization: auth, "content-type": "application/json" };
     if (idem) headers["idempotency-key"] = idem;
-    const r = await fetchT(f, base + path, { method, headers, body: body ? JSON.stringify(body) : undefined }, 10000);
+    const r = await fetchT(f, base + path, { method, headers, body: body ? JSON.stringify(body) : undefined }, timeoutMs);
     const j = await r.json().catch(() => ({}));
     return { ok: r.ok, status: r.status, body: j };
   }

@@ -39,6 +39,40 @@ def stats(path):
     return len(rows), len({r["branch"] for r in rows})
 
 
+def values(path):
+    """price sanity of one raw file (5.1 audit): share of rows whose sale price does not read as a positive number, and
+    the median of the readable prices. A scraper that breaks on a site change often keeps the row count but not the values."""
+    if not os.path.exists(path):
+        return None
+    sales = []
+    bad = 0
+    for r in csv.DictReader(open(path, encoding="utf-8")):
+        try:
+            v = float(r.get("sale") or "")
+        except ValueError:
+            v = 0
+        if v > 0:
+            sales.append(v)
+        else:
+            bad += 1
+    n = len(sales) + bad
+    sales.sort()
+    return {"bad_share": bad / n if n else 1.0, "median": sales[len(sales) // 2] if sales else 0}
+
+
+def malformed(new, old):
+    """why the new file must not replace the accepted one, or '' (thresholds: >10% unreadable prices, or the median price
+    moving more than 3x up or down against the accepted file — a whole brand does not change prices like that in a week)"""
+    vn, vo = values(new), values(old)
+    if not vn:
+        return ""
+    if vn["bad_share"] > 0.10:
+        return f"가격을 읽지 못한 줄 {vn['bad_share']:.0%}"
+    if vo and vo["median"] and vn["median"] and not (vo["median"] / 3 <= vn["median"] <= vo["median"] * 3):
+        return f"가격 중간값 {vo['median']:,.0f} → {vn['median']:,.0f}원"
+    return ""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-scrape", action="store_true")
@@ -68,14 +102,15 @@ def main():
         ok = True if a.skip_scrape else (False if blocked else run([f"scrape/{key}.py"]))
         n_new, b_new = stats(new) if ok else (0, 0)
         n_old, b_old = stats(old)
-        bad = (not ok or n_new == 0 or (n_old and (n_new < 0.7 * n_old or b_new < 0.7 * b_old)))
+        why = malformed(new, old) if ok and n_new else ""
+        bad = (not ok or n_new == 0 or (n_old and (n_new < 0.7 * n_old or b_new < 0.7 * b_old)) or bool(why))
         if a.skip_scrape and n_old:
             shutil.copy(old, new)
             report.append(f"- {brand}: 저장된 자료 {n_old:,}행 · {b_old}개 지점 (이번엔 수집 안 함)")
             continue
         if bad and n_old:
             shutil.copy(old, new)
-            report.append(f"- **{brand}: 지난 자료 유지** (새로 읽은 행 {n_new:,}/지점 {b_new} vs 지난번 {n_old:,}/{b_old}) — 사이트 확인 필요")
+            report.append(f"- **{brand}: 지난 자료 유지** (새로 읽은 행 {n_new:,}/지점 {b_new} vs 지난번 {n_old:,}/{b_old}{', ' + why if why else ''}) — 사이트 확인 필요")
         elif bad:
             report.append(f"- **{brand}: 수집 실패, 이전 자료도 없음** — 이번 데이터에서 빠짐")
             if os.path.exists(new):

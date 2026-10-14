@@ -532,3 +532,32 @@ test("admin dashboard: MFA admin only; actuals vs estimates labelled; demo reven
   assert.ok(b.health.db_size_bytes > 0 && b.health.last_reconcile);
   assert.ok(b.premium_users.active_30d >= 1);
 });
+
+test("network interruption, rate limits, account switching", async () => {
+  // Toss does not answer the confirm in time: the user gets a retryable error, nothing is granted, the order stays open,
+  // and the reconciliation sweep grants it once Toss shows it paid
+  const hang = { ...TOSS, fetch: async (url, o) => (url.endsWith("/v1/payments/confirm") ? new Promise((res, rej) => o.signal.addEventListener("abort", () => rej(new Error("aborted")))) : TOSS.fetch(url, o)) };
+  const app = makeApp({ toss: tossAdapter({ secretKey: "test_sk_fake", fetch: hang.fetch, timeoutMs: 50 }) }), u = await D.newUser(), tok = await tokenFor(u);
+  const { o, pk } = await buyWeb(app, tok);
+  const c = await req(app, "POST", "/v1/checkout/toss/confirm", { token: tok, body: { paymentKey: pk, orderId: o.order_id, amount: 1990 } });
+  assert.equal(c.status, 504); assert.equal(c.body.error, "UPSTREAM_TIMEOUT");
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: tok })).body.paid, 0);
+  TOSS.pays.get(pk).status = "DONE";
+  await D.pool.query("update public.orders set created_at = now() - interval '15 minutes' where id = $1", [o.order_id]);
+  await app.flows.reconcile();
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: tok })).body.paid, 12);
+  // rate limit: the 21st job request within a minute is refused before any work
+  const rl = makeApp(), t2 = await tokenFor(await D.newUser());
+  const codes = [];
+  for (let i = 0; i < 21; i++) codes.push((await req(rl, "POST", "/v1/jobs", { token: t2, body: { feature: "NOPE", input: {}, idempotency_key: k("j") } })).status);
+  assert.equal(codes.filter((x) => x === 400).length, 20); assert.equal(codes[20], 429);
+  // account switching: B signs in on the same phone and sees B's wallet and reports only
+  const ua = await D.newUser(), ub = await D.newUser(), ta = await tokenFor(ua), tb = await tokenFor(ub);
+  await D.call("commerce_grant_promo", { user_id: ua, amount: 3, reason: "test", actor: "test", idempotency_key: k() });
+  const ja = await req(app, "POST", "/v1/jobs", { token: ta, body: { feature: "REGIONAL_PRICE_REPORT", input: { key: "X01" }, idempotency_key: k("job") } });
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: tb })).body.available, 0);
+  assert.equal((await req(app, "GET", "/v1/reports", { token: tb })).body.length, 0);
+  assert.equal((await req(app, "GET", `/v1/reports/${ja.body.report_id}`, { token: tb })).status, 404);
+  const sameKey = await req(app, "POST", "/v1/jobs", { token: tb, body: { feature: "REGIONAL_PRICE_REPORT", input: { key: "X01" }, idempotency_key: "job-same-key-x1" } });
+  assert.equal(sameKey.status, 402, "another account's balance is never used");
+});

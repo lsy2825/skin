@@ -10,8 +10,10 @@
 | `tests/e2e/commerce50.js` | 앱 시연: 충전·비용 먼저·차감/반환·다시 열기·고치기 무료·공유 요약·이력 판매 안 함·죠미 무료 안내·30일 계획·부족 시 안내·사진 읽기 닫힘·운영 가정 카드·외부 요청 0 | 27/27 |
 | `tests/run_regression.sh` | 위 + 기존 전체를 한 번에 | §0.1 |
 
-### 0.1 전체 회귀 (5.0 코드)
-원장 10/10 · API 12/12 · DB 보안 통과 · e2e commerce50 27/27, qa7, ux_qa, concern, xss, jomi, objective, frame, table_attr, compare_cards, v5_features, demo_features, data_sync, pricenow, audit40, taxonomy40, pricing40, ops40 통과. 단위 82/82·비밀값 검사는 고친 뒤 따로 다시 돌려 통과(첫 실행은 실행 방식 오류·테스트의 비밀값처럼 보이는 문자열 2개로 실패). audit_ui·a11y·touch_targets는 이 커밋 시점에 실행 중 — 결과는 다음 커밋에 적어요
+### 0.1 전체 회귀 (5.1 코드, 2026-10-14, `tests/run_regression.sh` exit 0)
+단위 82/82 · 서버 원장 10/10 · 서버 API 15/15 · DB 보안 통과 · 비밀값 0건 · xkeys 124/124 · 수집 값 가드 6/6 · 백업·복원(원장 포함) 일치 ·
+e2e commerce50 27/27 · admin51 10/10 · devices51 12/12(Chromium 에뮬레이션) · qa7 · ux_qa · concern · xss · jomi · objective · frame · table_attr · compare_cards ·
+v5_features · demo_features · data_sync · pricenow · audit40 · taxonomy40 · pricing40 · ops40 · audit_ui · a11y(위반 0, 21화면×2) · touch_targets 모두 통과.
 
 실제 결제사 샌드박스·실제 AI·네이티브 앱 테스트는 하지 않았어요(`PAYMENT_SANDBOX_QA.md`).
 

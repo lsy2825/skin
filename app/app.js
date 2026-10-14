@@ -2301,6 +2301,7 @@
         h("span", { class: "chip", style: "cursor:default" }, `${l}: ${FLAGS[k] ? "켬" : "끔"}`))),
       h("div", { class: "sub", style: "margin-top:8px" }, `로그인: ${window.Auth && window.Auth.enabled ? "켬" : "끔(키 없음)"}`)));
     if (window.Economics && window.DemoWallet) box.append(economicsCard());
+    else { const slot = h("div", {}); box.append(slot); loadCommerce().then(() => { if (slot.isConnected) slot.replaceWith(economicsCard()); }).catch(() => {}); }
     box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav("admin") },
       h("span", { class: "t" }, h("span", { class: "mi" }, icon("shield-check", "sm")), h("span", {}, h("span", { style: "display:block" }, "관리자 대시보드(서버)"),
         h("span", { class: "sub", style: "display:block;font-weight:500" }, "매출·결제·환불·크레딧·AI 비용 — 서버 연결 + 관리자 2단계 인증 필요"))), icon("chevron-right", "sm"))))));
@@ -4595,14 +4596,25 @@
     }
     return pctx;
   };
-  if (window.Commerce && window.PriceCtx && window.Premium && window.DemoWallet) window.Commerce.install({ h, icon, sheet, toast, nav, render, store, won, views, copyText,
+  // the commerce screens' scripts load on first use (5.1 performance: the free core does not download or parse them at start)
+  const COMMERCE_JS = ["domain/offerparse.js", "domain/match.js", "domain/pricectx.js", "domain/premium.js", "domain/jomiqa.js", "domain/demowallet.js", "domain/economics.js", "commerce.js"];
+  let commerceP = null;
+  const loadCommerce = () => commerceP || (commerceP = COMMERCE_JS.reduce((p, src) => p.then(() => new Promise((ok, bad) => {
+    const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error(src)); document.body.append(el);
+  })), Promise.resolve()).then(installCommerce).catch((e) => { commerceP = null; throw e; }));
+  for (const v of ["wallet", "premium", "report", "admin"]) views[v] = () => {
+    const box = h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg("thinking", "face", 32), h("span", {}, "불러오는 중…")), h("div", { class: "skel", style: "height:160px" }));
+    loadCommerce().then(() => render()).catch(() => box.replaceChildren(h("div", { class: "card", role: "alert" }, "화면을 불러오지 못했어요. 연결을 확인하고 다시 열어 주세요.")));
+    return box;
+  };
+  function installCommerce() { if (window.Commerce && window.PriceCtx && window.Premium && window.DemoWallet) window.Commerce.install({ h, icon, sheet, toast, nav, render, store, won, views, copyText,
     ctx: premiumCtx,
     cartItems: () => cur().items.filter((it) => it.t === "k" && KI[it.k] != null).map((it) => ({ k: it.k, q: it.q || 1 })),
     region: () => (st.region && st.region !== "수도권" ? st.region : ""),
     regionLabel: () => (st.region === "수도권" ? "전국(수도권 묶음은 보고서에서 전국으로 계산)" : regionName()),
     addKey: (id) => { if (KI[id] != null) addKeySheet(KI[id]); },
     jomiNotice: (text) => sheet("죠미", () => h("div", {}, jomiSay("thinking", text), h("div", { class: "tiny", style: "margin-top:8px" }, "이 질문에는 크레딧을 쓰지 않았어요."))),
-  });
+  }); }
   applyTheme();
   applyMotion();   // 죠미 설정 → 움직임 (or the device's reduce-motion setting)
   if (st.when && (!st.when.date || st.when.date < new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))) { st.when = null; store.set("when", null); }

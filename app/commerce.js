@@ -31,8 +31,10 @@
   function install(A) {
     const { h, icon, sheet, toast, nav, render, store, won, views } = A;
     const W = window.DemoWallet, P = window.Premium;
-    const state = () => { const s = W.load(store.get("demoWallet", null)); if (W.expire(s)) save(s); return s; };
-    const save = (s) => store.set("demoWallet", s);
+    // one demo wallet per signed-in account on this phone (5.1: switching accounts never shows another account's demo credits)
+    const wkey = () => (window.Auth && window.Auth.user && window.Auth.user.id ? `demoWallet:${window.Auth.user.id}` : "demoWallet");
+    const state = () => { const s = W.load(store.get(wkey(), null)); if (W.expire(s)) save(s); return s; };
+    const save = (s) => store.set(wkey(), s);
     const newKey = (p) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const demoBadge = () => h("span", { class: "k k4", title: "실제 돈이 오가지 않는 시연이에요" }, "시연");
     const credits = (n) => `${n}크레딧`;
