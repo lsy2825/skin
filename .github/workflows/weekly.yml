@@ -53,12 +53,15 @@ jobs:
         run: python build2/weekly.py ${{ (github.event_name == 'push' || inputs.skip_scrape) && '--skip-scrape' || '' }}
         env:
           PYTHONUTF8: "1"
+      - name: Classification review queue + alias table (docs/TREATMENT_TAXONOMY.md; read-only on the data)
+        if: steps.decide.outputs.run == 'true'
+        run: node tools/review_queue.js
       - name: Save accepted data, snapshots and report
         if: steps.decide.outputs.run == 'true'
         run: |
           git config user.name "weekly-prices bot"
           git config user.email "actions@users.noreply.github.com"
-          git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json app/data-meta.json
+          git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json app/data-meta.json app/review.json docs/CLASSIFICATION_REVIEW_QUEUE.csv docs/PRODUCT_ALIAS_MAPPING.csv
           for f in data2/sources.json data2/review.csv; do if [ -f "$f" ]; then git add "$f"; fi; done
           git diff --cached --quiet || git commit -m "${{ (github.event_name == 'push' || inputs.skip_scrape) && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
           git pull --rebase -X theirs origin main   # another run may have pushed meanwhile

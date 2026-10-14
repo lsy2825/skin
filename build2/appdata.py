@@ -30,7 +30,7 @@ Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regu
 the 'before'.
 """
 import argparse, csv, datetime, glob, json, os, re, sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
@@ -133,7 +133,7 @@ def load_snapshot(path):
     return d
 
 
-def trend(hist, date, rows):
+def trend(hist, date, rows, since=None):
     """weekly price trend per comparison key from the snapshots in data2/history (regular prices only):
     {"dates": [...], "k": {key: [[median, min, branches] or None per date]}, "disc": {key: median % off the list price now}}"""
     files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] <= date)[-52:]
@@ -148,6 +148,10 @@ def trend(hist, date, rows):
             per.setdefault(k, [None] * len(files))[i] = [vs[len(vs) // 2], vs[0], len(vs)]
     for k in per:
         per[k] += [None] * (len(files) - len(per[k]))
+    # since: {key: date} — the rows of the key were regrouped on that date; earlier weeks measured another mix of rows
+    for k, d0 in (since or {}).items():
+        if k in per:
+            per[k] = [v if dates[i] >= d0 else None for i, v in enumerate(per[k])]
     offs = {}
     for r in rows:
         if r["orig"] and int(r["orig"]) > int(r["sale"]) and r["kind"] != "구독권":
@@ -220,6 +224,15 @@ def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, allk):
     return sum(1 for x in out if x["status"] == "검토 대기")
 
 
+# words a clinic page puts after the address (a popup's buttons, a footer link) that the scraper read with it
+ADDR_JUNK = re.compile(r"\s*(오늘\s*하루\s*(그만\s*)?(보기|열지)|팝업\s*닫기|제휴\s*문의|닫기\s*$).*$")
+
+
+def clean_addr(a):
+    """address as shown in the app: the scraped text minus page furniture (data2/branches.csv keeps the original)"""
+    return ADDR_JUNK.sub("", a or "").strip()
+
+
 def region(addr):
     for p, name in SIDO:
         if re.match(p, addr or ""):
@@ -278,6 +291,81 @@ def rows_of(data):
     return [list(r) for r in zip(*cols)]
 
 
+def load_prev(prev_txt):
+    """the previous app/data.json (the version the app has now) as (data, rows), or (None, []) if missing/unreadable"""
+    if not prev_txt:
+        return None, []
+    try:
+        prev = json.loads(prev_txt)
+        return prev, rows_of(prev)
+    except (ValueError, KeyError, TypeError, IndexError):
+        return None, []
+
+
+def row_keys_prev(prev, prow):
+    """previous data: (brand, branch, name) → set of comparison ids"""
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    out = {}
+    for r in prow:
+        out.setdefault((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set()).update((ps[r[7]] or "").split())
+    return out
+
+
+def reclassified(prev, prow, rows):
+    """comparison ids whose rows changed because the rules changed, not the prices: a row that is in both builds (same brand,
+    branch and name) but joined or left the id. Their 'price change' since the last snapshot would only be the new mix of
+    rows, so it is not reported, not sent to review, and the trend starts again from this date."""
+    if not prev:
+        return set()
+    old = row_keys_prev(prev, prow)
+    out = set()
+    for r in rows:
+        o = old.get((r["brand"], r["branch"], r["name"]))
+        if o is not None:
+            out |= o ^ set(r["keys"].split())
+    # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
+    before = {k[0] for k in prev.get("keys", [])}
+    return out & before
+
+
+def key_map(prev, prow, rows, allk):
+    """old comparison id → [new id or "", old label] for ids the previous data.json had and this one doesn't (a taxonomy fix
+    or renamed options change an auto key's signature). The app moves saved carts, favourites and alerts with it, and shows
+    the old label for an id that has no successor instead of a bare 'T1234567'. Same row (brand, branch, name) decides: the
+    new key that at least half of the old key's rows now carry. Older entries are kept and followed (A → B → C)."""
+    if not prev:
+        return {}
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    now = {k[0] for k in allk}
+    plabel = {k[0]: k[2] for k in prev.get("keys", [])}
+    newk = {}
+    for r in rows:
+        newk.setdefault((r["brand"], r["branch"], r["name"]), set()).update(r["keys"].split())
+    votes, size = defaultdict(Counter), Counter()
+    for r in prow:
+        old = [k for k in (ps[r[7]] or "").split() if k not in now]
+        if not old:
+            continue
+        nk = newk.get((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set())
+        for k in old:
+            size[k] += 1
+            for n in nk:
+                votes[k][n] += 1
+    out = {}
+    for k, n in size.items():
+        best = votes[k].most_common(1)
+        out[k] = [best[0][0] if best and best[0][1] * 2 >= n else "", plabel.get(k, k)]
+    for k, (to, label) in (prev["meta"].get("keymap") or {}).items():
+        if k in now or k in out:
+            continue
+        hops = 0
+        while to and to not in now and hops < 10:
+            to = out.get(to, (prev["meta"].get("keymap") or {}).get(to, ["", ""]))[0]
+            hops += 1
+        out[k] = [to if to in now else "", label]
+    return dict(list(out.items())[-4000:])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", default=datetime.date.today().isoformat())
@@ -302,7 +390,7 @@ def main():
             g = geo.get(k, {})
             site = re.match(r"https?://[^/]+", r["url"]).group(0)
             bi[k] = len(branches)
-            branches.append([bnames.index(r["brand"]), S(r["branch"]), S(g.get("address_full") or g.get("address", "")),
+            branches.append([bnames.index(r["brand"]), S(r["branch"]), S(clean_addr(g.get("address_full") or g.get("address", ""))),
                              float(g["lat"]) if g.get("lat") else None, float(g["lng"]) if g.get("lng") else None,
                              S(region(g.get("address", ""))), S(site), "", "",
                              # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
@@ -317,6 +405,15 @@ def main():
         b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(a.date) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
         b[7] = S(b[7])
     ALLK, VFAM = variant_keys()
+    prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
+    prev_data, prev_rows = load_prev(prev_txt)
+    recl_now = reclassified(prev_data, prev_rows, rows) & {k[0] for k in ALLK}
+    # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
+    recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != a.date]
+    same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == a.date), [])
+    if recl_now or same_day:
+        recl.append([a.date, sorted(set(same_day) | recl_now)])
+    recl = recl[-12:]
     out_rows = []
     best = {}
     gid, groups, gkeys, bstat, low_reg = G.build(rows, bi, CATS)
@@ -344,26 +441,26 @@ def main():
             before = prev.get(kk)
             if before and before != after:
                 k, brand, branch = kk.split("|")
-                if k in kid:
+                if k in kid and k not in recl_now:
                     changes.append([kid[k], bi[(brand, branch)], before, after])
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
+    keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
         "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks},
+                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
-        "trend": trend(hist, a.date, rows),
+        "trend": trend(hist, a.date, rows, {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     txt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     assert rows_of(json.loads(txt)) == out_rows, "price columns do not turn back into the same rows"
-    prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
     datameta.write_meta(a.out, txt, prev_txt)   # app/data-meta.json: version, checksum, branch states, changed rows
     nogeo = [s[b[1]] for b in branches if b[3] is None]

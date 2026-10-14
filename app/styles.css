@@ -884,3 +884,35 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 .guide.gtop { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fill); }
 .guide.gtop p { margin: 6px 0 0; line-height: 1.55; }
 .guide.gtop .fold { margin-top: 6px; }
+.note.recl { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
+/* 4.0 product layer: mixed products note + chips, per-row product tag, comparability box (docs/TREATMENT_TAXONOMY.md) */
+.note.mixnote { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
+.prodmix { margin-top: 10px; }
+.prodmix .chips { margin-top: 4px; }
+.k.prodk { background: var(--sunken); color: var(--ink-2); }
+.clsbox { border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 10px 12px; margin: 0 0 12px; background: var(--sunken); }
+.clsbox.cls-reference, .clsbox.cls-never { border-color: var(--pricey); }
+.k.clsb { white-space: normal; }
+.vsteps { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
+.vstep { min-width: 0; }
+.vstep .vg { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+.vstep .stepn { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft, var(--sunken)); color: var(--ink); font-size: 12px; }
+.vstep .vchip { min-height: 36px; }
+.seg.modesw { width: 148px; flex: none; }
+.seg.modesw button { padding: 6px 4px; font-size: 13px; white-space: nowrap; }
+.card.typed .tsec { margin-top: 10px; } .card.typed .tsec .sh { font-size: 13px; color: var(--ink-2); } .typedsum { margin: 0 6px; }
+/* 4.0 cart: 방문 계획 A~D */
+.scengrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.scen { border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 10px; display: grid; gap: 4px; align-content: start; background: var(--surface); }
+.scen .scen-id { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--sunken); font-size: 12px; }
+.scen .scen-v { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.scen .scen-v b { font-size: 16px; }
+@media (max-width: 340px) { .scengrid { grid-template-columns: 1fr; } }
+/* 4.0 price classes on one axis */
+.pcls { display: grid; gap: 12px; margin-top: 10px; }
+.pcl-track { position: relative; height: 10px; border-radius: 5px; background: var(--sunken); margin: 6px 0 2px; }
+.pcl-bar { position: absolute; top: 2px; height: 6px; border-radius: 3px; background: var(--s2, var(--ink-2)); }
+.pcl-event .pcl-bar { background: var(--s1, var(--accent)); }
+.pcl-cond .pcl-bar { background: var(--s3, var(--muted)); }
+.pcl-posted .pcl-bar { background: var(--ink-2); }
+.pcl-med { position: absolute; top: -1px; width: 2px; height: 12px; background: var(--ink); transform: translateX(-1px); }

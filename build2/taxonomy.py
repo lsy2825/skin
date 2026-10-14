@@ -34,9 +34,15 @@ def T(label, rx, where=None, split=None, scope="short"):
 
 
 # origin / tier words: also inside brackets ('스킨보톡스(국산 일반형)', '[국내산]')
-ORIGIN = [T("국산", r"(?<!미)국산|국내산", scope="full"), T("독일산", r"독일산?|제오민", scope="full"), T("미국산", r"미국산?|엘러간|앨러간", scope="full"),
-          T("수입", r"수입산?", scope="full"), T("프리미엄", r"프리미엄|코어톡스|이노톡스|고순도|내성", scope="full"), T("파워", r"파워|용량업|두배")]
+ORIGIN = [T("국산", r"(?<![미외])국산|국내산", scope="full"), T("독일산", r"독일산?|제오민", scope="full"), T("미국산", r"미국산?|엘러간|앨러간", scope="full"),
+          T("수입", r"수입산?|외국산|외산", scope="full"), T("프리미엄", r"프리미엄|코어톡스|이노톡스|고순도|내성", scope="full"), T("파워", r"파워|용량업|두배")]
 EYE = T("아이", r"아이(?!라인|돌)|눈가전용")
+# 제모 devices as the clinics write them ('제모(아포지 플러스)', '[남성제모] 젠틀맥스 …'): a different device is a different
+# treatment, so it is part of the variant (4.0 audit: one key mixed 아포지 플러스 9,900원 and 에일린 19,000원)
+HAIR_DEVICES = [T("아포지 플러스", r"아포지", "post", scope="full"), T("젠틀맥스 프로 플러스", r"젠틀맥스", "post", scope="full"),
+                T("포토나 아발란체", r"포토나|아발란체", "post", scope="full"), T("클라리티Ⅱ", r"클라리티", "post", scope="full"),
+                T("에일린", r"에일린", "post", scope="full"), T("엘리트 플러스", r"엘리트", "post", scope="full"),
+                T("프라임 레이즈", r"프라임레이즈", "post", scope="full"), T("소프라노", r"소프라노", "post", scope="full")]
 
 
 def BODY(fam, cat="제모·바디"):
@@ -144,11 +150,13 @@ FAMILIES = [
          tags=[T("메가", r"메가"), T("듀얼", r"듀얼"), T("제네시스", r"제네시스")]),
     dict(id="revlite", cat="피부", name="레블라이트SI 토닝", rx=r"레블라이트SI토닝", stop=r"레블라이트SI토닝", tags=[]),
     dict(id="accutoning", cat="피부", name="아큐토닝", rx=r"아큐토닝", stop=r"아큐토닝", tags=[]),
-    dict(id="pigment", cat="피부", name="착색토닝", rx=r"착색토닝|바디토닝|바디착색", stop=r"토닝|착색", tags=[T("바디", r"바디"), T("비키니라인", r"비키니", "post"), T("겨드랑이", r"겨드랑이", "post")]),
+    dict(id="pigment", cat="피부", name="착색토닝", rx=r"착색토닝|바디토닝|바디착색", stop=r"토닝|착색", paren=True, tags=[T("바디", r"바디"), T("비키니라인", r"비키니", "post"), T("겨드랑이", r"겨드랑이", "post")]),
     dict(id="genesis", cat="피부", name="제네시스", rx=r"제네시스(?!토닝)", stop=r"제네시스|레이저", tags=[T("듀얼", r"듀얼")]),
     dict(id="capri", cat="피부", name="카프리 레이저", rx=r"카프리", stop=r"카프리|레이저", tags=[]),
     dict(id="aquapeel", cat="피부", name="아쿠아필", rx=r"아쿠아필", stop=r"아쿠아필|1/2/3제|1/2제|\d제", tags=[]),
-    dict(id="potenza", cat="피부", name="포텐자", rx=r"포텐자", stop=r"포텐자", tags=[T("아크네", r"아크네"), T("펌핑", r"펌핑", "post"), T("얼굴전체", r"얼굴전체", "post"), T("부분", r"부분", "post")]),
+    dict(id="potenza", cat="피부", name="포텐자", rx=r"포텐자", stop=r"포텐자", tags=[T("아크네", r"아크네"), T("얼굴전체", r"얼굴전체", "post", scope="full"),
+         T("개당", r"개당", "post", scope="full"), T("부분", r"부분", "post", scope="full"),
+         T("펌핑 모드", r"펌핑", "post", scope="full"), T("팁 별도", r"팁(값)?\s*(별도|미포함)", "post", scope="full")]),
     dict(id="secret", cat="피부", name="시크릿 레이저", rx=r"^시크릿", stop=r"시크릿|레이저", tags=[]),
     dict(id="sylfirm", cat="피부", name="실펌X", rx=r"실펌", stop=r"실펌X?|레이저", tags=[]),
     dict(id="mole", cat="피부", name="점 빼기", rx=r"점빼기|점제거|^점(?![가-힣])|얼굴점|돌출점", stop=r"점빼기|점제거|점|개당|얼굴",
@@ -157,10 +165,11 @@ FAMILIES = [
     dict(id="acneinj", cat="피부", name="염증주사", rx=r"염증주사", stop=r"주사|개당", tags=[T("얼굴전체", r"얼굴전체", "post"), T("무제한", r"무제한|개수무제한", "post")]),
     dict(id="lalapeel", cat="피부", name="라라필", rx=r"라라필", stop=r"라라필", tags=[]),
     dict(id="fraxel", cat="피부", name="프락셀", rx=r"(?<!피코)프락셀|프락셔널", stop=r"프락셀|프락셔널|레이저",
-         tags=[T("코 모공", r"코모공"), T("나비존", r"나비존"), T("CO2", r"CO2"), T("얼굴전체", r"얼굴전체", "post")]),
+         tags=[T("코 모공", r"코모공"), T("나비존", r"나비존"), T("CO2", r"CO2", scope="full"), T("어븀글라스", r"어븀", scope="full"), T("얼굴전체", r"얼굴전체", "post")]),
     dict(id="picofrax", cat="피부", name="피코프락셀", rx=r"피코프락셀", stop=r"피코프락셀", tags=[]),
     dict(id="excelv", cat="피부", name="엑셀V", rx=r"엑셀V|엑셀브이", stop=r"엑셀V|레이저", tags=[T("플러스", r"플러스", "post")]),
-    dict(id="agnes", cat="피부", name="아그네스", rx=r"아그네스", stop=r"아그네스", tags=[]),
+    dict(id="agnes", cat="피부", name="아그네스", rx=r"아그네스", stop=r"아그네스", tags=[T("얼굴전체", r"얼굴전체", "post", scope="full"), T("개당", r"개당", "post", scope="full"), T("부분", r"부분", "post", scope="full"),
+         T("펌핑 모드", r"펌핑", "post", scope="full"), T("팁 별도", r"팁(값)?\s*(별도|미포함)", "post", scope="full")]),
     dict(id="aladdin", cat="피부", name="알라딘필", rx=r"알라딘필", stop=r"알라딘필링|알라딘필", tags=[T("뉴", r"뉴알라딘|뉴"), BODY("알라딘필", "피부")]),
     dict(id="blackpeel", cat="피부", name="블랙필", rx=r"블랙필", stop=r"블랙필", tags=[T("베이직", r"베이직", "post")]),
     dict(id="milkpeel", cat="피부", name="밀크필", rx=r"밀크필", stop=r"밀크필", tags=[]),
@@ -175,7 +184,7 @@ FAMILIES = [
     dict(id="vessel", cat="피부", name="모세혈관 레이저", rx=r"모세혈관레이저", stop=r"모세혈관레이저", tags=[]),
     dict(id="spot", cat="피부", name="잡티 스팟 레이저", rx=r"잡티스팟레이저", stop=r"잡티스팟레이저", tags=[]),
     dict(id="ptt", cat="피부", name="PTT", rx=r"PTT", stop=r"PTT", tags=[T("에토좀", r"에토좀"), T("골드", r"골드")]),
-    dict(id="drip", cat="피부", name="영양 수액주사", rx=r"수액주사", stop=r"주사|수액|영양", tags=[T("베이직", r"베이직"), T("프리미엄", r"프리미엄")]),
+    dict(id="drip", cat="피부", name="영양 수액주사", rx=r"수액주사", stop=r"주사|수액|영양", paren=True, tags=[T("베이직", r"베이직"), T("프리미엄", r"프리미엄")]),
     dict(id="baekok", cat="피부", name="백옥주사", rx=r"백옥주사", stop=r"주사", tags=[]),
     dict(id="cinderella", cat="피부", name="신데렐라주사", rx=r"신데렐라주사", stop=r"주사", tags=[]),
     dict(id="garlic", cat="피부", name="마늘주사", rx=r"마늘주사", stop=r"주사", tags=[]),
@@ -189,7 +198,7 @@ FAMILIES = [
     dict(id="o2derm", cat="피부", name="오투덤 산소테라피", rx=r"오투덤", stop=r"오투덤|산소테라피", tags=[]),
     # ---------------- 제모·바디: 제모 is one family per body area ('겨드랑이 제모'), variants = 여/남 × 회차
     dict(id="hair", cat="제모·바디", name="제모", rx=r"제모", stop=r"제모|레이저|부위", area=True,
-         tags=[T("여성", r"여성|여자|\(여\)|\[여|여\)", scope="full"), T("남성", r"남성|남자|\(남\)|\[남|남\)", scope="full"), T("솜털", r"솜털")]),
+         tags=[T("여성", r"여성|여자|\(여\)|\[여|여\)", scope="full"), T("남성", r"남성|남자|\(남\)|\[남|남\)", scope="full"), T("솜털", r"솜털")] + HAIR_DEVICES),
     dict(id="velys", cat="제모·바디", name="블리비S", rx=r"블리비S", stop=r"블리비S", tags=[T("라이트", r"라이트", "post")]),
     dict(id="carboxy", cat="제모·바디", name="카복시·지방분해주사", rx=r"카복시|지방분해주사", stop=r"카복시테라피|카복시|지방분해주사|주사", tags=[T("팔뚝", r"팔뚝")]),
     dict(id="miniskirt", cat="제모·바디", name="미니스커트주사", rx=r"미니스커트주사", stop=r"주사", tags=[]),
@@ -207,6 +216,11 @@ PACKAGE = re.compile(r"패키지|PKG|pkg|세트|SET|콤보|\+|&|(?<=[0-9샷cU])X
 # filler words that don't change the product (marketing, price kind, generic nouns)
 STOP = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|할인|세일|첫방문|첫시술|1인1회|신규|웰컴|선착순|NEW|BEST|HOT|기획전|"
                   r"가을|페스타|추천|인기|당일|회당|1회당|[0-9]+회|1회|레이저|시술|관리|리프팅|주사|♥|★|☆|※|♡|◆|◇|■|□|▶|▷|#|-|·|/|,|\.|~|:|!|\?|_|=|\*|'|\"|“|”|‘|’")
+
+
+def amounts_text(name):
+    """comp() of a name with a model number kept apart from the amount after it ('리프테라2 3000샷' → '리프테라2/3000샷')"""
+    return comp(re.sub(r"(?<=[A-Za-z가-힣])(\d+)\s+(?=\d)", r"\1/", name or ""))
 
 
 def _strip(name):
@@ -291,7 +305,7 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # a bundle: two families, '+'/패키지 in the short name, or ' + ' between parts in the explanation ('환절기 스킨 리커버리(A + B)')
     bundle = n >= 2 or bool(PACKAGE.search(comp(_strip(raw)))) or bool(re.search(r"\([^()]*\s\+\s[^()]*\)", raw))
     if fam and not bundle:
-        v, why = _family_variant(raw, fam, sess)
+        v, why = _family_variant(raw, fam, sess, display)
         if v:
             return v, ""
     elif not fam and not bundle and cat == "제모":
@@ -313,10 +327,17 @@ def _exact(raw, sess, rowcat, bundle):
     disp = (seg[-1] if seg else nm).strip()
     # a package's parts all count ('+ 크라이오셀' is a part here, not a free extra): keep '+' away from comp()'s add-on rule
     src = " ".join(seg) if seg else nm
+    if not bundle and len(seg) > 1:
+        # 'group · option' where the option repeats the product ('인라이튼 니플스 · 인라이튼 니플스(피코 프락셔널) 1회', '고우리 런칭 특가 ·
+        # 고우리 1회'): the group title is the clinic's heading, not part of the product, so the option alone decides
+        lb = KINDWORDS.sub("", AMOUNT.sub("", comp(re.sub(r"\([^()]*\)", " ", seg[-1]))))
+        gb = comp(" ".join(seg[:-1]))
+        if len(lb) >= 2 and lb in gb:
+            src = seg[-1]
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
     if not sigtext:
         return None, "이름 없음"
-    amounts = " ".join(dict.fromkeys(f"{v}{u}" for v, u in AMOUNT.findall(comp(disp))))
+    amounts = " ".join(dict.fromkeys(f"{v}{u}" for v, u in AMOUNT.findall(amounts_text(disp))))
     if bundle:
         first = next((f for f in FAMILIES if f["_rx"].search(comp(raw))), None)
         famname, cat = (f"{first['name']} 포함 패키지" if first else "기타 패키지"), "패키지"
@@ -349,13 +370,13 @@ def comp_spaces(s):
     return re.sub(r"(\d),(\d{3})", r"\1\2", s)
 
 
-def _family_variant(raw, fam, sess):
+def _family_variant(raw, fam, sess, display=None):
     full = comp(raw)
     st = _strip(raw)
     by_unit = defaultdict(set)
-    for v, u in AMOUNT.findall(full):
+    for v, u in AMOUNT.findall(amounts_text(raw)):
         by_unit[u].add(float(v))
-    if fam["id"] != "inmode":
+    if fam["id"] not in ("inmode", "ldm"):        # minutes are the dose for these two ('LDM … #6분' vs '#24분')
         by_unit.pop("분", None)
     if any(len(v) > 1 for v in by_unit.values()):
         return None, "용량이 둘 이상"
@@ -388,9 +409,12 @@ def _family_variant(raw, fam, sess):
         return None, "원산지 둘 이상"
     rest = _clean(main, fam)
     det = "·".join(x for x in (re.sub(r"등$", "", _clean(p, fam)) for p in re.split(r"[/,·]", detail)) if x)
+    if fam.get("paren"):
+        par = "·".join(x for p in re.findall(r"\(([^()]+)\)", raw) for x in (_clean(comp(y), fam) for y in re.split(r"[/,·]", p)) if x)
+        det = "·".join(x for x in (det, par) if x)
     area = ""
     if fam.get("area"):
-        area = _area(raw) or "부위 미표기"        # '제모 · 여자': the clinic names no area
+        area = _area(display or raw) or "부위 미표기"        # '제모 · 여자': the clinic names no area
         famname, rest, det = f"{area.replace('/', '·')} 제모", "", ""
     shown = lambda w: [t["label"] for t in tags if t["where"] == w]
     pre, post = shown("pre"), shown("post")
@@ -554,11 +578,41 @@ if __name__ == "__main__":
     if a["sig"] == b["sig"]:
         bad += 1
         print("FAIL package with different parts merged")
+    # 4.0 audit (docs/PRODUCT_AUDIT.md): what one key must not mix
+    for x, y, why in [("(남자) 겨드랑이/인중 제모(아포지 플러스) 체험가", "(남자) 겨드랑이/인중 제모(에일린) 1회", "device"),
+                      ("아그네스 · 아그네스(개당)", "아그네스 · 아그네스(얼굴전체) 1회", "개당 vs 얼굴전체"),
+                      ("바디 착색토닝(겨드랑이/팔꿈치/무릎) 체험가", "바디 착색토닝(등 전체) 1회", "area in brackets"),
+                      ("나비존 프락셀 레이저(CO2 프락셔널) 1회", "나비존 프락셀 레이저(어븀글라스 프락셔널) 1회", "CO2 vs 어븀"),
+                      ("LDM 물방울 리프팅 1회 #6분 시술", "LDM 물방울 리프팅(고밀도 저자극 초음파) 1회 #24분 시술", "minutes"),
+                      ("프리미엄 영양 수액주사(감초/마늘)", "프리미엄 영양 수액주사(NAD+)", "ingredients"),
+                      ("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", "(남자) 종아리 + 무릎 제모(아포지 플러스) 1회", "sessions")]:
+        va, vb = variant(x)[0], variant(y)[0]
+        if va and vb and va["sig"] == vb["sig"]:
+            bad += 1
+            print("FAIL merged", why, x, "|", y)
+    v = variant("바디제모(여성) 팔전체", display="바디제모(여성) · 팔전체")[0]
+    if not v or v["famname"] != "팔전체 제모":
+        bad += 1
+        print("FAIL hair area from the shown name", v and v["label"])
+    v = variant("리프테라2 리프테라2 3000샷")[0]
+    if not v or v["amount"] != "3000샷":
+        bad += 1
+        print("FAIL model number read into the amount", v and v["label"])
+    v = variant("바디톡신 100유닛(외국산)")[0]
+    if not v or "국산" in v["tags"] or "수입" not in v["tags"]:
+        bad += 1
+        print("FAIL 외국산 read as 국산", v and v["tags"])
+    for x, y in [("인라이튼 니플스 · 인라이튼 니플스(피코 프락셔널) 1회", "인라이튼 니플스(피코 프락셔널) · 인라이튼 니플스(피코 프락셔널) 1회"),
+                 ("세계 최초 액상형 콜라겐, 고우리 런칭 특가 · 고우리 1회 (5cc)", " · 고우리 1회 (5cc)")]:
+        va, vb = variant(x, cat="기타")[0], variant(y, cat="기타")[0]
+        if not va or not vb or va["sig"] != vb["sig"]:
+            bad += 1
+            print("FAIL same product under another group title", x, "|", y)
     a, b = variant("겨드랑이/인중 제모 5회")[0], variant("인중/겨드랑이 제모 5회")[0]
     if a["sig"] != b["sig"]:
         bad += 1
         print("FAIL area order")
-    print("tests", len(tests) + len(rejects) + len(exact) + 3, "fail", bad)
+    print("tests", len(tests) + len(rejects) + len(exact) + 15, "fail", bad)
     if bad and "--report" not in sys.argv:
         sys.exit(1)
     if "--report" in sys.argv:

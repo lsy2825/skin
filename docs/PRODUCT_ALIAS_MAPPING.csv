@@ -1,0 +1,575 @@
+﻿type,alias,canonical,source
+검색 별칭,보톡스,톡신,app/domain/search.js ALIASES
+검색 별칭,보톡,톡신,app/domain/search.js ALIASES
+검색 별칭,보툴리눔,톡신,app/domain/search.js ALIASES
+검색 별칭,보튤리눔,톡신,app/domain/search.js ALIASES
+검색 별칭,botox,톡신,app/domain/search.js ALIASES
+검색 별칭,toxin,톡신,app/domain/search.js ALIASES
+검색 별칭,보툴렉스,톡신,app/domain/search.js ALIASES
+검색 별칭,rejuran,리쥬란,app/domain/search.js ALIASES
+검색 별칭,리쥬란힐러,리쥬란,app/domain/search.js ALIASES
+검색 별칭,리주란,리쥬란,app/domain/search.js ALIASES
+검색 별칭,rejuranhealer,리쥬란,app/domain/search.js ALIASES
+검색 별칭,shurink,슈링크,app/domain/search.js ALIASES
+검색 별칭,shrink,슈링크,app/domain/search.js ALIASES
+검색 별칭,슈링크유니버스,슈링크,app/domain/search.js ALIASES
+검색 별칭,유니버스슈링크,슈링크,app/domain/search.js ALIASES
+검색 별칭,울쎄라피,울쎄라,app/domain/search.js ALIASES
+검색 별칭,울세라,울쎄라,app/domain/search.js ALIASES
+검색 별칭,ulthera,울쎄라,app/domain/search.js ALIASES
+검색 별칭,ultherapy,울쎄라,app/domain/search.js ALIASES
+검색 별칭,울쎄라프라임,울쎄라,app/domain/search.js ALIASES
+검색 별칭,thermage,써마지,app/domain/search.js ALIASES
+검색 별칭,서마지,써마지,app/domain/search.js ALIASES
+검색 별칭,써마지flx,써마지,app/domain/search.js ALIASES
+검색 별칭,thermageflx,써마지,app/domain/search.js ALIASES
+검색 별칭,inmode,인모드,app/domain/search.js ALIASES
+검색 별칭,인모드fx,인모드,app/domain/search.js ALIASES
+검색 별칭,인모드forma,인모드,app/domain/search.js ALIASES
+검색 별칭,onda,온다,app/domain/search.js ALIASES
+검색 별칭,온다리프팅,온다,app/domain/search.js ALIASES
+검색 별칭,oligio,올리지오,app/domain/search.js ALIASES
+검색 별칭,올리지오x,올리지오,app/domain/search.js ALIASES
+검색 별칭,volnewmer,볼뉴머,app/domain/search.js ALIASES
+검색 별칭,볼뉴마,볼뉴머,app/domain/search.js ALIASES
+검색 별칭,titanium,티타늄,app/domain/search.js ALIASES
+검색 별칭,티타늄리프팅,티타늄,app/domain/search.js ALIASES
+검색 별칭,density,덴서티,app/domain/search.js ALIASES
+검색 별칭,덴시티,덴서티,app/domain/search.js ALIASES
+검색 별칭,juvelook,쥬베룩,app/domain/search.js ALIASES
+검색 별칭,주베룩,쥬베룩,app/domain/search.js ALIASES
+검색 별칭,filler,필러,app/domain/search.js ALIASES
+검색 별칭,필라,필러,app/domain/search.js ALIASES
+검색 별칭,belotero,벨로테로,app/domain/search.js ALIASES
+검색 별칭,juvederm,쥬비덤,app/domain/search.js ALIASES
+검색 별칭,주비덤,쥬비덤,app/domain/search.js ALIASES
+검색 별칭,restylane,레스틸렌,app/domain/search.js ALIASES
+검색 별칭,radiesse,레디어스,app/domain/search.js ALIASES
+검색 별칭,레디어쓰,레디어스,app/domain/search.js ALIASES
+검색 별칭,sculptra,스컬트라,app/domain/search.js ALIASES
+검색 별칭,스컬프트라,스컬트라,app/domain/search.js ALIASES
+검색 별칭,picotoning,피코토닝,app/domain/search.js ALIASES
+검색 별칭,pico toning,피코토닝,app/domain/search.js ALIASES
+검색 별칭,피코레이저토닝,피코토닝,app/domain/search.js ALIASES
+검색 별칭,피코토닝레이저,피코토닝,app/domain/search.js ALIASES
+검색 별칭,lasertoning,레이저토닝,app/domain/search.js ALIASES
+검색 별칭,laser toning,레이저토닝,app/domain/search.js ALIASES
+검색 별칭,토닝레이저,레이저토닝,app/domain/search.js ALIASES
+검색 별칭,genesis,제네시스,app/domain/search.js ALIASES
+검색 별칭,레이저제네시스,제네시스,app/domain/search.js ALIASES
+검색 별칭,aquapeel,아쿠아필,app/domain/search.js ALIASES
+검색 별칭,aqua peel,아쿠아필,app/domain/search.js ALIASES
+검색 별칭,아쿠아필링,아쿠아필,app/domain/search.js ALIASES
+검색 별칭,potenza,포텐자,app/domain/search.js ALIASES
+검색 별칭,포텐사,포텐자,app/domain/search.js ALIASES
+검색 별칭,xeomin,제오민,app/domain/search.js ALIASES
+검색 별칭,독일산톡신,제오민,app/domain/search.js ALIASES
+검색 별칭,독일톡신,제오민,app/domain/search.js ALIASES
+검색 별칭,더모톡신,스킨보톡스,app/domain/search.js ALIASES
+검색 별칭,스킨톡신,스킨보톡스,app/domain/search.js ALIASES
+검색 별칭,더마톡신,스킨보톡스,app/domain/search.js ALIASES
+검색 별칭,skinbotox,스킨보톡스,app/domain/search.js ALIASES
+검색 별칭,물광보톡스,스킨보톡스,app/domain/search.js ALIASES
+검색 별칭,물광,물광주사,app/domain/search.js ALIASES
+검색 별칭,물광주사,물광주사,app/domain/search.js ALIASES
+검색 별칭,exosome,엑소좀,app/domain/search.js ALIASES
+검색 별칭,엑소솜,엑소좀,app/domain/search.js ALIASES
+검색 별칭,점제거,점빼기,app/domain/search.js ALIASES
+검색 별칭,점 빼기,점빼기,app/domain/search.js ALIASES
+검색 별칭,점빼,점빼기,app/domain/search.js ALIASES
+검색 별칭,레이저제모,제모,app/domain/search.js ALIASES
+검색 별칭,털제거,제모,app/domain/search.js ALIASES
+검색 별칭,hairremoval,제모,app/domain/search.js ALIASES
+검색 별칭,윤곽,윤곽주사,app/domain/search.js ALIASES
+검색 별칭,브이라인주사,윤곽주사,app/domain/search.js ALIASES
+검색 별칭,v라인주사,윤곽주사,app/domain/search.js ALIASES
+검색 별칭,apogee,아포지,app/domain/search.js ALIASES
+검색 별칭,아포지플러스,아포지,app/domain/search.js ALIASES
+검색 별칭,gentlemax,젠틀맥스,app/domain/search.js ALIASES
+검색 별칭,젠틀맥스프로,젠틀맥스,app/domain/search.js ALIASES
+검색 별칭,cryocell,크라이오셀,app/domain/search.js ALIASES
+검색 별칭,clarity,클라리티,app/domain/search.js ALIASES
+검색 별칭,rituo,리투오,app/domain/search.js ALIASES
+검색 별칭,fraxel,프락셀,app/domain/search.js ALIASES
+검색 별칭,ellanse,엘란쎄,app/domain/search.js ALIASES
+검색 별칭,실리프트,실리프팅,app/domain/search.js ALIASES
+검색 별칭,threadlift,실리프팅,app/domain/search.js ALIASES
+검색 별칭,민트실,실리프팅,app/domain/search.js ALIASES
+제품·장비 이름,아포지,아포지 플러스,app/domain/classify.js DEVICES
+제품·장비 이름,젠틀맥스,젠틀맥스 프로 플러스,app/domain/classify.js DEVICES
+제품·장비 이름,포토나,포토나 아발란체,app/domain/classify.js DEVICES
+제품·장비 이름,아발란체,포토나 아발란체,app/domain/classify.js DEVICES
+제품·장비 이름,클라리티,클라리티Ⅱ,app/domain/classify.js DEVICES
+제품·장비 이름,에일린,에일린,app/domain/classify.js DEVICES
+제품·장비 이름,엘리트 플러스,엘리트 플러스,app/domain/classify.js DEVICES
+제품·장비 이름,소프라노,소프라노,app/domain/classify.js DEVICES
+제품·장비 이름,텐쎄라,텐쎄라,app/domain/classify.js DEVICES
+제품·장비 이름,리쥬하이,리쥬하이,app/domain/classify.js DEVICES
+제품·장비 이름,제오민,제오민,app/domain/spec.js PRODUCTS
+제품·장비 이름,나보타,나보타,app/domain/spec.js PRODUCTS
+제품·장비 이름,보툴렉스,보툴렉스,app/domain/spec.js PRODUCTS
+제품·장비 이름,코어톡스,코어톡스,app/domain/spec.js PRODUCTS
+제품·장비 이름,디스포트,디스포트,app/domain/spec.js PRODUCTS
+제품·장비 이름,이노톡스,이노톡스,app/domain/spec.js PRODUCTS
+제품·장비 이름,메디톡신,메디톡신,app/domain/spec.js PRODUCTS
+제품·장비 이름,리즈톡스,리즈톡스,app/domain/spec.js PRODUCTS
+제품·장비 이름,엘러간,엘러간,app/domain/spec.js PRODUCTS
+제품·장비 이름,리쥬란,리쥬란,app/domain/spec.js PRODUCTS
+제품·장비 이름,쥬베룩,쥬베룩,app/domain/spec.js PRODUCTS
+제품·장비 이름,레디어스,레디어스,app/domain/spec.js PRODUCTS
+제품·장비 이름,스컬트라,스컬트라,app/domain/spec.js PRODUCTS
+제품·장비 이름,엘란쎄,엘란쎄,app/domain/spec.js PRODUCTS
+제품·장비 이름,레스틸렌,레스틸렌,app/domain/spec.js PRODUCTS
+제품·장비 이름,쥬비덤,쥬비덤,app/domain/spec.js PRODUCTS
+제품·장비 이름,벨로테로,벨로테로,app/domain/spec.js PRODUCTS
+제품·장비 이름,뉴라미스,뉴라미스,app/domain/spec.js PRODUCTS
+제품·장비 이름,이브아르,이브아르,app/domain/spec.js PRODUCTS
+제품·장비 이름,아포지,아포지,app/domain/spec.js PRODUCTS
+제품·장비 이름,인모드,인모드,app/domain/spec.js PRODUCTS
+제품·장비 이름,슈링크,슈링크,app/domain/spec.js PRODUCTS
+제품·장비 이름,울쎄라,울쎄라,app/domain/spec.js PRODUCTS
+제품·장비 이름,써마지,써마지,app/domain/spec.js PRODUCTS
+제품·장비 이름,덴서티,덴서티,app/domain/spec.js PRODUCTS
+제품·장비 이름,올리지오,올리지오,app/domain/spec.js PRODUCTS
+제품·장비 이름,텐써마,텐써마,app/domain/spec.js PRODUCTS
+제품·장비 이름,온다,온다,app/domain/spec.js PRODUCTS
+제품·장비 이름,리프테라,리프테라,app/domain/spec.js PRODUCTS
+제품·장비 이름,볼뉴머,볼뉴머,app/domain/spec.js PRODUCTS
+제품·장비 이름,티타늄,티타늄,app/domain/spec.js PRODUCTS
+제품·장비 이름,포텐자,포텐자,app/domain/spec.js PRODUCTS
+제품·장비 이름,프락셀,프락셀,app/domain/spec.js PRODUCTS
+제품·장비 이름,시크릿,시크릿,app/domain/spec.js PRODUCTS
+제품·장비 이름,실펌,실펌,app/domain/spec.js PRODUCTS
+제품·장비 이름,제네시스,제네시스,app/domain/spec.js PRODUCTS
+제품·장비 이름,젠틀맥스,젠틀맥스,app/domain/spec.js PRODUCTS
+제품·장비 이름,클라리티,클라리티,app/domain/spec.js PRODUCTS
+제품·장비 이름,레블라이트,레블라이트,app/domain/spec.js PRODUCTS
+제품·장비 이름,엑셀V,엑셀V,app/domain/spec.js PRODUCTS
+제품·장비 이름,피코슈어,피코슈어,app/domain/spec.js PRODUCTS
+제품·장비 이름,스킨바이브,스킨바이브,app/domain/spec.js PRODUCTS
+빌드 정규화,국내산,국산,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,보톡스,톡신,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,보툴리눔 톡신,톡신,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,보튤리눔 톡신,톡신,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,리즈톡스·뉴럭스·보툴렉스·나보타·메디톡신·휴톡스·비에녹스,국산 + 제품명,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,외국산·외산·수입산,수입,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,50유닛·50unit·50 U·50단위,50U,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,CC·cC,cc,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,"10,000J·10KJ·1만줄",10KJ,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,얼굴 전체·얼굴전체의,얼굴전체,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,벨로텔로,벨로테로,"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,N회 한정가·N회 체험가,N회(횟수),"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+빌드 정규화,N주 프로그램·N주 케어,코스(이용권),"build2/xkeys.py comp()·sessions(), build2/taxonomy.py"
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,광대 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,다한증 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,두피 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,모공 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,목 광경근 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,목주름 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,물톡스,물톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,바디 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,사각턱 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,스킨보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,입꼬리 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,잇몸 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,자갈턱 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,주름 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,측두근 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,침샘 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,콧볼 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,턱라인 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡|보톡스|보툴,특수부위 보톡스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,DCA주사,DCA주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PS주사,PS주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,걸그룹주사,걸그룹주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,광대주사,광대주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,귀 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,눈밑(지방재배치|동안)?주사,눈밑 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,눈밑 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,레디어스,레디어스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,목주름지우개주사,목주름 지우개 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,목주름 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,민소매 조각주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,벨라콜린,벨라콜린,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블리비V주사,블리비V주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,스컬트라,스컬트라,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아큐주사,아큐주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,애교 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,에어녹스,에어녹스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엘란쎄,엘란쎄,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,윤곽주사|컨투어링주사|윤곽,윤곽주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이중턱(개선)?주사,이중턱 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이중턱지방파괴주사,이중턱지방파괴주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,입술 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제로핏주사,제로핏 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,조각주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,종아리 조각주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,주름 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,코 조각주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,코 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,턱끝 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,팔자 필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,필러,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,히알라제|필러녹이,필러 녹이는 주사(히알라제),build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,네오페이스,네오페이스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,덴서티,덴서티,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리프테라,리프테라2,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,모노실,모노실,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,물방울리프팅|LDM,물방울 리프팅(LDM),build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,바비코,바비코,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,볼뉴머,볼뉴머,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,브이로어드밴스리프팅시너지모드,브이로 어드밴스 리프팅 시너지 모드,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블루로즈,블루로즈 포르테,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,빼빼주사,빼빼주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,세르프,세르프,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,슈링크,슈링크 유니버스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,민트실|민트리프팅|실루엣소프트|하이코|실리프팅,실리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,써마지,써마지 FLX,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,압토스리프팅NAMICA19,압토스 리프팅 NAMICA19,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,에어녹스,에어녹스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엠페이스,엠페이스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,온다,온다 리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,올리지오,올리지오,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울쎄라,울쎄라,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라V리프팅,울트라V리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라인,울트라인,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이마거상리프팅,이마거상 리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,인모드,인모드,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,잼버,잼버,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,티타늄,티타늄 리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,프라임레이즈,프라임 레이즈,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,ASCE,ASCE 엑소좀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,AUTOMTS,AUTO MTS,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,NDAPLUS,NDA PLUS,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,NMN,NMN 스킨부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PDRN,PDRN 재생주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PHA물광필링,PHA물광필링,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,고우리,고우리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,고우리부스터,고우리 부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,뉴라미스스킨인핸서,뉴라미스 스킨 인핸서,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,더마샤인,더마샤인,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,레티젠,레티젠,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리들부스터,리들부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리제반,리제반PN,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리쥬란,리쥬란,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리투오,리투오,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,릴리이드,릴리이드M,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,물광주사,물광주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,바이리즌,바이리즌,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리바이브,벨로테로 리바이브,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블리비부스터,블리비부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,셀르디엠,셀르디엠,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,스킨바이브,스킨바이브,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,스킨부스터,스킨부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아기앰플,아기앰플,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아기주사,아기주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,에버클,에버클,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엑소좀,엑소좀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,연어주사,연어주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,올리디아,올리디아,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,줄기세포유도인자스킨부스터,줄기세포 유도 인자 스킨부스터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,줄기세포유도인자정맥주사,줄기세포 유도 인자 정맥주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬베룩,쥬베룩,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬브아셀3%,쥬브아셀 3%,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬브아셀8%,쥬브아셀 8%,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,큐어스템,큐어스템 엑소좀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필로드,필로드,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필메드,필메드135,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^히알루론산주사,히알루론산 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,힐로웨이브,힐로웨이브,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,IPL,IPL,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PDT,PDT(여드름),build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PTT,PTT,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,StellarM22ResurFX,Stellar M22 Resurfx,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^V레이저,V레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,가다실9가,가다실 9가,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,가슴로즈필,가슴 로즈필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,감초주사,감초주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,고주파관리,고주파관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,글루타치온,글루타치온주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,기미주사,기미주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,꿀광필,꿀광필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,내맘대로피부관리,내맘대로 피부관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,네오빔레이저,네오빔 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,네오젠플라즈마,네오젠 플라즈마,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,네오젠플라즈마\-얼굴전체,네오젠 플라즈마 - 얼굴전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,도트필개당,도트필 개당,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,도트필부분,도트필 부분,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,도트필얼굴전체,도트필 얼굴전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,등로즈필,등 로즈필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,라라젯,라라젯,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,라라필,라라필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,레블라이트SI토닝,레블라이트SI 토닝,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,(?<!피코|착색|바디|아큐|SI)토닝,레이저토닝,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리팟레이저\-이하,리팟 레이저 - 이하,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리팟레이저,리팟레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,마늘주사,마늘주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,모세혈관레이저,모세혈관 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,문신제거,문신제거,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,미백관리,미백관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,밀크필,밀크필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,알라딘필,바디 알라딘필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,백옥주사,백옥주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블랙필,블랙필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비립종,비립종,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비립종목전체,비립종 목 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비립종얼굴전체,비립종 얼굴 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비립종/쥐젖/사마귀,비립종/쥐젖/사마귀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비타민D주사,비타민D 주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비타민D주사,비타민D주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^비타민관리$|^비타민관리(?!/),비타민관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비타민관리/수분관리/이온토/크라이오셀,비타민관리/수분관리/이온토/크라이오셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,비타민관리/수분관리/크라이오셀,비타민관리/수분관리/크라이오셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^비타민주사,비타민주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,빛타민케어,빛타민케어,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,사마귀,사마귀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,사마귀목전체,사마귀 목 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,사마귀얼굴전체,사마귀 얼굴 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,산소필,산소필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,산소필/핑크필/호박필등,산소필/핑크필/호박필 등,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,서브시전,서브시전,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,수분관리,수분관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,스타워커FRAC3,스타워커 FRAC3,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,스펙트라필,스펙트라필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,시카레이저,시카레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,시카필,시카필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^시크릿,시크릿 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,신데렐라주사,신데렐라주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,실펌,실펌X,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아그네스,아그네스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아이콘MAX\-G,아이콘 MAX-G,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아이콘스타룩스XD레이저,아이콘 스타룩스XD 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아쿠아필,아쿠아필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아큐토닝,아큐토닝,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아크네케어,아크네케어,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아크네필링,아크네필링,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,알라딘필,알라딘필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,얼굴로즈필,얼굴 로즈필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,얼굴전체여드름압출,얼굴전체 여드름압출,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엑셀V|엑셀브이,엑셀V,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름압출,여드름 압출,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름압출얼굴전체,여드름 압출 얼굴전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름약처방,여드름 약 처방,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름압출,여드름압출,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름치료,여드름치료,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,염증주사,염증주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,수액주사,영양 수액주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,오투덤,오투덤 산소테라피,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,워터풀케어,워터풀케어,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이온자임,이온자임,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이온자임DF,이온자임DF,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,인라이튼니플스,인라이튼 니플스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,잡티스팟레이저,잡티 스팟 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,재생관리,재생관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,점빼기|점제거|^점(?![가-힣])|얼굴점|돌출점,점 빼기,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제네시스(?!토닝),제네시스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥐젖,쥐젖,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥐젖목전체,쥐젖 목 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥐젖얼굴전체,쥐젖 얼굴 전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,착색토닝|바디토닝|바디착색,착색토닝,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,카프리,카프리 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,커스텀피부관리,커스텀 피부관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,큐페이셜풀케어,큐페이셜 풀케어,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,크라이오,크라이오,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,크라이오셀,크라이오셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,크라이오셀진정관리,크라이오셀 진정관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,클라리티,클라리티,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,태반주사,태반주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,티옥트산,티옥트산주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,포텐자,포텐자,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,(?<!피코)프락셀|프락셔널,프락셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,플라듀오레이저,플라듀오 레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,플라필,플라필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,플래티넘플라필,플래티넘 플라필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피부진정크라이오셀,피부 진정 크라이오셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피코지우개,피코지우개,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피코토닝,피코토닝,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피코프락셀,피코프락셀,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,핑크필,핑크필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,호박필,호박필,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,3자 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,3자·미간 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,3자이마 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,3자이마·미간 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,SS주사,SS주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴·등·배 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴·등상부·등하부·배 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴·등상부·배·하부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴·등상부·하부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,가슴·배 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,겨드랑이 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,겨드랑이·미간·인중 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,겨드랑이·인중 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,구렛나루 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,구렛나루·눈썹위·아래 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,구렛나루·배렛나루·유륜 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,눈썹 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,눈썹위 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,눈썹위·아래 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,다리전체 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,다이어트약처방1주,다이어트 약 처방 1주,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,다이어트약처방,다이어트약처방,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목·앞목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목·윗목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목·윗목·이마라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목디자인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,뒷목헤어라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,등 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,등상부·하부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,등전체 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,무릎 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,미간 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,미니스커트주사,미니스커트주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,슈링크,바디 슈링크,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,온다,바디 온다 리프팅,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울쎄라,바디 울쎄라,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,인모드,바디 인모드,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,바디 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,바디 조각주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,프라임레이즈,바디 프라임 레이즈,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,발 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,발가락 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,발가락·발등 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,발등 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배꼽주위 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배꼽주위·배렛나루 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배꼽주위·배렛나루·유륜 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배렛나루 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배렛나루·유륜 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,배상부·하부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,볼 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,부위 미표기 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,브라질리언 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,브라질리언·비키니라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블리비S,블리비S,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,비키니 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,비키니라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니·엉덩이 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니·엉덩이·항문 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니·엉덩이·항문·회음부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니·항문 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,사타구니·항문·회음부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,삼자이마 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,손 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,손가락 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,손가락·손등 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,손등 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,수염中 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,수염小 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,슬림컷주사,슬림컷주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,앞목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,앞턱 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,양볼 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,양볼·이마 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,양볼·이마·헤어라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,어깨라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,얼굴 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,얼굴전체 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,엉덩이 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,올누드 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라인바디,울트라인 바디,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라인복부,울트라인 복부,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울핏,울핏,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,윗목 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,유륜 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이마 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이마·헤어라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이마라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이마전체 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이중턱 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이중턱·턱끝·턱라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,이중턱·턱라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,인중 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,입술밑 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제로핏주사1앰플,제로핏 주사 1앰플,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제로핏주사2앰플,제로핏 주사 2앰플,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제로핏주사3앰플,제로핏 주사 3앰플,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,종아리 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,종아리·팔상완·팔하완 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,종아리·허벅지 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,종아리성형주사,종아리성형주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,카복시|지방분해주사,카복시·지방분해주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱끝 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱끝·턱라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱끝·턱라인·턱밑 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱끝·턱밑 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,턱밑 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,트리플바디,트리플 바디,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,팔상완 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,팔상완or하완 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,팔상완·팔하완 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,팔전체 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,팔하완 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,항문 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,항문·회음부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,허리 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,허벅지 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,헤어라인 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,헤어라인교정 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,회음부 제모,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,ASCE,ASCE 엑소좀 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,NMN,NMN 스킨부스터 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PDT,PDT(여드름) 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,PS주사,PS주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,플라좀\(PL,기타 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,더블광채항노화주사,더블 광채 항노화주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,덴서티,덴서티 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,(?<!피코|착색|바디|아큐|SI)토닝,레이저토닝 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리제반,리제반PN 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리쥬란,리쥬란 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,리프테라,리프테라2 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,릴리이드,릴리이드M 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,문신제거,문신제거 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,물광주사,물광주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,물방울리프팅|LDM,물방울 리프팅(LDM) 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,벨라콜린,벨라콜린,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,톡신|모공톡스|더모톡|스킨톡|쁨킨톡,보톡스 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블랙필,블랙필 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,블루로즈,블루로즈 포르테 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,슈링크,슈링크 유니버스 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,슬림컷주사,슬림컷주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,^시크릿,시크릿 레이저 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,민트실|민트리프팅|실루엣소프트|하이코|실리프팅,실리프팅 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,실펌,실펌X 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,써마지,써마지 FLX 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,아쿠아필,아쿠아필 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,에버클,에버클 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엑셀V|엑셀브이,엑셀V 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엑소좀,엑소좀 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엑스인젝터,엑스인젝터,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,엘라비에밸런스,엘라비에 밸런스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,염증주사,염증주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,온다,온다 리프팅 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울쎄라,울쎄라 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라인,울트라인,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,울트라콜,울트라콜,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,원데이트러블케어,원데이 트러블케어,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,이중턱(개선)?주사,이중턱 주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,인라이튼니플스,인라이튼 니플스,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,인모드,인모드 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,제모,제모 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,조각주사,조각주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,줄기세포안티에이징정맥주사,줄기세포 안티에이징 정맥주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,줄기세포안티에이징페이스셀주사,줄기세포 안티에이징 페이스셀주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬베룩,쥬베룩 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬브아셀8%,쥬브아셀 8%,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,쥬브아셀V,쥬브아셀V,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,착색토닝|바디토닝|바디착색,착색토닝 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,카복시|지방분해주사,카복시·지방분해주사 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,카프리,카프리 레이저 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,큐어스템,큐어스템 엑소좀 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,티타늄,티타늄 리프팅 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,포텐자,포텐자 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,(?<!피코)프락셀|프락셔널,프락셀 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피코토닝,피코토닝 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,피코프락셀,피코프락셀 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필러(?!녹이)|벨로테로(?!리바이브)|쥬비덤|레스틸렌|리쥬비엘,필러 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,필로드,필로드 포함 패키지,build2/taxonomy.py FAMILIES (data.json meta.fam)
