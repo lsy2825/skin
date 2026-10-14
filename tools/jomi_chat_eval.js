@@ -23,7 +23,12 @@ const Concern = (() => {
     const m = { exports: {} }; new Function("module", "exports", src)(m, m.exports); return m.exports;
   } catch (e) { return require(path.join(ROOT, "app/domain/concern.js")); }
 })();
-const CONC = D.meta.concerns, KB = D.meta.kb || { entries: [] };
+const KB = D.meta.kb || { entries: [] };
+// the old side also reads the concern words as they were (git 0bebec9), so new synonyms don't raise it
+const CONC = (() => {
+  try { return JSON.parse(require("node:child_process").execFileSync("git", ["-C", ROOT, "show", "0bebec9:knowledge/concerns.json"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })); }
+  catch (e) { return D.meta.concerns; }
+})();
 const n = (s) => Search.norm(s || "");
 const has = (names, want) => names.some((x) => n(x).includes(n(want)));
 

@@ -891,7 +891,9 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 .guide.gtop .fold { margin-top: 6px; }
 .note.recl { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
 /* 4.0 product layer: mixed products note + chips, per-row product tag, comparability box (docs/TREATMENT_TAXONOMY.md) */
-.note.mixnote { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
+.note.mixnote { margin-top: 10px; }
+.note.mixnote summary { cursor: pointer; display: flex; gap: 6px; align-items: center; list-style: none; }
+.note.mixnote[open] summary { margin-bottom: 6px; }
 .prodmix { margin-top: 10px; }
 .prodmix .chips { margin-top: 4px; }
 .k.prodk { background: var(--sunken); color: var(--ink-2); }

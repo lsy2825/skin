@@ -26,7 +26,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await p.click('#jomibtn'); await p.waitForTimeout(400);
     const t1 = await p.locator('.sheet').innerText();
     ok('죠미를 누르면 첫 자기소개', await p.locator('.jomi-intro.first').count() === 1 && /안녕! 난 죠미야!/.test(t1) && /궁금한 게 있으면 언제든 찾아와/.test(t1), t1.split('\n').slice(0, 3).join(' / '));
-    ok('역할·진단 아님 안내와 버튼 2개', /공식 안내냥/.test(t1) && /진단이나 시술 추천은 하지 않아/.test(t1) && /피부 고민 탐색/.test(t1) && /시술 가격비교/.test(t1));
+    ok('역할·진단 아님 안내와 버튼 2개', /공식 안내냥/.test(t1) && /진단이나 시술 추천은 하지 않아/.test(t1) && /죠미와 대화/.test(t1) && /시술 가격비교/.test(t1));
     ok('시트가 열린 동안 뒤 화면 스크롤 잠금', await p.evaluate(() => document.documentElement.classList.contains('sheet-open') && getComputedStyle(document.body).overflow === 'hidden'));
     ok('포커스가 시트 안', await p.evaluate(() => !!document.activeElement.closest('.sheet')));
     await p.click('.jomi-pic'); await p.waitForTimeout(150);

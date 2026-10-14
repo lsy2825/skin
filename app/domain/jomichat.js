@@ -241,6 +241,13 @@
     return hits.length ? hits : c.fams.slice().sort((a, b) => (b.n || 0) - (a.n || 0)).slice(0, 4).map((f) => f.name);
   }
 
+  // a search typed like a question ('카프리 레이저 가격', '리쥬란 얼마야?') without the question words, so the price search
+  // finds the treatment instead of nothing (2026-10-15 audit: 57% of such searches showed no price for the treatment)
+  function cleanQuery(text) {
+    const ws = words(text).filter((x) => !STOP.has(x.w) && !STOP.has(x.raw) && !/^(알려|궁금|어떤|어때|해줘|해요|있어|없어|좀|정도)/.test(x.w));
+    return ws.map((x) => (/^\d/.test(x.raw) ? x.raw.replace(PARTICLE, "") : x.w)).join(" ").replace(/[?？!.]/g, "").trim();
+  }
+
   // the summary a price answer shows: branches, lowest, median, highest (one lowest price per branch)
   function summary(ps) {
     if (!ps.length) return { n: 0 };
@@ -284,5 +291,5 @@
       prices: !!((r.price && r.price.n) || (r.prices && r.prices.some((x) => x.price && x.price.n))) };
   }
 
-  return { MAX_LEN, HELP, CHIT, memory, ctx, ctxFromData, understand, summary, specOf, specText, words, findFams, toEval };
+  return { MAX_LEN, HELP, CHIT, memory, ctx, ctxFromData, understand, summary, specOf, specText, words, findFams, toEval, cleanQuery };
 });

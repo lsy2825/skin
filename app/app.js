@@ -1419,9 +1419,15 @@
     if (partial()) { pending = () => routeQuery(t); $("#main").replaceChildren(fullWait()); return; }
     // not a price search: a concern, a warning sign, two treatments compared, a question about the app or small talk goes to
     // 죠미와 대화 with the words in memory only (not the URL)
-    if (FLAGS.concernSearch && !famFind(t).length) {
-      const r = JomiChat.understand(t, chatCtx(), JomiChat.memory());
-      if (["concern", "safety", "help", "chit", "compare2"].includes(r.kind) || r.safety.length) { pendingChat = t; nav("concern"); return; }
+    const r = JomiChat.understand(t, chatCtx(), JomiChat.memory());
+    if (FLAGS.concernSearch && !famFind(t).length && (["concern", "safety", "help", "chit", "compare2"].includes(r.kind) || r.safety.length)) { pendingChat = t; nav("concern"); return; }
+    // a treatment named (and no place, brand or price range): straight to its price comparison in the spec asked
+    // ('리쥬란 2cc 얼마' → 리쥬란 2cc). A name that covers many kinds ('보톡스', '필러') opens the search page with the kinds
+    // side by side instead. 2026-10-15 audit: a search typed like a question showed the treatment's price on the first screen
+    // only 42.6% of the time.
+    if ((r.kind === "treatment" || r.kind === "price") && r.key && !Object.keys(r.where).length && !Search.interpret(` ${t} `, nlCtx()).min && !Search.interpret(` ${t} `, nlCtx()).max) {
+      const head = Search.norm(JomiChat.cleanQuery(t)), many = FAM.filter((f) => f.name.split(/[\s·/()]+/).some((w) => Search.norm(w) === head)).length;
+      if (!(many >= 5 && !r.spec && head === Search.norm(r.fams[0].name))) { nav(`compare?k=${r.key.id}`); return; }
     }
     nav(`search/${encodeURIComponent(t)}`);
   }
@@ -1466,12 +1472,14 @@
     // two ways in
     const ent = (cls, ic, t, sub, go) => h("button", { class: `entry ${cls}`, type: "button", onclick: go }, h("span", { class: "ei" }, icon(ic)),
       h("span", {}, h("b", {}, t), h("small", {}, sub)), h("span", { class: "go" }, icon("arrow-up-right", "sm")));
-    box.append(h("div", { class: "entries" },
+    // the two ways in and the promise come after the popular prices: the first screen shows prices (2026-10-15 audit — the
+    // home screen showed no price above the fold)
+    const entriesNode = h("div", { class: "entries" },
       ent("e-price", "chart-column", "시술명으로 가격비교", `같은 조건끼리 ${regionName()} 지점 가격을 비교해요`, () => nav("compare")),
-      FLAGS.concernSearch ? ent("e-concern", "message-circle", "시술 이름을 모르면", "고민을 적으면 관련 시술을 알려 드려요", () => nav("concern")) : null));
-    box.append(h("button", { class: "trustline", type: "button", onclick: () => nav("principles") }, icon("shield-check", "sm"),
-      h("span", {}, "병원에게 돈을 받고 순서를 바꾸지 않아요 · 수집 범위와 출처를 공개해요"), icon("chevron-right", "xs")));
-    if (!FLAGS.concernSearch) box.lastChild.style.gridTemplateColumns = "1fr";
+      FLAGS.concernSearch ? ent("e-concern", "message-circle", "죠미에게 물어보기", "시술 이름·가격·고민을 말로 물어봐요", () => nav("concern")) : null);
+    const trustNode = h("button", { class: "trustline", type: "button", onclick: () => nav("principles") }, icon("shield-check", "sm"),
+      h("span", {}, "병원에게 돈을 받고 순서를 바꾸지 않아요 · 수집 범위와 출처를 공개해요"), icon("chevron-right", "xs"));
+    if (!FLAGS.concernSearch) entriesNode.style.gridTemplateColumns = "1fr";
     const cont = partial() ? null : continueChips();
     if (cont) box.append(secHead("이어서 보기"), cont);
     // 인기 시술: cheapest plain price per treatment, how far below the middle, + 담기
@@ -1510,6 +1518,7 @@
     }
     box.append(grid, h("p", { class: "foot", style: "margin-top:-6px" }, "가격은 참고용이에요. 같은 시술도 병원마다 용량·조건·정품 여부·시술 의료진이 다를 수 있고, 부작용·주의사항이 있어요. 시술 화면에서 함께 확인하세요."),
       h("button", { class: "btn line block", type: "button", onclick: () => nav("compare") }, `시술 ${(partial() ? D.meta.partial.keys : KEYS.length).toLocaleString()}개 전체 비교`, icon("chevron-right", "sm")));
+    box.append(entriesNode, trustNode);
     // 죠미의 오늘의 발견. Default: treatments whose same-condition prices differ most between clinics (no clinic named) —
     // 'compare before you choose'. With flags.discountEmphasis: the biggest gaps below the middle (the earlier list).
     const spreads = FLAGS.discountEmphasis ? [] : spreadFinds();
@@ -1574,7 +1583,7 @@
       pic.addEventListener("click", () => { const L = J.lines.easter || []; const t = jline("quip") || L[taps++ % (L.length || 1)]; if (!t) return; quip.textContent = t; pic.classList.remove("hop"); void pic.offsetWidth; pic.classList.add("hop"); });
       const go = (route) => () => { close(); nav(route); };
       const actions = h("div", { class: "jomi-actions" },
-        FLAGS.concernSearch ? h("button", { class: "btn soft", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "피부 고민 탐색") : null,
+        FLAGS.concernSearch ? h("button", { class: "btn soft", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "죠미와 대화") : null,
         h("button", { class: "btn", type: "button", onclick: go("compare") }, icon("chart-column", "sm"), "시술 가격비교"));
       const id = h("div", { class: "jomi-id" }, h("b", {}, J.name), h("span", { class: "en" }, J.en), h("span", { class: "infotag" }, J.role));
       return h("div", { class: `jomi-intro${first ? " first" : ""}` }, pic, quip, id,
@@ -1598,7 +1607,7 @@
     box.append(h("div", { class: "hub" },
       tile("chart-column", "시술별 가격 비교", "같은 용량·회차끼리 가격 범위와 분포", () => nav("compare"), "feat"),
       tile("scale", "빠른 비교", shortKeys().length ? `비교함 ${shortKeys().length}/${SHORT_MAX}곳` : "지점 2~4곳을 같은 사양으로", () => nav("quick")),
-      FLAGS.concernSearch ? tile("message-circle", "피부 고민 가이드", "고민별 일반 정보와 관련 시술", () => nav("concern")) : null,
+      FLAGS.concernSearch ? tile("message-circle", "죠미와 대화", "시술 이름·가격·고민을 말로 물어보기", () => nav("concern")) : null,
       tile("book-open", "시술 사전", "헷갈리는 시술의 차이", () => nav("guide")),
       tile("map", "지도", "가까운 지점과 가격", () => nav("map")),
       FLAGS.branchRanking ? tile("trophy", "지점 순위", top1 ? `1위 ${BR[top1.b].name}` : "같은 상품 기준", () => nav("rank")) : null,
@@ -1623,9 +1632,11 @@
   views.saved = () => {
     const box = h("div", { class: "view" });
     box.append(h("div", { style: "padding:4px 4px 0" }, h("h2", { class: "display", style: "font-size:24px" }, "관심"), h("p", { class: "sub", style: "margin:4px 0 0" }, "관심 시술·지점과 가격 알림이 이 기기에 모여요")));
-    box.append(alertsCard());
     const F = favs();
     const favK = F.k.map((id) => KI[id]).filter((k) => k != null), favB = F.b.map((id) => BK.get(id)).filter((b) => b != null);
+    // nothing saved yet: the way to prices first (2026-10-15 audit — the empty screen led nowhere near a price)
+    if (!favK.length && !favB.length) box.append(h("button", { class: "btn block", type: "button", onclick: () => nav("compare") }, icon("chart-column", "sm"), "시술 가격 비교하고 관심에 담기"));
+    box.append(alertsCard());
     // 관심 시술: price range / middle price / observed change / last check — no 'lowest clinic' (docs/OBJECTIVE_DISPLAY_POLICY.md)
     if (favK.length) box.append(watchCard(favK));
     box.append(feedCard(favK));
@@ -2749,7 +2760,8 @@
   function mixNote(k) {
     const m = mixFor(k), named = [...m.named.keys()];
     if (!m.mixed && !(named.length && m.none)) return null;
-    return h("div", { class: "note mixnote" }, icon("info", "sm"), h("span", {},
+    // one line that opens: the price range right under it stays on the first screen (2026-10-15 audit)
+    return h("details", { class: "note mixnote" }, h("summary", {}, icon("info", "sm"), m.mixed ? ` 제품·장비가 서로 다른 가격이 섞여 있어요(${named.length}종${m.none ? "·표기 없음" : ""})` : " 제품 표기가 섞여 있어요"), h("span", {},
       m.mixed ? `제품·장비가 서로 다른 가격이 함께 있어요: ${named.slice(0, 4).join(" · ")}${named.length > 4 ? " …" : ""}${m.none ? " · 표기 없음" : ""}. 제품이 다르면 효과·통증·유지 기간이 다를 수 있어요. 아래 목록에서 제품별로 볼 수 있어요.`
         : `${named[0]}라고 적은 곳과 제품명을 적지 않은 곳이 함께 있어요. 표기 없는 곳은 어떤 제품인지 병원에 확인하세요.`));
   }
@@ -3033,7 +3045,9 @@
   }
   views.map = () => {
     const box = h("div", { class: "view" });
-    const keySel = h("select", { class: "pick", "aria-label": "지도에 표시할 시술", onchange: (e) => { st.mapKey = e.target.value === "" ? null : +e.target.value; st.mapSel = null; drawMap(); paintNear(); } },
+    // the map opens on the treatment just compared (its prices on the pins) until the user picks something else
+    if (st.mapKey == null && !st.mapKeyChosen && st.key != null && KEYS[st.key]) st.mapKey = st.key;
+    const keySel = h("select", { class: "pick", "aria-label": "지도에 표시할 시술", onchange: (e) => { st.mapKeyChosen = true; st.mapKey = e.target.value === "" ? null : +e.target.value; st.mapSel = null; drawMap(); paintNear(); } },
       h("option", { value: "" }, "지점 위치만 보기"), KEYS.map((x) => h("option", { value: x.i, selected: x.i === st.mapKey }, `${x.cat} · ${x.label}`)));
     box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h2", {}, "지도"), h("span", { class: "sp" }),
       h("button", { class: "btn sm gray", type: "button", onclick: () => locate(() => { if (map && st.loc) map.setView([st.loc.lat, st.loc.lng], 13); }) }, icon("locate-fixed", "sm"), "내 위치로")),
@@ -3771,12 +3785,17 @@
     return out;
   }
   function typedResults(qs, fams, keys) {
-    const nq = Search.norm(qs || "").replace(/\s+/g, "");
+    // the words as typed (no alias mapping: '보톡스' is not the product '보툴렉스'), and a place or clinic only as its own word
+    // ('물광주사' does not name 광주) — 2026-10-15 audit
+    const plain = (t) => String(t || "").toLowerCase().replace(/\s+/g, "");
+    const nq = plain(qs);
     if (nq.length < 2) return null;
-    const hit = (t) => { const x = Search.norm(t).replace(/\s+/g, ""); return x.length >= 2 && (nq.includes(x) || x.includes(nq)); };
+    const hit = (t) => { const x = plain(t); return x.length >= 2 && (nq.includes(x) || x.includes(nq)); };
+    const qw = String(qs || "").toLowerCase().split(/[\s,·]+/).filter(Boolean);
+    const word = (t) => { const x = plain(t); return x.length >= 2 && qw.some((w) => w === x || (w.startsWith(x) && /^(역|점|구|동|시|에서|근처|주변|은|는|이|가)?$/.test(w.slice(x.length)))); };
     const prods = prodNames().filter(([p]) => hit(p)).map(([p, rx]) => [p, prodBranches(p, rx)]).filter(([, bs]) => bs.size).sort((a, b) => b[1].size - a[1].size).slice(0, 6);
-    const clinics = BR.filter((b) => hit(`${brandOf(b.i)[0]}${b.name}`) || hit(b.name.replace(/(본점|점)$/, ""))).slice(0, 6);
-    const areas = areaFind(qs).filter((a) => a.name.length >= 2 && hit(a.name)).slice(0, 5);
+    const clinics = BR.filter((b) => word(`${brandOf(b.i)[0]}${b.name}`) || word(b.name.replace(/(본점|점)$/, "")) || plain(qs) === plain(`${brandOf(b.i)[0]}${b.name}`)).slice(0, 6);
+    const areas = areaFind(qs).filter((a) => a.name.length >= 2 && word(a.name)).slice(0, 5);
     const conc = FLAGS.concernSearch && CONC.concerns.length ? Concern.classify(qs, CONC).matches.map((m) => CONC.concerns.find((c) => c.id === m.id)).filter(Boolean) : [];
     const groups = [["시술", fams.length + keys.length], ["제품·장비", prods.length], ["병원", clinics.length], ["지역", areas.length], ["고민", conc.length]].filter(([, n]) => n);
     if (!prods.length && !clinics.length && !areas.length) return groups.length ? h("p", { class: "tiny typedsum" }, `찾은 종류: ${groups.map(([g, n]) => `${g} ${n}`).join(" · ")}`) : null;
@@ -3792,7 +3811,10 @@
     // natural language → filters, once per new search (?nl=1 marks it as done; ?nl=0 = take the words literally)
     if (qs && !params.has("nl") && !Search.hasOps(qs)) {
       const it = Search.interpret(qs, nlCtx());
-      if (it.chips.length) {
+      // question words never stay in the search ('카프리 레이저 가격' searched for '가격' too and found nothing — 2026-10-15)
+      const clean = JomiChat.cleanQuery(it.q) || it.q;
+      if (clean !== it.q) it.q = clean;
+      if (it.chips.length || it.q !== qs) {
         const np = new URLSearchParams(params);
         np.set("nl", "1"); np.set("orig", qs);
         if (it.brand) np.set("brand", D.meta.brands.findIndex((b) => b[0] === it.brand));
@@ -3827,7 +3849,7 @@
     // main types side by side when the search hits a group people often mix up (보톡스, 필러)
     const grp = Object.entries(MAIN_TYPES).map(([g, names]) => [g, names.map(famByName).filter((f) => f && fams.includes(f) && kbOf(f))]).find(([, x]) => x.length >= 3);
     const main = grp && grp[1], how = grp && (grp[0] === "lifting" || grp[0] === "toning");   // devices differ by method, injections by place
-    if (main) box.append(h("div", { class: "card" }, h("h3", {}, "주요 종류 한눈에 비교"),
+    const mainCard = !main ? null : (h("div", { class: "card" }, h("h3", {}, "주요 종류 한눈에 비교"),
       h("div", { class: "sub" }, "이름은 비슷해도 놓는 곳과 목적이 달라요. 어떤 게 맞는지는 의료진과 상담하세요."),
       h("div", { class: "ttable", role: "table", "aria-label": "주요 종류 비교" },
         h("div", { class: "tr th", role: "row" }, h("span", { role: "columnheader" }, "종류"), h("span", { role: "columnheader" }, how ? "방식" : "놓는 곳"), h("span", { role: "columnheader" }, "주로 받는 이유")),
@@ -3850,7 +3872,9 @@
           h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, k.cat, FLAGS.lowestHighlight && top ? `최저 ${bname(top.b)}` : `${byKB[k.i].size}곳`))); }))));
     // typed results (docs/SEARCH_ENGINE_QA.md): what else the words name — a product / device, a clinic, a place, a concern —
     // above the price rows, each with where it leads; the counts are real (branches selling, branches in the place)
-    { const tc = typedResults(params.get("orig") || qs, fams, keys); if (tc) box.insertBefore(tc, box.children[2] || null); }
+    // prices first (the app's job), then what else the words name (2026-10-15 audit: this card used to sit above the prices)
+    { const tc = typedResults(params.get("orig") || qs, fams, keys); if (tc) box.append(tc); }
+    if (mainCard) box.append(mainCard);
     const orig = params.get("orig");
     box.append(priceTable(`search/${encodeURIComponent(qs)}`, params, { q: qs, head: [h("h3", {}, qs ? "이름에 검색어가 들어간 모든 가격" : "조건에 맞는 모든 가격"),
       orig ? h("div", { class: "note", style: "margin-top:8px" }, `‘${orig}’를 검색어 ‘${qs || "(없음)"}’와 아래 필터로 나눠 찾았어요. `,
