@@ -15,6 +15,10 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        brand: [daybeau, uandi, vands, drevers, cellin]   # one job each: annotations are capped per job
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -24,11 +28,12 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -r requirements.txt
-      - name: Probe (robots.txt first, 1 request/s per host, at most 40 pages per brand)
+      - name: Probe (robots.txt first, 1 request/s per host, at most 25 pages per brand)
         working-directory: scrape
         env:
           PROBE_OUT: ${{ github.workspace }}/probe_out
-        run: python probe.py
+          PROBE_MAX: "25"
+        run: python probe.py ${{ matrix.brand }}
       - name: Run listed collectors when present (raw CSV copied into probe_out only)
         if: hashFiles('scrape/probe_collect.txt') != ''
         working-directory: scrape

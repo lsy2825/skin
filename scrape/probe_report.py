@@ -2,20 +2,25 @@
 
 Artifact and log downloads are blocked from the dev container, but a check run's annotations can be read through the
 API. So probe_out/ is packed (tar.gz -> base64) and cut into CHUNK-sized pieces; `split` writes them to files, `emit N`
-prints pieces N..N+9 as ::notice lines (GitHub keeps 10 notices per step, 50 per job). Each piece starts with
+prints pieces N..N+9 as ::notice lines (GitHub keeps 10 notices per step, 50 per job — so the workflow runs one
+job per brand). Each piece starts with
 "index/sent/total/sha256 " (sha256 of the whole archive) so the reader can check it reassembled every piece.
   python scrape/probe_report.py split <probe_out> <dir>      python scrape/probe_report.py emit <dir> <start>
 """
 import base64, hashlib, io, os, sys, tarfile
 
-CHUNK = 30000
-MAX = 50
+CHUNK = 3900   # GitHub cuts an annotation message at about 4,000 characters (seen on run 38550219318)
+MAX = 45       # 50 annotations per job, a few kept free for warnings
 
 
 def split(src, dst):
     buf = io.BytesIO()
+    # index.json first, then pages in order: if the job's annotation cap cuts the tail, the reader can still stream-read
+    # the front of the archive (summary + first pages)
+    files = sorted((os.path.join(d, f) for d, _, fs in os.walk(src) for f in fs), key=lambda p: (not p.endswith("index.json"), p))
     with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as t:
-        t.add(src, arcname="probe_out")
+        for f in files:
+            t.add(f, arcname=os.path.join("probe_out", os.path.relpath(f, src)))
     raw = buf.getvalue()
     b64 = base64.b64encode(raw).decode()
     pieces = [b64[i:i + CHUNK] for i in range(0, len(b64), CHUNK)]
