@@ -37,6 +37,8 @@
     get user() { return user; },
     providerName,
     onChange(f) { listeners.push(f); },
+    // the signed-in user's short-lived access token, for the commerce API (server/) — never stored by the app
+    async accessToken() { await load(); const { data } = await sb.auth.getSession(); return data.session ? data.session.access_token : null; },
     init: load,
     async signIn(provider) {
       await load();

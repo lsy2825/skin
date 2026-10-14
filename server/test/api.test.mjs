@@ -106,7 +106,7 @@ test("Toss: confirm grants once; repeated confirm and webhook do not grant again
   const w = await req(app, "POST", "/v1/webhooks/toss", { body: { eventType: "PAYMENT_STATUS_CHANGED", createdAt: "x", data: { paymentKey: pk, orderId: o.order_id, status: "DONE" } } });
   assert.equal(w.status, 200); assert.equal(w.body.result, "ALREADY_FULFILLED");
   assert.equal((await req(app, "GET", "/v1/wallet", { token: tok })).body.paid, 12);
-  assert.ok(TOSS.calls.some((c) => c.path === "/v1/payments/confirm" && c.idem === `confirm-${o.order_id}`), "Idempotency-Key sent");
+  assert.ok(TOSS.calls.some((c) => c.path === "/v1/payments/confirm" && c.idem === `confirm-${pk}`), "Idempotency-Key sent");
   assert.ok((await D.call("commerce_verify_wallet", { user_id: u })).ok);
 });
 
@@ -256,8 +256,14 @@ test("image decoder: usage and cost recorded; a price the printed text does not 
   const use = (await D.pool.query("select cost_krw, ok, call_kind from public.ai_usage_records where user_id = $1", [u])).rows;
   assert.equal(use.length, 1); assert.equal(+use[0].cost_krw, +(((1000 * 1 + 200 * 0.1 + 300 * 4) / 1e6) * 1400).toFixed(4));
   // free correction: re-matched without AI or credits
-  const cor = await req(app, "POST", `/v1/reports/${j.body.report_id}/corrections`, { token: tok, body: { offers: [{ raw_offer_name: "리쥬란힐러 2cc", advertised_price: 189000 }] } });
-  assert.equal(cor.status, 200); assert.equal(cor.body.items[0].match.status, "EXACT_MATCH");
+  const cor = await req(app, "POST", `/v1/reports/${j.body.report_id}/corrections`, { token: tok, body: { edits: [{ index: 1, raw_offer_name: "리쥬란힐러 2cc", advertised_price: 189000 }] } });
+  assert.equal(cor.status, 200); assert.equal(cor.body.items[1].match.status, "EXACT_MATCH"); assert.equal(cor.body.items[1].offer.advertised_price, 189000);
+  // 5.1 audit: corrections edit read items only (no new offers = no free decoder), bounded
+  assert.equal((await req(app, "POST", `/v1/reports/${j.body.report_id}/corrections`, { token: tok, body: { edits: [{ index: 9, raw_offer_name: "슈링크 300샷", advertised_price: 1 }] } })).status, 400);
+  assert.equal((await req(app, "POST", `/v1/reports/${j.body.report_id}/corrections`, { token: tok, body: { offers: Array.from({ length: 40 }, () => ({ raw_offer_name: "국산 사각턱 보톡스 50U", advertised_price: 9000 })) } })).status, 400);
+  let lim = 0;
+  for (let i = 0; i < 12; i++) lim = (await req(app, "POST", `/v1/reports/${j.body.report_id}/corrections`, { token: tok, body: { edits: [{ index: 0, raw_offer_name: "국산 사각턱 보톡스 50U", advertised_price: 19000 + i }] } })).status;
+  assert.equal(lim, 429, "corrections are bounded");
   assert.equal(ai.seen.length, 1); assert.equal((await req(app, "GET", "/v1/wallet", { token: tok })).body.promo, 2);
   // provider down twice → released, both calls logged, no charge
   const down = fakeOpenAI([{ status: 500 }, { status: 500 }]);
@@ -291,7 +297,7 @@ test("URL decoder: private / non-https addresses refused for free; a blocked pag
   for (const bad of ["http://example.com/a", "https://127.0.0.1/", "https://localhost/x", "https://169.254.169.254/latest", "https://[::1]/", "https://metadata.google.internal/", "https://a.b:8443/"]) {
     await assert.rejects(fetchPublicText(bad, { fetch: pageFetch }), /BAD_URL|주소/);
   }
-  const run = jobRunner({ rpc, ctx: CTX, fetchText: (url) => fetchPublicText(url, { fetch: pageFetch }) });
+  const run = jobRunner({ rpc, ctx: CTX, fetchText: (url) => fetchPublicText(url, { fetch: pageFetch, resolve: async () => true }) });
   const ok = await run.run({ id: u }, "EVENT_URL_DECODER", { url: "https://clinic.example.com/event" }, k("url"));
   assert.equal(ok.status, "SUCCEEDED");
   await assert.rejects(run.run({ id: u }, "EVENT_URL_DECODER", { url: "https://clinic.example.com/blocked" }, k("url")), (e) => e.code === "PAGE_BLOCKED" && e.detail.released);
@@ -315,8 +321,14 @@ test("Jomi: diagnosis / dosing screened for free; an answer with an invented pri
   const run = jobRunner({ rpc, ctx: CTX, ai: null });
   const j = await run.run({ id: u }, "JOMI_QA_SESSION", { question: "리쥬란힐러 2cc 가격 알려줘" }, k("jomi"));
   assert.equal(j.status, "SUCCEEDED"); assert.equal(j.credits, 1);
-  for (let i = 0; i < 4; i++) await run.ask({ id: u }, j.report_id, "국산 사각턱 보톡스 50U는요?");
+  // 5.1 audit: parallel follow-ups cannot pass the 5-turn limit (slot taken atomically before answering)
+  const par = await Promise.allSettled(Array.from({ length: 10 }, () => run.ask({ id: u }, j.report_id, "국산 사각턱 보톡스 50U는요?")));
+  assert.equal(par.filter((x) => x.status === "fulfilled").length, 4);
   await assert.rejects(run.ask({ id: u }, j.report_id, "하나 더"), (e) => e.code === "SESSION_FULL");
+  const stored = await D.call("commerce_report", { report_id: j.report_id, user_id: u });
+  assert.equal(stored.payload.turns.length, 5);
+  // a question with no treatment name is refused before reserving (never charged for 'not found')
+  await assert.rejects(run.run({ id: u }, "JOMI_QA_SESSION", { question: "안녕하세요 반가워요" }, k("jomi")), (e) => e.code === "NO_TREATMENT_FOUND");
   assert.equal((await D.call("commerce_wallet", { user_id: u })).available, 0, "follow-up questions are free");
 });
 
@@ -414,7 +426,7 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
     if (/tokens\/tok-pending$/.test(url)) return new Response(JSON.stringify({ purchaseState: 2, orderId: "GPA.1" }), { status: 200 });
     return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.3333-4444", purchaseTimeMillis: String(Date.now()), purchaseType: 0 }), { status: 200 });
   };
-  const google = googleAdapter({ packageName: "kr.yoonsiljang.app", serviceAccountJson: { client_email: "svc@test.iam", private_key: privateKey.export({ type: "pkcs8", format: "pem" }) }, fetch: gfetch });
+  const google = googleAdapter({ packageName: "kr.yoonsiljang.app", serviceAccountJson: { client_email: "svc@test.iam", private_key: privateKey.export({ type: "pkcs8", format: "pem" }) }, fetch: gfetch, allowTestPurchases: true });   // sandbox: license-tester purchases allowed
   const appG = makeApp({ google });
   const p1 = await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-1" } });
   assert.equal(p1.status, 200, JSON.stringify(p1.body)); assert.equal(p1.body.wallet.paid, 31);
@@ -423,4 +435,100 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
   assert.equal(p2.body.already, true);
   assert.equal((await req(appG, "POST", "/v1/store/google", { token: tok, body: { productId: "credits_plus", purchaseToken: "tok-pending" } })).status, 409);
   fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test("5.1 audit regressions: reconciliation order, cumulative refunds, config, AI caps, takeover, JWT, SSRF, watch paging, Google test buys", async () => {
+  // reconciliation: 101 old expired orders must not hide a fresh paid one
+  const app = makeApp(), u = await D.newUser(), tok = await tokenFor(u);
+  for (let i = 0; i < 101; i++) {
+    const o = await D.call("commerce_create_order", { user_id: u, product_code: "MINI", channel: "WEB_PG", idempotency_key: k("old") });
+    await D.pool.query("update public.orders set status = 'EXPIRED', created_at = now() - interval '1 day' where id = $1", [o.id]);
+  }
+  const { o, pk } = await buyWeb(app, tok);
+  TOSS.pays.get(pk).status = "DONE";
+  await D.pool.query("update public.orders set created_at = now() - interval '15 minutes' where id = $1", [o.order_id]);
+  await app.flows.reconcile();
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: tok })).body.paid, 12, "fresh paid order found behind 101 expired ones");
+
+  // refunds: 10 partial refunds of 99원 on a 5-credit pack take back exactly 5, never more, never negative
+  const u2 = await D.newUser();
+  const big = await D.call("commerce_create_order", { user_id: u2, product_code: "PLUS", channel: "DEMO", idempotency_key: k("o") });
+  await D.call("commerce_fulfill_payment", { order_id: big.id, provider: "DEMO", provider_payment_id: k("p"), amount: 3900, currency: "KRW", status: "DONE" });
+  const mini = await D.call("commerce_create_order", { user_id: u2, product_code: "MINI", channel: "DEMO", idempotency_key: k("o") });
+  const pid = k("p");
+  await D.call("commerce_fulfill_payment", { order_id: mini.id, provider: "DEMO", provider_payment_id: pid, amount: 990, currency: "KRW", status: "DONE" });
+  for (let i = 0; i < 10; i++) await D.call("commerce_refund", { provider: "DEMO", provider_payment_id: pid, provider_refund_id: k("r"), amount: 99, kind: "REFUND", provider_done: true });
+  assert.equal((await D.call("commerce_wallet", { user_id: u2 })).paid, 26);
+  const neg = await D.pool.query("select count(*)::int n from public.payment_refunds where credits_target < 0 or credits_reversed < 0");
+  assert.equal(neg.rows[0].n, 0);
+  assert.ok((await D.call("commerce_verify_wallet", { user_id: u2 })).ok);
+
+  // config: ENV is required; DEMO never with live payment settings
+  assert.throws(() => loadConfig({ SUPABASE_URL: "u", SUPABASE_SERVICE_ROLE_KEY: "k", TOSS_SECRET_KEY: "live_sk_x" }), /ENV is required/);
+  assert.throws(() => loadConfig({ ENV: "DEMO", TOSS_SECRET_KEY: "live_sk_x" }), /DEMO must not/);
+
+  // AI caps: an unpriced model cannot be called; the per-user daily call cap stops further image jobs before reserving
+  const u3 = await D.newUser(), t3 = await tokenFor(u3);
+  await D.call("commerce_grant_promo", { user_id: u3, amount: 10, reason: "test", actor: "test", idempotency_key: k() });
+  const unpriced = makeApp({ vision: openaiVision({ apiKey: "sk", base: "https://openai.test", model: "no-price-model", fetch: fakeOpenAI([]).fetch }, rpc) });
+  const r1 = await req(unpriced, "POST", "/v1/jobs", { token: t3, body: { feature: "EVENT_IMAGE_DECODER", input: { image: PNG }, idempotency_key: k("img") } });
+  assert.equal(r1.status, 503); assert.equal(r1.body.error, "AI_NOT_PRICED");
+  const capped = makeApp({ vision: openaiVision({ apiKey: "sk", base: "https://openai.test", model: "test-vision", strongModel: "test-vision", fetch: fakeOpenAI([{ status: 500 }, { status: 500 }, { status: 500 }, { status: 500 }]).fetch }, rpc) }, { AI_MAX_USER_CALLS_PER_DAY: "2" });
+  await req(capped, "POST", "/v1/jobs", { token: t3, body: { feature: "EVENT_IMAGE_DECODER", input: { image: PNG }, idempotency_key: k("img") } });
+  const r2 = await req(capped, "POST", "/v1/jobs", { token: t3, body: { feature: "EVENT_IMAGE_DECODER", input: { image: PNG }, idempotency_key: k("img") } });
+  assert.equal(r2.status, 429); assert.equal(r2.body.error, "AI_DAILY_LIMIT");
+  assert.equal((await D.pool.query("select count(*)::int n from public.ai_usage_records where user_id = $1", [u3])).rows[0].n, 2, "failed calls count too");
+
+  // push: an endpoint registered by one user cannot be taken over by another
+  const ep = "https://fcm.googleapis.com/fcm/send/owned-" + k("e");
+  const keys = { p256dh: "a".repeat(87), auth: "b".repeat(22) };
+  await req(app, "POST", "/v1/push/subscribe", { token: tok, body: { endpoint: ep, keys } });
+  await req(app, "POST", "/v1/push/subscribe", { token: t3, body: { endpoint: ep, keys } });
+  assert.equal((await D.pool.query("select user_id from public.push_subscriptions where endpoint = $1", [ep])).rows[0].user_id, u);
+
+  // JWT: no audience → 401; a malformed signature → 401 (not 500)
+  const noAud = await signHs256({ sub: u, exp: Math.floor(Date.now() / 1000) + 600 }, SECRET);
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: noAud })).status, 401);
+  assert.equal((await req(app, "GET", "/v1/wallet", { token: tok.split(".").slice(0, 2).join(".") + ".%%%" })).status, 401);
+
+  // SSRF: wildcard-DNS hosts refused; private resolution refused; HTML → text stays linear on hostile input
+  const { checkPublicUrl, fetchPublicText, htmlToText } = await import("../src/safe.mjs");
+  assert.throws(() => checkPublicUrl("https://127.0.0.1.nip.io/x"), /IP/);
+  await assert.rejects(fetchPublicText("https://looks-public.example.com/", { fetch: async () => new Response("x"), resolve: async () => false }), /공개/);
+  const t0 = Date.now(); htmlToText("&lt;svg ".repeat(130000) + "<svg "); assert.ok(Date.now() - t0 < 2000);
+
+  // watch paging: more than 500 rules come back in pages, not one unbounded list
+  const u4 = await D.newUser();
+  await D.call("commerce_grant_promo", { user_id: u4, amount: 1, reason: "test", actor: "test", idempotency_key: k() });
+  const res = await D.call("commerce_reserve", { user_id: u4, feature_code: "PRICE_WATCH_7D", idempotency_key: k("w") });
+  await D.call("commerce_capture", { job_id: res.job.id, report: { title: "w" } });
+  const ent = (await D.pool.query("select id from public.premium_entitlements where job_id = $1", [res.job.id])).rows[0].id;
+  await D.pool.query("insert into public.price_watch_rules (user_id, entitlement_id, key_id, kind) select $1, $2, 'X01', 'watch' from generate_series(1, 520)", [u4, ent]);
+  const page = await D.call("commerce_watch_due", { after: 0 });
+  assert.equal(page.length, 500);
+
+  // Google: license-tester purchases never grant credits unless explicitly allowed (sandbox)
+  const { generateKeyPairSync } = await import("node:crypto");
+  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const gf = async (url) => url.startsWith("https://oauth2") ? new Response(JSON.stringify({ access_token: crypto.randomUUID() }), { status: 200 })
+    : new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.T-" + k(), purchaseTimeMillis: String(Date.now()), purchaseType: 0 }), { status: 200 });
+  const g = googleAdapter({ packageName: "kr.yoonsiljang.app", serviceAccountJson: { client_email: "svc@test.iam", private_key: privateKey.export({ type: "pkcs8", format: "pem" }) }, fetch: gf });
+  await assert.rejects(g.verifyPurchase({ productId: "credits_mini", purchaseToken: "t" }), (e) => e.code === "TEST_PURCHASE");
+});
+
+test("admin dashboard: MFA admin only; actuals vs estimates labelled; demo revenue kept out of the margin", async () => {
+  const app = makeApp(), u = await D.newUser();
+  assert.equal((await req(app, "GET", "/v1/admin/dashboard", { token: await tokenFor(u) })).status, 403);
+  assert.equal((await req(app, "GET", "/v1/admin/dashboard", { token: await tokenFor(u, { app_metadata: { roles: ["admin"] }, aal: "aal1" }) })).status, 403);
+  const r = await req(app, "GET", "/v1/admin/dashboard", { token: await tokenFor(u, { app_metadata: { roles: ["admin"] }, aal: "aal2" }) });
+  assert.equal(r.status, 200, JSON.stringify(r.body).slice(0, 300));
+  const b = r.body;
+  for (const k of ["revenue_daily", "revenue_monthly", "orders_by_status_30d", "payments_by_status_30d", "refunds_daily", "credits_daily", "outstanding_credits", "ai_daily", "features_30d", "premium_users", "health", "channels_30d", "contribution_margin_30d", "data_freshness"])
+    assert.ok(k in b, k);
+  assert.equal(b.contribution_margin_30d.kind, "ESTIMATE");
+  for (const c of b.channels_30d) { assert.equal(c.gross_krw.kind, "ACTUAL"); assert.equal(c.fee_krw.kind, "ESTIMATE"); }
+  assert.ok(b.channels_30d.some((c) => c.channel === "WEB_PG"), "web payments made by earlier tests appear");
+  assert.equal(b.data_freshness.updated, CTX.updated);
+  assert.ok(b.health.db_size_bytes > 0 && b.health.last_reconcile);
+  assert.ok(b.premium_users.active_30d >= 1);
 });

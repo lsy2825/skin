@@ -2301,6 +2301,9 @@
         h("span", { class: "chip", style: "cursor:default" }, `${l}: ${FLAGS[k] ? "켬" : "끔"}`))),
       h("div", { class: "sub", style: "margin-top:8px" }, `로그인: ${window.Auth && window.Auth.enabled ? "켬" : "끔(키 없음)"}`)));
     if (window.Economics && window.DemoWallet) box.append(economicsCard());
+    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav("admin") },
+      h("span", { class: "t" }, h("span", { class: "mi" }, icon("shield-check", "sm")), h("span", {}, h("span", { style: "display:block" }, "관리자 대시보드(서버)"),
+        h("span", { class: "sub", style: "display:block;font-weight:500" }, "매출·결제·환불·크레딧·AI 비용 — 서버 연결 + 관리자 2단계 인증 필요"))), icon("chevron-right", "sm"))))));
     return box;
   };
   // unit economics (docs/PRICING_AND_UNIT_ECONOMICS.md): assumptions until the server's measured numbers exist
@@ -4539,7 +4542,7 @@
     if (!el) return;
     const items = cur().items.filter(itemOk);
     // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings and the map don't show it
-    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map", "wallet", "premium", "report"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
+    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map", "wallet", "premium", "report", "admin"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
     document.body.classList.add("has-fcart");
     const plan = cartPlan(items), best = plan.full[0];
     el.replaceChildren(icon("shopping-bag", "sm"), FLAGS.lowestHighlight ? `${items.length}개 · ${best ? `한 곳 ${won(best.total)}부터` : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`}`
@@ -4564,7 +4567,7 @@
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
-      map: "explore", branch: "explore", about: "me", ops: "me", wallet: "me", premium: "me", report: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
+      map: "explore", branch: "explore", about: "me", ops: "me", wallet: "me", premium: "me", report: "me", admin: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     main.replaceChildren(views[view](rest.join("/"), params));
     main.removeAttribute("aria-busy");

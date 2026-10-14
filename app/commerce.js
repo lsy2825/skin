@@ -36,6 +36,60 @@
     const newKey = (p) => `${p}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     const demoBadge = () => h("span", { class: "k k4", title: "실제 돈이 오가지 않는 시연이에요" }, "시연");
     const credits = (n) => `${n}크레딧`;
+    // ---------------- admin dashboard (5.1): server only — authorization is checked by the API (admin role + 2-step login);
+    // this page only shows what the API returns, with ACTUAL / ESTIMATE kept apart
+    views.admin = () => {
+      const box = h("div", { class: "view" }), body = h("div", { "data-testid": "admin" });
+      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"),
+        h("div", { class: "card" }, h("h2", {}, "관리자 대시보드"), h("div", { class: "sub" }, "매출·결제·환불·크레딧·AI 비용·작업·서버 상태. 실측(ACTUAL)과 추정(ESTIMATE)을 따로 표시해요."), body));
+      if (!CFG.apiBase) { body.append(h("p", { class: "note", style: "margin-top:10px" }, "서버(server/)에 연결되지 않은 시연 앱이에요. 서버를 배포하고 관리자 계정(2단계 인증)으로 로그인하면 여기에 실제 숫자가 보여요. 시연 지갑 숫자를 실적처럼 보여주지 않아요.")); return box; }
+      body.append(h("p", { class: "sub" }, "불러오는 중…"));
+      (async () => {
+        try {
+          const tok = window.Auth && window.Auth.accessToken ? await window.Auth.accessToken() : null;
+          if (!tok) throw new Error("관리자 계정으로 로그인해 주세요");
+          const r = await fetch(`${CFG.apiBase}/v1/admin/dashboard`, { headers: { authorization: `Bearer ${tok}` } });
+          const j = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(j.message || `오류 ${r.status}`);
+          body.replaceChildren(...adminBody(j));
+        } catch (e) { body.replaceChildren(h("p", { class: "ferr", role: "alert" }, String(e.message || e))); }
+      })();
+      return box;
+    };
+    const kindTag = (k) => h("span", { class: `k ${k === "ESTIMATE" ? "k2" : "k1"}`, title: k === "ESTIMATE" ? "가정에 기반한 추정" : "DB 기록의 합계" }, k === "ESTIMATE" ? "추정" : "실측");
+    const tbl = (head, rows) => h("table", { class: "tbl", style: "margin-top:6px" }, h("thead", {}, h("tr", {}, head.map((x) => h("th", {}, x)))), h("tbody", {}, rows.map((r) => h("tr", {}, r.map((c) => h("td", { class: typeof c === "number" ? "num" : "" }, typeof c === "number" ? c.toLocaleString("ko-KR") : c ?? "-"))))));
+    function adminBody(d) {
+      const sec = (t, ...kids) => h("section", { style: "margin-top:14px" }, h("h3", {}, t), ...kids);
+      const hl = d.health || {}, pu = d.premium_users || {}, cm = d.contribution_margin_30d || {};
+      return [
+        sec("최근 30일 채널별", tbl(["채널", "주문", "결제액(실측)", "부가세", "수수료(추정)"], (d.channels_30d || []).map((c) => [c.channel, c.orders, c.gross_krw.value, c.vat_krw.value, c.fee_krw.value]))),
+        h("div", { class: "row", style: "gap:6px;margin-top:8px" }, h("b", {}, `공헌이익(30일) ${won(cm.value || 0)}`), kindTag(cm.kind), h("span", { class: "tiny" }, cm.basis || "")),
+        sec("일별 매출", tbl(["날짜", "채널", "주문", "결제액"], (d.revenue_daily || []).slice(0, 14).map((x) => [x.day, x.channel, +x.orders, +x.gross_krw]))),
+        sec("월별 매출", tbl(["월", "채널", "주문", "결제액"], (d.revenue_monthly || []).map((x) => [x.month, x.channel, +x.orders, +x.gross_krw]))),
+        sec("주문·결제 상태(30일)", h("div", { class: "sub" }, `주문 ${JSON.stringify(d.orders_by_status_30d || {})} · 결제 ${JSON.stringify(d.payments_by_status_30d || {})}`)),
+        sec("환불(30일)", tbl(["날짜", "종류", "건", "금액", "회수 크레딧", "회수 못 함"], (d.refunds_daily || []).map((x) => [x.day, x.kind, +x.n, +x.krw, +x.credits_reversed, +x.credits_unrecovered]))),
+        sec("크레딧", tbl(["날짜", "구매 지급", "보너스", "사용", "반환", "환불 회수"], (d.credits_daily || []).slice(0, 14).map((x) => [x.day, +x.issued_paid || 0, +x.issued_promo || 0, +x.consumed || 0, +x.released || 0, +x.reversed || 0])),
+          h("div", { class: "sub" }, `남은 크레딧(부채): 구매 ${(d.outstanding_credits || {}).paid} · 보너스 ${(d.outstanding_credits || {}).promo} · 예약 ${(d.outstanding_credits || {}).reserved}`)),
+        sec("AI 사용·비용", tbl(["날짜", "호출", "실패", "대체", "가격표 없음", "비용(원)"], (d.ai_daily || []).slice(0, 14).map((x) => [x.day, +x.calls, +x.failed, +x.fallback, +x.unpriced, +x.cost_krw]))),
+        sec("기능별(30일)", tbl(["기능", "작업", "성공", "반환", "차감 크레딧", "AI 비용"], (d.features_30d || []).map((x) => [x.feature_code, +x.jobs, +x.succeeded, +x.released, +x.credits_captured, +x.ai_cost_krw]))),
+        sec("프리미엄 사용자", h("div", { class: "sub" }, `7일 ${pu.active_7d} · 30일 ${pu.active_30d} · 이용권 ${pu.open_entitlements} · 광고 없는 기간 ${pu.ad_free_active}`)),
+        sec("서버·DB 상태", h("div", { class: "sub" }, `DB ${Math.round((hl.db_size_bytes || 0) / 1e6)}MB · 진행 중 작업 ${hl.jobs_open} · 기한 지난 작업 ${hl.jobs_overdue} · 15분 넘은 미처리 웹훅 ${hl.webhooks_unprocessed_15m} · 1시간 넘은 열린 주문 ${hl.orders_open_over_1h} · 마지막 대사 ${hl.last_reconcile ? `${String(hl.last_reconcile.at).slice(0, 16)} (확인 ${hl.last_reconcile.checked}, 수정 ${hl.last_reconcile.fixed})` : "없음"}`)),
+        sec("데이터 신선도·수집", h("div", { class: "sub" }, d.data_freshness && d.data_freshness.updated ? `가격 데이터 ${d.data_freshness.updated} (${d.data_freshness.days_old}일 전)` : "가격 데이터를 읽지 못했어요"),
+          h("div", { class: "tiny" }, "수집 실행 기록은 운영 현황 화면(GitHub Actions)에서 봐요.")),
+      ];
+    }
+    // 5.1 audit: outside DEMO the browser must never fall back to the on-device wallet. Until the server screens exist
+    // (orders → Toss checkout → server confirm; balances and jobs from the API), these pages only say so.
+    if (MODE !== "DEMO") {
+      const closed = () => { const box = h("div", { class: "view" });
+        box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"),
+          h("div", { class: "card", "data-testid": "commerce-closed" }, h("h2", {}, "크레딧·프리미엄"),
+            h("p", { class: "sub" }, "서버 연결 화면을 준비하고 있어요. 그 전에는 결제·크레딧 사용을 열지 않아요."),
+            h("p", { class: "tiny" }, "가격 찾기·비교·장바구니·관심·지도·죠미 기본 기능은 그대로 무료예요.")));
+        return box; };
+      views.wallet = closed; views.premium = closed; views.report = closed;
+      return { MODE };
+    }
 
     // ---------------- wallet + store
     views.wallet = () => {

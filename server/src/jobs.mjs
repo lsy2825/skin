@@ -35,7 +35,14 @@ export function cleanInput(feature, x, ctx) {
 // the scope an entitlement covers (planner: the same cart and region recomputed for 30 days is free)
 const scopeOf = (feature, input) => feature === "ADVANCED_CART_PLANNER" ? { items: input.items.map((i) => `${i.k}x${i.q}`).sort(), region: input.region || "" } : {};
 
-export function jobRunner({ rpc, ctx, vision, ai, fetchText = fetchPublicText, now = () => new Date() }) {
+export function jobRunner({ rpc, ctx, vision, ai, aiLimits = {}, fetchText = fetchPublicText, now = () => new Date() }) {
+  // AI spend guard before any model call (5.1 audit): per-user calls per day, service budget per day, a priced model only
+  async function aiAllowed(user, model) {
+    const g = await rpc("commerce_ai_guard", { user_id: user.id, provider: "OPENAI", model, max_user_calls: aiLimits.maxUserCallsPerDay ?? 30, max_day_krw: aiLimits.maxServiceKrwPerDay ?? 30000 });
+    if (!g.priced) throw new HttpError(503, "AI_NOT_PRICED", "AI 비용표가 설정되지 않아 지금은 쓸 수 없어요");
+    if (!g.ok) throw new HttpError(429, "AI_DAILY_LIMIT", "오늘 AI 분석 한도에 닿았어요. 내일 다시 시도해 주세요");
+    return true;
+  }
   async function deliver(feature, input, job, user) {
     const today = ctx.today, year = +today.slice(0, 4);
     switch (feature) {
@@ -58,7 +65,9 @@ export function jobRunner({ rpc, ctx, vision, ai, fetchText = fetchPublicText, n
         return { rep };
       }
       case "JOMI_QA_SESSION": {
-        const a = await Jomi.answer(input.question, ctx, { ai, rpc, jobId: job.id, userId: user.id });
+        const useAi = ai && ai.apiKey && ai.model ? await aiAllowed(user, ai.model).catch(() => false) : false;   // over the limit: rule-based answer
+        const a = await Jomi.answer(input.question, ctx, { ai: useAi ? ai : null, rpc, jobId: job.id, userId: user.id });
+        if (!a.facts || !a.facts.groups.length) return { fail: "NO_TREATMENT_FOUND" };   // never charge for 'could not find' (5.1 audit)
         return { rep: { kind: "JOMI_QA", title: `죠미 심화 질문 · ${input.question.slice(0, 24)}`, payload: { turns: [{ q: input.question, ...a, at: now().toISOString() }], max_turns: 5, data_updated: ctx.updated }, share_summary: null } };
       }
       case "PRICE_WATCH_7D": case "PRICE_WATCH_30D": {
@@ -81,9 +90,12 @@ export function jobRunner({ rpc, ctx, vision, ai, fetchText = fetchPublicText, n
         const m = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/=]+)$/.exec(input.image);
         if (!m) throw new HttpError(415, "BAD_IMAGE", "JPG·PNG·WebP 사진만 올릴 수 있어요");
         checkImage(Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0)));
+        if (!vision) throw new HttpError(503, "AI_NOT_CONFIGURED", "사진 읽기는 아직 준비 중이에요");
+        await aiAllowed(user, vision.model);
       } else if (feature === "JOMI_QA_SESSION") {
         const s = Jomi.screen(input.question);
         if (s.blocked) return { status: "SCREENED", credits: 0, answer: s.answer, code: s.code };
+        if (!Jomi.facts(input.question, ctx).groups.length) throw new HttpError(422, "NO_TREATMENT_FOUND", "질문에서 시술 이름을 찾지 못했어요. 시술 이름(예: 리쥬란힐러 2cc)을 넣어 주세요");
       } else if (!(feature === "EVENT_URL_DECODER" && input.url) && !feature.startsWith("PRICE_WATCH")) {
         const a = Premium.available(feature, input, ctx);
         if (!a.ok) throw new HttpError(422, "NOT_ENOUGH_DATA", a.reason);
@@ -109,7 +121,7 @@ export function jobRunner({ rpc, ctx, vision, ai, fetchText = fetchPublicText, n
       }
       if (d.fail || !usable(feature, d)) {
         const w = await rpc("commerce_release", { job_id: job.id, reason: d.fail || "NO_DELIVERABLE" });
-        const msg = d.fail === "NOT_A_PRICE_DOCUMENT" ? "가격표나 이벤트 사진이 아니에요" : "읽을 수 있는 가격을 찾지 못했어요";
+        const msg = d.fail === "NOT_A_PRICE_DOCUMENT" ? "가격표나 이벤트 사진이 아니에요" : d.fail === "NO_TREATMENT_FOUND" ? "질문에서 시술 이름을 찾지 못했어요" : "읽을 수 있는 가격을 찾지 못했어요";
         const provider = d.fail && d.fail.startsWith("AI_");
         throw new HttpError(provider ? 502 : 422, d.fail || "NO_DELIVERABLE", provider ? "AI 분석이 실패했어요. 크레딧은 돌려드렸어요" : `${msg}. 크레딧은 돌려드렸어요`, { released: true, wallet: w.wallet });
       }
@@ -119,27 +131,35 @@ export function jobRunner({ rpc, ctx, vision, ai, fetchText = fetchPublicText, n
       return { status: "SUCCEEDED", report_id: cap.report_id || cap.job.report_id, credits: job.credits, covered_by_entitlement: res.covered_by_entitlement, wallet: cap.wallet };
     },
 
-    // free edits of a paid result: corrected offers re-matched (deterministic, no AI) / the next question of a Jomi session
-    async correct(user, reportId, offers) {
+    // free edits of a paid result: only items that were read, by index, a bounded number of times (5.1 audit: arbitrary new
+    // offers made this an unpaid decoder), re-matched deterministically; the share summary follows the corrected items
+    async correct(user, reportId, edits) {
       const rep = await rpc("commerce_report", { report_id: reportId, user_id: user.id });
-      if (!rep || !rep.payload || !rep.payload.items) throw new HttpError(404, "REPORT_NOT_FOUND", "보고서를 찾지 못했어요");
-      const list = (Array.isArray(offers) ? offers : []).slice(0, OfferParse.MAX_OFFERS).map((o) => ({
-        ...OfferParse.parse(`${str(o.raw_offer_name, 200)} ${Number.isInteger(o.advertised_price) ? o.advertised_price : 0}원`, { year: +ctx.today.slice(0, 4) }).offers[0],
-        user_corrected: true }));
-      const items = list.filter(Boolean).map((o) => Premium.decodeOffer(o, ctx, rep.payload.region || ""));
-      const payload = { ...rep.payload, items, corrected_at: now().toISOString() };
-      const out = await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload });
+      if (!rep || !rep.payload || !Array.isArray(rep.payload.items)) throw new HttpError(404, "REPORT_NOT_FOUND", "보고서를 찾지 못했어요");
+      const items = [...rep.payload.items], used = rep.payload.corrections || 0;
+      const list = (Array.isArray(edits) ? edits : []).filter((e) => Number.isInteger(e && e.index) && e.index >= 0 && e.index < items.length);
+      if (!list.length) throw new HttpError(400, "BAD_REQUEST", "고칠 항목을 골라 주세요");
+      if (used + list.length > Math.max(10, items.length * 2)) throw new HttpError(429, "TOO_MANY_CORRECTIONS", "이 보고서는 더 고칠 수 없어요");
+      for (const e of list) {
+        const o = OfferParse.parse(`${str(e.raw_offer_name, 200)} ${Number.isInteger(e.advertised_price) && e.advertised_price > 0 ? e.advertised_price : 0}원`, { year: +ctx.today.slice(0, 4) }).offers[0];
+        if (o) items[e.index] = Premium.decodeOffer({ ...o, user_corrected: true }, ctx, rep.payload.region || "");
+      }
+      const payload = { ...rep.payload, items, corrections: used + list.length, corrected_at: now().toISOString() };
+      const share_summary = rep.share_summary ? { ...rep.share_summary, items: items.map((d) => ({ label: d.match.label || null, status: d.match.status,
+        verdict: d.compare ? d.compare.verdict : null, median: d.compare ? d.compare.median : null, n: d.compare ? d.compare.n : 0,
+        advertised: rep.kind === "QUOTATION" ? null : d.offer.advertised_price })) } : undefined;
+      const out = await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload, share_summary });
       return { report_id: out.id, items };
     },
+    // the next question of a Jomi session: the turn slot is taken atomically before any model call (5.1 audit)
     async ask(user, reportId, question) {
-      const rep = await rpc("commerce_report", { report_id: reportId, user_id: user.id });
-      if (!rep || rep.kind !== "JOMI_QA" || !rep.payload) throw new HttpError(404, "REPORT_NOT_FOUND", "대화를 찾지 못했어요");
-      const turns = rep.payload.turns || [];
-      if (turns.length >= (rep.payload.max_turns || 5)) throw new HttpError(409, "SESSION_FULL", "이 세션의 질문 5개를 다 썼어요");
-      const a = await Jomi.answer(str(question, 500), ctx, { ai, rpc, jobId: rep.job_id, userId: user.id });
-      turns.push({ q: str(question, 500), ...a, at: now().toISOString() });
-      await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload: { ...rep.payload, turns } });
-      return { turn: turns[turns.length - 1], left: (rep.payload.max_turns || 5) - turns.length };
+      const q = str(question, 500), s = Jomi.screen(q);
+      const slot = await rpc("commerce_jomi_turn", { action: "take", report_id: reportId, user_id: user.id }).catch((e) => { throw fromDb(e); });
+      const useAi = !s.blocked && ai && ai.apiKey && ai.model ? await aiAllowed(user, ai.model).catch(() => false) : false;
+      const a = s.blocked ? { kind: "SCREENED", code: s.code, answer: s.answer } : await Jomi.answer(q, ctx, { ai: useAi ? ai : null, rpc, jobId: slot.job_id, userId: user.id });
+      const turn = { q, ...a, at: now().toISOString() };
+      await rpc("commerce_jomi_turn", { action: "append", report_id: reportId, user_id: user.id, turn });
+      return { turn, left: slot.max_turns - slot.turns_used };
     },
   };
 }

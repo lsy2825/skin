@@ -3,6 +3,7 @@
 //   GET  /v1/payments/{paymentKey} · GET /v1/payments/orders/{orderId}
 //   POST /v1/payments/{paymentKey}/cancel {cancelReason, cancelAmount?}
 // Webhook PAYMENT_STATUS_CHANGED carries no signature → the server re-reads the payment with its secret key before acting.
+import { fetchT } from "../http.mjs";
 const MASK = (p) => p && {
   paymentKey: p.paymentKey, orderId: p.orderId, status: p.status, method: p.method, totalAmount: p.totalAmount, balanceAmount: p.balanceAmount,
   currency: p.currency, approvedAt: p.approvedAt, requestedAt: p.requestedAt, version: p.version,
@@ -17,7 +18,7 @@ export function tossAdapter({ secretKey, base = "https://api.tosspayments.com", 
   async function call(method, path, body, idem) {
     const headers = { authorization: auth, "content-type": "application/json" };
     if (idem) headers["idempotency-key"] = idem;
-    const r = await f(base + path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetchT(f, base + path, { method, headers, body: body ? JSON.stringify(body) : undefined }, 10000);
     const j = await r.json().catch(() => ({}));
     return { ok: r.ok, status: r.status, body: j };
   }
@@ -30,7 +31,7 @@ export function tossAdapter({ secretKey, base = "https://api.tosspayments.com", 
     name: "TOSS",
     normalize,
     async confirm({ paymentKey, orderId, amount }) {
-      const r = await call("POST", "/v1/payments/confirm", { paymentKey, orderId, amount }, `confirm-${orderId}`);
+      const r = await call("POST", "/v1/payments/confirm", { paymentKey, orderId, amount }, `confirm-${paymentKey}`.slice(0, 300));   // per payment attempt: a failed earlier attempt is not replayed
       if (r.ok) return { ok: true, payment: normalize(r.body) };
       // a retried confirm that Toss already processed: read the payment instead of failing the user
       if (r.body && r.body.code === "ALREADY_PROCESSED_PAYMENT") {

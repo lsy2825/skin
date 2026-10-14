@@ -95,6 +95,7 @@ export function openaiVision({ apiKey, base = "https://api.openai.com", model, s
     try { return { ok: true, usage: u, out: JSON.parse(part.text) }; } catch (e) { return { ok: false, usage: u, error: "BAD_JSON", retryable: true }; }
   }
   return {
+    model,
     // → { ok, result?, error?, cost_krw, calls }. The caller (job runner) captures credits only when ok and the user saw a result.
     async extract(imageDataUrl, { jobId, userId, year }) {
       let spent = 0; const calls = [];
@@ -107,6 +108,7 @@ export function openaiVision({ apiKey, base = "https://api.openai.com", model, s
         finally { clearTimeout(t); }
         const rec = await rpc("commerce_record_ai_usage", { provider: "OPENAI", model: step.m, call_kind: step.kind, job_id: jobId, user_id: userId, image_count: 1, ok: res.ok, ...res.usage });
         spent += Number(rec && rec.cost_krw) || 0;
+        if (rec && rec.priced === false) spent = Infinity;     // an unpriced call cannot be budgeted: no second call (5.1 audit)
         calls.push({ kind: step.kind, model: step.m, ok: res.ok, error: res.error, cost_krw: rec && rec.cost_krw, priced: rec && rec.priced });
         if (res.ok) {
           const result = postProcess(res.out, { year });

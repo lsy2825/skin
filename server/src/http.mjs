@@ -12,7 +12,8 @@ const KNOWN = {
   NO_DELIVERABLE: [422, "결과를 만들지 못했어요"], CREDITS_ALREADY_SPENT: [409, "이미 쓴 크레딧이 있어 자동 환불할 수 없어요(고객센터 확인)"],
   REFUND_AMOUNT_INVALID: [400, "환불 금액이 올바르지 않아요"], NO_WATCH_ENTITLEMENT: [402, "가격 지켜보기 이용권이 필요해요"], TOO_MANY_RULES: [429, "지켜보기 규칙은 50개까지예요"],
   BAD_REQUEST: [400, "요청 형식이 올바르지 않아요"], WOULD_GO_NEGATIVE: [409, "잔액이 0보다 작아질 수 없어요"], PAYMENT_NOT_FOUND: [404, "결제를 찾지 못했어요"],
-  REPORT_NOT_FOUND: [404, "보고서를 찾지 못했어요"], JOB_NOT_FOUND: [404, "작업을 찾지 못했어요"],
+  REPORT_NOT_FOUND: [404, "보고서를 찾지 못했어요"], SESSION_FULL: [409, "이 세션의 질문 5개를 다 썼어요"],
+  TOO_MANY_SUBSCRIPTIONS: [429, "알림 기기는 10개까지예요"], JOB_NOT_FOUND: [404, "작업을 찾지 못했어요"],
 };
 export const fromDb = (e) => {
   if (e instanceof HttpError) return e;
@@ -21,6 +22,13 @@ export const fromDb = (e) => {
   return new HttpError(500, "INTERNAL", "잠시 후 다시 시도해 주세요");
 };
 
+// every outbound call has a deadline (5.1 audit: provider calls without timeouts could hang a request or the scheduled sweep)
+export async function fetchT(f, url, opts = {}, ms = 10000) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try { return await f(url, { ...opts, signal: ctl.signal }); }
+  catch (e) { throw new HttpError(504, "UPSTREAM_TIMEOUT", "외부 서비스가 응답하지 않아요. 잠시 후 다시 시도해 주세요", { url: String(url).replace(/\?.*$/, "") }); }
+  finally { clearTimeout(t); }
+}
 export function json(status, body, extra = {}) {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", ...extra } });
 }

@@ -2,7 +2,7 @@
 // data file is published — never described as real-time. One notice per rule per change (commerce_watch_event dedupes),
 // one push per user per run (a digest), nothing during the user's quiet hours (left for the next run), and the push itself
 // carries no content: the service worker shows a generic line and the app reads the notices after sign-in.
-import { HttpError } from "./http.mjs";
+import { HttpError, fetchT } from "./http.mjs";
 
 // push services a subscription may point at (the endpoint is user-supplied: anything else would be a request forgery target)
 const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9.-]+\.notify\.windows\.com|web\.push\.apple\.com)$/;
@@ -26,7 +26,7 @@ export async function vapidHeader(endpoint, { publicKey, privateJwk, subject }, 
   return `vapid t=${head}.${body}.${b64u(sig)}, k=${publicKey}`;
 }
 export async function sendPush(endpoint, vapid, { fetch: f = fetch, now } = {}) {
-  const r = await f(endpoint, { method: "POST", headers: { authorization: await vapidHeader(endpoint, vapid, now), ttl: "86400", urgency: "normal", "content-length": "0" } });
+  const r = await fetchT(f, endpoint, { method: "POST", headers: { authorization: await vapidHeader(endpoint, vapid, now), ttl: "86400", urgency: "normal", "content-length": "0" } }, 8000);
   return { ok: r.status >= 200 && r.status < 300, gone: r.status === 404 || r.status === 410, status: r.status };
 }
 
@@ -67,10 +67,8 @@ export async function runWatch({ rpc, ctx, vapid, fetch: f = fetch, now = Date.n
   // the digest push: one per user, skipped inside quiet hours (the first rule's window; a user sets one window in the app)
   let pushed = 0, held = 0;
   const pending = vapid && vapid.privateJwk ? await rpc("commerce_push_pending", {}) : [];
-  const due = await rpc("commerce_watch_due", { after: 0 });
-  const quietOf = new Map(due.map((r) => [r.user_id, [r.quiet_start, r.quiet_end]]));
   for (const u of pending) {
-    const [qs, qe] = quietOf.get(u.user_id) || [null, null];
+    const qs = u.quiet_start ?? null, qe = u.quiet_end ?? null;        // carried by commerce_push_pending (5.1 audit: no second full scan)
     if (quiet(kstHour(now), qs, qe)) { held++; continue; }
     let any = false;
     for (const s of u.subs) {

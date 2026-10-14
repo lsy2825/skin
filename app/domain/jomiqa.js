@@ -46,7 +46,13 @@
     return f.groups.map((g) => `${g.label}: 지점 ${g.n}곳, 가장 낮은 ${won(g.min)} · 중간값 ${won(g.median)} · 가장 높은 ${won(g.max)}` +
       (g.weeks >= 2 ? ` (가격 기록 ${g.weeks}주)` : "")).join("\n") + `\n(${f.updated} 기준 병원 표시가. 조건·부가세는 병원마다 달라요.)`;
   }
-  const NUMS = (t) => [...String(t).matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(만\s*)?원/g)].map((m) => Math.round(+m[1].replace(/,/g, "") * (m[2] ? 10000 : 1)));
+  // every won amount, also '12만 9천원', '9만원', '9천원', '12만 9,000원' (5.1 audit: compound amounts slipped past the check)
+  const NUMS = (t) => [...String(t).matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(만)?\s*(?:(\d{1,3}(?:,\d{3})*|\d+)\s*(천)?)?\s*(천)?\s*원/g)].map((m) => {
+    const a = +m[1].replace(/,/g, ""), b = m[3] ? +m[3].replace(/,/g, "") : 0;
+    if (m[2]) return Math.round(a * 10000 + (m[4] ? b * 1000 : b));
+    if (m[5]) return Math.round(a * 1000);
+    return Math.round(a);
+  });
   const BANNED = /(진단|처방)(해|합니다|드려)|(\d+\s*(U|유닛|cc|샷)\s*(을|를)?\s*(맞|권장|추천|넣))|효과(가)?\s*(보장|확실)|부작용(이)?\s*(없|전혀)/i;
   function check(answer, f) {
     const allowed = new Set(f.groups.flatMap((g) => [g.min, g.median, g.max]));

@@ -7,10 +7,13 @@ export class ConfigError extends Error {}
 
 export function loadConfig(env) {
   const E = (k, d = "") => (env[k] == null ? d : String(env[k]));
-  const mode = E("ENV", "DEMO").toUpperCase();
+  // 5.1 audit: no default — a missing ENV used to mean DEMO (demo payments on) even next to a real database and live keys
+  if (!E("ENV")) throw new ConfigError("ENV is required (DEMO, SANDBOX or PRODUCTION)");
+  const mode = E("ENV").toUpperCase();
   if (!["DEMO", "SANDBOX", "PRODUCTION"].includes(mode)) throw new ConfigError(`ENV must be DEMO, SANDBOX or PRODUCTION (got ${mode})`);
   const toss = E("TOSS_SECRET_KEY");
   const problems = [];
+  if (mode === "DEMO" && (/^live_/.test(toss) || E("LIVE_PAYMENTS_APPROVED"))) problems.push("DEMO must not run with live payment settings");
   if (mode === "SANDBOX" && toss && !/^test_/.test(toss)) problems.push("SANDBOX accepts only Toss TEST secret keys (test_…)");
   if (mode === "PRODUCTION") {
     if (toss && !/^live_/.test(toss)) problems.push("PRODUCTION needs a Toss LIVE secret key");
@@ -33,6 +36,8 @@ export function loadConfig(env) {
       maxOutputTokens: +E("AI_MAX_OUTPUT_TOKENS", "1500"),
       maxKrwPerJob: +E("AI_MAX_KRW_PER_JOB", "60"),              // hard budget per paid job (1 credit ≈ 131원 net on the web, docs/PRICING_AND_UNIT_ECONOMICS.md)
       timeoutMs: +E("AI_TIMEOUT_MS", "45000"),
+      maxUserCallsPerDay: +E("AI_MAX_USER_CALLS_PER_DAY", "30"),   // every model call counts, failed ones too (KST day)
+      maxServiceKrwPerDay: +E("AI_MAX_SERVICE_KRW_PER_DAY", "30000"),   // whole-service daily AI budget; over it, AI features pause
     },
     push: { publicKey: E("VAPID_PUBLIC_KEY"), privateJwk: E("VAPID_PRIVATE_JWK"), subject: E("VAPID_SUBJECT", "mailto:privacy@example.invalid") },
     apple: { bundleId: E("APPLE_BUNDLE_ID"), environment: E("APPLE_ENVIRONMENT", mode === "PRODUCTION" ? "Production" : "Sandbox"), rootCertsB64: E("APPLE_ROOT_CERTS_B64").split(",").map((s) => s.trim()).filter(Boolean) },

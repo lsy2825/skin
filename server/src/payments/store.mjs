@@ -8,7 +8,7 @@
 // Google Play: the app sends { productId, purchaseToken }. The server reads purchases.products.get with a service account,
 // requires purchaseState 0, grants once per orderId, then consumes the purchase. Refunds: Voided Purchases API → REVOCATION.
 import { X509Certificate, createPublicKey, verify as cverify, createSign } from "node:crypto";
-import { HttpError } from "../http.mjs";
+import { HttpError, fetchT } from "../http.mjs";
 
 const b64u = (s) => Buffer.from(s.replace(/-/g, "+").replace(/_/g, "/"), "base64");
 const OID_LEAF = "1.2.840.113635.100.6.11.1", OID_INTERMEDIATE = "1.2.840.113635.100.6.2.1";
@@ -64,7 +64,8 @@ export function appleAdapter({ bundleId, environment = "Sandbox", rootCertsB64, 
 }
 
 // Google: service-account JWT → OAuth token → androidpublisher v3
-export function googleAdapter({ packageName, serviceAccountJson, fetch: f = fetch, now = () => Date.now() }) {
+export function googleAdapter({ packageName, serviceAccountJson, fetch: rawFetch = fetch, now = () => Date.now(), allowTestPurchases = false }) {
+  const f = (url, opts) => fetchT(rawFetch, url, opts, 10000);
   const sa = typeof serviceAccountJson === "string" ? JSON.parse(serviceAccountJson) : serviceAccountJson;
   let tok = { at: 0, value: null };
   async function token() {
@@ -89,6 +90,8 @@ export function googleAdapter({ packageName, serviceAccountJson, fetch: f = fetc
       const p = await r.json();
       if (p.purchaseState !== 0) throw new HttpError(409, "PURCHASE_NOT_COMPLETED", p.purchaseState === 2 ? "결제 대기 중인 구매예요" : "취소된 구매예요");
       if (!p.orderId) throw new HttpError(400, "BAD_STORE_RECEIPT", "주문 번호가 없는 구매예요");
+      // license-tester purchases (purchaseType 0) never grant credits in production (5.1 audit)
+      if (p.purchaseType === 0 && !allowTestPurchases) throw new HttpError(409, "TEST_PURCHASE", "테스트 구매는 운영 환경에서 크레딧을 받지 않아요");
       return { provider: "GOOGLE", transaction_id: p.orderId, store_product_id: productId, purchased_at: new Date(+p.purchaseTimeMillis).toISOString(),
         raw: { orderId: p.orderId, purchaseState: p.purchaseState, consumptionState: p.consumptionState, acknowledgementState: p.acknowledgementState, purchaseType: p.purchaseType ?? null },
         test: p.purchaseType === 0, consumed: p.consumptionState === 1 };

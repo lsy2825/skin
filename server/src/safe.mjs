@@ -14,15 +14,31 @@ export function checkPublicUrl(raw) {
   if (!host.includes(".") || /^\[|:/.test(host) || /^\d+(\.\d+){3}$/.test(host) || /^\d+$/.test(host) || /^0x/i.test(host))
     throw new HttpError(400, "BAD_URL", "IP 주소가 아닌 공개 도메인 주소만 읽을 수 있어요");
   if (/(^|\.)(localhost|local|internal|intranet|lan|home|corp|arpa)$/.test(host) || /metadata/.test(host)) throw new HttpError(400, "BAD_URL", "공개 인터넷 주소가 아니에요");
+  // wildcard DNS services that resolve a name to any IP written inside it (127.0.0.1.nip.io …) — 5.1 audit
+  if (/(^|\.)(nip\.io|sslip\.io|xip\.io|localtest\.me|lvh\.me|vcap\.me|traefik\.me|lacolhost\.com)$/.test(host) || /\d+[.-]\d+[.-]\d+[.-]\d+/.test(host))
+    throw new HttpError(400, "BAD_URL", "IP 주소가 들어간 도메인은 읽지 않아요");
   if (u.href.length > 2000) throw new HttpError(400, "BAD_URL", "주소가 너무 길어요");
   return u;
 }
 export const isPrivateIp = (ip) => PRIVATE_V4.some((rx) => rx.test(ip)) || /^(::1|fc|fd|fe80|::ffff:(10|127|192\.168)\.)/i.test(ip);
 
 // one public HTML page → plain text (≤ maxBytes, ≤ 3 redirects each re-checked, short timeout, no credentials)
-export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_000, timeoutMs = 8000 } = {}) {
+// where DNS can be asked (Node), every address of the host must be public. On Cloudflare Workers this lookup is not
+// available and outbound requests cannot reach private networks — the check then relies on the platform (documented).
+async function resolvesPublic(host) {
+  let dns;
+  try { dns = await import("node:dns"); } catch (e) { return true; }
+  if (!dns || !dns.promises || typeof dns.promises.lookup !== "function") return true;
+  let addrs;
+  try { addrs = await dns.promises.lookup(host, { all: true }); } catch (e) { throw new HttpError(422, "PAGE_UNREADABLE", "주소를 찾지 못했어요"); }
+  return addrs.every((a) => !isPrivateIp(a.address));
+}
+
+export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_000, timeoutMs = 8000, resolve = resolvesPublic } = {}) {
   let u = checkPublicUrl(raw);
+  const deadline = Date.now() + timeoutMs * 2;                        // the whole read (headers + body + redirects) has one deadline
   for (let hop = 0; hop < 4; hop++) {
+    if (!(await resolve(u.hostname))) throw new HttpError(400, "BAD_URL", "공개 인터넷 주소가 아니에요");
     const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), timeoutMs);
     let r;
     try { r = await f(u.href, { redirect: "manual", signal: ctl.signal, credentials: "omit", headers: { accept: "text/html,text/plain;q=0.9", "user-agent": "YoonSiljangBot/1.0 (+user-requested single page read)" } }); }
@@ -34,7 +50,10 @@ export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_
     const ct = (r.headers.get("content-type") || "").toLowerCase();
     if (!/text\/html|text\/plain|application\/xhtml/.test(ct)) throw new HttpError(422, "PAGE_UNREADABLE", "웹 페이지(HTML)가 아니에요");
     const reader = r.body.getReader(); let got = 0; const parts = [];
-    for (;;) { const { done, value } = await reader.read(); if (done) break; got += value.length; if (got > maxBytes) { reader.cancel(); break; } parts.push(value); }
+    for (;;) {
+      if (Date.now() > deadline) { reader.cancel(); throw new HttpError(504, "FETCH_FAILED", "페이지가 너무 느려요"); }
+      const { done, value } = await reader.read(); if (done) break; got += value.length; if (got > maxBytes) { reader.cancel(); break; } parts.push(value);
+    }
     const html = new TextDecoder().decode(concat(parts));
     if (/captcha|recaptcha|hcaptcha|cf-challenge|접근이 차단/i.test(html.slice(0, 20000))) throw new HttpError(422, "PAGE_BLOCKED", "자동 접근 확인(CAPTCHA) 페이지라 읽지 않았어요");
     return { url: u.href, text: htmlToText(html) };
@@ -42,10 +61,25 @@ export async function fetchPublicText(raw, { fetch: f = fetch, maxBytes = 1_000_
   throw new HttpError(422, "PAGE_UNREADABLE", "다른 주소로 너무 여러 번 넘어가요");
 }
 const concat = (parts) => { const n = parts.reduce((s, p) => s + p.length, 0), o = new Uint8Array(n); let i = 0; for (const p of parts) { o.set(p, i); i += p.length; } return o; };
+// one linear pass (5.1 audit: a lazy back-reference regex was quadratic on unclosed tags — 1 MB took minutes)
+const SKIP = new Set(["script", "style", "noscript", "template", "svg"]), BREAK = new Set(["br", "/p", "/div", "/li", "/tr", "/h1", "/h2", "/h3", "/h4", "/h5", "/h6", "p", "div", "li", "tr"]);
 export function htmlToText(html) {
-  return String(html).replace(/<(script|style|noscript|template|svg)[\s\S]*?<\/\1>/gi, " ").replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/<(br|\/p|\/div|\/li|\/tr|\/h\d)[^>]*>/gi, "\n").replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d+);/g, (m, n) => String.fromCharCode(+n))
+  const s = String(html), out = [];
+  let i = 0, n = s.length, chars = 0;
+  while (i < n && chars < 40000) {
+    const lt = s.indexOf("<", i);
+    const end = lt < 0 ? n : lt;
+    if (end > i) { const t = s.slice(i, end); out.push(t); chars += t.length; }
+    if (lt < 0) break;
+    if (s.startsWith("<!--", lt)) { const c = s.indexOf("-->", lt + 4); i = c < 0 ? n : c + 3; continue; }
+    const gt = s.indexOf(">", lt + 1);
+    if (gt < 0) break;                                                  // an unclosed tag ends the text
+    const name = (/^<\s*(\/?[a-zA-Z0-9]+)/.exec(s.slice(lt, Math.min(gt + 1, lt + 40))) || [, ""])[1].toLowerCase();
+    i = gt + 1;
+    if (SKIP.has(name)) { const close = s.toLowerCase().indexOf(`</${name}`, i); i = close < 0 ? n : (s.indexOf(">", close) + 1 || n); continue; }
+    out.push(BREAK.has(name) ? "\n" : " ");
+  }
+  return out.join("").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#(\d{1,6});/g, (m, d) => String.fromCharCode(+d % 65536))
     .replace(/[ \t]+/g, " ").replace(/\n\s*\n+/g, "\n").trim().slice(0, 20000);
 }
 

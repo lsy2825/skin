@@ -65,7 +65,7 @@ export function paymentFlows({ rpc, toss, demo, log = () => {} }) {
       const paymentKey = typeof data.paymentKey === "string" ? data.paymentKey.slice(0, 200) : null;
       const ev = await rpc("commerce_record_event", { provider: "TOSS", type, verified: paymentKey ? "API_LOOKUP" : "NONE",
         event_key: `${type}:${paymentKey || ""}:${data.status || ""}:${data.lastTransactionKey || data.transactionKey || body.createdAt || ""}`.slice(0, 300),
-        payload: { eventType: type, createdAt: body && body.createdAt, paymentKey, orderId: data.orderId, status: data.status } });
+        payload: { eventType: type, createdAt: String((body && body.createdAt) || "").slice(0, 40), paymentKey, orderId: String(data.orderId || "").slice(0, 80), status: String(data.status || "").slice(0, 40) } });
       if (!paymentKey) { if (ev.id) await rpc("commerce_event_done", { id: ev.id, result: "IGNORED_NO_PAYMENT_KEY" }); return { status: 200, result: "ignored" }; }
       const pay = await toss.get(paymentKey);                      // the authoritative state, read with our secret key
       if (!pay) return { status: 502, result: "lookup_failed" };    // transient: let Toss retry
@@ -101,7 +101,8 @@ export function paymentFlows({ rpc, toss, demo, log = () => {} }) {
       const open = toss ? await rpc("commerce_open_orders", { channel: "WEB_PG", minutes }) : [];
       let fixed = 0; const mismatches = [];
       for (const o of open) {
-        const p = await toss.getByOrder(o.id);
+        let p;
+        try { p = await toss.getByOrder(o.id); } catch (e) { mismatches.push({ order: o.id, error: e.code || "LOOKUP_FAILED" }); continue; }   // one bad lookup never stops the sweep
         if (p.notFound) {
           if (o.status === "CREATED" && now - Date.parse(o.created_at) > expireAfterMinutes * 60000) { await rpc("commerce_close_order", { order_id: o.id, status: "EXPIRED", reason: "결제창에서 결제하지 않음" }); fixed++; }
           continue;
