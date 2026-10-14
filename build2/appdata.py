@@ -2,7 +2,7 @@
 
 usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
-  meta      updated = newest collection date (shown as '수집'), built = build date, row counts, brand list [name, color, note], kinds, cats, tags
+  meta      updated = collection date (the day most branches were read, shown as '수집'), built = build date, row counts, brand list [name, color, note], kinds, cats, tags
   cols      the price rows, stored one list per field (cols[f][row]); like values sit together, so gzip makes the file about
             a quarter smaller than row arrays. Fields in colDelta are stored as differences from the row before (the app and
             the tools add them back up). A row = [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s,
@@ -410,15 +410,17 @@ def main():
                              S(region(g.get("address", "")) or HINT.get(f"{r['brand']}|{r['branch']}", {}).get("region", "")), S(site), "", "",
                              # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
                              {"road": 0, "street": 1, "district": 2}.get(g.get("geo_level"), 3)])
-    # freshness: newest fetch date per branch; more than a day older than the newest collection in the data = this run did
-    # not refresh it (its scrape failed or was blocked, previous data kept). Measured from the newest collection, not the
-    # build date: a rebuild without scraping (a code push, --skip-scrape) the next day must not call every branch old.
+    # freshness: newest fetch date per branch; more than a day older than the collection = this run did not refresh it (its
+    # scrape failed or was blocked, previous data kept). The collection is the day most branches were read (newest on a
+    # tie) — not the build date (a rebuild without scraping the next day must not call every branch old) and not the newest
+    # date (one brand added mid-week, 2026-10-15 셀린, must not call the others old or add a snapshot to their history).
     for r in rows:
         b = branches[bi[(r["brand"], r["branch"])]]
         d = (r["fetched_at"] or "")[:10]
         if d > b[7]:
             b[7] = d
-    collected = max((b[7] for b in branches if b[7]), default="") or a.date
+    days = Counter(b[7] for b in branches if b[7])
+    collected = max(days, key=lambda d: (days[d], d)) if days else a.date
     for b in branches:
         b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(collected) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
         b[7] = S(b[7])
@@ -472,7 +474,7 @@ def main():
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
-        # updated = the newest collection (what the app calls '수집'); built = the build date (expired events and the weekly
+        # updated = the collection (the day most branches were read; what the app calls '수집'); built = the build date (expired events and the weekly
         # snapshot are counted from it)
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
