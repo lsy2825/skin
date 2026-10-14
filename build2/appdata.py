@@ -318,11 +318,15 @@ def reclassified(prev, prow, rows):
     if not prev:
         return set()
     old = row_keys_prev(prev, prow)
-    out = set()
+    # both sides as name → all its ids (a branch can list the same name twice with different prices / ids)
+    new = {}
     for r in rows:
-        o = old.get((r["brand"], r["branch"], r["name"]))
+        new.setdefault((r["brand"], r["branch"], r["name"]), set()).update(r["keys"].split())
+    out = set()
+    for ident, n in new.items():
+        o = old.get(ident)
         if o is not None:
-            out |= o ^ set(r["keys"].split())
+            out |= o ^ n
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return out & before
@@ -436,12 +440,15 @@ def main():
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
         prev = load_snapshot(prev_files[-1])
+        # every id regrouped after that snapshot (this build or an earlier build of a later day / the same day): its
+        # 'change' since the snapshot is a new mix of rows, not a price change
+        regrouped = {k for d, ks in recl for k in ks if d > prev_date} | recl_now
         kid = {k[0]: i for i, k in enumerate(ALLK)}
         for kk, after in best.items():
             before = prev.get(kk)
             if before and before != after:
                 k, brand, branch = kk.split("|")
-                if k in kid and k not in recl_now:
+                if k in kid and k not in regrouped:
                     changes.append([kid[k], bi[(brand, branch)], before, after])
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)

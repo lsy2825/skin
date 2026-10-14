@@ -28,12 +28,16 @@ Windows PC 준비(한 번): PowerShell에 아래 한 줄을 붙여 넣으면 Git
     APP_PIN=<비밀번호> node tests/e2e/ux_qa.js   # 화면 검사(Playwright 필요, 서버를 띄운 상태에서)
                                                  # 같은 방식: qa7·xss·a11y·concern·jomi·objective·frame·table_attr·compare_cards·v5_features·demo_features·data_sync·pricenow·touch_targets
     node tests/perf/gzserve.js app 8770 &  APP_PIN=<비밀번호> BASE=http://localhost:8770/ node tests/perf/first_load.js   # 첫 화면 속도(실험실 측정)
+    node tools/audit_data.js                        # 데이터 점검(같은 묶음 안 다른 용량·횟수·제품, 중복 등 — 읽기만)
+    node tools/review_queue.js                      # 분류 검토 대기열·별칭 표·app/review.json 만들기
+    APP_PIN=<비밀번호> node tests/e2e/audit40.js     # 4.0 점검에서 고친 것 (taxonomy40·pricing40·ops40·audit_ui도 같은 방식)
     python tests/security/scan_secrets.py           # 비밀 정보 검사(배포 전 자동으로도 돌아요)
     bash tests/db/run_security_tests.sh             # DB 접근 정책 시험(로컬 PostgreSQL, 버리는 DB에서)
 
 보안: docs/SECURITY_AUDIT.md(감사) · SECURITY_ARCHITECTURE.md(구조·통제) · SECURITY_REMEDIATION.md(조치·남은 일) ·
 SECURITY_TEST_REPORT.md(시험 결과) · INCIDENT_RESPONSE_PLAN.md(사고 대응) · supabase/DATABASE_ACCESS_POLICIES.sql(DB 정책).
 비밀번호 화면의 번호는 저장소에 적지 않아요(테스트는 APP_PIN 환경 변수).
+4.0 개편: docs/FINAL_IMPLEMENTATION_REPORT.md(결과) · PRODUCT_AUDIT.md(점검) · TREATMENT_TAXONOMY.md(분류·비교 판정 A~J) · RELEASE_ROADMAP.md.
 피부 고민으로 찾기: docs/AI_CONCERN_DISCOVERY_SPEC.md(기능 명세) · docs/LEGAL_REVIEW_CHECKLIST.md(출시 전 법률 검토 질문·게이트).
 
 지도: © OpenStreetMap contributors (Leaflet, BSD-2). 좌표: OpenStreetMap Nominatim.

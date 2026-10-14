@@ -740,7 +740,7 @@
               undoToast("장바구니에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
             h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
               const c = st.carts[s.ci], it = have || { t: "k", k: KEYS[s.k].id, q: s.q };
-              if (have) have.q = s.q; else c.items.push(it);
+              if (have) have.q = s.q; else { c.items.push(it); track("cart_add", { k: it.k }); }
               saveCarts(); close(); render();
               if (have) toast("횟수를 바꿨어요");
               else jomiToast("happy", J.lines.added || `'${c.name}'에 담았어요`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
@@ -817,6 +817,7 @@
     sheet("가격 확인", (close) => h("div", {},
       h("div", { class: "item", style: "padding:6px 0 10px" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])), h("span", { class: "m" }, bdot(b), bname(b), kindBadge(r))),
       (() => { const c = classOf(i, ROWS[i] && (S[ROWS[i][7]] || "").split(" ").includes(KEYS[st.key] && KEYS[st.key].id) ? st.key : null);
+        track("price_sheet", { cls: c.c });
         return h("div", { class: `clsbox cls-${c.cmp}` }, h("div", { class: "row", style: "gap:6px" }, h("b", { class: "sh", style: "margin:0" }, "비교 판정"), classBadge(c),
           h("span", { class: "sp" }), h("button", { class: "linkbtn", type: "button", onclick: () => clsSheet() }, "A~J 뜻")), h("p", { class: "sub", style: "margin:6px 0 0" }, c.why)); })(),
       h("div", { class: "elig-wrap" }, h("b", { class: "sh" }, "가격 적용 조건"), eligList(i)),
@@ -1349,7 +1350,7 @@
     // the real changes already recorded for this treatment (last weekly snapshot) go into 알림 기록 as '지난 기록'
     if (al.k && KI[al.k] != null) for (const [k, b, before, after] of D.changes || []) if (KEYS[k].id === al.k && BR[b] && regOk(b, al.reg)) st.notes.unshift({ ...noteOf(al, "past", { b: bkey(b), before, after, text: `${D.meta.prev} → ${D.meta.updated} ${bname(b)} ${won(before)} → ${won(after)}` }), read: true, past: true });
     if (al.type === "target" || al.type === "cartdrop") delete al.last;
-    st.alerts.push(al); saveAlerts();
+    st.alerts.push(al); saveAlerts(); track("alert_set", { type: al.type });
     // 죠미 winks only once the alert is really stored; the toast repeats the condition that was saved
     const kinds = al.type === "watch" ? Object.keys(Intel.WATCH_T).filter((t) => !al.on || al.on[t] !== false).length : 0;
     if (store.get("alerts", []).some((x) => x.id === al.id)) jomiToast("wink", `${J.lines.alertSet || "알림을 만들었어요"} ${alertName(al)} · ${ALERT_TYPES[al.type]}${kinds ? ` (${kinds}가지 변화)` : ""}${al.target ? ` · 목표가 ${won(al.target)}` : ""}`, ["알림 관리", () => nav("saved")]);
@@ -1457,6 +1458,27 @@
   // browsing history on this phone (최근 본 것, 최근 검색, 이어서 보기): the user can stop recording it or clear it (마이 → 내 설정)
   const HIST_KEYS = ["recent", "recentQ", "lastRoute"];
   const histOn = () => store.get("histOff", false) !== true;
+  // 사용 통계 (docs/ADMIN_OPERATIONS_SPEC.md §6): off by default; when the user turns it on, events are kept on this phone
+  // only (pc:events, last 500), every one marked demo — there is no server to send them to. Never the search text, a
+  // concern, a place or anything personal: only the event name and app values (a comparison id, a class, a plan).
+  const AN_EVENTS = { search: "검색", compare_view: "시술 비교 열기", option_mode: "옵션 보기 방식", option_step: "쉬운 보기 단계 선택", prod_filter: "제품·장비 거르기",
+    price_sheet: "가격 근거 열기", cart_add: "장바구니 담기", scenario_open: "방문 계획 열기", alert_set: "알림 만들기" };
+  const anOn = () => store.get("analytics", "off") === "on";
+  function track(name, props) {
+    if (!anOn() || !AN_EVENTS[name]) return;
+    const L = store.get("events", []);
+    L.push({ e: name, at: new Date().toISOString(), demo: true, ...(props || {}) });
+    store.set("events", L.slice(-500));
+  }
+  function eventsSheet() {
+    sheet("사용 통계 (이 기기)", (close) => { const L = store.get("events", []), n = {};
+      for (const x of L) n[x.e] = (n[x.e] || 0) + 1;
+      return h("div", {}, h("p", { class: "sub" }, "이 휴대폰에만 있는 시연 기록이에요. 서버로 보내지 않고, 검색어·고민·위치는 남기지 않아요."),
+        L.length ? h("dl", { class: "facts" }, Object.entries(AN_EVENTS).map(([k, l]) => h("div", { class: "fact" }, h("dt", {}, l), h("dd", {}, `${n[k] || 0}번`))))
+          : h("div", { class: "empty" }, "아직 기록이 없어요."),
+        h("p", { class: "tiny" }, L.length ? `${L.length}개 · 첫 기록 ${L[0].at.slice(0, 10)} · 모두 demo 표시` : ""),
+        h("button", { class: "btn gray", type: "button", style: "width:100%;margin-top:10px", onclick: () => { store.set("events", []); close(); toast("사용 통계를 지웠어요"); } }, "모두 지우기")); });
+  }
   function remember(kind, id) {
     if (!histOn()) return;
     const v = `${kind}:${id}`;
@@ -2164,6 +2186,58 @@
   }
 
   // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy) — behind the PIN screen
+  // 수집 실행 상태 (docs/ADMIN_OPERATIONS_SPEC.md §3): the last weekly-prices runs from GitHub's public API, asked only when
+  // the button is pressed (60 requests an hour per IP without a token — no token is ever put in the app)
+  const RUN_API = "https://api.github.com/repos/lsy2825/skin/actions/workflows/weekly.yml/runs?per_page=5";
+  const runState = (r) => r.status === "in_progress" ? "RUNNING" : r.status !== "completed" ? "QUEUED" : r.conclusion === "success" ? "SUCCESS" : "FAILED";
+  const RUN_EVT = { schedule: "예약", push: "코드 반영", workflow_dispatch: "수동" };
+  function runStatusCard() {
+    const out = h("div", { "aria-live": "polite" }, h("div", { class: "sub" }, "버튼을 누르면 GitHub에서 최근 실행 5개를 한 번 읽어 와요."));
+    const btn = h("button", { class: "btn sm gray", type: "button", onclick: async () => {
+      btn.disabled = true; fill(out, h("div", { class: "sub" }, "확인하는 중…"));
+      try {
+        const res = await fetch(RUN_API, { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
+        if (res.status === 403 || res.status === 429) {
+          const reset = +res.headers.get("x-ratelimit-reset"); const at = reset ? new Date(reset * 1000).toISOString().slice(11, 16) : "";
+          fill(out, h("div", { class: "runst" }, h("span", { class: "k kx" }, "RATE_LIMITED"), h("span", { class: "sub" }, `GitHub 요청 한도(시간당 60번)를 다 썼어요.${at ? ` ${at}(UTC) 이후 다시 확인할 수 있어요.` : ""}`)));
+        } else if (!res.ok) fill(out, h("div", { class: "sub" }, `확인하지 못했어요(HTTP ${res.status}). 상태를 짐작해서 보여주지 않아요.`));
+        else {
+          const runs = ((await res.json()).workflow_runs || []).slice(0, 5);
+          fill(out, runs.length ? h("ul", { class: "plain runs" }, runs.map((r) => { const s2 = runState(r);
+            return h("li", { class: "runst" }, h("span", { class: `k ${s2 === "SUCCESS" ? "ok" : s2 === "FAILED" ? "kx" : ""}` }, s2),
+              h("span", {}, `${(r.run_started_at || r.created_at || "").replace("T", " ").slice(0, 16)} UTC · ${RUN_EVT[r.event] || r.event}`),
+              h("a", { href: /^https:\/\/github\.com\//.test(r.html_url || "") ? r.html_url : "https://github.com/lsy2825/skin/actions", target: "_blank", rel: "noopener noreferrer" }, "자세히", icon("external-link", "xs"))); }))
+            : h("div", { class: "sub" }, "실행 기록이 없어요."));
+        }
+      } catch (e) { fill(out, h("div", { class: "sub" }, "연결이 안 돼 확인하지 못했어요. 상태를 짐작해서 보여주지 않아요.")); }
+      btn.disabled = false;
+    } }, icon("refresh-cw", "sm"), "최근 수집 실행 확인");
+    return h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "수집 실행 상태"), h("span", { class: "sp" }), btn),
+      h("p", { class: "tiny", style: "margin:4px 0 8px" }, "QUEUED·RUNNING·SUCCESS·FAILED·RATE_LIMITED는 GitHub Actions가 알려준 그대로예요. 앱에서 수집을 시작하는 버튼은 없어요(저장소 권한이 필요해요)."), out);
+  }
+  // 분류 검토 센터 (docs/ADMIN_OPERATIONS_SPEC.md §4): app/review.json from tools/review_queue.js — read-only; decisions are
+  // made in the repository files named in each item, and show up after the next build
+  function reviewCenterCard() {
+    const body = h("div", {}, h("div", { class: "sub" }, "불러오는 중…"));
+    fetch("review.json", { cache: "no-store" }).then((r) => (r.ok ? r.json() : Promise.reject(r.status))).then((R) => {
+      const total = Object.values(R.classes || {}).reduce((a, b) => a + b, 0) || 1;
+      const tabs = [["R", "가격 확인"], ["C", "제품·장비 섞임"], ["J", "이름만 비슷"]];
+      let cur = "R";
+      const list = h("div", {});
+      const paint = () => fill(list, (R.items[cur] || []).length ? h("ul", { class: "plain rvq" }, R.items[cur].map(([id, key, label, where, name, price, why]) =>
+        h("li", {}, h("div", { class: "row", style: "gap:6px" }, h("span", { class: "k" }, id), h("b", {}, label || key), h("span", { class: "sp" }), h("span", { class: "tiny" }, where)),
+          h("div", { class: "sub" }, `${name}${price ? ` · ${won(price)}` : ""}`), h("div", { class: "tiny" }, why)))) : h("div", { class: "empty" }, "대기 항목이 없어요."));
+      fill(body,
+        h("div", { class: "row", style: "gap:4px;flex-wrap:wrap" }, Object.entries(R.classes || {}).sort().map(([c, n]) => h("span", { class: "k", title: (Classify.CLASSES[c] || {}).label }, `${c} ${n.toLocaleString()} (${(n / total * 100).toFixed(1)}%)`))),
+        h("p", { class: "tiny" }, `비교 묶음 안 가격 줄의 판정 분포 · ${R.updated} 빌드`),
+        h("div", { class: "seg", role: "tablist", style: "margin-top:8px" }, tabs.map(([c, l]) => h("button", { type: "button", role: "tab", "aria-selected": c === cur ? "true" : "false",
+          onclick: (e) => { cur = c; e.currentTarget.parentNode.querySelectorAll("button").forEach((b) => b.setAttribute("aria-selected", b === e.currentTarget ? "true" : "false")); paint(); } }, `${l} ${(R.queue || {})[c] || 0}`))),
+        list,
+        h("p", { class: "tiny" }, "앱에서는 아무것도 바꾸지 않아요. 처리는 저장소에서: 가격 확인 → data2/review_ok.csv, 묶음 규칙 → build2/taxonomy.py·xkeys.py. 다음 빌드부터 반영돼요. 전체 목록: docs/CLASSIFICATION_REVIEW_QUEUE.csv"));
+      paint();
+    }).catch(() => fill(body, h("div", { class: "sub" }, "검토 목록(review.json)을 불러오지 못했어요. 빌드가 아직 만들지 않았을 수 있어요.")));
+    return h("div", { class: "card" }, h("h3", {}, "분류 검토 센터"), body);
+  }
   views.ops = () => {
     const box = h("div", { class: "view" });
     box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
@@ -2190,6 +2264,7 @@
         h("span", { class: "sub" }, `확인 ${x.latest}`),
         h("span", { class: "m" }, h("span", {}, `지점 ${x.brs.length}곳 · 가격 ${x.rows.toLocaleString()}개`), h("span", { class: x.stale ? "up" : "down" }, x.stale ? `STALE ${x.stale}곳` : "모두 VERIFIED"),
           x.expired ? h("span", { class: "up" }, `EXPIRED ${x.expired.toLocaleString()}개`) : null, x.pending ? h("span", { class: "up" }, `PENDING_REVIEW ${x.pending}개`) : null)))))));
+    box.append(runStatusCard(), reviewCenterCard());
     // next-collection order (recheckQueue): what a re-collection server would read first
     const q = recheckQueue();
     box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, `재수집 순서 ${q.length}곳`),
@@ -2500,6 +2575,7 @@
       const score = (x) => (x.kind === want.kind ? 4 : 0) + (x.amt === want.amt ? 2 : 0) + (x.sess === want.sess ? 1 : 0) + (x.sess === 1 ? 0.5 : 0);
       const ok = vs.filter((x) => (want.fix || []).every((k) => x[k] === want[k]));
       const best = (ok.length ? ok : vs).reduce((a, x) => (score(x) > score(a) || (score(x) === score(a) && byKB[x.v.k].size > byKB[a.v.k].size) ? x : a));
+      track("option_step", { k: KEYS[best.v.k].id });
       pickKey(best.v.k);
     };
     const uniq = (xs) => [...new Set(xs)];
@@ -2725,18 +2801,20 @@
     if (!m.mixed && !(m.named.size && m.none)) return null;
     const opts = [...m.branches].sort((a, b) => (a[0] === "") - (b[0] === "") || b[1].size - a[1].size);
     const cur = st.prodK === k ? st.prod : null;
-    const set = (p) => { st.prod = p; st.prodK = k; redraw(); };
+    const set = (p) => { st.prod = p; st.prodK = k; track("prod_filter", { k: KEYS[k].id, p: p == null ? "all" : p || "none" }); redraw(); };
     return h("div", { class: "prodmix" }, h("span", { class: "tiny" }, "제품·장비"),
       h("div", { class: "chips", role: "radiogroup", "aria-label": "제품·장비로 거르기" },
         h("button", { class: "chip", type: "button", role: "radio", "aria-checked": cur == null ? "true" : "false", onclick: () => set(null) }, "전체"),
         opts.map(([p, bs]) => h("button", { class: "chip", type: "button", role: "radio", "aria-checked": cur === p ? "true" : "false", onclick: () => set(p) }, `${p || "표기 없음"} ${bs.size}곳`))));
   }
+  let lastCmpK = null;   // compare_view is counted once per treatment, not on every redraw
   views.compare = (arg, params) => {
     const box = h("div", { class: "view" });
     if (params && params.get("k") && KI[params.get("k")] != null) st.key = KI[params.get("k")];
     if (st.key == null) st.key = 0;
     if (KEYS[st.key] && (!params || params.get("k") !== KEYS[st.key].id)) history.replaceState(null, "", `#compare?k=${KEYS[st.key].id}`);
     if (st.key != null && KEYS[st.key]) remember("k", KEYS[st.key].id);
+    if (KEYS[st.key] && lastCmpK !== st.key) { lastCmpK = st.key; track("compare_view", { k: KEYS[st.key].id }); }
     box.append(cmpNav("compare"));
     const k = KEYS[st.key];
     const fam = famOf[k.i];
@@ -2757,7 +2835,7 @@
       const easy = st.cmpMode !== "detail";
       card.append(h("div", { class: "row", style: "margin-top:14px;gap:8px" }, h("span", { class: "sub", style: "flex:1;min-width:0" }, `${fam.f.name} ${fam.f.vs.length}가지 · 용량·부위·횟수가 같은 것끼리만 비교해요`),
         h("div", { class: "seg modesw", role: "group", "aria-label": "옵션 보기 방식" }, [["easy", "쉬운 보기"], ["detail", "자세히"]].map(([v, l]) =>
-          h("button", { type: "button", "aria-pressed": (easy ? "easy" : "detail") === v ? "true" : "false", onclick: () => { st.cmpMode = v; store.set("cmpMode", v); render(); } }, l)))));
+          h("button", { type: "button", "aria-pressed": (easy ? "easy" : "detail") === v ? "true" : "false", onclick: () => { st.cmpMode = v; store.set("cmpMode", v); track("option_mode", { v }); render(); } }, l)))));
       if (easy) card.append(specSteps(fam.f, k.i));
       else {
         // the kind being compared as one row of amounts; the other kinds (and packages of several sessions) folded
@@ -3688,20 +3766,25 @@
   };
 
   // ---------------- search over every price
-  // product / device → branches that name it in an option (built once per data, from the distinct option names)
+  // product / device → branches that name it in an option. Only the products the query names are counted (a quick text
+  // pre-check on each distinct option name, then Classify.products to confirm), memoised per data load
   let prodIdx = null;
-  function prodIndex() {
-    if (prodIdx) return prodIdx;
-    const m = new Map(), memo = new Map();
-    ROWS.forEach((r, i) => { if (!live(i)) return; let ps = memo.get(r[2]); if (!ps) { ps = Classify.products(S[r[2]]); memo.set(r[2], ps); }
-      for (const p of ps) { if (!m.has(p)) m.set(p, new Set()); m.get(p).add(r[0]); } });
-    return (prodIdx = m);
+  const prodNames = () => [...Classify.DEVICES.map(([n, rx]) => [n, rx]), ...Spec.PRODUCTS.filter((p) => !["아포지", "젠틀맥스", "클라리티", "리쥬란"].includes(p)).map((p) => [p, null]), ["리쥬란", null]];
+  function prodBranches(p, rx) {
+    prodIdx = prodIdx || new Map();
+    if (prodIdx.has(p)) return prodIdx.get(p);
+    const ok = new Map(), out = new Set();
+    ROWS.forEach((r, i) => { if (!live(i)) return; let v = ok.get(r[2]);
+      if (v == null) { const t = S[r[2]]; v = (rx ? rx.test(t) : t.includes(p)) && Classify.products(t).includes(p); ok.set(r[2], v); }
+      if (v) out.add(r[0]); });
+    prodIdx.set(p, out);
+    return out;
   }
   function typedResults(qs, fams, keys) {
     const nq = Search.norm(qs || "").replace(/\s+/g, "");
     if (nq.length < 2) return null;
     const hit = (t) => { const x = Search.norm(t).replace(/\s+/g, ""); return x.length >= 2 && (nq.includes(x) || x.includes(nq)); };
-    const prods = [...prodIndex()].filter(([p]) => hit(p)).sort((a, b) => b[1].size - a[1].size).slice(0, 6);
+    const prods = prodNames().filter(([p]) => hit(p)).map(([p, rx]) => [p, prodBranches(p, rx)]).filter(([, bs]) => bs.size).sort((a, b) => b[1].size - a[1].size).slice(0, 6);
     const clinics = BR.filter((b) => hit(`${brandOf(b.i)[0]}${b.name}`) || hit(b.name.replace(/(본점|점)$/, ""))).slice(0, 6);
     const areas = areaFind(qs).filter((a) => a.name.length >= 2 && hit(a.name)).slice(0, 5);
     const conc = FLAGS.concernSearch && CONC.concerns.length ? Concern.classify(qs, CONC).matches.map((m) => CONC.concerns.find((c) => c.id === m.id)).filter(Boolean) : [];
@@ -3736,6 +3819,7 @@
       }
     }
     rememberQuery(params.get("orig") || qs);
+    if (qs) track("search", { ops: Search.hasOps(qs) });
     const box = h("div", { class: "view" });
     const q = h("input", { type: "search", value: qs, "aria-label": "시술 검색", enterkeyhint: "search", placeholder: "시술 검색 (예: 슈링크 300샷, rejuran)" });
     const run = (v) => { if (v) nav(`search/${encodeURIComponent(v)}`, true); };
@@ -3800,7 +3884,7 @@
     const HL = FLAGS.lowestHighlight, full = plan.full;
     const rng = (xs) => { if (!xs.length) return null; const lo = Math.min(...xs), hi = Math.max(...xs); return lo === hi ? won(lo) : `${man(lo)}~${man(hi)}원`; };
     const near = st.loc ? [...full].filter((x) => x.d != null).sort((a, b) => a.d - b.d)[0] : null;
-    const open = (tab, extra) => () => { st.cartTab = tab; st.cartCmp = true; if (extra) extra(); render(); setTimeout(() => { const t = $("#main .seg[role=tablist]"); if (t) t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 50); };
+    const open = (tab, extra) => () => { st.cartTab = tab; st.cartCmp = true; if (extra) extra(); track("scenario_open", { tab, max: st.maxPlaces || 0 }); render(); setTimeout(() => { const t = $("#main .seg[role=tablist]"); if (t) t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 50); };
     const tile = (id, title, visits, total, sub, act, actL) => h("div", { class: "scen" }, h("div", { class: "row", style: "gap:6px" }, h("b", { class: "scen-id" }, id), h("b", {}, title)),
       h("div", { class: "scen-v" }, h("span", { class: "k" }, visits), h("b", { class: "num" }, total || "-")),
       h("div", { class: "tiny" }, sub), act ? h("button", { class: "linkbtn", type: "button", onclick: act }, actL, icon("chevron-right", "xs")) : null);
@@ -4385,6 +4469,8 @@
           radios("설명 길이", [["short", "간략"], ["long", "상세"]], P.detail, (v) => set("detail", v))); })(),
       h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "보기 기록"), h("b", { class: "now" }, histOn() ? "지금: 남김" : "지금: 남기지 않음")),
         switchEl("최근 본 것·최근 검색·이어서 보기 기록 남기기", histOn(), (v) => { store.set("histOff", !v); render(); toast(v ? "다시 기록해요" : "이제 기록하지 않아요(이미 있는 기록은 그대로)"); }),
+        switchEl("사용 통계 남기기 (이 기기에만 · 시연 기록)", anOn(), (v) => { store.set("analytics", v ? "on" : "off"); render(); toast(v ? "이 기기에만 사용 통계를 남겨요(서버로 보내지 않아요)" : "사용 통계를 남기지 않아요(이미 있는 기록은 '보기'에서 지울 수 있어요)"); }),
+        h("button", { class: "linkbtn", type: "button", onclick: () => eventsSheet() }, "사용 통계 보기·지우기", icon("chevron-right", "xs")),
         h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => {
           const before = Object.fromEntries(HIST_KEYS.map((k) => [k, store.get(k, null)]));
           for (const k of HIST_KEYS) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* storage unavailable */ } }

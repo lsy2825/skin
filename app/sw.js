@@ -15,7 +15,8 @@ self.addEventListener("activate", (e) => {
 self.addEventListener("fetch", (e) => {
   const u = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  if (u.origin === location.origin && /\/data(-meta)?\.json$/.test(u.pathname)) return;   // price files: app.js keeps its own checked copy (PRICE_SYNC_ARCHITECTURE.md)
+  if (u.origin === location.origin && /\/(data(-meta)?|review)\.json$/.test(u.pathname)) return;   // price files: app.js keeps its own checked copy (PRICE_SYNC_ARCHITECTURE.md); review.json: always the latest build
+  if (u.hostname === "api.github.com") return;   // collection-run status: live from GitHub, never from a cache (ADMIN_OPERATIONS_SPEC.md)
   const net = u.hostname.endsWith("tile.openstreetmap.org") || u.pathname.endsWith("app.js") || u.pathname.endsWith("styles.css") || u.pathname.endsWith("icons.js") || u.pathname.endsWith("jomi.js") || u.pathname.endsWith("auth.js") || u.pathname.endsWith("config.js") || u.pathname.includes("/domain/") || u.pathname.endsWith("index.html") || u.pathname.endsWith("/");
   if (net) {
     e.respondWith(fetch(e.request).then((r) => { if (r.ok) { const c = r.clone(); caches.open(VER).then((x) => x.put(e.request, c)); } return r; })
