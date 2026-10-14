@@ -12,7 +12,8 @@ import branches
 from common import Fetcher, UA
 
 PAGES = {"vands": ("밴스", ""), "uandi": ("유앤아이", "/direction/"),
-         "daybeau": ("데이뷰", "/branch/event.php"), "drevers": ("닥터에버스", "/event/")}
+         "daybeau": ("데이뷰", "/branch/event.php"), "drevers": ("닥터에버스", "/event/"),
+         "cellin": ("셀린", "/clinicPriceSide/clinicSideList.php")}
 
 
 def main(key, out):

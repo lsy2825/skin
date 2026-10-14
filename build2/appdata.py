@@ -49,7 +49,9 @@ BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카
           ("밴스", "#2f9e44", "지점별 '시술소개' 카테고리의 이벤트·상시 가격. 부가세(VAT) 별도"),
           ("유앤아이", "#a0522d", "지점 홈의 이벤트 가격(탭별). 부가세(VAT) 별도"),
           ("데이뷰", "#1d3557", "지점별 이벤트 페이지의 가격. '카톡플친 적용가'처럼 조건이 붙은 가격은 이름에 표시. 부가세(VAT) 별도"),
-          ("닥터에버스", "#c92a2a", "지점별 이벤트 페이지의 항목 가격. 카카오톡 친구 대상 이벤트는 이벤트 이름에 표시")]
+          ("닥터에버스", "#c92a2a", "지점별 이벤트 페이지의 항목 가격. 카카오톡 친구 대상 이벤트는 이벤트 이름에 표시"),
+          # added 2026-10-15 (appended, as above)
+          ("셀린", "#ae3ec9", "지점별 '시술 안내/가격'의 항목 가격(정가·할인가). '[카톡플친대상/첫방문]' 같은 조건은 이름에 그대로 표시")]
 KINDS = ["일반", "체험가", "한정가", "구독권", "고시가"]
 # keys grouped into one procedure with selectable variants (cart / compare option picker). The regex finds a branch's
 # related rows (packages, other doses) when the user switches the option for one branch.

@@ -33,7 +33,7 @@ def vat_policy():
         return {}
     return {b: v.get("default", "") for b, v in json.load(open(VAT_POLICY, encoding="utf-8")).items() if not b.startswith("_")}
 BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장"), ("forever", "포에버"),
-          ("vands", "밴스"), ("uandi", "유앤아이"), ("daybeau", "데이뷰"), ("drevers", "닥터에버스")]
+          ("vands", "밴스"), ("uandi", "유앤아이"), ("daybeau", "데이뷰"), ("drevers", "닥터에버스"), ("cellin", "셀린")]
 
 PAPER = re.compile(r"진단서|소견서|제증명|증명서|수수료|사본|발급")
 NOTE = re.compile(r"^[※▶▷★▼■●◆]|참조|참고하세요|가격표")

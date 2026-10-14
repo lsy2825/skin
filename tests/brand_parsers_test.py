@@ -1,4 +1,4 @@
-"""Parsers of the collectors added 2026-10-14 (scrape/vands.py, uandi.py, daybeau.py, drevers.py), on trimmed copies of the
+"""Parsers of the collectors added 2026-10-14/15 (scrape/vands.py, uandi.py, daybeau.py, drevers.py, cellin.py), on trimmed copies of the
 public price pages the robots-first probe read on a GitHub runner (scrape/probe.py; fixtures in tests/fixtures/brands).
 The live sites are not reachable from the dev container, so these check the page layout as it was on 2026-10-14 —
 when a site changes its markup the weekly guard (build2/weekly.py) keeps the last good file and this test shows where.
@@ -8,7 +8,7 @@ import datetime, os, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scrape"))
-import vands, uandi, daybeau, drevers  # noqa: E402
+import vands, uandi, daybeau, drevers, cellin  # noqa: E402
 
 FX = os.path.join(ROOT, "tests", "fixtures", "brands")
 TODAY = datetime.date(2026, 10, 14)
@@ -75,6 +75,17 @@ common("닥터에버스", rows)
 r0 = next(r for r in rows if "사각턱보톡스" in r["option"])
 ok("닥터에버스: item JSON read (name, event, category, prices)", (r0["sale"], r0["orig"], r0["group"]) == (39000, 76400, "파마리서치×닥터에버스 SALE FESTA"), r0)
 ok("닥터에버스: product from the category put in front of a bare name", r0["option"].startswith("국산 프리미엄 보톡스"), r0["option"])
+
+# 셀린 (list page + the detail the page loads when an event is clicked, 2026-10-15 raw probe)
+sites = cellin.branch_sites(fx("cellin_list.html"))
+ok("셀린: 12 branch sites, Hangul names only (no foreign-language site), '(본점)' dropped", len(sites) == 12 and "연신내점" in sites and not any("Cellin" in n for n in sites), sorted(sites))
+evs = cellin.events(fx("cellin_list.html"))
+ok("셀린: event list (idx, name, period)", len(evs) >= 100 and evs[0][:2] == ("10411", "게릴라이벤트🎁"), evs[0])
+ok("셀린: event period → end date", cellin.until_of(evs[0][2], datetime.date(2026, 10, 15)) == "2026-10-17", evs[0][2])
+rows = cellin.items(fx("cellin_detail.html"), "분당정자점", "첫방문", "", "u", "t")
+common("셀린", rows)
+r0 = rows[0]
+ok("셀린: item with sale and list price, condition kept in the name", (r0["option"], r0["sale"], r0["orig"]) == ("[카톡플친대상/첫방문] 턱보톡스 50U (국산)", 9900, 19000), r0)
 
 print(f"{'FAIL' if fails else 'PASS'}: {len(fails)} failing")
 sys.exit(1 if fails else 0)

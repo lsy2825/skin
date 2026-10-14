@@ -40,6 +40,8 @@ REGISTRY = OrderedDict([
                  "seeds": ["https://daybeauclinic08.com/branch/index.php", "https://daybeauclinic08.com/branch/event.php"], "terms_reviewed": None}),
     ("drevers", {"brand": "닥터에버스", "method": "공개 HTML (지점별 이벤트 페이지의 항목 데이터)", "rate": "1 req/s, 동시 6",
                  "seeds": ["https://drevers.com/", "https://bucheon.drevers.com/event/"], "terms_reviewed": None}),
+    ("cellin", {"brand": "셀린", "method": "공개 HTML (지점별 '시술 안내/가격' 목록 + 항목을 누를 때 페이지가 보내는 상세 요청)", "rate": "1 req/s, 동시 4",
+                "seeds": ["https://www.cellinclinic10.com/clinicPriceSide/clinicSideList.php"], "terms_reviewed": None}),
 ])
 VAT = re.compile(r"(부가세|부가가치세|VAT|vat)[^가-힣A-Za-z]{0,6}(\d{1,2}\s*%\s*)?[^.\n]{0,12}?(별도|포함|미포함)")
 

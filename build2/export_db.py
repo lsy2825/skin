@@ -15,7 +15,7 @@ from xkeys import X, comp, match as xmatch  # noqa: E402
 from appdata import BRANDS, CATS, FAM, KINDS  # noqa: E402
 OUT = os.path.join(ROOT, "data2", "db")
 SLUG = {"블리비": "velyb", "쁨": "ppeum", "톡스앤필": "toxnfill", "리엔장": "lienjang", "포에버": "forever",
-        "밴스": "vands", "유앤아이": "uandi", "데이뷰": "daybeau", "닥터에버스": "drevers"}
+        "밴스": "vands", "유앤아이": "uandi", "데이뷰": "daybeau", "닥터에버스": "drevers", "셀린": "cellin"}
 COND = ["평일 낮", "일요일", "타임세일", "첫 방문", "1인 1회"]
 UNIT = re.compile(r"(\d+)\s*(샷|cc|U|KJ)")
 
