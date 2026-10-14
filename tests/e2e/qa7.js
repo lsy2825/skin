@@ -129,7 +129,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     ok('Q5', '일부만 되는 지점에 "N개 중 M개 가능" 표시', /2개 중 1개 가능/.test(m), m.split('\n')[0]);
     ok('Q5', '없는 시술은 "없음"(0원 아님)', lines.some((l) => l.none) && !lines.some((l) => l.t === '0원'), JSON.stringify(lines));
     ok('Q5', '합계 = 확인된 시술만 더한 값', sum === shownTotal && sum > 0, `줄 합 ${sum} / 표시 ${shownTotal}`);
-    ok('Q5', '"확인된 시술 합계"와 0원 아님 안내', /확인된 시술 합계/.test(text) && /0원 아님/.test(text));
+    ok('Q5', '"확인된 시술만 예상 합계"(round-2 UX03 문구)와 0원 아님 안내', /확인된 시술만 예상 합계/.test(text) && /0원 아님/.test(text));
     ok('Q5', '요약 카드가 일부 지점 합계를 최저가로 쓰지 않음', !/^0원$/.test((await p.locator('.cartsum .hp').textContent()).trim()), await p.locator('.cartsum .hp').textContent());
     await ctx.close(); }
 

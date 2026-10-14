@@ -31,7 +31,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   const wt = await p.locator('[data-testid=wallet]').innerText();
   ok('C2 시연 표시·실제 돈 아님·자동 충전 없음·무료 핵심 기능 안내', /시연/.test(wt) && /실제 돈이 나가지 않고/.test(wt) && /자동 충전·정기 결제가 없어요/.test(wt) && /계속 무료/.test(wt));
   const packs = await p.locator('[data-testid^=pack-]').allInnerTexts();
-  ok('C3 묶음 3개: 990·1,990·3,900원, 부가세 포함, 5·12·26크레딧, 7·21·45일', packs.length === 3 && /990원/.test(packs[0]) && /5크레딧/.test(packs[0]) && /7일/.test(packs[0]) && /1,990원/.test(packs[1]) && /12크레딧/.test(packs[1]) && /3,900원/.test(packs[2]) && /26크레딧/.test(packs[2]) && /45일/.test(packs[2]) && packs.every((x) => /부가세 포함/.test(x)), packs.join(' / '));
+  // round 2 (catalog v2): no ad-free bonus days — the app shows no ads (docs/PRODUCT_DECISIONS.md BIZ01)
+  ok('C3 묶음 3개: 990·1,990·3,900원, 부가세 포함, 5·12·26크레딧, 광고 없는 기간 문구 없음', packs.length === 3 && /990원/.test(packs[0]) && /5크레딧/.test(packs[0]) && /1,990원/.test(packs[1]) && /12크레딧/.test(packs[1]) && /3,900원/.test(packs[2]) && /26크레딧/.test(packs[2]) && packs.every((x) => /부가세 포함/.test(x) && !/광고/.test(x)), packs.join(' / '));
   await p.click('[data-testid=pack-MINI]'); await p.waitForTimeout(300);
   const sheetT = await p.locator('.sheet').innerText();
   ok('C4 결제 전 확인: 가격·크레딧·유효기간 없음·카드 정보 묻지 않음', /990원 \(부가세 포함\)/.test(sheetT) && /유효기간 없음/.test(sheetT) && /카드 정보도 묻지 않아요/.test(sheetT));
@@ -40,12 +41,13 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   const w1 = await wallet(), af1 = Date.parse(w1.adfree_until);
   await p.click('[data-testid=pack-STANDARD]'); await p.waitForTimeout(200); await p.click('[data-testid=buy-confirm]'); await p.waitForTimeout(300);
   const w2 = await wallet(), af2 = Date.parse(w2.adfree_until);
-  ok('C6 광고 없는 기간은 지금 끝에 이어 붙음(7일 + 21일)', Math.round((af2 - af1) / 86400000) === 21 && await avail() === 17, `${(af2 - af1) / 86400000}`);
-  ok('C7 주문은 가격 스냅샷을 가짐', Object.values(w2.orders).every((o) => o.amount_krw && o.version === 1 && o.channel === 'DEMO'));
+  ok('C6 두 번째 충전 후 17크레딧, 광고 없는 기간은 생기지 않음', Number.isNaN(af1) && Number.isNaN(af2) && w2.adfree_until === null && await avail() === 17, `${w2.adfree_until} ${await avail()}`);
+  ok('C7 주문은 가격 스냅샷(카탈로그 2판)을 가짐', Object.values(w2.orders).every((o) => o.amount_krw && o.version === 2 && o.adfree_days === 0 && o.channel === 'DEMO'));
 
   // 2) a tool: cost shown first, then a report; reopening is free
   await go('premium');
-  ok('C8 도구마다 크레딧 표시', (await p.locator('[data-testid^=tool-] .k').allTextContents()).length === 12);
+  // round 2 BIZ01: three tools are sold; the other nine are listed (folded) with where they went, without a price
+  ok('C8 판매 도구 3개만 크레딧 표시, 나머지 9개는 옮긴 곳 안내', (await p.locator('[data-testid^=tool-] .k').allTextContents()).length === 3 && /팔지 않는 도구 9가지/.test(await p.locator('#main').innerText()));
   await p.click('[data-testid=tool-EVENT_URL_DECODER]'); await p.waitForTimeout(300);
   const st = await p.locator('.sheet').innerText();
   ok('C9 실행 전 비용·잔액·실패 시 차감 없음 안내', /이 기능은 1크레딧/.test(st) && /지금 쓸 수 있는 크레딧 17/.test(st) && /차감하지 않아요/.test(st));
