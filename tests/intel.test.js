@@ -43,3 +43,39 @@ test("alert: cart total, event expiring, new matching offer", () => {
   assert.equal(I.evalAlert({ type: "newmatch", base: 10 }, { value: 1, count: 9 }, "2026-10-13").patch.base, 9);
   assert.equal(I.evalAlert({ type: "target", target: 1 }, null, "2026-10-13").fire, false);    // nothing priced
 });
+
+// ---- watch: several kinds of change, only between two real observations (docs/ALERT_ENGINE_SPEC.md)
+const W = require("../app/domain/intel.js");
+const base = { low: 100000, lowB: "블리비|강남점", lowName: "블리비 강남점", lowRow: "블리비|강남점|슈링크 300샷", count: 3, set: ["블리비|강남점", "쁨|홍대점", "톡스앤필|강남본점"], recheck: "" };
+const nowOf = (x) => ({ ...base, rowState: { [base.lowRow]: "live" }, ...x });
+test("watch: first look only sets the base — nothing fires", () => {
+  const r = W.evalWatch({ type: "watch" }, nowOf({}), "2026-10-14");
+  assert.equal(r.events.length, 0); assert.equal(r.patch.base.low, 100000);
+});
+test("watch: price drop and lowest-branch change are separate events with real before/after", () => {
+  const r = W.evalWatch({ base }, nowOf({ low: 90000, lowB: "쁨|홍대점", lowName: "쁨 홍대점", lowRow: "쁨|홍대점|슈링크 300샷" }), "2026-10-21");
+  assert.deepEqual(r.events.map((e) => e.t), ["drop", "lowbranch"]);
+  assert.equal(r.events[0].before, 100000); assert.equal(r.events[0].after, 90000);
+  assert.match(r.events[1].text, /블리비 강남점 → 쁨 홍대점/);
+});
+test("watch: same price at another branch is not a 'lowest branch change'", () => {
+  const r = W.evalWatch({ base }, nowOf({ lowB: "쁨|홍대점" }), "2026-10-21");
+  assert.equal(r.events.length, 0);
+});
+test("watch: target fires once when crossing, not again while it stays below", () => {
+  const w = { base, target: 95000 };
+  assert.deepEqual(W.evalWatch(w, nowOf({ low: 94000 }), "2026-10-21").events.map((e) => e.t), ["drop", "target"]);
+  assert.deepEqual(W.evalWatch({ base: { ...base, low: 94000 }, target: 95000 }, nowOf({ low: 93000 }), "2026-10-28").events.map((e) => e.t), ["drop"]);
+});
+test("watch: a new branch selling it, the old lowest ending, and a re-check need", () => {
+  const r = W.evalWatch({ base }, nowOf({ set: [...base.set, "리엔장|인천점"], count: 4, rowState: { [base.lowRow]: "expired" }, recheck: "최저가 지점이 이번 주 수집에 실패했어요" }), "2026-10-21");
+  assert.deepEqual(r.events.map((e) => e.t), ["newmatch", "lowended", "recheck"]);
+  assert.deepEqual(r.events[0].added, ["리엔장|인천점"]);
+  assert.match(r.events[1].text, /이벤트 기간이 끝났어요/);
+});
+test("watch: switched-off kinds never fire; no repeat for the same observation", () => {
+  const w = { base, on: { drop: false, lowbranch: true } };
+  assert.deepEqual(W.evalWatch(w, nowOf({ low: 90000 }), "2026-10-21").events.map((e) => e.t), []);
+  const again = W.evalWatch({ base: { ...base, low: 90000 } }, nowOf({ low: 90000 }), "2026-10-21");
+  assert.equal(again.events.length, 0);
+});

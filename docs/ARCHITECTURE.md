@@ -193,6 +193,10 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
   - `concern.js`: 피부 고민 분류
   - `spec.js`: 상품명에서 시술 규격(제품·원산지·등급·용량/샷·횟수·부위·성별)과 가격 적용 조건(첫 방문·체험가·부가세·기간·그 밖) 읽기 — 없는 정보는 '미확인'(`tests/spec.test.js`)
 - **`app/terms.js`:** 쉬운 용어 18개(정적 글, 데이터 아님). 가격 용어와 단위·시술 용어를 나눠 표시
+- **`app/domain/sync.js` (2026-10-14):** 가격 파일 동기화 규칙 — 메타·데이터 검사(형식·수·날짜·중복·SHA-256), 상태(LOADING·PARTIALLY_READY·READY·STALE·PARTIALLY_FAILED·ERROR), 다시 받기 간격. `docs/PRICE_SYNC_ARCHITECTURE.md`
+- **`build2/datameta.py` (2026-10-14):** `app/data-meta.json`(버전·체크섬·크기·지점 상태·지난 수집본과 바뀐 줄). `appdata.py`가 data.json을 쓸 때 같이 만들어요
+- **`Search.compile` (2026-10-14):** 검색 연산자(AND·`-`·`|`·숫자+단위 정확 일치·`N단위?`). `docs/ADVANCED_SEARCH_SPEC.md`
+- **`Intel.evalWatch` (2026-10-14):** '지켜보기' 알림(가격 하락·목표가·최저가 지점 변경·새 지점·최저가 이벤트 종료·재확인 필요). `docs/ALERT_ENGINE_SPEC.md`
 - **시연 기능 화면:** `#quick`(빠른 비교), `#snap/<id>`(저장한 비교), `#terms`(쉬운 용어). 저장은 모두 localStorage(`docs/DEMO_FEATURES.md`)
 - **공용 화면 조각**
   - `sheet`, `nameSheet`, `undoToast`, `copyText`, `favBtn`, `switchEl`

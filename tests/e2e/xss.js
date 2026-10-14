@@ -18,6 +18,9 @@ const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+
     await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
     if (!withCsp) await p.route('**/index.html', async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()).replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '') }); });
     if (!withCsp) await p.route(BASE, async (r) => { const res = await r.fetch(); r.fulfill({ response: res, body: (await res.text()).replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '') }); });
+    // no data-meta.json (an older deploy): the poisoned file is not refused by the checksum check — this test is about
+    // what the screen does with hostile text, not about the sync check (tests/e2e/data_sync.js)
+    await p.route('**/data-meta.json', (r) => r.fulfill({ status: 404, body: '' }));
     // poison the data: product names, a branch name, a source URL, a knowledge-base sentence
     await p.route('**/data.json', async (r) => { const res = await r.fetch(); const D = require('./rows.js')(await res.json());   // served back as rows (the app reads both forms)
       const rowsX12 = D.rows.filter((row) => D.s[row[7]].split(' ').includes('X12')).slice(0, 4);

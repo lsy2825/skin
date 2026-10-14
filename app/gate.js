@@ -4,6 +4,16 @@
 // only keeps casual viewers out; data.json and the repo stay public.
 // 5th wrong try locks 5 min, each further wrong try doubles it (cap 24 h). Unlock lasts for this tab (sessionStorage).
 
+// First visit (no checked price copy saved on this phone yet): start the price-file download now, before the app scripts
+// load, so prices appear sooner on a slow line. app.js takes this response over (docs/PRICE_SYNC_ARCHITECTURE.md). With a
+// saved copy nothing starts here: app.js asks data-meta.json first and downloads only a newer version.
+window.__pcEarly = (function () {
+  try {
+    if (typeof caches === "undefined" || window.isSecureContext === false || window.top !== window.self) return null;
+    return caches.open("pc-data-v1").then((c) => c.match("current-meta")).then((m) => m ? null : fetch("data.json", { cache: "no-cache" })).catch(() => null);
+  } catch (e) { return null; }
+})();
+
 // Clickjacking guard, before anything else. GitHub Pages cannot send X-Frame-Options or a CSP frame-ancestors header (and
 // frame-ancestors is ignored in a <meta> tag), so another site could show this app inside an invisible frame and trick
 // taps on the PIN pad or buttons. Inside another site's frame the page hides itself and offers to open on its own; a

@@ -832,3 +832,47 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .termi .m { grid-column: 1 / -1; }
 .acctprep { margin-top: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 14px; display: grid; gap: 4px; }
 .acctprep p { margin: 0; }
+
+/* ---- Price Now expansion: filter bar, 가격 조건 sheet, query card, search tips */
+.fbar { margin-bottom: 4px; }
+.fbtn { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
+.fbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+details.fmore { margin-top: 8px; border-top: 1px solid var(--line-soft); padding-top: 6px; }
+details.fmore > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; font-weight: 680; color: var(--ink); }
+details.fmore > summary::-webkit-details-marker, details.stips > summary::-webkit-details-marker { display: none; }
+details.fmore > summary::after { content: "▾"; margin-left: auto; color: var(--muted); font-size: 12px; }
+details.fmore[open] > summary::after { content: "▴"; }
+.pcgrp .opts { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
+.pctog input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 2px; }
+.pctog { align-items: flex-start; min-height: 32px; cursor: pointer; }
+.qcard { padding-top: 12px; padding-bottom: 12px; }
+.qcard .chip { min-height: 30px; }
+.qk-not { text-decoration: line-through; text-decoration-thickness: 1px; }
+details.stips { margin: 8px 4px 0; }
+details.stips > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--accent); }
+.tiplist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
+.tiplist li { display: grid; gap: 4px; justify-items: start; font-size: 13.5px; }
+.tiplist code { font-family: inherit; font-weight: 700; }
+/* data state: header dot (#upd) + notice bar under the header */
+header.top .upd::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: var(--muted); }
+header.top .upd[data-state="READY"]::before { background: var(--good); }
+header.top .upd[data-state="LOADING"]::before, header.top .upd[data-state="PARTIALLY_READY"]::before { background: var(--butter); animation: nbpulse 1.2s ease-in-out infinite; }
+header.top .upd[data-state="STALE"]::before, header.top .upd[data-state="PARTIALLY_FAILED"]::before { background: var(--butter-ink); }
+header.top .upd[data-state="ERROR"]::before { background: var(--pricey); }
+@keyframes nbpulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { header.top .upd::before { animation: none !important; } }
+html.calm header.top .upd::before { animation: none !important; }
+.netbar { display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 9px 12px; border-radius: 12px; font-size: 13px; line-height: 1.45; background: var(--butter-soft); color: var(--ink); }
+.netbar[hidden] { display: none; }
+.netbar span { min-width: 0; }
+.netbar .nb-act { margin-left: auto; flex: none; border: 0; background: var(--ink); color: var(--surface); border-radius: 999px; padding: 6px 12px; font-weight: 700; font-size: 12.5px; min-height: 32px; }
+.netbar .nb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--butter-ink); flex: none; animation: nbpulse 1.2s ease-in-out infinite; }
+/* alerts history, phone notifications, data status, install, cart top-3 */
+.nfp { padding: 12px 14px 14px; border-top: 1px solid var(--line-soft); display: grid; gap: 4px; justify-items: start; }
+.nfp b { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; }
+ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-size: 14px; line-height: 1.5; }
+.chlist li { font-size: 13px; }
+.t3card { padding: 12px 14px; background: var(--fill); box-shadow: none; }
+.t3 { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.t3 .warns { margin-top: 4px; }
+#data-status .facts dd { line-height: 1.55; }

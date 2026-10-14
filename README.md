@@ -20,12 +20,13 @@ Windows PC 준비(한 번): PowerShell에 아래 한 줄을 붙여 넣으면 Git
 
     pip install -r requirements.txt
     python build2/weekly.py            # 수집부터 전부 (약 15분)
-    python build2/weekly.py --skip-scrape   # 이미 모은 자료로 다시 만들기
+    python build2/weekly.py --skip-scrape   # 이미 모은 자료로 다시 만들기 (app/data.json + app/data-meta.json)
+    python build2/datameta.py --prev 이전_data.json   # data-meta.json만 다시 만들기(버전·체크섬·바뀐 줄)
     node --test tests/*.test.js          # 가격 계산·검색·이력·통계·정렬 단위 테스트
     python tests/verify_prices_test.py   # 원본 대조 판정(가격이 원본 페이지 어디에 있는지) 시험
     python -m http.server 8766 --directory app
     APP_PIN=<비밀번호> node tests/e2e/ux_qa.js   # 화면 검사(Playwright 필요, 서버를 띄운 상태에서)
-                                                 # 같은 방식: qa7·xss·a11y·concern·jomi·objective·frame·table_attr·compare_cards·v5_features·demo_features·touch_targets
+                                                 # 같은 방식: qa7·xss·a11y·concern·jomi·objective·frame·table_attr·compare_cards·v5_features·demo_features·data_sync·pricenow·touch_targets
     node tests/perf/gzserve.js app 8770 &  APP_PIN=<비밀번호> BASE=http://localhost:8770/ node tests/perf/first_load.js   # 첫 화면 속도(실험실 측정)
     python tests/security/scan_secrets.py           # 비밀 정보 검사(배포 전 자동으로도 돌아요)
     bash tests/db/run_security_tests.sh             # DB 접근 정책 시험(로컬 PostgreSQL, 버리는 DB에서)

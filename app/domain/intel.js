@@ -70,5 +70,38 @@
     return out;
   }
 
-  return { median, historyStats, daysBefore, evalAlert };
+  // ---- watch (docs/ALERT_ENGINE_SPEC.md): one watched treatment, several kinds of change at once. Values are the clinics'
+  // listed prices (병원 표시가) over the watch's own region and all brands — never the screen's VAT mode or filters, so
+  // switching a display setting can never look like a price change. Only differences between two observations count.
+  // base / now: { low, lowB (branch key), lowName, lowRow: 'branch key|option name' of the lowest, count, set: [branch keys],
+  //               rowState: {[lowRow]: 'live' | 'expired' | 'gone'}, recheck: '' | reason }
+  // w.on: { drop, target, lowbranch, newmatch, lowended, recheck } (true = on); w.target: won or null
+  // → { events: [{t, before, after, b, text}], patch: { base } }
+  const WATCH_T = { drop: "가격 하락", target: "목표가 이하", lowbranch: "최저가 지점 변경", newmatch: "새 비교 가능 지점", lowended: "최저가 이벤트 종료", recheck: "재확인 필요" };
+  function evalWatch(w, now, today) {
+    const won = (n) => `${Math.round(n).toLocaleString("ko-KR")}원`;
+    const out = { events: [], patch: {} };
+    if (!now) return out;
+    const b = w.base;
+    const on = (t) => !w.on || w.on[t] !== false;
+    const ev = (t, x) => out.events.push({ t, ...x });
+    if (b && b.low != null && now.low != null) {
+      if (on("drop") && now.low < b.low) ev("drop", { before: b.low, after: now.low, b: now.lowB, text: `최저 ${won(b.low)} → ${won(now.low)}` });
+      if (on("lowbranch") && b.lowB && now.lowB && now.lowB !== b.lowB && now.low !== b.low)
+        ev("lowbranch", { before: b.low, after: now.low, b: now.lowB, from: b.lowB, text: `${b.lowName || b.lowB} → ${now.lowName || now.lowB}` });
+    }
+    if (on("target") && w.target && now.low != null && now.low <= w.target && !(b && b.low != null && b.low <= w.target))
+      ev("target", { before: b ? b.low : null, after: now.low, b: now.lowB, text: `목표가 ${won(w.target)} 이하: ${won(now.low)}` });
+    if (on("newmatch") && b && Array.isArray(b.set) && Array.isArray(now.set)) {
+      const added = now.set.filter((x) => !b.set.includes(x));
+      if (added.length) ev("newmatch", { before: b.set.length, after: now.set.length, b: added[0], added, text: `파는 지점 ${b.set.length}곳 → ${now.set.length}곳` });
+    }
+    if (on("lowended") && b && b.lowRow && now.rowState && now.rowState[b.lowRow] && now.rowState[b.lowRow] !== "live")
+      ev("lowended", { before: b.low, after: now.low, b: b.lowB, text: now.rowState[b.lowRow] === "expired" ? "최저가였던 가격의 이벤트 기간이 끝났어요" : "최저가였던 가격이 병원 가격표에서 빠졌어요" });
+    if (on("recheck") && now.recheck && !(b && b.recheck)) ev("recheck", { before: null, after: now.low, b: now.lowB, text: now.recheck });
+    out.patch = { base: { low: now.low, lowB: now.lowB, lowName: now.lowName, lowRow: now.lowRow, count: now.count, set: now.set, recheck: now.recheck || "" }, seen: today };
+    return out;
+  }
+
+  return { median, historyStats, daysBefore, evalAlert, evalWatch, WATCH_T };
 });

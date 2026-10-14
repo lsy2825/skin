@@ -64,6 +64,9 @@
 | 되돌리기 방법 | ✅ | 개발 | `git revert` 후 push → 같은 워크플로로 재배포. 데이터는 `data2/accepted`·`data2/history`에 남음 |
 | 사고 대응 절차 | ✅ | 개발 | `INCIDENT_RESPONSE_PLAN.md` |
 | 가격 오류 신고 받기 | 🟡 | 사용자 | 지금은 GitHub 이슈·복사. 운영 큐는 관리자 인증 필요 |
+| 가격 재확인 요청 처리 | 🟡 | 운영자 | 2026-10-14부터 앱에서 GitHub 이슈(라벨 `price-recheck`)로 와요. 저장소에 `price-recheck`·`price-report` 라벨을 만들어 두면 분류가 쉬워요. 즉시 재수집 서버는 없음(`PRICE_REFRESH_DESIGN.md`) |
+| 백그라운드 푸시 알림 | ⛔ | 사용자 결정 | 푸시 서버·VAPID 키·구독 저장소가 필요해요. 지금은 앱을 열 때만 휴대폰 알림(`PWA_IMPLEMENTATION.md` §4) |
+| 데이터 메타 파일 커밋 | ✅ | 개발 | `weekly.yml`이 `app/data-meta.json`도 커밋·배포해요 |
 | 로그인·이메일 알림 | ⛔ | 사용자(키) | `docs/로그인_설정.md` |
 | 전용 도메인 | ⛔ | 사용자(비용) | R-open-4 |
 

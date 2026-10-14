@@ -74,7 +74,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('알림을 만들기 전에는 윙크 토스트 없음', !/알려줄게/.test(await p.locator('#toast.on').textContent().catch(() => '')) || before === await p.locator('#toast').textContent());
     await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(300);
     const at = await p.locator('#toast').textContent(), saved = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]').length);
-    ok('알림 저장 뒤 죠미 윙크 + 조건 요약 + 알림 관리', saved === 1 && /알려줄게/.test(at) && /목표가 이하|새 최저가|파는 지점/.test(at) && /알림 관리/.test(at) && (await p.locator('#toast img').getAttribute('data-expr')) === 'wink', at);
+    ok('알림 저장 뒤 죠미 윙크 + 조건 요약 + 알림 관리', saved === 1 && /알려줄게/.test(at) && /지켜보기 \(\d가지 변화\)|목표가 이하|새 최저가|파는 지점/.test(at) && /알림 관리/.test(at) && (await p.locator('#toast img').getAttribute('data-expr')) === 'wink', at);
     await p.locator('#toast button', { hasText: '알림 관리' }).click(); await p.waitForTimeout(300);
     ok('알림 관리 → 관심 탭', /#saved/.test(p.url()) && /가격 알림/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#home'); await p.waitForTimeout(400);
@@ -97,7 +97,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await ctx.close(); }
   { let fail = true;
     const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); });
-    await p.waitForTimeout(800);
+    await p.waitForSelector('#main [role=alert]', { timeout: 15000 }).catch(() => {});   // the app tries 3 times (1 s, 3 s apart) before the error screen
     const txt = await p.locator('#main').innerText();
     ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && /다시 시도해 볼까/.test(txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
     fail = false; await p.locator('#main .btn', { hasText: '다시 시도' }).click(); await p.waitForTimeout(200);

@@ -37,6 +37,7 @@ sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match as xmatch  # noqa: E402
 import groups as G  # noqa: E402
 import knowledge  # noqa: E402
+import datameta  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -362,7 +363,9 @@ def main():
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     txt = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     assert rows_of(json.loads(txt)) == out_rows, "price columns do not turn back into the same rows"
+    prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
+    datameta.write_meta(a.out, txt, prev_txt)   # app/data-meta.json: version, checksum, branch states, changed rows
     nogeo = [s[b[1]] for b in branches if b[3] is None]
     print(f"wrote {a.out}: {len(txt) / 1e6:.2f} MB | rows {len(out_rows)} | branches {len(branches)} (no map position: {len(nogeo)})"
           f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)} | review pending {review} | source re-checks matched {len(checks)}")

@@ -16,7 +16,6 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <!-- start the price file download right away (the PIN screen shows meanwhile) instead of after every script has run -->
-<link rel="preload" href="data.json" as="fetch" crossorigin="anonymous">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/favicon-32.png" sizes="32x32">
 <link rel="icon" href="icons/icon-192.png" sizes="192x192">
@@ -64,6 +63,7 @@
     <button class="tbtn-i locbtn" id="locbtn" type="button" title="거리 기준 위치"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/></svg><span class="sr">내 위치</span></button>
     <button class="tbtn-i" id="notibtn" type="button" aria-label="가격 알림"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/></svg><span class="badge" id="me-n" hidden></span></button>
   </header>
+  <div class="netbar" id="netbar" role="status" aria-live="polite" hidden></div>
   <main id="main" tabindex="-1" aria-busy="true"><div class="view" aria-label="불러오는 중"><div class="jomi-load" role="status"><img class="mascot idle" src="assets/jomi/expr-sleeping-96.webp" alt="" width="40" height="40"><span id="load-msg">오늘의 가격을 살펴보는 중…</span></div><div class="skel" style="height:180px"></div><div class="skel" style="height:64px"></div><div class="skel" style="height:132px"></div><div class="skel" style="height:280px"></div></div></main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
@@ -81,6 +81,7 @@
 <script src="domain/concern.js"></script>
 <script src="domain/stats.js"></script>
 <script src="domain/spec.js"></script>
+<script src="domain/sync.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

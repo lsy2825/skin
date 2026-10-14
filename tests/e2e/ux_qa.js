@@ -18,7 +18,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     await ctx.close(); }
   { const ctx = await b.newContext({ serviceWorkers: 'block' }); const p = await ctx.newPage();
     await p.route('**/data.json', (r) => r.fulfill({ status: 500, body: 'x' }));
-    await p.goto(BASE); await unlock(p); await p.waitForTimeout(800);
+    await p.goto(BASE); await unlock(p); await p.waitForSelector('#main [role=alert]', { timeout: 15000 }).catch(() => {});   // after 3 tries (1 s, 3 s apart)
     ok('데이터 오류 상태 안내', /불러오지 못했어요/.test(await p.locator('#main').innerText()), (await p.locator('#main').innerText()).slice(0, 40)); await ctx.close(); }
   // 2) data kept: old single cart migrates, carts survive reload
   { const ctx = await b.newContext({ serviceWorkers: 'block' }); const p = await ctx.newPage();
@@ -52,7 +52,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     await p.focus('label.flabel select'); const lab = await p.evaluate(() => document.activeElement.closest('label').firstChild.textContent);
     await p.keyboard.press('ArrowDown'); await p.waitForTimeout(500);
     const after = await p.evaluate(() => { const a = document.activeElement; return a.tagName === 'SELECT' ? a.closest('label').firstChild.textContent : a.tagName; });
-    ok('필터 바꾼 뒤 포커스 유지', after === lab && /cat=/.test(p.url()), `${lab} → ${after}, ${p.url().split('#')[1]}`);
+    ok('필터 바꾼 뒤 포커스 유지', after === lab && /reg=|cat=|brand=/.test(p.url()), `${lab} → ${after}, ${p.url().split('#')[1]}`);
     // new page from content: focus moves to the page, next Tab lands in content
     await p.goto(BASE + '#home'); await p.waitForTimeout(500);
     await p.focus('#main .pc'); await p.keyboard.press('Enter'); await p.waitForTimeout(500);

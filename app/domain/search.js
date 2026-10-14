@@ -131,6 +131,101 @@
   }
   const matches = (normName, tokens) => tokens.every((t) => normName.includes(t));
 
+  // ---- search operators (docs/ADVANCED_SEARCH_SPEC.md). On normalized text (norm(): lower case, units unified, spaces and
+  // punctuation removed, aliases → canonical):
+  //   보톡스 50u    every word must match (AND)          -파워        drop names with this word (aliases too)
+  //   제오민|독일   either one (OR, inside one word)       300샷        exactly 300 shots: 1300샷 is 1300, never 300
+  //   1회?          if the name states a session count, it must be 1; a name without one stays but is marked
+  //                 '횟수 표기 없음' (never read as 1회). Plain 1회 (no ?) = the name must say 1회.
+  // A number with a unit is read from the name as a whole number, not as a substring.
+  const QRE = /(\d+(?:\.\d+)?)(샷|회|개(?!월)|부위|줄|분|u(?![a-z])|cc(?![a-z])|kj(?![a-z])|mm(?![a-z])|cm(?![a-z]))/g;
+  const UNIT_L = { "샷": "샷 수", "회": "횟수", "개": "개수", "부위": "부위 수", "줄": "줄 수", "분": "시간", u: "용량(U)", cc: "용량(cc)", kj: "에너지(KJ)", mm: "크기(mm)", cm: "크기(cm)" };
+  const UNIT_SHOW = { u: "U", cc: "cc", kj: "KJ", mm: "mm", cm: "cm" };
+  const UNIT_J = { "샷": "샷 수가", "회": "횟수가", "개": "개수가", "부위": "부위 수가", "줄": "줄 수가", "분": "시간이", u: "용량(U)이", cc: "용량(cc)이", kj: "에너지(KJ)가", mm: "크기(mm)가", cm: "크기(cm)가" };
+  const qmemo = new Map();
+  // every number+unit in a normalized text: '슈링크1300샷3회' → [{n:1300,u:'샷'},{n:3,u:'회'}]
+  function qtys(t) {
+    let v = qmemo.get(t);
+    if (v) return v;
+    v = [];
+    QRE.lastIndex = 0;
+    for (let m; (m = QRE.exec(t));) v.push({ n: +m[1], u: m[2] });
+    if (qmemo.size > 60000) qmemo.clear();
+    qmemo.set(t, v);
+    return v;
+  }
+  const showQ = (q) => `${q.n}${UNIT_SHOW[q.u] || q.u}`;
+  // one written word (no '-', '|', '?') → { w: the word part, qs: the number+unit parts }
+  function term(text) {
+    const t = norm(text);
+    const qs = qtys(t);
+    return { w: t.replace(QRE, ""), qs, text };
+  }
+  const termHit = (a, name) => (!a.w || name.includes(a.w)) && a.qs.every((q) => qtys(name).some((x) => x.u === q.u && x.n === q.n));
+  // typo fix for a plain word that matches no name at all (same rule as parse())
+  function fixWord(w, index) {
+    if (!index || !w || /\d/.test(w) || index.normNames.some((n) => n.includes(w))) return null;
+    const tj = jamo(w), max = tj.length > 6 ? 2 : 1;
+    let best = null;
+    for (const x of index.words) {
+      if (Math.abs(x.j.length - tj.length) > max) continue;
+      const d = lev(tj, x.j, max);
+      if (d <= max && (!best || d < best.d || (d === best.d && x.c > best.c))) best = { w: x.w, d, c: x.c };
+    }
+    return best ? best.w : null;
+  }
+  // does the query use any operator? (then natural-language reading is skipped: the user wrote it on purpose)
+  const hasOps = (q) => /(^|\s)[-−]\S|\||\d\s*(샷|회|개|부위|줄|분|u|cc|kj|mm|cm|유닛)[?？]/i.test(q || "");   // a plain question mark (어디가 싸?) is not one
+  // q → { test(normName), unstated(normName) → [unit label], parts: [{kind, label}], warn: [..], fixes: [[typed, used]],
+  //       tokens: plain AND words (old callers), raw: the written tokens, empty }
+  function compile(q, index) {
+    const all = [], not = [], opt = [], parts = [], warn = [], fixes = [], tokens = [], raw = [];
+    for (let tok of String(q || "").trim().split(/\s+/)) {
+      if (!tok) continue;
+      raw.push(tok);
+      let neg = false, maybe = false;
+      if (/^[-−]/.test(tok)) { neg = true; tok = tok.replace(/^[-−]+/, ""); if (!tok) { warn.push("'-' 뒤에 뺄 낱말이 없어서 무시했어요"); continue; } }
+      if (/[?？]+$/.test(tok)) { maybe = true; tok = tok.replace(/[?？]+$/, ""); if (!tok) { warn.push("'?'는 숫자와 단위 뒤에 붙여요(예: 1회?)"); continue; } }
+      const pieces = tok.split("|");
+      const alts = pieces.map((p) => p.trim()).filter((p) => norm(p)).map(term).filter((a) => a.w || a.qs.length);
+      if (pieces.length > 1 && alts.length < pieces.length) warn.push(`'|' 한쪽이 비어 있어서 ${alts.length ? "있는 쪽만" : "이 낱말을"} 썼어요`);
+      if (!alts.length) { if (!pieces.some((p) => p.trim())) continue; warn.push(`‘${tok}’에서 찾을 글자가 없어서 무시했어요`); continue; }
+      if (neg) {
+        if (maybe) warn.push("'-'와 '?'는 함께 쓰지 않아요. '?'는 무시했어요");
+        not.push(alts);
+        parts.push({ kind: "not", label: alts.map((a) => a.text).join(" 또는 ") });
+        continue;
+      }
+      // N단위? : every alternative must be a bare number+unit of one unit
+      const units = new Set(alts.flatMap((a) => a.qs.map((x) => x.u)));
+      if (maybe && alts.every((a) => !a.w && a.qs.length === 1) && units.size === 1) {
+        const u = [...units][0], ns = alts.map((a) => a.qs[0].n);
+        opt.push({ u, ns });
+        parts.push({ kind: "opt", label: `${UNIT_J[u] || u} 적혀 있으면 ${ns.map((n) => showQ({ n, u })).join("·")}만` });
+        continue;
+      }
+      if (maybe) warn.push(`'?'는 숫자+단위 하나에만 써요(예: 1회?). ‘${tok}’는 그냥 찾았어요`);
+      // typo fix for a lone plain word
+      if (alts.length === 1 && !alts[0].qs.length) {
+        const fx = fixWord(alts[0].w, index);
+        if (fx) { fixes.push([alts[0].w, fx]); alts[0] = { w: fx, qs: [], text: fx }; }
+      }
+      all.push(alts);
+      if (alts.length === 1 && !alts[0].qs.length) tokens.push(alts[0].w);
+      parts.push(alts.length > 1 ? { kind: "or", label: alts.map((a) => a.text).join(" 또는 ") }
+        : alts[0].qs.length ? { kind: "exact", label: `${alts[0].w ? alts[0].text.replace(/\d.*$/, "") + " " : ""}${alts[0].qs.map(showQ).join(" ")} 정확히` }
+        : { kind: "and", label: alts[0].text });
+    }
+    const test = (name) => {
+      for (const g of all) if (!g.some((a) => termHit(a, name))) return false;
+      for (const g of not) if (g.some((a) => termHit(a, name))) return false;
+      for (const o of opt) { const v = qtys(name).filter((x) => x.u === o.u); if (v.length && !v.some((x) => o.ns.includes(x.n))) return false; }
+      return true;
+    };
+    const unstated = (name) => opt.filter((o) => !qtys(name).some((x) => x.u === o.u)).map((o) => `${UNIT_L[o.u] || o.u} 표기 없음`);
+    return { test, unstated, parts, warn, fixes, tokens, raw, empty: !all.length && !not.length && !opt.length, ops: not.length > 0 || opt.length > 0 || all.some((g) => g.length > 1 || g.some((a) => a.qs.length)) };
+  }
+
   // autocomplete: vocabulary words / terms containing the typed text (prefix first, then by frequency)
   function suggest(prefix, index, terms = [], limit = 8) {
     const p = norm(prefix);
@@ -220,5 +315,5 @@
   }
   const attrGroup = (name) => (ATTRS.find(([, list]) => list.some(([n]) => n === name)) || [""])[0];
 
-  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup };
+  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup, qtys, compile, hasOps };
 });
