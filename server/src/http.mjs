@@ -14,7 +14,7 @@ const KNOWN = {
   BAD_REQUEST: [400, "요청 형식이 올바르지 않아요"], WOULD_GO_NEGATIVE: [409, "잔액이 0보다 작아질 수 없어요"], PAYMENT_NOT_FOUND: [404, "결제를 찾지 못했어요"],
   REPORT_NOT_FOUND: [404, "보고서를 찾지 못했어요"], SESSION_FULL: [409, "이 세션의 질문 5개를 다 썼어요"],
   TOO_MANY_SUBSCRIPTIONS: [429, "알림 기기는 10개까지예요"], JOB_NOT_FOUND: [404, "작업을 찾지 못했어요"],
-  TURN_IN_PROGRESS: [409, "같은 질문을 처리하고 있어요"], FEATURE_NOT_SOLD: [403, "지금은 판매하지 않는 기능이에요"],
+  TURN_IN_PROGRESS: [409, "같은 질문을 처리하고 있어요"], VERSION_CONFLICT: [409, "다른 곳에서 먼저 바뀌었어요. 새로 불러와 다시 고쳐 주세요"], FEATURE_NOT_SOLD: [403, "지금은 판매하지 않는 기능이에요"],
 };
 export const fromDb = (e) => {
   if (e instanceof HttpError) return e;

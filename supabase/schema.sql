@@ -93,3 +93,36 @@ alter table public.saved_packages enable row level security;
 alter table public.price_alerts enable row level security;
 alter table public.favorites enable row level security;
 -- 정책: supabase/DATABASE_ACCESS_POLICIES.sql
+
+-- ---- Round 2 (review R16): a cart is saved in ONE transaction with a version check. Before, the app upserted the cart,
+-- deleted every item and inserted the new ones in three requests — a failure in between left an empty cart on the server,
+-- and two devices saving at once mixed their items. save_cart(p): {id, name, items: [...], expected_version (null = new)}
+-- → {version} | VERSION_CONFLICT (the caller pulls the newer copy instead of overwriting it).
+alter table public.carts add column if not exists version integer not null default 0;
+create or replace function public.save_cart(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare u uuid := auth.uid(); c public.carts; cid uuid := (p ->> 'id')::uuid; it jsonb; i int := 0;
+begin
+  if u is null then raise exception 'UNAUTHENTICATED' using errcode = '42501'; end if;
+  if cid is null or jsonb_typeof(p -> 'items') is distinct from 'array' or jsonb_array_length(p -> 'items') > 60 then raise exception 'BAD_REQUEST' using errcode = '22023'; end if;
+  select * into c from public.carts where id = cid for update;
+  if found and c.user_id <> u then raise exception 'NOT_FOUND' using errcode = '22023'; end if;          -- someone else's id: never taken over
+  if found and p ? 'expected_version' and p ->> 'expected_version' is not null and c.version <> (p ->> 'expected_version')::int then
+    raise exception 'VERSION_CONFLICT' using errcode = '22023', detail = c.version::text; end if;
+  if not found then
+    insert into public.carts (id, user_id, name, version) values (cid, u, left(coalesce(p ->> 'name', '장바구니'), 30), 1) returning * into c;
+  else
+    update public.carts set name = left(coalesce(p ->> 'name', name), 30), version = version + 1, updated_at = now() where id = cid returning * into c;
+    delete from public.cart_items where cart_id = cid;
+  end if;
+  for it in select * from jsonb_array_elements(p -> 'items') loop
+    insert into public.cart_items (cart_id, position, kind, key_code, row_name, branch_key, qty, special, overrides)
+    values (cid, i, it ->> 't', case when it ->> 't' = 'k' then it ->> 'k' end, case when it ->> 't' = 'r' then left(it ->> 'n', 200) end,
+            case when it ->> 't' = 'r' then it ->> 'br' end, least(greatest(coalesce((it ->> 'q')::int, 1), 1), 20),
+            (it ->> 'sp')::boolean, coalesce(it -> 'ov', '{}'));
+    i := i + 1;
+  end loop;
+  return jsonb_build_object('id', c.id, 'version', c.version);
+end $$;
+revoke all on function public.save_cart(jsonb) from public, anon;
+grant execute on function public.save_cart(jsonb) to authenticated;

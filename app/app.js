@@ -41,9 +41,18 @@
   const jomiEmpty = (expr, title, ...kids) => h("div", { class: "empty jomi-empty" }, jomiImg(expr, "portrait", 88), h("b", {}, title), ...kids);
   const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
+  // personal keys live in the space of whoever uses the phone (round-2 R01): "pc:<key>" before sign-in, "pc:u:<id>:<key>" for
+  // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
+  // (theme, region, VAT mode, Jomi preferences …) stay shared.
+  const PERSONAL = new Set(["me", "recs", "carts", "cart", "ci", "alerts", "notes", "favs", "snaps", "places", "locPlace", "recent", "recentQ", "short",
+    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets"]);
+  let SCOPE = (() => { try { const u = JSON.parse(localStorage.getItem("pc:lastUid") || "null"); return u && window.APP_CONFIG && window.APP_CONFIG.supabaseUrl ? `u:${u}:` : ""; } catch (e) { return ""; } })();
+  const keyOf = (k) => "pc:" + (PERSONAL.has(k) ? SCOPE : "") + k;
   const store = {
-    get(k, d) { try { const v = localStorage.getItem("pc:" + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem("pc:" + k, JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+    get(k, d) { try { const v = localStorage.getItem(keyOf(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem(keyOf(k), JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
+    anon(k) { try { const v = localStorage.getItem("pc:" + k); return v == null ? null : JSON.parse(v); } catch (e) { return null; } },
+    dropAnon(k) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* ignore */ } },
   };
   let toastT;
   const toast = (t) => { const el = $("#toast"); el.classList.remove("act", "jt"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 1800); };
@@ -625,11 +634,27 @@
   const bkey = (b) => `${D.meta.brands[BR[b].brand][0]}|${BR[b].name}`;
   const cur = () => st.carts[st.ci];
   let cartPush = null;
+  // account copy of the carts (round-2 R16): one save at a time per cart, each with the version it was based on; an older save
+  // can never overwrite a newer one (the server answers VERSION_CONFLICT and the newer copy is pulled instead)
+  const cartQ = new Map();
+  function pushCart(A, c, uid) {
+    const run = (cartQ.get(c.id) || Promise.resolve()).then(async () => {
+      if (!A.user || A.user.id !== uid) return;                       // the account changed meanwhile: not this account's cart anymore
+      try { const r = await A.saveCart(c, uid); if (r && r.version != null) { c.ver = r.version; store.set("carts", st.carts); } }
+      catch (e) {
+        if (!/VERSION_CONFLICT/.test(String(e && (e.message || e.code)))) throw e;
+        const remote = (await A.pullCarts(uid)).find((x) => x.id === c.id);
+        if (remote && A.user && A.user.id === uid) { Object.assign(c, { name: remote.name, items: remote.items, ver: remote.ver }); store.set("carts", st.carts); render(); toast("다른 기기에서 바뀐 장바구니를 불러왔어요"); }
+      }
+    });
+    cartQ.set(c.id, run.catch(() => {}));
+    return run;
+  }
   const saveCarts = () => {
     for (const x of st.carts) if (!x.id) x.id = newId();
     store.set("carts", st.carts); store.set("ci", st.ci); paintCartN();
     const A = window.Auth && window.Auth.enabled ? window.Auth : null;
-    if (A && A.user) { clearTimeout(cartPush); cartPush = setTimeout(() => Promise.all(st.carts.map((c) => A.saveCart(c))).catch(() => toast("장바구니를 계정에 저장하지 못했어요(이 기기에는 저장됨)")), 800); }
+    if (A && A.user) { const uid = A.user.id; clearTimeout(cartPush); cartPush = setTimeout(() => Promise.all(st.carts.map((c) => pushCart(A, c, uid))).catch(() => toast("장바구니를 계정에 저장하지 못했어요(이 기기에는 저장됨)")), 800); }
   };
   const inCart = (k) => cur().items.some((c) => c.t === "k" && c.k === KEYS[k].id);
   const sessOf = (i) => ROWS[i][8] || 1;
@@ -4302,20 +4327,42 @@
   function saveMe() {
     store.set("me", st.me);
     const A = auth();
-    if (A && A.user) A.saveProfile(st.me).catch(() => toast("계정에 저장하지 못했어요(이 기기에는 저장됨)"));
+    if (A && A.user) A.saveProfile(st.me, A.user.id).catch(() => toast("계정에 저장하지 못했어요(이 기기에는 저장됨)"));
   }
   function saveRecs(changed) {
     sortRecs(); store.set("recs", st.recs);
     const A = auth();
-    if (A && A.user && changed && changed.length) A.saveRecords(changed).catch(() => toast("계정에 저장하지 못했어요(이 기기에는 저장됨)"));
+    if (A && A.user && changed && changed.length) A.saveRecords(changed, A.user.id).catch(() => toast("계정에 저장하지 못했어요(이 기기에는 저장됨)"));
   }
-  // after sign-in: merge the account's copy with this phone's (records by id; profile fields the phone lacks)
-  async function syncFromAccount() {
+  // the personal state in memory, read again from the current space (sign-in, sign-out, another account)
+  function reloadPersonal() {
+    st.me = store.get("me", { nick: "", gender: "", age: "" }); st.recs = store.get("recs", []);
+    st.alerts = store.get("alerts", []); st.notes = store.get("notes", []);
+    st.carts = loadCarts(); st.ci = Math.min(store.get("ci", 0) || 0, st.carts.length - 1);
+    cartQ.clear(); clearTimeout(cartPush);
+  }
+  // who is using the phone changed (round-2 R01). A token refresh of the same account is not a change and merges nothing.
+  let lastUid = SCOPE ? SCOPE.slice(2, -1) : null, syncGen = 0;
+  function onAccount(u) {
+    const id = u ? u.id : null;
+    if (id === lastUid && (id ? SCOPE === `u:${id}:` : !SCOPE)) { if (id && D && !syncGen) syncFromAccount(); return; }
+    const fromAnon = !lastUid;
+    lastUid = id; syncGen++;
+    SCOPE = id ? `u:${id}:` : "";
+    try { if (id) localStorage.setItem("pc:lastUid", JSON.stringify(id)); else localStorage.removeItem("pc:lastUid"); } catch (e) { /* ignore */ }
+    reloadPersonal();
+    if (D) { render(); if (id) syncFromAccount(fromAnon); }
+  }
+  // after sign-in: merge the account's copy with THIS ACCOUNT's space on the phone. Every await is followed by a check that
+  // the same account is still signed in — a late answer for account A is dropped once B signed in (round-2 R01).
+  // Data the phone collected before any sign-in is moved into the account only when the user says so (offerAnon).
+  async function syncFromAccount(offerAnon = false) {
     const A = auth();
     if (!A || !A.user) return;
+    const uid = A.user.id, gen = ++syncGen, stale = () => gen !== syncGen || !A.user || A.user.id !== uid;
     try {
-      const s = await A.pull();
-      if (!s) return;
+      const s = await A.pull(uid);
+      if (!s || stale()) return;
       if (s.profile) {
         st.me = { nick: st.me.nick || s.profile.nick || "", gender: st.me.gender || s.profile.gender || "", age: st.me.age || s.profile.age_band || "" };
         store.set("me", st.me);
@@ -4324,15 +4371,41 @@
       for (const r of s.records) if (!have.has(r.id)) st.recs.push({ id: r.id, date: r.done_on, n: r.procedure, br: `${r.brand}|${r.branch}`, p: r.price || 0, memo: r.memo || "", at: 0 });
       const onServer = new Set(s.records.map((r) => r.id));
       saveRecs(st.recs.filter((x) => !onServer.has(x.id)));
-      await A.saveProfile(st.me);
-      // carts: server carts this phone doesn't have are added; this phone's carts are pushed
-      const remote = await A.pullCarts();
+      await A.saveProfile(st.me, uid);
+      if (stale()) return;
+      const remote = await A.pullCarts(uid);
+      if (stale()) return;
       const ids = new Set(st.carts.map((c) => c.id));
-      for (const c of remote) if (!ids.has(c.id)) st.carts.push({ id: c.id, name: c.name, items: c.items });
+      for (const c of remote) if (!ids.has(c.id)) st.carts.push({ id: c.id, name: c.name, items: c.items, ver: c.ver });
+      for (const c of st.carts) { const r = remote.find((x) => x.id === c.id); if (r && c.ver == null) c.ver = r.ver; }
       st.carts = st.carts.filter((c) => c.items.length || st.carts.length === 1);
       saveCarts();
       render();
-    } catch (e) { console.warn(e); toast("계정 정보를 불러오지 못했어요"); }
+      if (offerAnon) offerAnonImport(uid);
+    } catch (e) { if (!stale()) { console.warn(e); toast("계정 정보를 불러오지 못했어요"); } }
+  }
+  // the phone's pre-sign-in records and carts → this account, only if the user chooses; once moved they leave the anonymous
+  // space, so a later account on this phone is never offered them
+  function offerAnonImport(uid) {
+    const recs = store.anon("recs") || [], carts = (store.anon("carts") || []).filter((c) => c.items && c.items.length);
+    if (!recs.length && !carts.length) return;
+    sheet("이 휴대폰의 기록 가져오기", (close) => h("div", {},
+      h("p", {}, `로그인 전에 이 휴대폰에 저장한 기록 ${recs.length}개와 장바구니 ${carts.length}개가 있어요. 이 계정으로 옮길까요?`),
+      h("p", { class: "sub" }, "옮기지 않으면 로그아웃했을 때 이 휴대폰에서 그대로 볼 수 있어요. 다른 사람의 기록이라면 옮기지 마세요."),
+      h("div", { class: "row", style: "margin-top:12px;gap:8px" },
+        h("button", { class: "btn gray", type: "button", onclick: () => close() }, "두기"),
+        h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
+          const A = auth();
+          if (!A || !A.user || A.user.id !== uid) { close(); return; }
+          const have = new Set(st.recs.map((x) => x.id)), add = recs.filter((x) => !have.has(x.id));
+          st.recs.push(...add); saveRecs(add);
+          const cids = new Set(st.carts.map((c) => c.id));
+          for (const c of carts) if (!cids.has(c.id)) st.carts.push({ ...c, ver: undefined });
+          st.carts = st.carts.filter((c) => c.items.length || st.carts.length === 1);
+          saveCarts();
+          for (const k of ["recs", "carts", "cart", "ci"]) store.dropAnon(k);
+          close(); render(); toast(`기록 ${add.length}개와 장바구니를 이 계정으로 옮겼어요`);
+        } }, "이 계정으로 옮기기"))));
   }
   function nickSheet() {
     sheet("닉네임 바꾸기", (close) => {
@@ -4403,7 +4476,7 @@
           !isNew ? h("button", { class: "btn gray", type: "button", onclick: () => {
             const gone = st.recs.find((x) => x.id === s.id);
             st.recs = st.recs.filter((x) => x.id !== s.id); saveRecs();
-            const A = auth(); if (A && A.user) A.deleteRecord(s.id).catch(() => {});
+            const A = auth(); if (A && A.user) A.deleteRecord(s.id, A.user.id).catch(() => {});
             close(); render();
             undoToast("기록을 지웠어요", () => { st.recs.push(gone); saveRecs([gone]); render(); }); } }, "삭제") : null,
           h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
@@ -4518,10 +4591,15 @@
       h("ul", { class: "list" }, shown.sort((a, b) => a.brand - b.brand || a.name.localeCompare(b.name, "ko")).map((b) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${b.i}`) },
         h("span", { class: "t row" }, bdot(b.i), bname(b.i)), h("span", { class: "sub" }, dist(b.i) != null ? km(dist(b.i)) : b.region), h("span", { class: "m" }, b.addr)))))));
     if (A && A.user) box.append(h("div", { class: "card" }, h("h3", {}, "계정"),
-      h("div", { class: "sub", style: "margin-top:6px" }, "탈퇴하면 계정에 저장된 프로필과 기록이 모두 지워져요. 이 휴대폰의 기록은 남아요."),
+      h("div", { class: "sub", style: "margin-top:6px" }, "탈퇴하면 계정의 프로필·기록·장바구니·관심·알림과 보고서 내용, 공유 링크가 바로 지워져요. 이 휴대폰에 남은 이 계정의 기록도 함께 지워요. 결제·크레딧 거래 기록이 있으면 그 기록만 법이 정한 기간 동안 이름·연락처 없이 보관해요(보관 기간은 확정 전)."),
       h("button", { class: "btn sm gray", type: "button", style: "margin-top:10px", onclick: async () => {
-        if (!confirm("정말 탈퇴할까요? 계정의 프로필·기록이 모두 지워져요.")) return;
-        try { await A.deleteAccount(); toast("탈퇴했어요"); render(); } catch (e) { toast("탈퇴하지 못했어요"); } } }, "회원 탈퇴")));
+        if (!confirm("정말 탈퇴할까요? 계정의 개인 정보가 모두 지워지고 되돌릴 수 없어요.")) return;
+        const uid = A.user.id;
+        try {
+          const r = await A.deleteAccount();
+          for (const k of PERSONAL) { try { localStorage.removeItem(`pc:u:${uid}:${k}`); } catch (e) { /* ignore */ } }
+          toast(r && r.mode === "CLOSED" ? "탈퇴했어요. 거래 기록만 보관 기간 동안 남아요" : "탈퇴했어요"); onAccount(null); render();
+        } catch (e) { toast("탈퇴하지 못했어요"); } } }, "회원 탈퇴")));
     return box;
   };
 
@@ -4628,7 +4706,7 @@
   $("#regbtn").addEventListener("click", () => { if (D) regionSheet(); });
   $("#fcart").addEventListener("click", () => nav("cart"));   // no inline handlers: the CSP allows scripts from files only
   paintCartN();
-  if (window.Auth && window.Auth.enabled) window.Auth.onChange((u) => { if (u && D) syncFromAccount(); else if (D) render(); });
+  if (window.Auth && window.Auth.enabled) window.Auth.onChange(onAccount);
   $("#jomibtn").addEventListener("click", () => jomiSheet());
   // start: no splash delay — the page shows as soon as data.json is read; a slow read says so after 12 s, a failed one
   // explains what failed (only that the price file could not be read) and retries in place
@@ -4638,7 +4716,7 @@
     loadData().then(() => { clearTimeout(slow);
       // a stored region no branch has (an old version's value, a typo) would empty every list: back to the default
       if (st.region && st.region !== "수도권" && !BR.some((b) => b.region === st.region)) { st.region = "수도권"; store.set("region", st.region); paintRegion(); }
-      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.user) syncFromAccount(); }).catch((e) => {
+      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); }).catch((e) => {
       clearTimeout(slow); D = null; console.error(e);
       const main = $("#main"); main.removeAttribute("aria-busy");
       main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", J.lines.error || "문제가 생겼어요",

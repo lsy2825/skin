@@ -455,10 +455,17 @@ begin
   end if;
   select * into pr from public.credit_products where code = p ->> 'product_code' and channel = p ->> 'channel' and active;
   if not found then raise exception 'PRODUCT_NOT_FOR_SALE' using errcode = '22023'; end if;
-  insert into public.orders (user_id, product_code, product_version, channel, amount_krw, vat_included, paid_credits, adfree_days, order_name, idempotency_key)
-  values (u, pr.code, pr.version, pr.channel, pr.price_krw, pr.vat_included, pr.paid_credits, pr.adfree_days,
-          format('윤실장 크레딧 %s (%s크레딧)', pr.code, pr.paid_credits), p ->> 'idempotency_key')
-  returning * into o;
+  begin
+    insert into public.orders (user_id, product_code, product_version, channel, amount_krw, vat_included, paid_credits, adfree_days, order_name, idempotency_key)
+    values (u, pr.code, pr.version, pr.channel, pr.price_krw, pr.vat_included, pr.paid_credits, pr.adfree_days,
+            format('윤실장 크레딧 %s (%s크레딧)', pr.code, pr.paid_credits), p ->> 'idempotency_key')
+    returning * into o;
+  exception when unique_violation then
+    -- the same key arrived twice at once (double tap, retry): the first insert won — answer with that order (round-2 D1/R16)
+    select * into o from public.orders where user_id = u and idempotency_key = p ->> 'idempotency_key';
+    if not found then raise; end if;
+    if o.product_code <> p ->> 'product_code' or o.channel <> p ->> 'channel' then raise exception 'IDEMPOTENCY_CONFLICT' using errcode = '23505'; end if;
+  end;
   return to_jsonb(o);
 end $$;
 
@@ -590,6 +597,10 @@ begin
   select * into f from public.premium_features where code = p ->> 'feature_code' and active;
   if not found then raise exception 'FEATURE_NOT_AVAILABLE' using errcode = '22023'; end if;
   w := public.commerce_lock_wallet(u);                               -- serialises this user's concurrent spends
+  -- a concurrent request with the same key waited on that lock: it now sees the first one's job (round-2 D1/R16: it used to
+  -- hit the unique index and surface as a 500)
+  select * into j from public.premium_jobs where user_id = u and idempotency_key = p ->> 'idempotency_key';
+  if found then return jsonb_build_object('job', to_jsonb(j), 'repeat', true); end if;
   select * into e from public.premium_entitlements where user_id = u and feature_code = f.code and ends_at > now()
      and scope = coalesce(p -> 'scope', '{}'::jsonb) order by ends_at desc limit 1;
   need := case when found then 0 else f.credits end;
@@ -801,21 +812,22 @@ create or replace function public.commerce_report(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare r public.premium_reports;
 begin
-  select * into r from public.premium_reports where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null;
+  select * into r from public.premium_reports where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null
+     and retain_until > now();                                      -- past its keeping period a report is gone (round-2 R07)
   return case when found then to_jsonb(r) end;
 end $$;
 create or replace function public.commerce_reports(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 begin
   return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'kind', kind, 'title', title, 'created_at', created_at, 'shared', share_token is not null) order by created_at desc)
-    from (select * from public.premium_reports where user_id = (p ->> 'user_id')::uuid and deleted_at is null order by created_at desc limit 200) r), '[]'::jsonb);
+    from (select * from public.premium_reports where user_id = (p ->> 'user_id')::uuid and deleted_at is null and retain_until > now() order by created_at desc limit 200) r), '[]'::jsonb);
 end $$;
 create or replace function public.commerce_share_report(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare t text;
 begin
   update public.premium_reports set share_token = coalesce(share_token, replace(pg_catalog.gen_random_uuid()::text || pg_catalog.gen_random_uuid()::text, '-', ''))
-   where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null and share_summary is not null
+   where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null and share_summary is not null and retain_until > now()
    returning share_token into t;
   return jsonb_build_object('token', t);
 end $$;
@@ -833,10 +845,15 @@ language plpgsql security definer set search_path = '' as $$
 declare r public.premium_reports;
 begin
   if p -> 'payload' is null or jsonb_typeof(p -> 'payload') <> 'object' or length((p -> 'payload')::text) > 400000 then raise exception 'BAD_REQUEST' using errcode = '22023'; end if;
-  update public.premium_reports set payload = p -> 'payload', share_summary = coalesce(p -> 'share_summary', share_summary),
-         title = coalesce(nullif(left(p ->> 'title', 200), ''), title)
-   where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null returning * into r;
+  select * into r from public.premium_reports where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid
+     and deleted_at is null and retain_until > now() for update;
   if not found then raise exception 'REPORT_NOT_FOUND' using errcode = '22023'; end if;
+  -- round-2 R16: an edit made from an older copy of the report is refused instead of silently overwriting a newer one
+  if p ? 'expected_version' and coalesce((r.payload ->> 'version')::int, 0) <> (p ->> 'expected_version')::int then
+    raise exception 'VERSION_CONFLICT' using errcode = '22023'; end if;
+  update public.premium_reports set payload = jsonb_set(p -> 'payload', '{version}', to_jsonb(coalesce((r.payload ->> 'version')::int, 0) + 1)),
+         share_summary = coalesce(p -> 'share_summary', share_summary), title = coalesce(nullif(left(p ->> 'title', 200), ''), title)
+   where id = r.id returning * into r;
   return to_jsonb(r);
 end $$;
 
@@ -1086,3 +1103,75 @@ do $$ declare f text; begin
     execute format('grant execute on function public.%s to service_role', f);
   end loop;
 end $$;
+
+
+-- ============================================================================================================================
+-- Round 2 (2026-10-14): report keeping period and account closing (review R07)
+-- ============================================================================================================================
+
+-- reports past retain_until: payload, summary and share link removed (the row and the ledger stay for accounting). Run by the
+-- scheduled job with the reconciliation (server/src/app.mjs /v1/cron). Reads already hide them (retain_until > now()).
+create or replace function public.commerce_purge_expired_reports(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare n int;
+begin
+  update public.premium_reports set payload = null, share_token = null, share_summary = null, deleted_at = now()
+   where deleted_at is null and retain_until <= now();
+  get diagnostics n = row_count;
+  return jsonb_build_object('purged', n);
+end $$;
+
+-- account closing. A user with no purchase history is deleted outright. A user with payments, credits or paid reports is
+-- CLOSED: everything personal goes now (profile, records, carts, saved items, alerts, favorites, watch rules, push devices,
+-- report contents and share links), the payment / credit ledger stays as the transaction record the law may require (how
+-- long: owner + legal decision, docs/DATA_AND_LEGAL.md) and is purged by an operator procedure after that period. The ledger
+-- holds no name, e-mail or phone — only the account id. The sign-in itself is blocked by the server (GoTrue admin ban) —
+-- BLOCKED here: needs the Supabase project.
+create table if not exists public.closed_accounts (
+  user_id    uuid primary key references auth.users (id) on delete restrict,
+  closed_at  timestamptz not null default now(),
+  purge_after date
+);
+alter table public.closed_accounts enable row level security;
+revoke all on public.closed_accounts from anon, authenticated;
+
+create or replace function public.commerce_close_account(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare u uuid := (p ->> 'user_id')::uuid; has_ledger boolean;
+begin
+  if u is null then raise exception 'BAD_REQUEST' using errcode = '22023'; end if;
+  delete from public.records where user_id = u;
+  delete from public.carts where user_id = u;
+  delete from public.saved_packages where user_id = u;
+  delete from public.price_alerts where user_id = u;
+  delete from public.favorites where user_id = u;
+  delete from public.profiles where id = u;
+  delete from public.price_watch_rules where user_id = u;
+  delete from public.push_subscriptions where user_id = u;
+  update public.premium_reports set payload = null, share_token = null, share_summary = null, deleted_at = coalesce(deleted_at, now()) where user_id = u;
+  has_ledger := exists (select 1 from public.credit_transactions where user_id = u) or exists (select 1 from public.orders where user_id = u)
+             or exists (select 1 from public.premium_jobs where user_id = u);
+  if not has_ledger then
+    delete from public.credit_wallets where user_id = u;            -- an empty projection row, if any
+    delete from auth.users where id = u;
+    return jsonb_build_object('mode', 'DELETED');
+  end if;
+  insert into public.closed_accounts (user_id, purge_after) values (u, (p ->> 'purge_after')::date) on conflict (user_id) do nothing;
+  return jsonb_build_object('mode', 'CLOSED', 'kept', jsonb_build_array('결제·크레딧 거래 기록(이름·연락처 없이 계정 번호만)'),
+    'personal_data_deleted', true);
+end $$;
+
+-- the signed-in user's own 'delete my account' (app/auth.js deleteAccount): the same closing, decided by the database so a
+-- purchase history never blocks it (before: auth.users delete hit the ledger's 'on delete restrict' and failed)
+drop function if exists public.delete_me();
+create or replace function public.delete_me() returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  if auth.uid() is null then raise exception 'UNAUTHENTICATED' using errcode = '42501'; end if;
+  return public.commerce_close_account(jsonb_build_object('user_id', auth.uid()));
+end $$;
+revoke all on function public.delete_me() from public, anon;
+grant execute on function public.delete_me() to authenticated;
+revoke all on function public.commerce_close_account(jsonb) from public, anon, authenticated;
+revoke all on function public.commerce_purge_expired_reports(jsonb) from public, anon, authenticated;
+grant execute on function public.commerce_close_account(jsonb), public.commerce_purge_expired_reports(jsonb) to service_role;

@@ -30,6 +30,9 @@
   }
 
   const providerName = (u) => (u && u.app_metadata && u.app_metadata.provider) || "";
+  // every read/write names the account it is for (round-2 R01): after the load the signed-in user must still be that account,
+  // otherwise nothing is sent — a write queued for account A can never land in account B after a switch
+  async function as(uid) { await load(); return user && (!uid || user.id === uid) ? user : null; }
   window.Auth = {
     enabled,
     // Supabase OAuth providers the app is laid out for; each needs its own keys in the Supabase dashboard (docs/로그인_설정.md)
@@ -49,67 +52,67 @@
     // once its short-lived access token (Supabase JWT expiry, 1 h by default) runs out
     async signOut() { await load(); await sb.auth.signOut({ scope: "local" }); },
     // server copy of profile + records (null when signed out)
-    async pull() {
-      await load();
-      if (!user) return null;
+    async pull(uid) {
+      const u = await as(uid);
+      if (!u) return null;
       const [p, r] = await Promise.all([
-        sb.from("profiles").select("nick,gender,age_band,updated_at").eq("id", user.id).maybeSingle(),
-        sb.from("records").select("id,done_on,procedure,brand,branch,price,memo").eq("user_id", user.id).order("done_on", { ascending: false }),
+        sb.from("profiles").select("nick,gender,age_band,updated_at").eq("id", u.id).maybeSingle(),
+        sb.from("records").select("id,done_on,procedure,brand,branch,price,memo").eq("user_id", u.id).order("done_on", { ascending: false }),
       ]);
       if (p.error) throw p.error;
       if (r.error) throw r.error;
       return { profile: p.data, records: r.data || [] };
     },
-    async saveProfile(me) {
-      await load();
-      if (!user) return;
-      const { error } = await sb.from("profiles").upsert({ id: user.id, nick: me.nick || null, gender: me.gender || null, age_band: me.age || null, updated_at: new Date().toISOString() });
+    async saveProfile(me, uid) {
+      const u = await as(uid);
+      if (!u) return;
+      const { error } = await sb.from("profiles").upsert({ id: u.id, nick: me.nick || null, gender: me.gender || null, age_band: me.age || null, updated_at: new Date().toISOString() });
       if (error) throw error;
     },
-    async saveRecords(recs) {
-      await load();
-      if (!user || !recs.length) return;
-      const rows = recs.map((x) => ({ id: x.id, user_id: user.id, done_on: x.date, procedure: x.n, brand: x.br.split("|")[0], branch: x.br.split("|")[1] || "", price: x.p || null, memo: x.memo || null }));
+    async saveRecords(recs, uid) {
+      const u = await as(uid);
+      if (!u || !recs.length) return;
+      const rows = recs.map((x) => ({ id: x.id, user_id: u.id, done_on: x.date, procedure: x.n, brand: x.br.split("|")[0], branch: x.br.split("|")[1] || "", price: x.p || null, memo: x.memo || null }));
       const { error } = await sb.from("records").upsert(rows);
       if (error) throw error;
     },
-    async deleteRecord(id) {
-      await load();
-      if (!user) return;
-      const { error } = await sb.from("records").delete().eq("id", id).eq("user_id", user.id);
+    async deleteRecord(id, uid) {
+      const u = await as(uid);
+      if (!u) return;
+      const { error } = await sb.from("records").delete().eq("id", id).eq("user_id", u.id);
       if (error) throw error;
     },
     // carts: [{id, name, items:[{t,k,n,br,q,sp,ov}]}] <-> carts + cart_items (supabase/schema.sql)
-    async pullCarts() {
-      await load();
-      if (!user) return [];
-      const { data, error } = await sb.from("carts").select("id,name,updated_at,cart_items(position,kind,key_code,row_name,branch_key,qty,special,overrides)").eq("user_id", user.id);
+    async pullCarts(uid) {
+      const u = await as(uid);
+      if (!u) return [];
+      const { data, error } = await sb.from("carts").select("id,name,version,updated_at,cart_items(position,kind,key_code,row_name,branch_key,qty,special,overrides)").eq("user_id", u.id);
       if (error) throw error;
-      return (data || []).map((c) => ({ id: c.id, name: c.name, updated: c.updated_at,
+      return (data || []).map((c) => ({ id: c.id, name: c.name, updated: c.updated_at, ver: c.version,
         items: (c.cart_items || []).sort((a, b) => a.position - b.position).map((x) => (x.kind === "k"
           ? { t: "k", k: x.key_code, q: x.qty, sp: x.special ?? undefined, ov: x.overrides || {} }
           : { t: "r", n: x.row_name, br: x.branch_key, q: x.qty, sp: x.special ?? undefined, ov: x.overrides || {} })) }));
     },
-    async saveCart(c) {
-      await load();
-      if (!user || !c.id) return;
-      let r = await sb.from("carts").upsert({ id: c.id, user_id: user.id, name: c.name, updated_at: new Date().toISOString() });
-      if (r.error) throw r.error;
-      r = await sb.from("cart_items").delete().eq("cart_id", c.id);
-      if (r.error) throw r.error;
-      if (!c.items.length) return;
-      r = await sb.from("cart_items").insert(c.items.map((it, i) => ({ cart_id: c.id, position: i, kind: it.t, key_code: it.t === "k" ? it.k : null,
-        row_name: it.t === "r" ? it.n : null, branch_key: it.t === "r" ? it.br : null, qty: it.q || 1, special: it.sp ?? null, overrides: it.ov || {} })));
-      if (r.error) throw r.error;
+    // one transaction on the server (supabase/schema.sql save_cart): cart + items replaced together, refused with
+    // VERSION_CONFLICT when the account's copy changed since c.ver (round-2 R16)
+    async saveCart(c, uid) {
+      const u = await as(uid);
+      if (!u || !c.id) return null;
+      const { data, error } = await sb.rpc("save_cart", { p: { id: c.id, name: c.name, expected_version: c.ver ?? null,
+        items: c.items.map((it) => ({ t: it.t, k: it.t === "k" ? it.k : null, n: it.t === "r" ? it.n : null, br: it.t === "r" ? it.br : null, q: it.q || 1, sp: it.sp ?? null, ov: it.ov || {} })) } });
+      if (error) throw error;
+      return data;
     },
-    async deleteCart(id) { await load(); if (!user) return; const { error } = await sb.from("carts").delete().eq("id", id).eq("user_id", user.id); if (error) throw error; },
-    // removes the profile, records and the login itself (supabase/schema.sql: delete_me)
+    async deleteCart(id, uid) { const u = await as(uid); if (!u) return; const { error } = await sb.from("carts").delete().eq("id", id).eq("user_id", u.id); if (error) throw error; },
+    // closes the account (supabase/monetization.sql delete_me → commerce_close_account): personal data deleted now; with a
+    // purchase history the ledger alone is kept (no name or contact) → {mode: 'DELETED' | 'CLOSED'}
     async deleteAccount() {
       await load();
-      if (!user) return;
-      const { error } = await sb.rpc("delete_me");
+      if (!user) return null;
+      const { data, error } = await sb.rpc("delete_me");
       if (error) throw error;
-      await sb.auth.signOut();
+      await sb.auth.signOut({ scope: "local" });
+      return data || { mode: "DELETED" };
     },
   };
   if (enabled) load().catch((e) => console.warn(e));

@@ -148,7 +148,10 @@ export function jobRunner({ rpc, ctx, vision, ai, aiLimits = {}, fetchText = fet
       const share_summary = rep.share_summary ? { ...rep.share_summary, items: items.map((d) => ({ label: d.match.label || null, status: d.match.status,
         verdict: d.compare ? d.compare.verdict : null, median: d.compare ? d.compare.median : null, n: d.compare ? d.compare.n : 0,
         advertised: rep.kind === "QUOTATION" ? null : d.offer.advertised_price })) } : undefined;
-      const out = await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload, share_summary });
+      // the edit is based on the version read above; a concurrent edit makes this one fail instead of overwriting it, so the
+      // correction count and the items always move together (round-2 R16)
+      const out = await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload, share_summary, expected_version: rep.payload.version || 0 })
+        .catch((e) => { throw fromDb(e); });
       return { report_id: out.id, items };
     },
     // the next question of a Jomi session (round-2 R15). Free answers — empty question, safety notice, no treatment named,
