@@ -1,7 +1,10 @@
-# Probe candidate clinic chains (scrape/probe.py) on a GitHub runner — the dev container cannot reach clinic sites.
-# Runs only on pushes to probe/** branches: read-only token, no commit, no deploy, no secrets. What it read (robots.txt
-# answers + lean copies of sample public price pages) comes back as run annotations (scrape/probe_report.py), because
-# artifact and log downloads are blocked from the dev container. Probe branches are deleted after review.
+# Probe candidate clinic chains on a GitHub runner — the dev container cannot reach clinic sites.
+# Runs only on pushes to probe/** branches: read-only token, no commit, no deploy, no secrets. What it read comes back as
+# run annotations (scrape/probe_report.py), because artifact and log downloads are blocked from the dev container.
+# Each matrix entry is one job (annotations are capped per job):
+#   probe:<brand>      robots.txt + sample pages (scrape/probe.py)
+#   collect:<key>:i/n  run collector scrape/<key>.py on every n-th branch from i; its raw CSV + log come back
+# Probe branches are deleted after review.
 name: probe brands
 on:
   push:
@@ -14,11 +17,13 @@ concurrency:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
-        brand: [daybeau, uandi, vands, drevers, cellin]   # one job each: annotations are capped per job
+        task: ["collect:vands:0/8", "collect:vands:1/8", "collect:vands:2/8", "collect:vands:3/8", "collect:vands:4/8",
+               "collect:vands:5/8", "collect:vands:6/8", "collect:vands:7/8", "collect:uandi:0/3", "collect:uandi:1/3",
+               "collect:uandi:2/3", "collect:daybeau:0/1", "collect:drevers:0/2", "collect:drevers:1/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -28,18 +33,21 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: pip install -r requirements.txt
-      - name: Probe (robots.txt first, 1 request/s per host, at most 25 pages per brand)
+      - name: Run the task (robots.txt first for probes; collectors keep 1 request/s per site)
         working-directory: scrape
         env:
+          TASK: ${{ matrix.task }}
           PROBE_OUT: ${{ github.workspace }}/probe_out
           PROBE_MAX: "25"
-        run: python probe.py ${{ matrix.brand }}
-      - name: Run listed collectors when present (raw CSV copied into probe_out only)
-        if: hashFiles('scrape/probe_collect.txt') != ''
-        working-directory: scrape
         run: |
-          mkdir -p ../probe_out/raw
-          while read -r m; do [ -n "$m" ] && python "$m.py" && cp ../data2/raw/"$m".csv ../data2/raw/"$m".log.json ../probe_out/raw/ || echo "collector $m failed"; done < probe_collect.txt
+          mkdir -p "$PROBE_OUT/raw"
+          IFS=: read -r kind key shard <<< "$TASK"
+          if [ "$kind" = probe ]; then python probe.py "$key"; else
+            python "$key.py" --shard "$shard" --workers 4 || echo "collector $key $shard failed"
+            i="${shard%/*}"
+            cp ../data2/raw/"$key".csv "$PROBE_OUT/raw/$key.$i.csv" 2>/dev/null || true
+            cp ../data2/raw/"$key".log.json "$PROBE_OUT/raw/$key.$i.log.json" 2>/dev/null || true
+          fi
       - name: Pack the output
         run: python scrape/probe_report.py split probe_out probe_chunks
       - name: Send pieces 0-9
