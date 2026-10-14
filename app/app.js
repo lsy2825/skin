@@ -117,7 +117,7 @@
   function whenFull(fn, msg) { if (!partial()) return fn(); pending = fn; if (msg) toast(msg); }
   function fullArrived() {
     const fn = pending; pending = null;
-    if (fn) { render(); fn(); } else render();
+    if (fn) { pressing = false; render(); fn(); } else render();   // fn may act on the new screen: draw it now
     checkAlerts();
     if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user);
   }
@@ -1895,10 +1895,17 @@
         l.map((n) => h("button", { class: "chip", type: "button", "aria-pressed": f.atts.includes(n) ? "true" : "false", onclick: () => pick(n) }, `${n} (${(cnt[n] || 0).toLocaleString()})`)))),
       h("div", { class: "sub", style: "margin-top:6px" }, "시술 분류표가 상품명에서 읽은 구분이에요. 분류되지 않은 가격은 이 필터를 고르면 빠져요."));
   }
+  // the address's query as it is now when it is still this page, else the params the screen was drawn with
+  function liveParams(route, params) {
+    const [hp, hq] = location.hash.replace(/^#/, "").split("?");
+    return new URLSearchParams(hp === route ? hq || "" : params);
+  }
   function priceTable(route, params, opt = {}) {
     const f = readFilters(params, opt.q);
     const go = (patch) => {
-      const np = new URLSearchParams(params);
+      // from the address as it is now, not the params this screen was drawn with: a min/max typed and then a chip tapped
+      // on the same (not yet redrawn) screen must both stick
+      const np = liveParams(route, params);
       for (const [k, v] of Object.entries(patch)) { if (v === "" || v == null || v === -1 || v === false || (k === "n" && v === 100)) np.delete(k); else np.set(k, v === true ? "1" : v); }
       if (!("n" in patch)) np.delete("n");
       if ("sort" in patch && patch.sort) store.set("tableSort", patch.sort);     // remember the sort for next time
@@ -2004,7 +2011,7 @@
       prodFacet(f, cnt.prod, go),
       attFacet(f, cnt.att, go),
       h("div", { class: "row", style: "margin-top:4px" }, whenChip(),
-        h("span", { class: "sp" }), curQs ? h("button", { class: "btn sm gray", type: "button", onclick: () => presetSheet(route, curQs) }, "조건 저장") : null)));
+        h("span", { class: "sp" }), curQs ? h("button", { class: "btn sm gray", type: "button", onclick: () => { const np = liveParams(route, params); np.delete("n"); presetSheet(route, np.toString()); } }, "조건 저장") : null)));
     // sort (equal prices: newer verification first, then regular before special)
     const disc = (i) => ROWS[i][4] ? (ROWS[i][4] - ROWS[i][3]) / ROWS[i][4] : 0;
     const ver = (i) => verified(ROWS[i][0]);
@@ -2093,7 +2100,7 @@
     const box = h("div", { class: "view" });
     box.append(cmpNav("table"));
     const q = h("input", { type: "search", value: params.get("q") || "", placeholder: "이름에 들어간 말 (예: 리쥬란 2cc, rejuran)", "aria-label": "가격 검색", enterkeyhint: "search" });
-    const run = (v) => { const np = new URLSearchParams(params); if (v) np.set("q", v); else np.delete("q"); np.delete("exact"); np.delete("n"); nav(`table?${np}`, true); };
+    const run = (v) => { const np = liveParams("table", params); if (v) np.set("q", v); else np.delete("q"); np.delete("exact"); np.delete("n"); nav(`table?${np}`, true); };
     q.addEventListener("keydown", (e) => { if (e.key === "Enter") run(q.value.trim()); });
     box.append(priceTable("table", params, { head: [h("h2", {}, "전체 가격표"), h("div", { class: "sub", style: "margin-top:4px" }, `모든 지점의 모든 가격 · ${regionName()} · ${vatNote()}`),
       h("div", { class: "search", style: "margin-top:10px;box-shadow:none;background:var(--fill)" }, withSuggest(q, run)), searchTips(run)] }));
@@ -4483,8 +4490,26 @@
   }
   // removing a focused input can fire change/blur handlers that render again: never nest renders
   let rendering = false;
+  // a redraw between pointerdown and pointerup replaces the control under the finger, so the browser sends no click (the tap
+  // is lost — 2026-10-14: typing a budget or a min/max price, then tapping a chip, did nothing because the box's change /
+  // focusout handler redrew the page on that same press). While a press is in progress the redraw waits until its click has
+  // run; tests/e2e/clickable.js checks every screen for this.
+  // On a phone the focus (and so the box's change/blur) moves at the tap's synthesized mousedown, after pointerup, so the
+  // press counts from pointerdown or mousedown until just after its click.
+  let pressing = false, heldRender = false, pressTimer = 0;
+  const release = (ms) => {
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => { pressing = false; if (heldRender) { heldRender = false; render(); } }, ms);
+  };
+  const press = (e) => { if (e.isPrimary === false || e.button > 0) return; pressing = true; release(1500); };   // a long press never holds the screen for long
+  document.addEventListener("pointerdown", press, true);
+  document.addEventListener("mousedown", press, true);
+  document.addEventListener("pointerup", () => { if (pressing) release(400); }, true);   // the tap's click comes well within this
+  document.addEventListener("pointercancel", () => release(0), true);                   // a scroll, not a tap
+  document.addEventListener("click", () => { if (pressing) release(0); }, true);        // flush after the click's own handlers
   function render() {
     if (!D) return;
+    if (pressing) { heldRender = true; return; }
     if (rendering) { setTimeout(render, 0); return; }
     rendering = true;
     try { renderNow(); } finally { rendering = false; }
