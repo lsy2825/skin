@@ -104,7 +104,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('시술 사전: 죠미 한마디', await said(p, 'guideTip', await p.locator('#main .jomi-say').innerText()));
     await ctx.close(); }
   { let fail = true;
-    const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); });
+    const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); await p.route('**/home.json', (r) => r.fulfill({ status: 404, body: '' })); });   // no home.json: the error screen itself (O2 case: o2_home.js)
     await p.waitForSelector('#main [role=alert]', { timeout: 15000 }).catch(() => {});   // the app tries 3 times (1 s, 3 s apart) before the error screen
     const txt = await p.locator('#main').innerText();
     ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && await said(p, 'error', txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
@@ -113,7 +113,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await p.waitForSelector('.pc', { timeout: 15000 }).catch(() => {});
     ok('다시 시도 → 정상 화면', await p.locator('.pc').count() > 0 && (await p.locator('#main').getAttribute('aria-busy')) === null);
     await ctx.close(); }
-  { const { ctx, p } = await page({ reducedMotion: 'reduce' }, async (p) => { await p.route('**/data.json', async (r) => { await new Promise((s) => setTimeout(s, 1500)); r.continue(); }); });
+  { const { ctx, p } = await page({ reducedMotion: 'reduce' }, async (p) => { await p.route('**/data.json', async (r) => { await new Promise((s) => setTimeout(s, 1500)); r.continue(); }); await p.route('**/home.json', (r) => r.fulfill({ status: 404, body: '' })); });
     await p.waitForTimeout(300);
     const anim = await p.evaluate(() => { const m = document.querySelector('.jomi-load .mascot'); return m ? getComputedStyle(m).animationName : 'missing'; });
     ok('움직임 줄이기 설정: 죠미 애니메이션 꺼짐', anim === 'none', anim);

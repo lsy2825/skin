@@ -9,15 +9,16 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, detail]); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${detail}`); };
 (async () => { const OUT = process.argv[2] || require('os').tmpdir(); const b = await chromium.launch();
   const unlock = async (p) => { for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); };
-  // 1) loading skeleton + error state
+  // 1) loading skeleton + error state — with nothing to show yet: no saved copy and no home.json (round-2 O2 draws the home
+  // screen from home.json first; that case is tests/e2e/o2_home.js and data_sync.js 6b)
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
-    await p.route('**/data.json', async (r) => { await new Promise((s) => setTimeout(s, 1500)); r.continue(); });
+    await p.route('**/data.json', async (r) => { await new Promise((s) => setTimeout(s, 1500)); r.continue(); }); await p.route('**/home.json', (r) => r.fulfill({ status: 404, body: '' }));
     await p.goto(BASE); await unlock(p);
     ok('로딩 중 스켈레톤 표시', await p.locator('#main .skel').count() > 0 && (await p.locator('#main').getAttribute('aria-busy')) === 'true', 'data.json 1.5초 지연');
     await p.waitForSelector('.pc'); ok('로딩 끝나면 aria-busy 해제', (await p.locator('#main').getAttribute('aria-busy')) === null);
     await ctx.close(); }
   { const ctx = await b.newContext({ serviceWorkers: 'block' }); const p = await ctx.newPage();
-    await p.route('**/data.json', (r) => r.fulfill({ status: 500, body: 'x' }));
+    await p.route('**/data.json', (r) => r.fulfill({ status: 500, body: 'x' })); await p.route('**/home.json', (r) => r.fulfill({ status: 404, body: '' }));
     await p.goto(BASE); await unlock(p); await p.waitForSelector('#main [role=alert]', { timeout: 15000 }).catch(() => {});   // after 3 tries (1 s, 3 s apart)
     ok('데이터 오류 상태 안내', /불러오지 못했어요/.test(await p.locator('#main').innerText()), (await p.locator('#main').innerText()).slice(0, 40)); await ctx.close(); }
   // 2) data kept: old single cart migrates, carts survive reload
