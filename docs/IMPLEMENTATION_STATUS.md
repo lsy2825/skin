@@ -1,6 +1,6 @@
 # 구현 상태
 
-기준: 2026-10-13. 마스터 요구사항 항목별로 지금 실제로 되는지 적었어요. 다른 문서:
+기준: 2026-10-14. 마스터 요구사항 항목별로 지금 실제로 되는지 적었어요. 다른 문서:
 - 편의 기능 상세: `docs/ADVANCED_UX_ROADMAP.md`
 - 화면 검사 결과: `docs/UX_QA_REPORT.md`
 - 라이브 제품 UX 감사(지시서 항목별): `docs/UX_AUDIT.md`
@@ -11,8 +11,8 @@
 - 시연 단계 기능 15개(빠른 비교·규격·조건 요약·저장·체크리스트·제공 표·보고서 등): `docs/DEMO_FEATURES.md`
 - 마스코트 죠미: `docs/JOMI_CHARACTER_GUIDE.md` · `JOMI_ASSET_INVENTORY.md` · `JOMI_INTERACTION_SPEC.md` · `JOMI_COPYWRITING.md` · `JOMI_UI_UX_QA.md`
 
-**실제로 돌린 테스트** (이 세션, 2026-10-13)
-- `node --test tests/*.test.js`: 40개 통과(가격 계산, 검색, 가격 이력·알림, 고민 분류, 묶음 통계·정렬)
+**실제로 돌린 테스트** (이 세션, 2026-10-14 전체 재실행 — 커밋 005f740)
+- `node --test tests/*.test.js`: 45개 통과(가격 계산, 검색, 가격 이력·알림, 고민 분류, 묶음 통계·정렬, 시술 규격·조건 읽기)
 - `python tests/verify_prices_test.py`: 7개 통과(원본 대조 판정)
 - `python build2/xkeys.py`: 93개 통과(브랜드 간 같은 시술 판정)
 - `python build2/taxonomy.py`: 39개 통과(시술 분류표: 제품군·세부 구분·용량·회차, 묶음·추가 옵션 거르기)
@@ -26,10 +26,11 @@
 - E2E(Playwright, Chromium 390px):
   - `tests/e2e/qa7.js`: 32/32 통과(지시서 QA 7문항 + 지점 수 일치)
   - `tests/e2e/ux_qa.js`: 25/25 통과
-  - `tests/e2e/touch_targets.js`: 3,790/3,790 통과(19개 화면, 세부 구분·카드 보기 포함)
-  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 15개 화면 × 라이트·다크): 위반 0건
+  - `tests/e2e/touch_targets.js`: 3,967/3,967 통과(빠른 비교·쉬운 용어 포함)
+  - `tests/e2e/a11y.js`(axe-core, WCAG 2.2 A·AA, 17개 화면 × 라이트·다크): 위반 0건
   - `tests/e2e/v5_features.js`: 27/27 (v5.0: A/B 비교·보기 기록·집·직장 지우기·장바구니 막대·지도 거리)
-  - `tests/e2e/jomi.js` 35/35 · `objective.js` 30/30 · `frame.js` 9/9 · `table_attr.js` 13/13 · `compare_cards.js` 14/14 (2026-10-13 점검 뒤 전체 재실행)
+  - `tests/e2e/demo_features.js`: 47/47 (시연 기능 15개)
+  - `tests/e2e/jomi.js` 39/39(표정 시트 포함) · `objective.js` 32/32(담기 창 포함) · `frame.js` 9/9 · `table_attr.js` 13/13 · `compare_cards.js` 14/14
   - `tests/e2e/concern.js`: 23/23 통과
   - 가로 넘침: 375·390·430·768·1280px 위반 0
   - `tests/e2e/xss.js`: 악성 입력 실행 0회(CSP 켬/끔 모두), 7/7 통과
@@ -104,7 +105,7 @@
 | 38 | 이 지역 재검색 | COMPLETE | 지도 이동 뒤 버튼 | 마커를 누르면 목록에 그 지점 항상 | `qa7` 32/32 | — |
 | 39 | 공유 | COMPLETE | 장바구니 링크·문구 | **시술별 비교·A/B 링크 공유** | `v5_features.js` | 받는 사람도 PIN 필요 |
 | 40 | 가격 알림 | PARTIAL · BLOCKED | 앱 안 알림(앱을 열 때 판단) | — | `jomi` | 이메일·푸시는 로그인·발송 키 필요 |
-| 41 | 죠미 소개 | COMPLETE | 누를 때만, 처음/재방문 다름 | — | `jomi` 35/35 | — |
+| 41 | 죠미 소개 | COMPLETE | 누를 때만, 처음/재방문 다름 | — | `jomi` 39/39 | — |
 | 42 | 상황별 죠미 표정 | PARTIAL · BLOCKED | 8종 그림 적용(기본·자기소개·궁금·생각·신남·윙크·시무룩·졸림). 설명·장바구니·곤란함은 다른 표정으로 대신 | 표정 시트 적용 | `jomi` | 시트에 없는 3종 그림 |
 | 43 | 검수된 시술 지식 | PARTIAL · BLOCKED | 49개 항목, 모두 '검수 전' 표시 | — | `knowledge.py` | 의료진 검수 |
 | 44 | 안전한 고민 탐색 | COMPLETE(규칙 기반) | 진단·추천·용량 없음, 위험 안내, 원문 저장 안 함, LLM 미사용 | — | `concern.js` 23/23 | 공개 전 법률 검토 |
