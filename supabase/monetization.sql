@@ -985,25 +985,41 @@ create index if not exists ai_usage_day on public.ai_usage_records (created_at);
 -- Jomi session turns: a slot is taken atomically before the model is called (5.1 audit: parallel follow-ups passed the limit)
 create or replace function public.commerce_jomi_turn(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
-declare r public.premium_reports; used int;
+-- a Jomi session turn (round-2 R15). take: one slot per turn_key (a retried request with the same key gets the stored
+-- answer back, never a second slot); append: store the answer and mark the key done; release: give the slot back when the
+-- answer could not be made. Free answers (empty question, safety notice, treatment not found) never call take at all.
+declare r public.premium_reports; used int; k text := nullif(p ->> 'turn_key', ''); st text; prev jsonb;
 begin
+  select * into r from public.premium_reports where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid
+     and deleted_at is null and kind = 'JOMI_QA' for update;
+  if not found then raise exception 'REPORT_NOT_FOUND' using errcode = '22023'; end if;
+  used := coalesce((r.payload ->> 'turns_used')::int, jsonb_array_length(coalesce(r.payload -> 'turns', '[]')));
+  st := case when k is null then null else r.payload -> 'turn_keys' ->> k end;
   if p ->> 'action' = 'take' then
-    update public.premium_reports set payload = jsonb_set(payload, '{turns_used}',
-             to_jsonb(coalesce((payload ->> 'turns_used')::int, jsonb_array_length(coalesce(payload -> 'turns', '[]'))) + 1))
-     where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null and kind = 'JOMI_QA'
-       and coalesce((payload ->> 'turns_used')::int, jsonb_array_length(coalesce(payload -> 'turns', '[]'))) < coalesce((payload ->> 'max_turns')::int, 5)
-    returning * into r;
-    if not found then
-      if exists (select 1 from public.premium_reports where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null and kind = 'JOMI_QA')
-        then raise exception 'SESSION_FULL' using errcode = '22023'; end if;
-      raise exception 'REPORT_NOT_FOUND' using errcode = '22023';
+    if st = 'done' then
+      select t into prev from jsonb_array_elements(coalesce(r.payload -> 'turns', '[]')) t where t ->> 'turn_key' = k limit 1;
+      return jsonb_build_object('repeat', true, 'turn', prev, 'turns_used', used, 'max_turns', coalesce((r.payload ->> 'max_turns')::int, 5), 'job_id', r.job_id);
     end if;
-    used := (r.payload ->> 'turns_used')::int;
-    return jsonb_build_object('turns_used', used, 'max_turns', coalesce((r.payload ->> 'max_turns')::int, 5), 'job_id', r.job_id);
+    if st = 'pending' then raise exception 'TURN_IN_PROGRESS' using errcode = '22023'; end if;
+    if used >= coalesce((r.payload ->> 'max_turns')::int, 5) then raise exception 'SESSION_FULL' using errcode = '22023'; end if;
+    update public.premium_reports set payload = jsonb_set(case when k is null then payload
+             else jsonb_set(payload, '{turn_keys}', coalesce(payload -> 'turn_keys', '{}') || jsonb_build_object(k, 'pending')) end,
+             '{turns_used}', to_jsonb(used + 1))
+     where id = r.id returning * into r;
+    return jsonb_build_object('turns_used', used + 1, 'max_turns', coalesce((r.payload ->> 'max_turns')::int, 5), 'job_id', r.job_id);
+  elsif p ->> 'action' = 'release' then
+    if st = 'pending' then
+      update public.premium_reports set payload = jsonb_set(payload #- array['turn_keys', k], '{turns_used}', to_jsonb(greatest(used - 1, 0)))
+       where id = r.id;
+      return jsonb_build_object('released', true, 'turns_used', greatest(used - 1, 0));
+    end if;
+    return jsonb_build_object('released', false, 'turns_used', used);
   end if;
-  -- append: add the answered turn to the list (concurrent appends serialise on the row)
-  update public.premium_reports set payload = jsonb_set(payload, '{turns}', coalesce(payload -> 'turns', '[]') || jsonb_build_array(p -> 'turn'))
-   where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null returning * into r;
+  -- append: add the answered turn to the list (the row lock above serialises concurrent turns)
+  update public.premium_reports set payload = jsonb_set(case when k is null then payload
+           else jsonb_set(payload, '{turn_keys}', coalesce(payload -> 'turn_keys', '{}') || jsonb_build_object(k, 'done')) end,
+           '{turns}', coalesce(payload -> 'turns', '[]') || jsonb_build_array(case when k is null then p -> 'turn' else (p -> 'turn') || jsonb_build_object('turn_key', k) end))
+   where id = r.id returning * into r;
   return jsonb_build_object('turns', jsonb_array_length(r.payload -> 'turns'));
 end $$;
 

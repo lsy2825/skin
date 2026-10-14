@@ -1,12 +1,12 @@
 // Price history statistics and price-alert rules (requirements 5.2 and 6). Pure functions, no DOM.
 // window.Intel in the app, require()d by tests/intel.test.js.
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.Intel = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./stats.js"));
+  else root.Intel = factory(root.Stats);
+})(typeof self !== "undefined" ? self : this, function (Stats) {
   "use strict";
 
-  const median = (v) => { const s = [...v].sort((a, b) => a - b), n = s.length; return n ? (n % 2 ? s[n >> 1] : Math.round((s[n / 2 - 1] + s[n / 2]) / 2)) : null; };
+  const median = Stats.median;                                     // one median everywhere (round-2 R03)
 
   // dates: snapshot dates (ascending), values: price per date or null (not observed). Only observed points count —
   // nothing is filled in. from: first date to include ("" = all). Returns null when nothing was observed.

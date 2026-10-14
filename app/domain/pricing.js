@@ -70,8 +70,14 @@
     const first = cheapest(cands);
     if (!first) return null;
     if (q === 1) return { total: first.p, rows: [first.i], units: 1, special: !!first.special };
-    const rest = cheapest(regular) || first;      // a special price counts once; later sessions use the regular price
-    return { total: first.p + rest.p * (q - 1), rows: first.i === rest.i ? [first.i] : [first.i, rest.i], units: q, special: !!first.special };
+    // a special price counts once; later sessions use the regular price. Whether a special can be repeated is not
+    // known from the clinic page, so with NO regular price the later sessions stay unpriced — never the special × q
+    // (round-2 R14: 100원 special ×3 was shown as a firm 300원). An incomplete line is not a total anyone can compare.
+    const reg = cheapest(regular);
+    if (!reg && first.special) return { total: first.p, rows: [first.i], units: 1, special: true, unpriced: q - 1, incomplete: true };
+    const rest = reg || first;
+    return { total: first.p + rest.p * (q - 1), rows: first.i === rest.i ? [first.i] : [first.i, rest.i], units: q, special: !!first.special,
+      laterRegular: !!(first.special && reg) };
   }
 
   // ---- whole cart across branches
@@ -81,10 +87,11 @@
   function compareClinics(matrix) {
     const m = matrix.length ? matrix[0].lines.length : 0;
     const full = [], partial = [];
+    const priced = (l) => l && !l.incomplete;          // an incomplete line (later sessions unpriced) is not counted as a price
     for (const row of matrix) {
-      const have = row.lines.filter(Boolean);
+      const have = row.lines.filter(priced);
       const total = have.reduce((s, l) => s + l.total, 0);
-      const out = { b: row.b, total, lines: row.lines, n: have.length, missing: row.lines.map((l, j) => (l ? -1 : j)).filter((j) => j >= 0) };
+      const out = { b: row.b, total, lines: row.lines, n: have.length, missing: row.lines.map((l, j) => (priced(l) ? -1 : j)).filter((j) => j >= 0) };
       if (m && have.length === m) full.push(out);
       else if (have.length) partial.push(out);
     }
@@ -94,14 +101,14 @@
     const picks = [];
     for (let j = 0; j < m; j++) {
       let best = null;
-      for (const row of matrix) { const l = row.lines[j]; if (l && (!best || l.total < best.line.total)) best = { b: row.b, line: l }; }
+      for (const row of matrix) { const l = row.lines[j]; if (priced(l) && (!best || l.total < best.line.total)) best = { b: row.b, line: l }; }
       picks.push(best);
     }
     const chosen = new Set(picks.filter(Boolean).map((p) => p.b));
     for (let j = 0; j < m; j++) {
       const p = picks[j];
       if (!p) continue;
-      for (const row of matrix) { const l = row.lines[j]; if (l && l.total === p.line.total && row.b !== p.b && chosen.has(row.b)) { picks[j] = { b: row.b, line: l }; break; } }
+      for (const row of matrix) { const l = row.lines[j]; if (priced(l) && l.total === p.line.total && row.b !== p.b && chosen.has(row.b)) { picks[j] = { b: row.b, line: l }; break; } }
     }
     const mixTotal = picks.reduce((s, p) => s + (p ? p.line.total : 0), 0);
     const mix = { picks, total: mixTotal, places: new Set(picks.filter(Boolean).map((p) => p.b)).size, missing: picks.filter((p) => !p).length };
@@ -112,7 +119,7 @@
       let total = 0, ok = true, useA = 0, useB = 0;
       const assign = [];
       for (let j = 0; j < m; j++) {
-        const la = A.lines[j], lb = B.lines[j];
+        const la = priced(A.lines[j]) ? A.lines[j] : null, lb = priced(B.lines[j]) ? B.lines[j] : null;
         if (!la && !lb) { ok = false; break; }
         if (la && (!lb || la.total <= lb.total)) { total += la.total; useA++; assign.push(A.b); } else { total += lb.total; useB++; assign.push(B.b); }
       }

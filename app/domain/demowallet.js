@@ -12,13 +12,16 @@
   "use strict";
   // mirrors supabase/commerce_seed.sql (version 1, DEMO channel) — tests/commerce.test.js checks they agree
   const PRODUCTS = [
-    { code: "MINI", version: 1, price_krw: 990, vat_included: true, credits: 5, adfree_days: 7 },
-    { code: "STANDARD", version: 1, price_krw: 1990, vat_included: true, credits: 12, adfree_days: 21 },
-    { code: "PLUS", version: 1, price_krw: 3900, vat_included: true, credits: 26, adfree_days: 45 },
+    // catalog version 2 (round 2): no ad-free bonus — the app shows no ads (supabase/commerce_seed.sql)
+    { code: "MINI", version: 2, price_krw: 990, vat_included: true, credits: 5, adfree_days: 0 },
+    { code: "STANDARD", version: 2, price_krw: 1990, vat_included: true, credits: 12, adfree_days: 0 },
+    { code: "PLUS", version: 2, price_krw: 3900, vat_included: true, credits: 26, adfree_days: 0 },
   ];
+  // sold: the three tools on sale (round-2 BIZ01, docs/PRODUCT_DECISIONS.md); the others stay defined for old reports but
+  // cannot be reserved — the same rule as the server's premium_features.active
   const FEATURES = {
-    EVENT_IMAGE_DECODER: { credits: 1, days: 0, title: "AI 이벤트 사진 읽기" }, EVENT_URL_DECODER: { credits: 1, days: 0, title: "공개 이벤트 주소·글 읽기" },
-    MULTI_EVENT_COMPARE: { credits: 2, days: 0, title: "이벤트 여러 개 비교" }, QUOTATION_DECODER: { credits: 1, days: 0, title: "견적·패키지 읽기" },
+    EVENT_IMAGE_DECODER: { credits: 1, days: 0, title: "AI 이벤트 사진 읽기" }, EVENT_URL_DECODER: { credits: 1, days: 0, title: "공개 이벤트 주소·글 읽기", sold: true },
+    MULTI_EVENT_COMPARE: { credits: 2, days: 0, title: "이벤트 여러 개 비교", sold: true }, QUOTATION_DECODER: { credits: 1, days: 0, title: "견적·패키지 읽기", sold: true },
     JOMI_QA_SESSION: { credits: 1, days: 0, title: "죠미 심화 질문(한 세션 5문답)" }, PRODUCT_DEEP_COMPARE: { credits: 1, days: 0, title: "제품 심층 비교 보고서" },
     PRICE_HISTORY_REPORT: { credits: 1, days: 0, title: "가격 이력 보고서" }, REGIONAL_PRICE_REPORT: { credits: 1, days: 0, title: "지역 가격 보고서" },
     ADVANCED_CART_PLANNER: { credits: 2, days: 30, title: "고급 장바구니 계획(30일 다시 계산)" }, PRICE_WATCH_7D: { credits: 1, days: 7, title: "가격 지켜보기 7일" },
@@ -53,9 +56,9 @@
     return post(s, { key: `promo:${key}`, type: "PROMOTIONAL_GRANTED", bucket: "PROMO", amount: n, eb: n, er: 0, note: reason }, now);
   }
   const sameScope = (a, b) => JSON.stringify(a || {}) === JSON.stringify(b || {});
-  function reserve(s, feature, key, scope = {}, now = Date.now()) {
+  function reserve(s, feature, key, scope = {}, now = Date.now(), o = {}) {
     const f = FEATURES[feature];
-    if (!f) throw new Error("FEATURE_NOT_AVAILABLE");
+    if (!f || (!f.sold && !o.anyFeature)) throw new Error("FEATURE_NOT_AVAILABLE");   // anyFeature: mechanism tests only
     if (s.jobs[key]) return { job: s.jobs[key], repeat: true };
     const covered = s.ent.some((e) => e.feature === feature && Date.parse(e.ends_at) > now && sameScope(e.scope, scope));
     const need = covered ? 0 : f.credits, b = balance(s);

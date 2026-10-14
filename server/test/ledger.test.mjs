@@ -16,22 +16,37 @@ const buy = async (u, code = "STANDARD") => {
 const err = async (p) => { try { await p; return null; } catch (e) { return e.message; } };
 const verify = async (u) => (await D.call("commerce_verify_wallet", { user_id: u })).ok;
 
+test("round 2: the seed sells three tools only; the others are refused by the database itself (BIZ01)", async () => {
+  const u = await D.newUser();
+  await D.call("commerce_grant_promo", { user_id: u, amount: 5, reason: "test", actor: "test", idempotency_key: key("p") });
+  const sold = (await D.pool.query("select code from public.premium_features where active order by code")).rows.map((r) => r.code);
+  assert.deepEqual(sold, ["EVENT_URL_DECODER", "MULTI_EVENT_COMPARE", "QUOTATION_DECODER"]);
+  for (const f of ["REGIONAL_PRICE_REPORT", "ADVANCED_CART_PLANNER", "JOMI_QA_SESSION", "PRICE_HISTORY_REPORT", "PRICE_WATCH_7D"])
+    assert.match(await err(D.call("commerce_reserve", { user_id: u, feature_code: f, idempotency_key: key("j"), input_hash: "h", timeout_seconds: 60 })), /FEATURE_NOT_AVAILABLE/);
+  assert.equal((await D.call("commerce_wallet", { user_id: u })).available, 5, "nothing reserved");
+  // only one DEMO row per product is active and it carries no ad-free bonus
+  const demo = (await D.pool.query("select code, version, adfree_days from public.credit_products where channel = 'DEMO' and active order by code")).rows;
+  assert.deepEqual(demo.map((r) => [r.code, r.version, r.adfree_days]), [["MINI", 2, 0], ["PLUS", 2, 0], ["STANDARD", 2, 0]]);
+  // the remaining tests exercise every reservation mechanism, so turn the unsold features back on in this throwaway database
+  await D.pool.query("update public.premium_features set active = true where version = 1");
+});
+
 test("order snapshot: price and credits come from the catalog, not the client; same key → same order; other product → refused", async () => {
   const u = await D.newUser(), k = key("ord");
   const o = await D.call("commerce_create_order", { user_id: u, product_code: "MINI", channel: "DEMO", idempotency_key: k, amount: 1, paid_credits: 999 });
-  assert.equal(o.amount_krw, 990); assert.equal(o.paid_credits, 5); assert.equal(o.adfree_days, 7); assert.equal(o.vat_included, true);
+  assert.equal(o.amount_krw, 990); assert.equal(o.paid_credits, 5); assert.equal(o.adfree_days, 0); assert.equal(o.vat_included, true);   // catalog v2 (round 2): no ad-free bonus
   const again = await D.call("commerce_create_order", { user_id: u, product_code: "MINI", channel: "DEMO", idempotency_key: k });
   assert.equal(again.id, o.id);
   assert.match(await err(D.call("commerce_create_order", { user_id: u, product_code: "PLUS", channel: "DEMO", idempotency_key: k })), /IDEMPOTENCY_CONFLICT/);
   assert.match(await err(D.call("commerce_create_order", { user_id: u, product_code: "MINI", channel: "WEB_PG", idempotency_key: key("o") })), /PRODUCT_NOT_FOR_SALE/);  // not approved
   // a catalog change later does not touch the order
-  await D.pool.query("insert into public.credit_products (code, version, channel, price_krw, vat_included, paid_credits, adfree_days, active) values ('MINI', 2, 'DEMO', 1290, true, 5, 7, false)");
-  await D.pool.query("update public.credit_products set active = false where code = 'MINI' and version = 1 and channel = 'DEMO'");
-  await D.pool.query("update public.credit_products set active = true where code = 'MINI' and version = 2 and channel = 'DEMO'");
+  await D.pool.query("insert into public.credit_products (code, version, channel, price_krw, vat_included, paid_credits, adfree_days, active) values ('MINI', 3, 'DEMO', 1290, true, 5, 0, false)");
+  await D.pool.query("update public.credit_products set active = false where code = 'MINI' and version = 2 and channel = 'DEMO'");
+  await D.pool.query("update public.credit_products set active = true where code = 'MINI' and version = 3 and channel = 'DEMO'");
   const r = await D.call("commerce_fulfill_payment", { order_id: o.id, provider: "DEMO", provider_payment_id: key("pay"), amount: 990, currency: "KRW", status: "DONE" });
   assert.equal(r.wallet.paid, 5);
-  await D.pool.query("update public.credit_products set active = false where code = 'MINI' and version = 2 and channel = 'DEMO'");
-  await D.pool.query("update public.credit_products set active = true where code = 'MINI' and version = 1 and channel = 'DEMO'");
+  await D.pool.query("update public.credit_products set active = false where code = 'MINI' and version = 3 and channel = 'DEMO'");
+  await D.pool.query("update public.credit_products set active = true where code = 'MINI' and version = 2 and channel = 'DEMO'");
 });
 
 test("fulfilment exactly once: duplicate callback, wrong amount, wrong currency, not done, second payment, wrong channel", async () => {
@@ -149,7 +164,11 @@ test("refunds: full refund of an unspent pack; spent credits are never pushed be
   assert.ok(await verify(u)); assert.ok(await verify(u2));
 });
 
-test("ad-free: buying again extends from the later of now and the current end", async () => {
+test("ad-free (catalog v1 orders keep their bonus): buying again extends from the later of now and the current end", async () => {
+  // catalog v2 sells no ad-free days; v1 orders made before it still carry theirs, so the mechanism stays tested on v1 rows
+  const swap = async (on, off) => { await D.pool.query(`update public.credit_products set active = false where channel = 'DEMO' and version = ${off}`);
+    await D.pool.query(`update public.credit_products set active = true where channel = 'DEMO' and version = ${on}`); };
+  await swap(1, 2);
   const u = await D.newUser();
   await buy(u, "MINI");                                       // 7 days
   const w1 = await D.call("commerce_wallet", { user_id: u });
@@ -161,6 +180,7 @@ test("ad-free: buying again extends from the later of now and the current end", 
   await D.pool.query("update public.ad_free_entitlements set ends_at = now() - interval '1 day' where user_id = $1", [u]);
   const w3 = await D.call("commerce_wallet", { user_id: u });
   assert.equal(w3.ad_free_until, null); assert.equal(w3.paid, 17);
+  await swap(2, 1);
 });
 
 test("ledger is append-only and users can only read their own rows (no writes, no functions)", async () => {

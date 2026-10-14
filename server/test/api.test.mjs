@@ -25,7 +25,10 @@ test.after(() => D.drop());
 const rpc = (fn, p) => D.call(fn, p);
 const SECRET = `t-${crypto.randomUUID()}`;   // generated per run: no secret-looking literal in the repository
 // sandbox approval exists only in this throwaway database (the seed keeps WEB_PG inactive)
-await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel = 'WEB_PG'");
+await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel = 'WEB_PG' and version = 2");
+// the seed sells three tools (round-2 BIZ01); these tests exercise every job mechanism, so this throwaway database turns the
+// others back on. tests: ledger.test.mjs checks that the seed itself refuses them.
+await D.pool.query("update public.premium_features set active = true where version = 1");
 await D.pool.query(`insert into public.model_cost_config (provider, model, effective_date, input_cost_per_million, cached_input_cost_per_million, output_cost_per_million,
   image_cost_calculation_method, currency, exchange_rate_used, pricing_source, last_verified_at) values
   ('OPENAI', 'test-vision', '2026-01-01', 1.0, 0.1, 4.0, 'usage.input_tokens', 'USD', 1400, 'test fixture (not a real price)', now())`);
@@ -324,7 +327,10 @@ test("Jomi: diagnosis / dosing screened for free; an answer with an invented pri
   // 5.1 audit: parallel follow-ups cannot pass the 5-turn limit (slot taken atomically before answering)
   const par = await Promise.allSettled(Array.from({ length: 10 }, () => run.ask({ id: u }, j.report_id, "국산 사각턱 보톡스 50U는요?")));
   assert.equal(par.filter((x) => x.status === "fulfilled").length, 4);
-  await assert.rejects(run.ask({ id: u }, j.report_id, "하나 더"), (e) => e.code === "SESSION_FULL");
+  // round-2 R15: a question with no treatment in it is answered for free (no slot); a real 6th question is refused
+  const free = await run.ask({ id: u }, j.report_id, "하나 더");
+  assert.equal(free.free, true);
+  await assert.rejects(run.ask({ id: u }, j.report_id, "리쥬란 힐러 4cc는요?"), (e) => e.code === "SESSION_FULL");
   const stored = await D.call("commerce_report", { report_id: j.report_id, user_id: u });
   assert.equal(stored.payload.turns.length, 5);
   // a question with no treatment name is refused before reserving (never charged for 'not found')
@@ -404,7 +410,7 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
     const s = sign("sha256", Buffer.from(`${h}.${b}`), { key: createPrivateKey(fs.readFileSync(path.join(dir, "leaf.key"))), dsaEncoding: "ieee-p1363" });
     return `${h}.${b}.${s.toString("base64url")}`;
   };
-  await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel in ('APPLE_IAP', 'GOOGLE_PLAY')");
+  await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel in ('APPLE_IAP', 'GOOGLE_PLAY') and version = 2");
   const apple = appleAdapter({ bundleId: "kr.yoonsiljang.app", environment: "Sandbox", rootCertsB64: [der("root")] });
   const tx = { bundleId: "kr.yoonsiljang.app", environment: "Sandbox", type: "Consumable", transactionId: "2000000123", originalTransactionId: "2000000123", productId: "kr.yoonsiljang.credits.mini", purchaseDate: Date.now() };
   const app = makeApp({ apple }), u = await D.newUser(), tok = await tokenFor(u);

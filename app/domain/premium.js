@@ -6,22 +6,38 @@
 //        brandName(b) }
 // window.Premium in the app (needs window.OfferParse, window.Match); require()d by tests and server/.
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./offerparse.js"), require("./match.js"));
-  else root.Premium = factory(root.OfferParse, root.Match);
-})(typeof self !== "undefined" ? self : this, function (OfferParse, Match) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./offerparse.js"), require("./match.js"), require("./stats.js"));
+  else root.Premium = factory(root.OfferParse, root.Match, root.Stats);
+})(typeof self !== "undefined" ? self : this, function (OfferParse, Match, Stats) {
   "use strict";
 
-  const HISTORY_MIN_POINTS = 4;          // weekly snapshots needed before a history report is sold (no extrapolation)
+  // history reports (round-2 R13): snapshots are not weeks. A report needs this many DISTINCT observed weeks over this
+  // span, no hole longer than MAX_GAP weeks, and every observed week priced at MIN_BRANCHES+ branches — and even then it
+  // is sold only when the operator turns it on (ctx.historySales), never automatically because time has passed.
+  const HISTORY = { MIN_WEEKS: 8, MIN_SPAN_DAYS: 49, MAX_GAP_WEEKS: 2, MIN_BRANCHES: 5 };
+  const HISTORY_MIN_POINTS = HISTORY.MIN_WEEKS;
   const REGION_MIN_BRANCHES = 3;
-  const median = (xs) => { const s = [...xs].sort((a, b) => a - b), n = s.length; return n ? (n % 2 ? s[n >> 1] : Math.round((s[n / 2 - 1] + s[n / 2]) / 2)) : null; };
+  const median = Stats.median;                                     // one median everywhere (round-2 R03)
+  function historyGate(key, ctx) {
+    const o = Stats.observations((ctx.trend || {}).dates, ((ctx.trend || {}).k || {})[key]);
+    const why = [];
+    if (o.weeks < HISTORY.MIN_WEEKS) why.push(`서로 다른 주 ${o.weeks}개(필요 ${HISTORY.MIN_WEEKS}개)`);
+    if (o.spanDays < HISTORY.MIN_SPAN_DAYS) why.push(`관측 기간 ${o.spanDays}일(필요 ${HISTORY.MIN_SPAN_DAYS}일)`);
+    if (o.n && o.maxGapWeeks > HISTORY.MAX_GAP_WEEKS) why.push(`관측 공백 ${o.maxGapWeeks}주`);
+    if (o.n && o.minBranches < HISTORY.MIN_BRANCHES) why.push(`지점이 ${o.minBranches}곳뿐인 관측이 있어요`);
+    return { ok: !why.length, obs: o, why };
+  }
 
   // can this report be made from the data we have? (checked before reserving credits — an empty report is never charged)
   function available(feature, input, ctx) {
     const no = (reason) => ({ ok: false, reason });
     if (feature === "PRICE_HISTORY_REPORT") {
-      const pts = ((ctx.trend.k || {})[input.key] || []).filter(Boolean).length;
-      if (pts < HISTORY_MIN_POINTS) return no(`이 시술의 가격 기록이 ${pts}주뿐이에요. ${HISTORY_MIN_POINTS}주 이상 모이면 보고서를 만들어요(그 전에는 무료 '가격 이력' 카드로 보세요).`);
+      const g = historyGate(input.key, ctx);
+      if (!g.ok) return no(`가격 기록이 아직 부족해요: ${Stats.obsLabel(g.obs)} — ${g.why.join(", ")}. 무료 '가격 변동' 화면으로 보세요(크레딧은 쓰지 않았어요).`);
+      if (!ctx.historySales) return no("가격 이력 보고서는 아직 판매하지 않아요(자료 품질 확인 뒤 운영자가 켜요).");
     }
+    if (feature === "MULTI_EVENT_COMPARE" && (input.texts || []).filter((t) => OfferParse.parse(t || "").offers.length).length < 2)
+      return no("가격이 적힌 이벤트 글이 2개 이상 있어야 비교할 수 있어요(크레딧은 쓰지 않았어요).");
     if (feature === "REGIONAL_PRICE_REPORT") {
       const by = groupRegions(ctx.prices(input.key, ""));
       if ([...by.values()].filter((v) => v.length >= REGION_MIN_BRANCHES).length < 2) return no(`지점이 ${REGION_MIN_BRANCHES}곳 이상인 지역이 둘 미만이라 지역을 비교할 수 없어요.`);
@@ -117,7 +133,8 @@
     const v = (ctx.trend.k || {})[input.key] || [], dates = ctx.trend.dates || [];
     const pts = dates.map((d, i) => v[i] && { date: d, median: v[i][0], min: v[i][1], n: v[i][2] }).filter(Boolean);
     const meds = pts.map((p) => p.median);
-    return { kind: "HISTORY", title: `${ctx.label(input.key)} 가격 이력 ${pts.length}주`, payload: { key: input.key, points: pts,
+    const obs = Stats.observations(dates, v);
+    return { kind: "HISTORY", title: `${ctx.label(input.key)} 가격 이력 · ${Stats.obsLabel(obs)}`, payload: { key: input.key, points: pts, obs,
       summary: { first: pts[0], last: pts[pts.length - 1], min_median: Math.min(...meds), max_median: Math.max(...meds) },
       note: "실제로 모은 주만 있어요. 계절성·앞으로의 가격은 추정하지 않아요.", data_updated: ctx.updated },
       share_summary: { kind: "HISTORY", label: ctx.label(input.key), points: pts.map((p) => [p.date, p.median]) } };
@@ -128,6 +145,7 @@
   function cartPlan(input, ctx) {
     const r = ctx.cart(input.items, input.region || "");
     const full = r.full || [], mix = r.mix || {}, pair = r.pair;
+    const unpriced = (r.partial || []).concat(full).some((x) => x.lines.some((l) => l && l.incomplete));
     const plans = [
       { id: "A", title: "한 곳에서 모두", visits: 1, total: full.length ? { min: full[0].total, max: full[full.length - 1].total } : null, clinics: full.length },
       { id: "B", title: "시술별로 나눠서", visits: mix.places || null, total: mix.missing ? null : mix.total },
@@ -135,7 +153,8 @@
     ];
     if (input.budget) for (const p of plans) p.within_budget = p.total == null ? null : (p.total.min ?? p.total) <= input.budget;
     return { kind: "CART_PLAN", title: `장바구니 계획 · 시술 ${input.items.length}개`, payload: { items: input.items, region: input.region || "전국", budget: input.budget || null, plans,
-      notes: ["가격이 없는 시술은 0원으로 넣지 않아요", "첫 방문가는 지점당 1개만 계산해요", "부가세: 병원 표시가 기준(별도 표기 지점은 결제 때 10% 더)"], data_updated: ctx.updated },
+      notes: ["가격이 없는 시술은 0원으로 넣지 않아요", "첫 방문가는 지점당 1개만 계산해요", "부가세: 병원 표시가 기준(별도 표기 지점은 결제 때 10% 더)",
+        "특가만 있는 시술의 2회차부터는 가격이 없어 합계에서 뺐어요(특가 반복 가능 여부는 병원 확인)"].slice(0, unpriced ? 4 : 3), data_updated: ctx.updated },
       share_summary: { kind: "CART_PLAN", n: input.items.length, plans: plans.map((p) => ({ id: p.id, visits: p.visits, total: p.total })) } };
   }
 
@@ -153,17 +172,32 @@
   const BUILD = { EVENT_URL_DECODER: eventDecode, EVENT_IMAGE_DECODER: eventDecode, QUOTATION_DECODER: quotation, MULTI_EVENT_COMPARE: multiCompare,
     PRODUCT_DEEP_COMPARE: productDeepCompare, REGIONAL_PRICE_REPORT: regional, PRICE_HISTORY_REPORT: history, ADVANCED_CART_PLANNER: cartPlan,
     CONSOLIDATED_REPORT: consolidated };
-  // a deliverable is usable when it has a title and at least one real item (a report of nothing is not charged)
+  // is the deliverable worth a credit? (round-2 R05: per kind, not 'has some field'). Unusable → the reservation is released,
+  // nothing is charged; the app shows what was read as a free preview (docs/PREMIUM_RESULT_POLICY.md).
+  //  EVENT / QUOTATION: at least one valid offer matched EXACTLY to a group with a market comparison (3+ branches)
+  //  MULTI_EVENT: at least one group priced in 2+ different events (the thing the user paid to compare)
+  //  CART_PLAN: at least one plan with a complete total · REGIONAL: 2+ regions with enough branches
+  //  HISTORY: passes the history gate · PRODUCT_COMPARE: both sides priced · CONSOLIDATED: every part usable
   function usable(rep) {
     if (!rep || !rep.title || !rep.payload) return false;
     const p = rep.payload;
-    if (p.items) return p.items.length > 0;
-    if (p.groups) return p.events.length > 0;
-    if (p.rows) return p.rows.length > 0;
-    if (p.points) return p.points.length >= HISTORY_MIN_POINTS;
-    if (p.plans) return p.plans.some((x) => x.total != null);
-    if (p.parts) return p.parts.length > 0;
-    return !!(p.a && p.b && p.a.all.n && p.b.all.n);
+    switch (rep.kind) {
+      case "EVENT": case "QUOTATION":
+        return (p.items || []).some((d) => !d.invalid && d.match && d.match.status === "EXACT_MATCH" && d.compare && d.compare.verdict !== "FEW");
+      case "MULTI_EVENT":
+        return (p.groups || []).some((g) => new Set(g.offers.map((o) => o.event)).size >= 2);
+      case "CART_PLAN":
+        return (p.plans || []).some((x) => x.total != null);
+      case "REGIONAL":
+        return (p.rows || []).filter((r) => r.enough).length >= 2;
+      case "HISTORY":
+        return !!p.obs && p.obs.weeks >= HISTORY.MIN_WEEKS && p.obs.spanDays >= HISTORY.MIN_SPAN_DAYS;
+      case "PRODUCT_COMPARE":
+        return !!(p.a && p.b && p.a.all.n && p.b.all.n);
+      case "CONSOLIDATED":
+        return (p.parts || []).length > 0 && p.parts.every(usable);
+      default: return false;
+    }
   }
   function build(feature, input, ctx) {
     const f = BUILD[feature];
@@ -171,5 +205,5 @@
     return f(input, ctx);
   }
 
-  return { available, build, usable, eventDecode, decodeOffer, HISTORY_MIN_POINTS, REGION_MIN_BRANCHES, median };
+  return { available, build, usable, historyGate, eventDecode, decodeOffer, HISTORY, HISTORY_MIN_POINTS, REGION_MIN_BRANCHES, median };
 });

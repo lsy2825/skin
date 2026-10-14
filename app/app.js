@@ -782,7 +782,7 @@
     }
     return out.sort((x, y) => x.p - y.p || verified(y.b).localeCompare(verified(x.b)));
   }
-  const median = (ps) => { const a = [...ps].sort((x, y) => x - y), n = a.length; return n ? (n % 2 ? a[n >> 1] : Math.round((a[n / 2 - 1] + a[n / 2]) / 2)) : null; };
+  const median = Stats.median;                                     // one median for screens, reports, Jomi and push (round-2 R03)
   // how a price sits among the same procedure's prices (each branch's lowest), for '중간보다 N%' texts
   function priceStats(i) {
     const r = ROWS[i], kid = (S[r[7]] || "").split(" ").map((x) => KI[x]).find((x) => x != null);
@@ -954,6 +954,9 @@
     return Pricing.lineCost(itemRows(it, b, sp).filter(keep).map(asC), itemRows(it, b, false).filter(keep).map(asC), it.q || 1, ov);
   }
   const branchOk = (b) => brandOn(b) && regionOk(b) && (!st.maxKm || !st.loc || (dist(b) != null && dist(b) <= st.maxKm));
+  // a line whose later sessions have no price (only a special exists, round-2 R14) is shown but never summed or compared
+  const okL = (l) => !!l && !l.incomplete;
+  const incTxt = (l) => `1회 ${won(l.total)}만 확인 · ${l.unpriced}회는 가격 없음(특가 반복 여부 미확인) — 합계에서 뺐어요`;
   // whole cart across branches (Pricing.compareClinics): full / partial / mix / pair / savings
   // first-visit prices: at most one per branch unless the user turns it off (st.noStack, Pricing.limitOnce)
   function cartPlan(items) {
@@ -1004,7 +1007,8 @@
     if (x.missing && x.missing.length) w.push(`이 지점에서 가격을 확인하지 못한 시술 ${x.missing.length}개 — 합계에 넣지 않았어요(0원 아님)`);
     if (fresh(x.b).stale) w.push(`가격 확인일 ${fresh(x.b).d} — 최신이 아닐 수 있어요`);
     // CART_INTELLIGENCE_REPORT.md: quantity limits, package conditions, combining promotions
-    if (ls.some((l) => !l.ov && l.units > 1 && l.rows.length === 1 && l.special)) w.push("체험가·한정가를 2회째에도 그대로 계산한 시술이 있어요(이 지점에 일반가가 없어서) — 2회째 가격을 병원에 확인하세요");
+    if (ls.some((l) => l.incomplete)) w.push("특가만 있는 시술은 2회째부터 가격이 없어 합계에서 뺐어요 — 반복 가격을 병원에 확인하세요");
+    if (ls.some((l) => l.laterRegular)) w.push("특가는 첫 1회만, 2회째부터는 이 지점 일반가로 계산했어요 — 특가 반복 여부는 병원마다 달라요");
     const pk = ls.filter((l) => sessOf(l.rows[0]) > 1 && sessOf(l.rows[0]) < 99).length;
     if (pk) w.push(`여러 회 묶음 가격 ${pk}개 — 한 번에 결제하는지, 사용 기간이 있는지 확인하세요`);
     if (sp >= 2) w.push(`할인 가격 ${sp}개를 한 번에 받는 계산이에요 — 같은 날 중복 할인이 되는지 병원에 확인하세요`);
@@ -1047,7 +1051,7 @@
   }
   function quoteText(x, items) {
     return [`[${bname(x.b)}] 예상 견적 (${D.meta.updated} 기준)`,
-      ...items.map((it, j) => { const l = x.lines[j]; return l ? `- ${itemLabel(it)} ×${it.q || 1}: ${won(l.total)} (${S[ROWS[l.rows[0]][2]]})` : `- ${itemLabel(it)}: 이 지점에 없음`; }),
+      ...items.map((it, j) => { const l = x.lines[j]; return l ? `- ${itemLabel(it)} ×${it.q || 1}: ${l.incomplete ? incTxt(l) : won(l.total)} (${S[ROWS[l.rows[0]][2]]})` : `- ${itemLabel(it)}: 이 지점에 없음`; }),
       `합계 ${won(x.total)} (${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가, 대부분 부가세 별도"}) · 가격 확인 ${fresh(x.b).d} · 방문 전 병원 확인`,
       ...quoteWarnings(x).map((s) => `※ ${s}`)].join("\n");
   }
@@ -3494,8 +3498,8 @@
     if (!its.length || bs.length < 1) return h("div", { class: "card sub" }, "장바구니에 시술을 담으면, 고른 지점마다 어떤 시술을 하는지 한 표로 보여줘요.");
     const lines = bs.map((b) => cartLinesAt(b, its));
     const cell = (j, n) => { const l = lines[n][j], b = bs[n];
-      return l ? h("td", { class: "num" }, won(l.total)) : fresh(b).stale ? h("td", { class: "cov-q" }, "확인 안 됨") : h("td", { class: "cov-x" }, "없음"); };
-    const tot = bs.map((b, n) => { const got = lines[n].filter(Boolean); return { b, sum: got.reduce((s, l) => s + l.total, 0), miss: its.length - got.length }; });
+      return l ? h("td", { class: "num", title: l.incomplete ? incTxt(l) : null }, l.incomplete ? `1회 ${won(l.total)}만` : won(l.total)) : fresh(b).stale ? h("td", { class: "cov-q" }, "확인 안 됨") : h("td", { class: "cov-x" }, "없음"); };
+    const tot = bs.map((b, n) => { const got = lines[n].filter(okL); return { b, sum: got.reduce((s, l) => s + l.total, 0), miss: its.length - got.length }; });
     return h("section", { class: "card flush", "aria-label": "지점별 제공 시술" },
       h("div", { style: "padding:14px 14px 6px" }, h("h3", {}, "지점별 제공 시술"), h("div", { class: "sub" }, `'${cur().name}'의 ${its.length}개 시술 · 장바구니와 같은 계산(수량·첫 방문가 1개)`)),
       h("div", { class: "covwrap", tabindex: "0", role: "region", "aria-label": "지점별 제공 시술 표(옆으로 넘겨 보기)" }, h("table", { class: "cov" },
@@ -3511,13 +3515,13 @@
     const at = new Date().toISOString(), its = cur().items;
     const head = [`[윤실장 비교 보고서] ${stamp(at)} 작성 · 가격 데이터 ${D.meta.updated} 수집 · ${st.vat === "incl" ? "부가세 포함 예상가" : "병원 표시가"}`];
     if (its.length) {
-      const lines = bs.map((b) => cartLinesAt(b, its)), full = bs.map((b, n) => lines[n].every(Boolean) ? lines[n].reduce((s, l) => s + l.total, 0) : null), baseT = full.find((x) => x != null);
+      const lines = bs.map((b) => cartLinesAt(b, its)), full = bs.map((b, n) => lines[n].every(okL) ? lines[n].reduce((s, l) => s + l.total, 0) : null), baseT = full.find((x) => x != null);
       const vsT = (t) => t === baseT ? " (기준)" : ` (기준보다 ${t > baseT ? "+" : "−"}${won(Math.abs(t - baseT))})`;
       head.push(`시술: ${its.map((it) => `${itemLabel(it)} ×${it.q || 1}`).join(", ")}`, "지점별 예상 총액(장바구니 계산과 같음):");
-      bs.forEach((b, n) => { const got = lines[n].filter(Boolean), miss = its.filter((_, j) => !lines[n][j]), sp = got.filter((l) => l.special).length;
+      bs.forEach((b, n) => { const got = lines[n].filter(okL), miss = its.filter((_, j) => !okL(lines[n][j])), sp = got.filter((l) => l.special).length;
         head.push(full[n] != null ? `- ${bname(b)}: ${won(full[n])}${full.filter((x) => x != null).length > 1 ? (n === full.findIndex((x) => x != null) ? " (기준)" : vsT(full[n]).replace(" (기준)", " (기준과 같음)")) : ""}${sp ? ` · 조건부 가격 ${sp}개 포함` : ""}`
           : `- ${bname(b)}: 일부만 가능 — 없음: ${miss.map(itemLabel).join(", ")} (있는 것만 ${won(got.reduce((s, l) => s + l.total, 0))}, 총액 비교에서 뺌)`); });
-      head.push(`가격 적용 조건: 특가(체험가·한정가)는 첫 1회만${st.noStack ? ", 첫 방문가는 지점마다 1개만" : ""}. 없는 시술은 0원으로 치지 않았어요.`);
+      head.push(`가격 적용 조건: 특가(체험가·한정가)는 첫 1회만(일반가가 없으면 2회째부터 가격 없음으로 빼요)${st.noStack ? ", 첫 방문가는 지점마다 1개만" : ""}. 없는 시술은 0원으로 치지 않았어요.`);
     } else {
       const rows = bs.map((b) => ({ b, i: bestAt(k, b) })), ok = rows.filter((x) => x.i >= 0), bp = ok.length ? ROWS[ok[0].i][3] : 0;
       head.push(`시술: ${KEYS[k].label} ×1 (같은 사양끼리)`);
@@ -3891,7 +3895,7 @@
   // the cheapest price of one cart line anywhere (branches in view), for the line's own price
   function itemBest(it) {
     let best = null, hi = 0, n = 0;
-    for (const x of BR) { if (!branchOk(x.i)) continue; const l = lineAt(it, x.i); if (!l) continue; n++; hi = Math.max(hi, l.total); if (!best || l.total < best.total) best = { total: l.total, b: x.i }; }
+    for (const x of BR) { if (!branchOk(x.i)) continue; const l = lineAt(it, x.i); if (!okL(l)) continue; n++; hi = Math.max(hi, l.total); if (!best || l.total < best.total) best = { total: l.total, b: x.i }; }
     return best && Object.assign(best, { hi, n });
   }
   // 방문 계획 A~D (docs/CART_ENGINE_QA.md): the same cart four ways, each with how many clinics you visit and the total from
@@ -4078,9 +4082,10 @@
       const r = ROWS[l.rows[0]], ss = sessOf(l.rows[0]);
       const pct = r[4] ? Math.round((r[4] - r[3]) / r[4] * 100) : 0;
       const detail = l.ov ? (ss >= 99 ? "이용권 1개" : ss > 1 ? `${ss}회 묶음 × ${l.units}` : `× ${l.units}`)
+        : l.incomplete ? incTxt(l)
         : l.rows.length > 1 ? `첫 회 ${won(r[3])} + ${(it.q || 1) - 1}회 × ${won(ROWS[l.rows[1]][3])}` : (it.q || 1) > 1 ? `${won(r[3])} × ${it.q}` : "";
       body.append(h("div", { class: "qline" },
-        h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, won(l.total))),
+        h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, l.incomplete ? `${won(l.total)}~?` : won(l.total))),
         h("div", { class: "m" }, h("span", {}, S[r[2]]), listS(r), pct > 0 && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
           l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, l.restacked ? h("span", { class: "k kx" }, "첫 방문가 중복 안 함") : null, l.stackWarn ? h("span", { class: "k kx" }, "첫 방문가 중복 확인") : null,
           detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0])),
@@ -4413,7 +4418,7 @@
   }
   // a cart quote → records for every line at that branch (today)
   function recordQuote(x, items) {
-    const add = items.map((it, j) => x.lines[j] ? { id: uid(), date: today(), n: `${itemLabel(it)}${(it.q || 1) > 1 ? ` ×${it.q}` : ""}`, br: bkey(x.b), p: x.lines[j].total, memo: S[ROWS[x.lines[j].rows[0]][2]], at: Date.now() } : null).filter(Boolean);
+    const add = items.map((it, j) => okL(x.lines[j]) ? { id: uid(), date: today(), n: `${itemLabel(it)}${(it.q || 1) > 1 ? ` ×${it.q}` : ""}`, br: bkey(x.b), p: x.lines[j].total, memo: S[ROWS[x.lines[j].rows[0]][2]], at: Date.now() } : null).filter(Boolean);
     st.recs.push(...add); saveRecs(add);
     toast(`받은 시술 ${add.length}개를 내정보에 기록했어요`);
   }

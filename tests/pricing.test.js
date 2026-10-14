@@ -48,8 +48,15 @@ test("line: cheapest, tie prefers regular price, special only for the first sess
   assert.equal(l.total, 500 + 900 * 2);
   assert.deepEqual(l.rows, [1, 2]);
   assert.equal(l.special, true);
-  // only special prices exist: all sessions at that price
-  assert.equal(P.lineCost([row(1, 500, true)], [], 2, null).total, 1000);
+  // only a special price exists: whether it repeats is unknown → later sessions stay unpriced, never special × q
+  // (round-2 R14); the line is incomplete and is not counted as a cart total
+  const once = P.lineCost([row(1, 500, true)], [], 2, null);
+  assert.equal(once.total, 500); assert.equal(once.unpriced, 1); assert.equal(once.incomplete, true);
+  assert.equal(P.lineCost([row(1, 100, true)], [], 3, null).total !== 300, true);
+  const cmp = P.compareClinics([{ b: 0, lines: [once] }]);
+  assert.equal(cmp.full.length, 0, "an incomplete line is not a full total");
+  // a regular (non-special) price alone repeats as before
+  assert.equal(P.lineCost([row(1, 500)], [row(1, 500)], 2, null).total, 1000);
 });
 
 test("line: user-chosen package covers sessions in bundles", () => {

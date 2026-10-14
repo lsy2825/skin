@@ -3,6 +3,7 @@
 // one push per user per run (a digest), nothing during the user's quiet hours (left for the next run), and the push itself
 // carries no content: the service worker shows a generic line and the app reads the notices after sign-in.
 import { HttpError, fetchT } from "./http.mjs";
+import Stats from "../../app/domain/stats.js";
 
 // push services a subscription may point at (the endpoint is user-supplied: anything else would be a request forgery target)
 const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9.-]+\.notify\.windows\.com|web\.push\.apple\.com)$/;
@@ -39,7 +40,7 @@ export function evaluate(rule, ctx) {
   const reg = rule.region && rule.region !== "전국" ? rule.region : "";
   const ps = ctx.prices(rule.key_id, reg).map((x) => x.p);
   if (!ps.length) return null;
-  const min = Math.min(...ps), n = ps.length, med = ps.sort((a, b) => a - b)[ps.length >> 1];
+  const min = Math.min(...ps), n = ps.length, med = Stats.median(ps);          // the same median as every screen (round-2 R03)
   const base = rule.baseline || {}, now = { min, median: med, n, updated: ctx.updated };
   const label = ctx.label(rule.key_id), at = `${ctx.updated} 수집 기준`;
   let msg = null;

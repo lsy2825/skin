@@ -3,11 +3,11 @@
 // Raw data.json row (build2/appdata.py ROW_FIELDS): 0 branch · 2 name · 3 listed price · 5 kind (1/2 special) · 6 conditions ·
 // 7 key ids (space separated) · 8 sessions · 10 until · 12 VAT (1 included, 2 별도) · 13 jump waiting for review.
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./pricing.js"), require("./match.js"));
-  else root.PriceCtx = factory(root.Pricing, root.Match);
-})(typeof self !== "undefined" ? self : this, function (Pricing, Match) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./pricing.js"), require("./match.js"), require("./stats.js"));
+  else root.PriceCtx = factory(root.Pricing, root.Match, root.Stats);
+})(typeof self !== "undefined" ? self : this, function (Pricing, Match, Stats) {
   "use strict";
-  const median = (xs) => { const s = [...xs].sort((a, b) => a - b), n = s.length; return n ? (n % 2 ? s[n >> 1] : Math.round((s[n / 2 - 1] + s[n / 2]) / 2)) : null; };
+  const median = Stats.median;                                 // one median for every screen (round-2 R03)
 
   // data.json columns → rows (same as app.js rowsOf, without touching the input)
   function rowsOf(d) {
@@ -39,8 +39,8 @@
       if (!m) return out;
       for (const [b, ids] of m) {
         if (reg && region(b) !== reg) continue;
-        let best = null;
-        for (const i of ids) if (!best || price(o.rows[i]) < price(o.rows[best])) best = i;
+        let best = null;                                       // a row index: 0 is a real row, so test for null (round-2 R04)
+        for (const i of ids) if (best === null || price(o.rows[i]) < price(o.rows[best])) best = i;
         out.push({ b, p: price(o.rows[best]), region: region(b), vat: o.rows[best][12], row: best });
       }
       return out;

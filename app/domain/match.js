@@ -4,9 +4,9 @@
 // quantities are never called the same. Pure functions, no DOM.
 // window.Match in the app (needs window.Search, window.Classify); require()d by tests and server/.
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./search.js"), require("./classify.js"));
-  else root.Match = factory(root.Search, root.Classify);
-})(typeof self !== "undefined" ? self : this, function (Search, Classify) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./search.js"), require("./classify.js"), require("./stats.js"));
+  else root.Match = factory(root.Search, root.Classify, root.Stats);
+})(typeof self !== "undefined" ? self : this, function (Search, Classify, Stats) {
   "use strict";
 
   const AMT = /\d+(?:\.\d+)?\s*(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)|\d+\s*회/gi;
@@ -110,7 +110,7 @@
   function compare(price, prices) {
     const ps = prices.filter((p) => p > 0).sort((a, b) => a - b);
     if (ps.length < 3) return { verdict: "FEW", n: ps.length, note: "비교할 지점이 3곳 미만이에요" };
-    const med = ps.length % 2 ? ps[ps.length >> 1] : Math.round((ps[ps.length / 2 - 1] + ps[ps.length / 2]) / 2);
+    const med = Stats.median(ps);
     const r = price / med, below = ps.filter((p) => p < price).length;
     return { verdict: r < 0.9 ? "LOWER" : r > 1.1 ? "HIGHER" : "SIMILAR", n: ps.length, median: med, min: ps[0], max: ps[ps.length - 1],
       ratio: +r.toFixed(3), cheaper_branches: below };

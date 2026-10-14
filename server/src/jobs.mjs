@@ -151,14 +151,27 @@ export function jobRunner({ rpc, ctx, vision, ai, aiLimits = {}, fetchText = fet
       const out = await rpc("commerce_update_report", { report_id: reportId, user_id: user.id, payload, share_summary });
       return { report_id: out.id, items };
     },
-    // the next question of a Jomi session: the turn slot is taken atomically before any model call (5.1 audit)
-    async ask(user, reportId, question) {
-      const q = str(question, 500), s = Jomi.screen(q);
-      const slot = await rpc("commerce_jomi_turn", { action: "take", report_id: reportId, user_id: user.id }).catch((e) => { throw fromDb(e); });
-      const useAi = !s.blocked && ai && ai.apiKey && ai.model ? await aiAllowed(user, ai.model).catch(() => false) : false;
-      const a = s.blocked ? { kind: "SCREENED", code: s.code, answer: s.answer } : await Jomi.answer(q, ctx, { ai: useAi ? ai : null, rpc, jobId: slot.job_id, userId: user.id });
-      const turn = { q, ...a, at: now().toISOString() };
-      await rpc("commerce_jomi_turn", { action: "append", report_id: reportId, user_id: user.id, turn });
+    // the next question of a Jomi session (round-2 R15). Free answers — empty question, safety notice, no treatment named,
+    // no group of the asked spec — are decided BEFORE a slot is taken and cost nothing. A paid turn takes one slot per
+    // turn_key (a retry after a lost response returns the stored answer), and a failure gives the slot back.
+    async ask(user, reportId, question, turnKey) {
+      const q = str(question, 500), s = Jomi.screen(q), at = now().toISOString();
+      if (s.blocked) return { turn: { q, kind: "SCREENED", code: s.code, answer: s.answer, at }, free: true };
+      const f = Jomi.facts(q, ctx);
+      if (!f.groups.length) return { turn: { q, kind: f.noSpecMatch ? "NO_SPEC_MATCH" : "NOT_FOUND", answer: Jomi.deterministicAnswer(f), at }, free: true };
+      const key = KEY.test(turnKey || "") ? turnKey : null;
+      const slot = await rpc("commerce_jomi_turn", { action: "take", report_id: reportId, user_id: user.id, turn_key: key }).catch((e) => { throw fromDb(e); });
+      if (slot.repeat) return { turn: slot.turn, left: slot.max_turns - slot.turns_used, repeat: true };
+      let turn;
+      try {
+        const useAi = ai && ai.apiKey && ai.model ? await aiAllowed(user, ai.model).catch(() => false) : false;
+        const a = await Jomi.answer(q, ctx, { ai: useAi ? ai : null, rpc, jobId: slot.job_id, userId: user.id });
+        turn = { q, ...a, at };
+        await rpc("commerce_jomi_turn", { action: "append", report_id: reportId, user_id: user.id, turn_key: key, turn });
+      } catch (e) {
+        await rpc("commerce_jomi_turn", { action: "release", report_id: reportId, user_id: user.id, turn_key: key }).catch(() => {});
+        throw e instanceof HttpError ? e : new HttpError(502, "JOB_FAILED", "답을 만들지 못했어요. 질문 횟수는 돌려드렸어요");
+      }
       return { turn, left: slot.max_turns - slot.turns_used };
     },
   };

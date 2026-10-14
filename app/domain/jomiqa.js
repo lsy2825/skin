@@ -4,9 +4,9 @@
 //  check():  답 속 금액은 모두 facts의 숫자여야 하고, 용량 권장·진단·효과 보장 표현은 안 돼요.
 // window.JomiQA in the app (needs window.Search); require()d by tests and server/.
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory(require("./search.js"));
-  else root.JomiQA = factory(root.Search);
-})(typeof self !== "undefined" ? self : this, function (Search) {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./search.js"), require("./stats.js"));
+  else root.JomiQA = factory(root.Search, root.Stats);
+})(typeof self !== "undefined" ? self : this, function (Search, Stats) {
   "use strict";
   const RULES = [
     { code: "URGENT", rx: /숨\s*이?\s*(차|막|쉬기\s*힘)|호흡.?곤란|의식|실신|심하게\s*(붓|부어)|고열|피가\s*안\s*멈|시야|실명|괴사|아나필락시스/, msg: "지금 증상이 심하면 바로 시술한 병원이나 가까운 응급실(119)에 연락하세요. 죠미는 증상을 판단할 수 없어요." },
@@ -22,29 +22,64 @@
     return { blocked: false };
   }
 
-  // the comparison groups a question is about (label words that appear in the question), at most 3
+  // what the question pins down (round-2 R02): amount + unit (2cc · 100U · 300샷), sessions (3회), sex, number of areas.
+  // A group whose spec differs is never used as the answer — '2cc' is not answered with 4cc, '1회' not with a 5회 package.
+  const SESS = /(\d+)\s*회(?!\s*(?:차|이상|이내|당|째|분))/;
+  const FEMALE = /여성|여자|\(여\)/, MALE = /남성|남자|\(남\)/;
+  function spec(q) {
+    const t = String(q || ""), u = Search.unitOf(t), s = SESS.exec(t), a = /(\d+)\s*부위/.exec(t);
+    return { unit: u ? u.unit : null, qty: u ? u.qty : null, sess: s ? +s[1] : null, sex: FEMALE.test(t) ? "F" : MALE.test(t) ? "M" : null, areas: a ? +a[1] : null };
+  }
+  const specText = (sp) => [sp.qty != null ? `${sp.qty}${sp.unit}` : "", sp.sess ? `${sp.sess}회` : "", sp.sex === "F" ? "여성" : sp.sex === "M" ? "남성" : "", sp.areas ? `${sp.areas}부위` : ""].filter(Boolean).join(" ");
+  function fits(k, sp) {
+    if (sp.qty != null && !(k.unit === sp.unit && k.qty === sp.qty)) return false;
+    if (sp.sess != null && (k.sess || 1) !== sp.sess) return false;
+    if (sp.sex === "F" && MALE.test(k.label)) return false;
+    if (sp.sex === "M" && FEMALE.test(k.label)) return false;
+    if (sp.areas != null) { const m = /(\d+)\s*부위/.exec(k.label); if (!m || +m[1] !== sp.areas) return false; }
+    return true;
+  }
+
+  // the comparison groups a question is about (label words that appear in the question), at most 3, spec-checked.
+  // → { updated, spec, groups: [{id, label, n, min, median, max, sessions, bundle, obs}], excluded, noSpecMatch }
   function facts(q, ctx) {
-    const nq = Search.norm(q);
+    const nq = Search.norm(q), sp = spec(q);
     const scored = [];
     for (const k of ctx.keys) {
       const hit = k.words.filter((w) => w.length >= 2 && nq.includes(w)).length;
-      if (hit) scored.push({ k, s: hit / k.words.length + hit * 0.1 });
+      if (hit) scored.push({ k, s: hit / k.words.length + hit * 0.1, full: hit === k.words.filter((w) => w.length >= 2).length });
     }
     scored.sort((a, b) => b.s - a.s);
+    // groups whose every name word is in the question come first; a group that adds a product the question never named
+    // ('아이 리쥬란', '+ 물광주사') is used only when nothing matches fully
+    const full = scored.filter((x) => x.full);
+    const named = full.length ? full : scored.length ? scored.filter((x) => x.s >= scored[0].s * 0.5) : [];
+    const ok = named.filter((x) => fits(x.k, sp)), excluded = named.length - ok.length;
+    // sessions not asked: single-session groups first; packages are shown only as clearly labelled packages
+    const nOf = new Map(ok.map((x) => [x.k.id, ctx.prices(x.k.id, "").length]));
+    ok.sort((a, b) => (sp.sess == null ? ((a.k.sess || 1) > 1) - ((b.k.sess || 1) > 1) : 0) || b.s - a.s || nOf.get(b.k.id) - nOf.get(a.k.id));
+    if (full.length) ok.sort((a, b) => (sp.sess == null ? ((a.k.sess || 1) > 1) - ((b.k.sess || 1) > 1) : 0) || nOf.get(b.k.id) - nOf.get(a.k.id));
     const out = [];
-    for (const { k } of scored.slice(0, 3)) {
-      const ps = ctx.prices(k.id, "").map((x) => x.p).sort((a, b) => a - b);
+    for (const { k } of ok) {
+      if (out.length === 3) break;
+      const ps = ctx.prices(k.id, "").map((x) => x.p);
       if (!ps.length) continue;
-      const weeks = ((ctx.trend.k || {})[k.id] || []).filter(Boolean).length;
-      out.push({ id: k.id, label: k.label, n: ps.length, min: ps[0], median: ps[ps.length >> 1], max: ps[ps.length - 1], weeks });
+      const sorted = [...ps].sort((a, b) => a - b), sess = k.sess || 1;
+      const obs = Stats.observations((ctx.trend || {}).dates, ((ctx.trend || {}).k || {})[k.id]);
+      out.push({ id: k.id, label: k.label, n: ps.length, min: sorted[0], median: Stats.median(ps), max: sorted[sorted.length - 1], sessions: sess, bundle: sess > 1 && sp.sess == null, obs });
     }
-    return { updated: ctx.updated, groups: out };
+    const qtyMixed = sp.qty == null && new Set(out.map((g) => { const k = ctx.keys.find((x) => x.id === g.id); return k && k.qty; })).size > 1;
+    return { updated: ctx.updated, spec: specText(sp), groups: out, excluded, qtyMixed, noSpecMatch: !out.length && excluded > 0 && !!specText(sp) };
   }
   const won = (n) => `${Number(n).toLocaleString("ko-KR")}원`;
   function deterministicAnswer(f) {
+    if (f.noSpecMatch) return `모은 가격에서 '${f.spec}' 규격의 묶음을 찾지 못했어요. 다른 용량·횟수의 가격으로 대신 답하지 않아요. 비교 화면에서 규격을 골라 확인해 주세요.`;
     if (!f.groups.length) return "질문에 나온 시술 이름으로 모은 가격 묶음을 찾지 못했어요. 시술 이름(예: 리쥬란힐러 2cc)을 넣어 다시 물어봐 주세요.";
-    return f.groups.map((g) => `${g.label}: 지점 ${g.n}곳, 가장 낮은 ${won(g.min)} · 중간값 ${won(g.median)} · 가장 높은 ${won(g.max)}` +
-      (g.weeks >= 2 ? ` (가격 기록 ${g.weeks}주)` : "")).join("\n") + `\n(${f.updated} 기준 병원 표시가. 조건·부가세는 병원마다 달라요.)`;
+    const head = (f.groups.every((g) => g.bundle) ? "1회 가격 묶음은 모은 자료에 없어요. 아래는 여러 회를 묶은 가격이에요(1회 가격이 아니에요).\n" : "") +
+      (f.qtyMixed ? "용량을 정하지 않아 용량별로 나눠 보여줘요(서로 다른 용량끼리는 비교하지 마세요).\n" : "");
+    return head + f.groups.map((g) => `${g.label}${g.bundle ? ` (${g.sessions}회 묶음 가격)` : ""}: 지점 ${g.n}곳, 가장 낮은 ${won(g.min)} · 중간값 ${won(g.median)} · 가장 높은 ${won(g.max)}` +
+      (g.obs && g.obs.n >= 2 ? ` (${Stats.obsLabel(g.obs)})` : "")).join("\n") +
+      (f.excluded ? `\n(질문한 규격과 다른 묶음 ${f.excluded}개는 뺐어요.)` : "") + `\n(${f.updated} 기준 병원 표시가. 조건·부가세는 병원마다 달라요.)`;
   }
   // every won amount, also '12만 9천원', '9만원', '9천원', '12만 9,000원' (5.1 audit: compound amounts slipped past the check)
   const NUMS = (t) => [...String(t).matchAll(/(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(만)?\s*(?:(\d{1,3}(?:,\d{3})*|\d+)\s*(천)?)?\s*(천)?\s*원/g)].map((m) => {
@@ -54,14 +89,23 @@
     return Math.round(a);
   });
   const BANNED = /(진단|처방)(해|합니다|드려)|(\d+\s*(U|유닛|cc|샷)\s*(을|를)?\s*(맞|권장|추천|넣))|효과(가)?\s*(보장|확실)|부작용(이)?\s*(없|전혀)/i;
+  // amounts must be facts' numbers AND sit next to the right word: '최저/가장 낮은' → a group's min, '최고/가장 높은' → max,
+  // '중간' → median (round-2 review: a max written as the lowest price passed the old set-membership check)
+  const ROLE = [["min", /최저|가장\s*(낮|싼|저렴)|제일\s*(낮|싼|저렴)/], ["max", /최고|가장\s*(높|비싼)|제일\s*(높|비싼)/], ["median", /중간|중앙|가운데/]];
   function check(answer, f) {
     const allowed = new Set(f.groups.flatMap((g) => [g.min, g.median, g.max]));
     const bad = NUMS(answer).filter((n) => !allowed.has(n));
     if (bad.length) return { ok: false, reason: `근거에 없는 금액 ${bad.slice(0, 3).join(", ")}` };
+    for (const clause of String(answer).split(/[\n.。!?·,;]|(?<=원)\s/)) {
+      const ns = NUMS(clause);
+      if (!ns.length) continue;
+      for (const [role, rx] of ROLE) if (rx.test(clause) && !ns.some((n) => f.groups.some((g) => g[role] === n)))
+        return { ok: false, reason: `금액과 설명(${role})이 맞지 않아요` };
+    }
     if (BANNED.test(answer)) return { ok: false, reason: "의료 판단·용량·효과 보장 표현" };
     if (String(answer).length > 1200) return { ok: false, reason: "너무 긴 답" };
     return { ok: true };
   }
 
-  return { screen, facts, deterministicAnswer, check };
+  return { screen, facts, spec, deterministicAnswer, check, amounts: NUMS };
 });
