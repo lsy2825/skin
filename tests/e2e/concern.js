@@ -20,7 +20,7 @@ const CLINIC = /블리비|쁨 |톡스앤필|리엔장|\d{1,3}(,\d{3})+원/;
   const ask = async (p, text) => { await p.fill('textarea[aria-label="피부 고민 적기"]', text); await p.click('#main .btn:has-text("찾기")'); await p.waitForTimeout(300); };
 
   { const { ctx, p } = await page();
-    await p.locator('#main .entry', { hasText: '피부 고민으로 찾아보기' }).click(); await p.waitForTimeout(300);
+    await p.locator('#main .entry.e-concern').first().click();   // round 2 UX01: the home entry reads '시술 이름을 모르면' await p.waitForTimeout(300);
     ok('홈에서 들어가기', /#concern$/.test(p.url()), p.url().split('#')[1]);
     const SECRET = '이마랑 미간 주름이 신경 쓰여요 특이문구7429';
     const before = await p.evaluate(() => JSON.stringify(localStorage));

@@ -71,7 +71,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('되돌리기 → 장바구니에서 빠짐', await p.locator('#cart-n').isHidden() && (await p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts'))[0].items.length)) === 0);
     ok('토스트는 하나만(겹치지 않음)', await p.locator('#toast').count() === 1);
     await p.click('.keyhead .favbtn'); await p.waitForTimeout(250);
-    ok('관심 저장 → 하트 채움 + "저장했어" 토스트', (await p.locator('.keyhead .favbtn').getAttribute('aria-pressed')) === 'true' && /저장했어/.test(await p.locator('#toast').textContent()) && /관심 보기/.test(await p.locator('#toast').textContent()));
+    ok('관심 저장 → 하트 채움 + "저장했어" 토스트', (await p.locator('.keyhead .favbtn').getAttribute('aria-pressed')) === 'true' && await said(p, 'saved', await p.locator('#toast').textContent()) && /관심 보기/.test(await p.locator('#toast').textContent()));
     const before = await p.locator('#toast').textContent();
     await p.locator('.actions .btn', { hasText: '알림' }).click(); await p.waitForTimeout(250);
     ok('알림을 만들기 전에는 윙크 토스트 없음', !/알려줄게/.test(await p.locator('#toast.on').textContent().catch(() => '')) || before === await p.locator('#toast').textContent());
@@ -102,9 +102,9 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); });
     await p.waitForSelector('#main [role=alert]', { timeout: 15000 }).catch(() => {});   // the app tries 3 times (1 s, 3 s apart) before the error screen
     const txt = await p.locator('#main').innerText();
-    ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && /다시 시도해 볼까/.test(txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
+    ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && await said(p, 'error', txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
     fail = false; await p.locator('#main .btn', { hasText: '다시 시도' }).click(); await p.waitForTimeout(200);
-    ok('다시 시도 중: 졸린 죠미 + 로딩 안내(스크린리더용 status)', /오늘의 가격을 살펴보는 중/.test(await p.locator('#main [role=status]').innerText()) && /expr-sleeping-96/.test(await p.locator('#main [role=status] img').getAttribute('src')));
+    ok('다시 시도 중: 졸린 죠미 + 로딩 안내(스크린리더용 status)', await said(p, 'loading', await p.locator('#main [role=status]').innerText()) && /expr-sleeping-96/.test(await p.locator('#main [role=status] img').getAttribute('src')));
     await p.waitForSelector('.pc', { timeout: 15000 }).catch(() => {});
     ok('다시 시도 → 정상 화면', await p.locator('.pc').count() > 0 && (await p.locator('#main').getAttribute('aria-busy')) === null);
     await ctx.close(); }

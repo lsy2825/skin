@@ -75,58 +75,30 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
   ok('C15 가격 없는 글은 차감 없이 안내', /가격\(원\)이 적힌 줄을 찾지 못했어요/.test(await p.locator('.sheet .ferr').innerText()) && await avail() === 16);
   await p.keyboard.press('Escape');
-  await p.click('[data-testid=tool-PRICE_HISTORY_REPORT]'); await p.waitForTimeout(200);
-  await p.fill('.sheet input[type=search]', '리쥬란힐러 2cc'); await p.waitForTimeout(200);
-  await p.locator('.sheet .chip').first().click();
-  await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
-  ok('C16 기록이 4주 미만이면 이력 보고서를 팔지 않음', /4주 이상 모이면/.test(await p.locator('.sheet .ferr').innerText()) && await avail() === 16);
-  await p.keyboard.press('Escape');
+  // round 2 BIZ01: tools that are not sold have no button (cannot be reserved) and say where they went
+  const restT = await p.locator('details.fold').filter({ hasText: '팔지 않는 도구' }).textContent();
+  ok('C16 가격 이력·죠미 질문·고급 계획·사진 읽기는 팔지 않음(버튼 없음, 옮긴 곳 안내)',
+    await p.locator('[data-testid=tool-PRICE_HISTORY_REPORT], [data-testid=tool-JOMI_QA_SESSION], [data-testid=tool-ADVANCED_CART_PLANNER], [data-testid=tool-EVENT_IMAGE_DECODER]').count() === 0 &&
+    /자료가 쌓이면/.test(restT) && /판매 보류/.test(restT) && /무료로 옮김/.test(restT) && /AI 연결 전/.test(restT), restT.slice(0, 160));
+  ok('C17 팔지 않는 기능은 시연 지갑도 예약을 거절', await p.evaluate(() => { const W = window.DemoWallet; if (!W) return false; const s = JSON.parse(localStorage.getItem('pc:demoWallet')); try { W.reserve(s, 'PRICE_HISTORY_REPORT', 'e2e-unsold', 'x', Date.now()); return false; } catch (e) { return true; } }) && await avail() === 16);
+  await p.locator('details.fold summary').filter({ hasText: '팔지 않는 도구' }).click();
+  await p.locator('details.fold li').filter({ hasText: '장바구니' }).locator('button', { hasText: '무료 화면 열기' }).first().click(); await p.waitForTimeout(400);
+  ok('C18 고급 계획 → 무료 장바구니로 안내', /#cart/.test(p.url()));
+  await go('premium');
 
-  // 4) Jomi: diagnosis question free; price question 1C
-  await p.click('[data-testid=tool-JOMI_QA_SESSION]'); await p.waitForTimeout(200);
-  await p.fill('.sheet input[aria-label="질문"]', '보톡스 몇 유닛 맞아야 해요?');
-  await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
-  ok('C17 용량 질문은 무료로 의료진 상담 안내', /의료진/.test(await p.locator('.sheet').innerText()) && await avail() === 16);
-  await p.keyboard.press('Escape'); await p.waitForTimeout(200);
-  await p.click('[data-testid=tool-JOMI_QA_SESSION]'); await p.waitForTimeout(200);
-  await p.fill('.sheet input[aria-label="질문"]', '리쥬란힐러 2cc 가격대가 어때요?');
-  await p.click('[data-testid=run-tool]'); await p.waitForTimeout(500);
-  const jt = await p.locator('[data-testid=report]').innerText();
-  ok('C18 죠미 답은 모은 가격 숫자만(규칙 기반 표시)', /중간값/.test(jt) && /규칙 기반/.test(jt) && await avail() === 15);
-
-  // 5) planner: same cart within 30 days is free; empty cart refused
-  await p.evaluate(() => { const c = JSON.parse(localStorage.getItem('pc:carts') || '[]'); });
-  await go('premium');
-  await p.click('[data-testid=tool-ADVANCED_CART_PLANNER]'); await p.waitForTimeout(200);
-  await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
-  ok('C19 빈 장바구니는 차감 없이 안내', /장바구니가 비어 있어요/.test(await p.locator('.sheet').innerText()) && await avail() === 15);
-  await p.keyboard.press('Escape');
-  await p.evaluate(() => { localStorage.setItem('pc:carts', JSON.stringify([{ id: 'c1', name: '장바구니', items: [{ t: 'k', k: 'X01', q: 1 }, { t: 'k', k: 'X24', q: 2 }] }])); localStorage.setItem('pc:ci', '0'); });
-  await p.reload(); await p.waitForFunction(() => !document.querySelector('#main').hasAttribute('aria-busy'), null, { timeout: 30000 });
-  await go('premium');
-  await p.click('[data-testid=tool-ADVANCED_CART_PLANNER]'); await p.waitForTimeout(200); await p.click('[data-testid=run-tool]'); await p.waitForTimeout(500);
-  const a1 = await avail();
-  await go('premium');
-  await p.click('[data-testid=tool-ADVANCED_CART_PLANNER]'); await p.waitForTimeout(200); await p.click('[data-testid=run-tool]'); await p.waitForTimeout(500);
-  ok('C20 고급 계획 2크레딧, 같은 장바구니 다시 계산은 무료', a1 === 13 && await avail() === 13 && /계획/.test(await p.locator('[data-testid=report]').innerText()), `${a1} ${await avail()}`);
-
-  // 6) insufficient credits → refused with a link to the store, nothing reserved
-  await p.evaluate(() => { const w = JSON.parse(localStorage.getItem('pc:demoWallet')); });
-  await go('premium');
-  for (let i = 0; i < 6; i++) { await p.click('[data-testid=tool-MULTI_EVENT_COMPARE]'); await p.waitForTimeout(150);
+  // 6) insufficient credits → refused with a link to the store, nothing reserved (each comparison of 2 events costs 2C)
+  for (let i = 0; i < 8; i++) { await p.click('[data-testid=tool-MULTI_EVENT_COMPARE]'); await p.waitForTimeout(150);
     await p.locator('.sheet textarea').nth(0).fill('국산 사각턱 보톡스 50U 19,000원'); await p.locator('.sheet textarea').nth(1).fill('국산 사각턱 보톡스 50U 25,000원');
     await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300); await go('premium', 300); }
+  ok('C19 여러 이벤트 비교: 공통 묶음이 있으면 2크레딧씩 차감', await avail() === 0, await avail());
   await p.click('[data-testid=tool-MULTI_EVENT_COMPARE]'); await p.waitForTimeout(150);
-  await p.locator('.sheet textarea').nth(0).fill('국산 사각턱 보톡스 50U 19,000원'); await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
+  // two events, so the free input check passes and the credit check is what refuses
+  await p.locator('.sheet textarea').nth(0).fill('국산 사각턱 보톡스 50U 19,000원'); await p.locator('.sheet textarea').nth(1).fill('국산 사각턱 보톡스 50U 25,000원');
+  await p.click('[data-testid=run-tool]'); await p.waitForTimeout(300);
   const ins = await p.locator('.sheet .ferr').innerText();
-  ok('C21 크레딧 부족: 차감·예약 없이 충전 안내', /크레딧이 부족해요/.test(ins) && await p.locator('.sheet .ferr button', { hasText: '충전하기' }).count() === 1 && await avail() === 1, `${ins} ${await avail()}`);
+  ok('C21 크레딧 부족: 차감·예약 없이 충전 안내', /크레딧이 부족해요/.test(ins) && await p.locator('.sheet .ferr button', { hasText: '충전하기' }).count() === 1 && await avail() === 0, `${ins} ${await avail()}`);
   const w3 = await wallet();
-  ok('C22 원장 일관성: 예약 중 0, 차감=사용 기록', Object.values(w3.jobs).every((j) => j.status !== 'RESERVED') && w3.tx.filter((x) => x.type === 'CREDIT_CAPTURED').length >= 7);
-  await p.keyboard.press('Escape');
-
-  // 7) image decoder closed in DEMO (no fake result)
-  await p.click('[data-testid=tool-EVENT_IMAGE_DECODER]'); await p.waitForTimeout(200);
-  ok('C23 사진 읽기: 시연에서는 가짜 결과 없이 닫힘', /가짜 결과를 보여주지 않아요/.test(await p.locator('.sheet').innerText()) && await p.locator('.sheet [data-testid=run-tool]').count() === 0);
+  ok('C22 원장 일관성: 예약 중 0, 차감=사용 기록', Object.values(w3.jobs).every((j) => j.status !== 'RESERVED') && w3.tx.filter((x) => x.type === 'CREDIT_CAPTURED').length >= 9);
   await p.keyboard.press('Escape');
 
   // 8) ops unit economics, free core intact, nothing sent out

@@ -45,6 +45,8 @@
     if (!L) return fb();
     let recent = []; try { recent = JSON.parse(localStorage.getItem("pc:jomiRecent") || "[]"); } catch (e) { /* ignore */ }
     let visits = 1; try { visits = +localStorage.getItem("pc:visits") || 1; } catch (e) { /* ignore */ }
+    // visits are counted once per tab; someone who has already met 죠미 (intro seen) is not greeted as a first-timer again
+    try { if (visits <= 1 && localStorage.getItem("pc:jomiSeen")) visits = 2; } catch (e) { /* ignore */ }
     const p = L.pick(intent, { visits, hour: new Date().getHours(), offline: typeof navigator !== "undefined" && navigator.onLine === false }, recent);
     if (!p) return fb();
     try { localStorage.setItem("pc:jomiRecent", JSON.stringify([...recent, p.id].slice(-20))); } catch (e) { /* ignore */ }
@@ -3000,9 +3002,8 @@
           h("button", { class: "linkbtn", type: "button", onclick: () => priceSheet(lowp[0].i) }, "가격 근거", icon("chevron-right", "xs"))),
         h("div", { class: "sub" }, `조건 문구는 없지만 중간값의 ${Math.round(lowp[0].p / med * 100)}%이고 이 가격인 지점이 ${lowp.filter((x) => x.p === lowp[0].p).length}곳뿐이에요. 표시 안 된 행사나 입력 오류일 수 있어서, 원본을 확인하기 전까지 ${HL ? "최저가로 쓰지 않아요" : "가격 범위에 넣지 않아요"}.`)));
       if (HL && r0[4] && FLAGS.discountEmphasis) pc.append(h("div", { class: "sub", style: "margin-top:12px" }, `최저가는 병원이 적은 정가보다 ${Math.round((r0[4] - r0[3]) / r0[4] * 100)}% 싸요(정가 표기 기준, 가격 이력과 별개).`));
-      box.append(pc, card);
-      // 2b) what to check with the price: conditions, genuine-product claims, who treats, side effects and cautions
-      box.append(checkCard(k, fam, rk));
+      // 2b) what to check with the price comes right after the price (docs/OBJECTIVE_DISPLAY_POLICY.md), then the options card
+      box.append(pc, checkCard(k, fam, rk), card);
       box.append(specCard(k.i));   // 시술 규격 확인: what the name says, what it doesn't, similar-but-different specs
       // 3) the distribution: every branch's lowest price on one axis
       const dl = rk.map((x) => ({ b: x.b, i: x.i, p: x.p, cond: !plainOk(x.i) })), dmed = median(rk.map((x) => x.p));
