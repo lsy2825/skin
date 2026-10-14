@@ -1,13 +1,12 @@
 # Probe candidate clinic chains (scrape/probe.py) on a GitHub runner — the dev container cannot reach clinic sites.
 # Runs only on pushes to probe/** branches: it never deploys and holds no secrets. What it read (robots.txt answers +
 # sample public price pages) is committed back to THAT probe branch only (artifact downloads are blocked from the dev
-# container), with [skip ci] and probe_out/ ignored by the trigger so it does not run again. Probe branches are deleted
+# container), with [skip ci] in the message so that push does not start it again. Probe branches are deleted
 # after review; main is never touched.
 name: probe brands
 on:
   push:
     branches: ["probe/**"]
-    paths-ignore: ["probe_out/**"]
 permissions:
   contents: write   # only to commit probe_out/ back to the probe branch that triggered this run
 concurrency:
