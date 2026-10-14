@@ -2307,9 +2307,20 @@
   const evidenceBadge = (e) => h("span", { class: `k ${e.sources.length ? "k4" : "kx"}`, title: "근거 문서의 종류예요(효과의 크기를 뜻하지 않아요)" },
     e.sources.length ? `근거: ${(KB.evidence_levels || {})[e.evidence_level] || "출처"} ${e.sources.length}개` : "근거 자료 미정리");
   // short card on the compare tab: one line + purpose + how it differs, review state, quick view
-  function guideBox(f) {
+  // compact: on top of the compare screen right under the picker — the one-liner shows, the rest folds
+  function guideBox(f, compact = false) {
     const e = kbOf(f);
     if (!e && !f.desc.length) return null;
+    if (compact) return h("div", { class: "guide gtop" },
+      h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("b", {}, `${f.name}, 뭐예요?`), h("span", { class: "sp" }),
+        e ? h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f) }, "자세히") : null),
+      e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`),
+      e && (e.method || f.desc.length) ? h("details", { class: "fold small" }, h("summary", {}, "더 보기 · 방식·병원 설명·검수 상태"),
+        e.method ? h("p", { class: "sub" }, e.method) : null,
+        f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
+        h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e)),
+        h("button", { class: "linkbtn", type: "button", style: "margin-top:6px", onclick: () => nav(`guide?c=${encodeURIComponent(f.cat)}`) }, "시술 사전", icon("chevron-right", "xs"))) : null,
+      h("p", { class: "tiny" }, e ? DISCLAIM : "병원이 상품 이름에 적은 설명이에요."));
     return h("div", { class: "guide" },
       h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("b", {}, `${f.name}, 뭐예요?`), h("span", { class: "sp" }),
         e ? h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f) }, "자세히") : null,
@@ -2572,6 +2583,7 @@
     // 1) what is compared: the treatment, its exact spec, the settings that change the numbers
     const card = h("div", { class: "card" });
     card.append(h("div", { class: "keyhead" }, h("div", { class: "row", style: "flex-wrap:nowrap" }, sel, favBtn("k", k.id, k.label))));
+    if (fam) { const gb = guideBox(fam.f, true); if (gb) card.append(gb); }   // what this treatment is — right under the picker, no scrolling
     if (fam && fam.f.vs.length > 1) {
       // the kind being compared as one row of amounts; the other kinds (and packages of several sessions) folded
       const one = fam.f.vs.filter((v) => !/\d+회$/.test(v.label)), many = fam.f.vs.filter((v) => /\d+회$/.test(v.label));
@@ -2643,7 +2655,6 @@
           : h("div", { class: "chartempty" }, "비교할 지점이 3곳 미만이라 분포를 그리지 않아요. 아래 목록을 보세요."),
         rk.length >= 3 && dmed !== med ? h("p", { class: "tiny" }, `점선은 이 그림에 있는 ${rk.length}곳 전체의 중간값이에요. 위 '중간값'은 조건 없는 가격 ${prices.length}곳 기준이라 다를 수 있어요.`) : null));
       { const rc = regionalCard(k.i); if (rc) box.append(rc); }
-      if (fam) { const gb = guideBox(fam.f); if (gb) box.append(h("div", { class: "card" }, gb)); }
       // per brand (docs/BRAND_PRICE_COMPARISON.md): branches, range, median, conditional prices, last check — in brand order;
       // the cheapest branch of each brand only with lowestHighlight. A tap lists that brand's branches for this exact key.
       const per = D.meta.brands.map((bb, bi) => ({ bi, xs: rk.filter((y) => BR[y.b].brand === bi).sort((p, q) => p.p - q.p) })).filter((y) => y.xs.length);

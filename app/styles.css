@@ -880,3 +880,7 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 .t3 { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 10px; }
 .t3 .warns { margin-top: 4px; }
 #data-status .facts dd { line-height: 1.55; }
+/* compare: the treatment explanation sits right under the picker */
+.guide.gtop { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--fill); }
+.guide.gtop p { margin: 6px 0 0; line-height: 1.55; }
+.guide.gtop .fold { margin-top: 6px; }
