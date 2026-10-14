@@ -12,7 +12,7 @@ to a login wall or a CAPTCHA — enough to decide by hand whether a collector is
 """
 import json, os, re, sys, time, urllib.robotparser
 from urllib.parse import urljoin, urlparse
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 import requests
 from common import UA
 
@@ -86,6 +86,19 @@ def allowed(url):
     return ok, rb["state"] + ("" if ok else " — path disallowed")
 
 
+def lean(html):
+    """The page as saved for review: markup and text kept; script/style bodies, inline SVG and comments dropped; blank
+    lines squeezed — the structure a parser needs at a fraction of the size (it travels back as run annotations)."""
+    soup = BeautifulSoup(html, "html.parser")
+    for t in soup(["svg"]):
+        t.decompose()
+    for t in soup(["script", "style", "noscript"]):
+        t.string = ""
+    for c in soup.find_all(string=lambda x: isinstance(x, Comment)):
+        c.extract()
+    return re.sub(r"\n\s*\n+", "\n", str(soup))
+
+
 def visible_text(soup):
     for t in soup(["script", "style", "noscript"]):
         t.decompose()
@@ -115,7 +128,7 @@ def probe(brand):
         if r.status_code == 200 and "html" in rec["content_type"]:
             fn = f"{len(pages):02d}.html"
             with open(os.path.join(OUT, brand, fn), "w", encoding="utf-8") as f:
-                f.write(r.text)
+                f.write(lean(r.text))
             soup = BeautifulSoup(r.text, "html.parser")
             imgs = len(soup.find_all("img"))
             links = [(urljoin(r.url, a["href"]), (a.get_text() or "").strip()) for a in soup.find_all("a", href=True)]
