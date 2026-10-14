@@ -2602,7 +2602,7 @@
       e ? h("p", { style: "margin:8px 0 0" }, `${e.one_liner} ${e.purpose}`) : f.desc.length ? h("p", { class: "sub", style: "margin:8px 0 0" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
       e ? h("div", { class: "row", style: "gap:4px;margin-top:4px" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
       h("div", { class: "row", style: "gap:6px;margin-top:10px;flex-wrap:wrap" },
-        h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("bar-chart-3", "sm"), "지점별 가격 비교"),
+        h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("chart-column", "sm"), "지점별 가격 비교"),
         Object.keys(r.where).length ? h("button", { class: "btn sm soft", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
       ks.length ? h("div", { style: "margin-top:10px" }, h("div", { class: "tiny" }, "다른 규격도 물어볼 수 있어요"),
         h("div", { class: "chips wrapc", style: "margin-top:4px" }, ks.map((k) => h("button", { class: "chip", type: "button", onclick: () => chatSend(`${k.label} 얼마야`) }, k.label)))) : null);
