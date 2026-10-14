@@ -25,6 +25,21 @@ SHARED = {"유앤아이": ["선릉로 614-1"]}
 WHERE = re.compile(r"오시는|찾아오|위치|location|map|direction|contact|병원\s*소개|병원\s*안내|소개|intro|about|info", re.I)
 OUT = os.environ.get("PROBE_OUT", "probe_out")
 MAX_LINKS = 6
+# ADDR_SITES='유앤아이|목포점,…' limits the run; DEEP=1 also searches the raw page (scripts, iframe/map links, attributes) for
+# addresses and coordinates — for pages whose visible text shows only the company address (2026-10-15: 목포·화성봉담)
+ONLY = {x for x in os.environ.get("ADDR_SITES", "").split(",") if x}
+DEEP = os.environ.get("DEEP") == "1"
+LATLNG = re.compile(r"LatLng\(\s*(3[3-8]\.\d{3,})\s*,\s*(12[4-9]\.\d{3,})\s*\)|[\"']?lat[\"']?\s*[:=]\s*[\"']?(3[3-8]\.\d{3,})[\s\S]{0,80}?[\"']?(?:lng|lon)[\"']?\s*[:=]\s*[\"']?(12[4-9]\.\d{3,})", re.I)
+MAPLINK = re.compile(r"(?:map\.kakao\.com|map\.naver\.com|naver\.me|kko\.to|google\.[a-z.]+/maps|maps\.google)[^\"'\s<>]{0,200}", re.I)
+
+
+def deep(raw):
+    """addresses anywhere in the raw page (scripts and attributes included), coordinate pairs, map links"""
+    text = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), raw)       # '\uc8fc\uc18c' in scripts
+    text = re.sub(r"<[^>]+>", " ", text) + " " + " ".join(re.findall(r"(?:value|title|alt|data-[a-z-]+)=\"([^\"]{6,200})\"", raw))
+    text = re.sub(r"\s+", " ", text)
+    pts = [(m.group(1) or m.group(3), m.group(2) or m.group(4)) for m in LATLNG.finditer(raw)]
+    return {"addresses": branches.addr_candidates(text), "latlng": list(dict.fromkeys(pts))[:5], "maplinks": list(dict.fromkeys(MAPLINK.findall(raw)))[:5]}
 
 
 def candidates(html):
@@ -54,6 +69,8 @@ def site(brand, name, home):
             fn = f"{len(pages):02d}.html"
             open(os.path.join(folder, fn), "w", encoding="utf-8").write(probe.lean(r.text))
             rec.update(file=fn, candidates=candidates(r.text))
+            if DEEP:
+                rec["deep"] = deep(r.text)
             if url == home:
                 soup = BeautifulSoup(r.text, "html.parser")
                 for a in soup.find_all("a", href=True):
@@ -72,6 +89,8 @@ def main():
     s.headers["User-Agent"] = UA
     out = []
     for brand, name, home in SITES:
+        if ONLY and f"{brand}|{name}" not in ONLY:
+            continue
         rec = site(brand, name, home)
         g = branches.geocode(rec["chosen"], cache, s) if rec["chosen"] else None
         rec["geo"] = g

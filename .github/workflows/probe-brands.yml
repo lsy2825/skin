@@ -3,6 +3,7 @@
 # run annotations (scrape/probe_report.py), because artifact and log downloads are blocked from the dev container.
 # Each matrix entry is one job (annotations are capped per job):
 #   probe:<brand>      robots.txt + sample pages (scrape/probe.py)
+#   raw:all:0          scrape/raw_probe.py — pages as fetched (scripts kept) + same-site script files (RAW_URLS)
 #   addr:all:0         scrape/addr_probe.py — branch pages for the branches with no address (robots.txt first)
 #   collect:<key>:i/n  run collector scrape/<key>.py on every n-th branch from i; its raw CSV + log come back
 # Probe branches are deleted after review.
@@ -44,7 +45,8 @@ jobs:
           mkdir -p "$PROBE_OUT/raw"
           IFS=: read -r kind key shard <<< "$TASK"
           if [ "$kind" = probe ]; then python probe.py "$key"
-          elif [ "$kind" = addr ]; then python addr_probe.py || echo "address probe failed"; else
+          elif [ "$kind" = addr ]; then python addr_probe.py || echo "address probe failed"
+          elif [ "$kind" = raw ]; then python raw_probe.py || echo "raw probe failed"; else
             python "$key.py" --shard "$shard" --workers 4 || echo "collector $key $shard failed"
             i="${shard%/*}"
             cp ../data2/raw/"$key".csv "$PROBE_OUT/raw/$key.$i.csv" 2>/dev/null || true
