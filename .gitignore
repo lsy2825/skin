@@ -5,3 +5,4 @@ __pycache__/
 data2/db/
 data2/variants.json
 data2/variants_report.txt
+node_modules/

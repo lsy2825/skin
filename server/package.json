@@ -1,0 +1,8 @@
+{
+  "name": "yoonsiljang-server",
+  "private": true,
+  "type": "module",
+  "description": "윤실장 commerce API (credits, payments, premium jobs). Runs as a Cloudflare Worker; tests run on Node against a local PostgreSQL.",
+  "scripts": { "test": "node --test test/" },
+  "devDependencies": { "pg": "8.13.1" }
+}
