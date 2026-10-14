@@ -168,3 +168,24 @@ test("D5/D8: a prototype name is an unknown key; 초성 and typed operator words
   const and = Search.compile("보톡스 AND", null);
   assert.equal(and.parts.length, 1); assert.match(and.warn[0], /쓰지 않아도/);
 });
+
+test("R09/O1: the saved copy is shown while the version check is still pending (a stalled data-meta request cannot hold the screen)", async () => {
+  const vm = require("node:vm");
+  const app = fs.readFileSync(path.join(__dirname, "../app/app.js"), "utf8");
+  const src = app.slice(app.indexOf("  function loadData()"), app.indexOf("  // state → header"));
+  let resolveMeta, applied = 0;
+  const box = { AbortController, Promise, Date, JSON, Object, Error, setTimeout, TextDecoder, Uint8Array, SYNC: { have: false }, loadP: null, loadCtl: null, paintSync() {},
+    cacheGet: async () => ({ meta: { version: "v" }, text: "{}" }), fetchMeta: () => new Promise((r) => { resolveMeta = r; }), Sync: { checkData: () => [] },
+    applyData: () => applied++, cacheClear: async () => {}, tick: async () => {} };
+  vm.createContext(box); vm.runInContext(src, box);
+  let readyAt = null;
+  const lp = box.loadData().then(() => { readyAt = applied; });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(applied, 1, "cached data applied before the meta answer");
+  assert.equal(readyAt, 1, "the app was released (ready) before the meta answer");
+  resolveMeta({ ok: true, m: { version: "v" } });
+  await lp;
+  assert.equal(applied, 1, "same version: nothing applied twice");
+  // fetchMeta has its own deadline
+  assert.match(app, /async function fetchMeta\(signal, ms = 8000\)/);
+});

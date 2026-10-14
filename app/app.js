@@ -180,13 +180,17 @@
     if (!canCache()) return null;
     try { const c = await caches.open(DATA_CACHE), mr = await c.match("current-meta"); return mr ? await mr.json() : null; } catch (e) { return null; }
   }
-  async function fetchMeta(signal) {
+  async function fetchMeta(signal, ms = 8000) {
+    const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+    const stop = () => ctl.abort();
+    if (signal) signal.addEventListener("abort", stop, { once: true });
     try {
-      const r = await fetch("data-meta.json", { cache: "no-store", signal });
+      const r = await fetch("data-meta.json", { cache: "no-store", signal: ctl.signal });
       if (!r.ok) return { ok: false, missing: r.status === 404 };
       const m = await r.json(), bad = Sync.checkMeta(m);
       return bad.length ? { ok: false, bad } : { ok: true, m };
-    } catch (e) { return { ok: false, net: true }; }
+    } catch (e) { return { ok: false, net: true, timeout: ctl.signal.aborted && !(signal && signal.aborted) }; }
+    finally { clearTimeout(t); if (signal) signal.removeEventListener("abort", stop); }
   }
   async function download(total, signal) {
     const early = window.__pcEarly ? await window.__pcEarly : null;   // first visit: gate.js already started it
@@ -221,15 +225,19 @@
       const ready = () => { if (!done) { done = true; resolve(); } };
       (async () => {
         SYNC.loading = true; SYNC.failed = ""; SYNC.got = 0; SYNC.total = 0; paintSync();
-        const [cached, mr] = await Promise.all([SYNC.have ? null : cacheGet(), fetchMeta(sig)]);
-        SYNC.metaOk = mr.ok; SYNC.server = mr.ok ? mr.m : null; SYNC.at = new Date().toISOString();
+        // round-2 R09/O1: the saved copy is checked and SHOWN first; the version check (data-meta.json) runs alongside with its
+        // own deadline and never holds the screen — a connection that answers slowly (or never) cannot keep a revisit waiting
+        const metaP = fetchMeta(sig, 8000);
+        const cached = SYNC.have ? null : await cacheGet();
         if (cached) {
           try {
             const d = JSON.parse(cached.text);
-            if (!Sync.checkData(d, cached.meta).length) { applyData(d); Object.assign(SYNC, { have: true, fromCache: true, version: cached.meta.version, local: cached.meta }); }
+            if (!Sync.checkData(d, cached.meta).length) { applyData(d); Object.assign(SYNC, { have: true, fromCache: true, version: cached.meta.version, local: cached.meta }); paintSync(); ready(); }
           } catch (e) { await cacheClear(); }   // a broken saved copy is dropped, never shown
         }
-        if (SYNC.have && (!mr.ok || mr.m.version === SYNC.version)) { SYNC.loading = false; paintSync(); ready(); return; }   // up to date, or offline
+        const mr = await metaP;
+        SYNC.metaOk = mr.ok; SYNC.server = mr.ok ? mr.m : null; SYNC.at = new Date().toISOString();
+        if (SYNC.have && (!mr.ok || mr.m.version === SYNC.version)) { SYNC.loading = false; paintSync(); ready(); return; }   // up to date, or offline / slow
         const m = mr.ok ? mr.m : null;
         if (SYNC.have) { SYNC.newer = true; paintSync(); ready(); }   // old prices stay on screen while the new file comes
         let err = null;
@@ -2482,7 +2490,7 @@
       h("div", { class: "card" }, h("h3", {}, "이해관계"),
         h("p", { class: "sub" }, "지금 이 앱은 병원·제약사·장비 회사에서 받는 돈이 없어요. 크레딧 화면은 시연이고 실제 결제가 아니에요. 수익 방식이 정해지면(이용자 결제, 병원 대상 서비스 등) 여기에 날짜와 함께 적어요.")),
       h("div", { class: "card" }, h("h3", {}, "정정·삭제 요청"),
-        h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 근거 화면의 '틀린 가격 알리기'로 받아요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
+        h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 근거 화면의 '신고'(가격 오류 신고)로 받아요. 지금은 GitHub 공개 글로 접수돼요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
         h("button", { class: "btn line block", type: "button", onclick: () => nav("about") }, "데이터 상태와 출처 자세히", icon("chevron-right", "sm"))));
     return box;
   };
@@ -3179,8 +3187,24 @@
     if (map) { if (v) { map.dragging.disable(); } else { map.dragging.enable(); } }
     if (btn) { btn.setAttribute("aria-pressed", v ? "false" : "true"); btn.replaceChildren(icon(v ? "lock" : "check", "sm"), v ? "지도 움직이기" : "움직이는 중 · 잠그기"); }
   }
+  // Leaflet loads the first time the map opens (round-2 O4: the free home no longer downloads and parses a map library)
+  let leafletP = null, leafletFailed = false;
+  function loadLeaflet() {
+    if (typeof L !== "undefined") return Promise.resolve();
+    if (!leafletP) leafletP = new Promise((ok, bad) => {
+      const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "vendor/leaflet/leaflet.css"; document.head.append(css);
+      const js = document.createElement("script"); js.src = "vendor/leaflet/leaflet.js"; js.onload = () => ok(); js.onerror = () => { leafletFailed = true; leafletP = null; bad(new Error("leaflet")); };
+      document.head.append(js);
+    });
+    return leafletP;
+  }
   function initMap(again) {
-    if (typeof L === "undefined") { $("#map").replaceWith(h("div", { class: "card empty" }, "지도를 불러오지 못했어요(인터넷 연결 확인).")); return; }
+    if (typeof L === "undefined") {
+      if (leafletFailed) { $("#map").replaceWith(h("div", { class: "card empty" }, "지도를 불러오지 못했어요(인터넷 연결 확인).")); return; }
+      const el = $("#map"); if (el) el.replaceChildren(h("div", { class: "empty" }, "지도를 불러오는 중…"));
+      loadLeaflet().then(() => { leafletFailed = false; if (current === "map") render(); }).catch(() => { if (current === "map") render(); });
+      return;
+    }
     if (map) { map.remove(); map = null; }
     map = L.map("map", { zoomControl: true, attributionControl: true, scrollWheelZoom: false, tap: false })
       .setView(st.loc ? [st.loc.lat, st.loc.lng] : st.region === "수도권" ? [37.5, 126.98] : [36.4, 127.8], st.loc ? 13 : st.region === "수도권" ? 10 : 7);

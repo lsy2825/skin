@@ -1,0 +1,146 @@
+{
+ "conditions": {
+  "network": "1.6 Mbps down / 150 ms RTT",
+  "cpu": "4x slower",
+  "viewport": "390x844 mobile",
+  "serviceWorker": "on",
+  "runs": 5,
+  "browser": "Chromium (Playwright)"
+ },
+ "before": {
+  "first": {
+   "median": 8990,
+   "slowest": 9173,
+   "runs": [
+    8878,
+    8904,
+    8990,
+    9098,
+    9173
+   ]
+  },
+  "bytes": {
+   "median": 1341831,
+   "slowest": 1341831,
+   "runs": [
+    1341831,
+    1341831,
+    1341831,
+    1341831,
+    1341831
+   ]
+  },
+  "revisit": {
+   "median": 1647,
+   "slowest": 1759,
+   "runs": [
+    1447,
+    1555,
+    1647,
+    1659,
+    1759
+   ]
+  },
+  "stalled": {
+   "median": 31523,
+   "slowest": 31659,
+   "runs": [
+    31445,
+    31446,
+    31523,
+    31549,
+    31659
+   ]
+  },
+  "search": {
+   "median": 2363,
+   "slowest": 2682,
+   "runs": [
+    2089,
+    2267,
+    2363,
+    2456,
+    2682
+   ]
+  },
+  "searchLT": {
+   "median": 2131,
+   "slowest": 2450,
+   "runs": [
+    1866,
+    2038,
+    2131,
+    2227,
+    2450
+   ]
+  }
+ },
+ "after": {
+  "first": {
+   "median": 8923,
+   "slowest": 9114,
+   "runs": [
+    8702,
+    8851,
+    8923,
+    8959,
+    9114
+   ]
+  },
+  "bytes": {
+   "median": 1306700,
+   "slowest": 1306700,
+   "runs": [
+    1306700,
+    1306700,
+    1306700,
+    1306700,
+    1306700
+   ]
+  },
+  "revisit": {
+   "median": 1738,
+   "slowest": 2291,
+   "runs": [
+    1627,
+    1634,
+    1738,
+    1966,
+    2291
+   ]
+  },
+  "stalled": {
+   "median": 1506,
+   "slowest": 1876,
+   "runs": [
+    1280,
+    1401,
+    1506,
+    1637,
+    1876
+   ]
+  },
+  "search": {
+   "median": 2300,
+   "slowest": 2419,
+   "runs": [
+    2120,
+    2199,
+    2300,
+    2416,
+    2419
+   ]
+  },
+  "searchLT": {
+   "median": 2069,
+   "slowest": 2193,
+   "runs": [
+    1891,
+    1976,
+    2069,
+    2184,
+    2193
+   ]
+  }
+ }
+}
