@@ -9,7 +9,8 @@
 })(typeof self !== "undefined" ? self : this, function (Search, Classify, Stats) {
   "use strict";
 
-  const AMT = /\d+(?:\.\d+)?\s*(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)|\d+\s*회/gi;
+  // amounts are compared as the spec, never as words ('50유닛' in a package label is 50U, not a word that tells groups apart)
+  const AMT = /\d+(?:\.\d+)?\s*(?:유닛|단위|units?|U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)|\d+\s*회/gi;
   const words = (label) => label.replace(/\([^)]*\)/g, (m) => " " + m.slice(1, -1) + " ").replace(AMT, " ").split(/[\s·,/+]+/)
     .map((w) => Search.norm(w)).filter((w) => w.length >= 1 && !/^(기준|포함|및|등|1가지|모드)$/.test(w));
   const sessOfLabel = (label) => { const m = /(\d+)\s*회(?!\s*(?:차|이상|이내|당|째|분))/.exec(label); return m ? +m[1] : 1; };

@@ -77,6 +77,33 @@ def strip_event_prefix(s):
         s = m.group(2)
 
 
+# Section titles are glued in front of an option that doesn't name its product ('슈링크 300샷' › '1회'). Titles that are
+# event names, price tiers, notices or tag lists are not product words: glued in, they became spec labels such as
+# '20만원3921만재생' and '미백톤업색소토닝' (2026-10-14, 닥터에버스 '20만원 39.21만' / '미백 | 톤업 | 색소 | 토닝' sections).
+TITLE_PRICE = re.compile(r"\d+(?:[.,]\d+)?\s*만\s*원?(?![A-Za-z가-힣\d])|\d{1,3}(?:,\d{3})+\s*원|(?<![\d.,])\d{3,}\s*원(?!\s*(?:짜리\s*)?동전)|만원(?:으로|에|의)?")
+TITLE_DATE = re.compile(r"\d{2,4}\s*년\s*\d{1,2}\s*월(?:\s*\d+\s*차)?\)?|\d{1,2}\s*월\s*\d{1,2}\s*일|\d{1,2}\s*/\s*\d{1,2}\s*[~-]\s*(?:\d{1,2}\s*/\s*)?\d{1,2}|\d{1,2}\s*월|까지")
+TITLE_PROMO = re.compile(r"이벤트|EVENT|event|특가|할인|혜택|맞이|누림|기념|큰잔치|잔치|페스타|추천\s*조합|추천|플러스\s*친구|카카오톡|런칭|오픈|"
+                         r"안내|한정|선착순|단독|최저가|[♥★☆※]")
+
+
+def comp_name(s):
+    return re.sub(r"\s+", "", s or "")
+
+
+def title_words(s):
+    """a section title as product words: itself when it reads as a product heading ('◆볼뉴머', '레이저 제모'); its product
+    words when it mixes them with event / price / date wording ('볼뉴머/슈링크 유니버스 이벤트' → '볼뉴머/슈링크 유니버스');
+    '' for a tag list ('미백 | 톤업 | 색소 | 토닝'), a price tier ('20만원 39.21만') or an event name ('26년 10월 2차) 한글날 맞이 …')"""
+    s = re.sub(r"[◆◇■□●○]", " ", s or "").strip()
+    if not s or re.search(r"[|｜]", s):
+        return ""
+    t = TITLE_PROMO.sub(" ", TITLE_PRICE.sub(" ", TITLE_DATE.sub(" ", s)))
+    t = re.sub(r"\s+", " ", re.sub(r"^[\s)\]·,.:/-]+|[\s(\[·,.:/-]+$", "", t)).strip()
+    if t == s:
+        return s
+    return t if t and PROC.search(t) else ""
+
+
 def price(x):
     """'99000' / '99000.0' / '99,000' -> 99000; empty or junk -> 0"""
     try:
@@ -125,9 +152,19 @@ def main():
             orig = 0
         elif orig == sale:
             orig = 0
+        if r["brand"] == "닥터에버스":
+            # the item name often leaves the product to its section ('◆볼뉴머' › '페이스 300샷'): put back only a section
+            # that names a product (older raw files have every section glued in front by the collector — taken off first)
+            sec = re.sub(r"\s+", " ", re.sub(r"[◆◇■□●○★☆♥]", " ", r["category"] or "")).strip()
+            if sec and opt.startswith(sec + " "):
+                opt = opt[len(sec) + 1:]
+            head = title_words(sec)
+            if head and comp_name(head) not in comp_name(opt):
+                opt = f"{head} {opt}"
         name = strip_event_prefix(opt)
         if name == "(대표가)" or not PROC.search(name):
-            name = f"{grp} · {name}" if name != "(대표가)" else f"{grp} (최저가부터)"
+            head = title_words(grp)
+            name = (f"{head} · {name}" if head else name) if name != "(대표가)" else f"{grp} (최저가부터)"
         mname = name.replace(" · ", " ")
         g = re.search(r"(남성|남자|여성|여자)", grp)
         if g and not re.search(r"남성|남자|여성|여자", mname):
@@ -144,6 +181,11 @@ def main():
         else:
             kind = "일반"
         cat = next((c for c, p in CATS if re.search(p, text)), "기타")
+        # 유앤아이 lists peels, skin care and boosters on its 제모 pages ('여성 제모' › 'FCR 필링 얼굴전체 1회'): filed as 제모 they became
+        # '… 제모' spec labels (2026-10-14). On a 제모 page the item's own words decide when they name another kind of procedure
+        # (a body area alone — '종아리+무릎' — is still 제모 there)
+        if cat == "제모" and not re.search(CATS[0][1], f"{grp} {opt}"):
+            cat = next((c for c, p in CATS if c not in ("제모", "바디") and re.search(p, f"{grp} {opt}")), cat)
         tags = [t for t, p in TAGS if re.search(p, f"{grp} {opt}")]
         if re.search(r"일요일|선데이|썬데이", grp):
             tags.append("일요일")

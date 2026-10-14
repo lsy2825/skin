@@ -57,11 +57,9 @@ def items(html, branch, url, ts):
             continue
         if x.get("is_inquiry") or not x.get("price"):
             continue
+        # the item name as the site gives it; build2/clean.py puts the section ('◆볼뉴머' › '페이스 300샷') in front only when
+        # the section names a product — sections such as '20만원 39.21만' or '미백 | 톤업 | 색소 | 토닝' are not product words
         cat, name = clean(x.get("category", "")), clean(x.get("name", ""))
-        # the item name often leaves the product to its category ('◆볼뉴머' › '페이스 300샷'): put it back in front
-        prod = clean(re.sub(r"[◆◇■□●○★☆♥]", " ", cat))
-        if prod and prod not in name:
-            name = f"{prod} {name}"
         rows.append({"brand": "닥터에버스", "branch": branch, "category": cat,
                      "group": clean(x.get("event_name", "")), "option": name, "sale": int(x["price"]),
                      "orig": int(x["original_price"]) if x.get("original_price") else "", "addon": 0, "until": "",

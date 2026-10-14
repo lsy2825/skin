@@ -62,3 +62,5 @@
    유앤아이·밴스 모두 robots가 가격 페이지를 허용하고 가격이 글자 → 추가. 데이뷰·닥터에버스도 추가. 셀린은 목록이 스크립트로 불러와져 보류 → 2026-10-15 원본 페이지 탐색으로 항목 상세 요청(_contentDetail.php POST idx)을 확인해 추가(9곳). 연신내 본점·다산·홍대는 새 사이트(*.cellinclinic.com/ko)로 옮겨 아직.
    이 컨테이너에서는 병원 사이트·Nominatim이 열리지 않아(curl 000) 수집·주소는 probe/** 워크플로(결과는 실행 주석으로 회수)로 돌림.
 5. 휴대폰 주소: https://lsy2825.github.io/skin/ (Pages 켜진 뒤). "홈 화면에 추가" 안내.
+- 2026-10-14 규격 이름: 닥터에버스 칸 제목(가격대·꼬리표·행사명)이 상품명 앞에 붙고 남은 낱말이 붙어 나와 '20만원3921만재생' 같은 규격이 보였음 → clean.title_words·taxonomy._spaced로 원인 수정, build2/labels.py 빌드 가드(가격·날짜·홍보·기호·붙은 글자 규격은 비교 묶음 안 만듦) + tests/labels_test.py·labels.test.js. 유앤아이 제모 화면의 필링·스킨케어는 자기 이름대로 분류. docs/TREATMENT_TAXONOMY.md §1.
+- 2026-10-14 클릭 무반응: 입력칸 change/focusout이 누르는 도중 화면을 다시 그려 클릭이 사라짐(예산·최소/최대 가격 뒤 칩) → render()가 누름이 끝날 때까지 기다림, go()는 지금 주소 기준. tests/e2e/clickable.js 회귀 포함. CLAUDE.md 규칙.

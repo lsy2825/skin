@@ -74,7 +74,16 @@ rows = drevers.items(fx("drevers_event.html"), "부천점", "u", "t")
 common("닥터에버스", rows)
 r0 = next(r for r in rows if "사각턱보톡스" in r["option"])
 ok("닥터에버스: item JSON read (name, event, category, prices)", (r0["sale"], r0["orig"], r0["group"]) == (39000, 76400, "파마리서치×닥터에버스 SALE FESTA"), r0)
-ok("닥터에버스: product from the category put in front of a bare name", r0["option"].startswith("국산 프리미엄 보톡스"), r0["option"])
+ok("닥터에버스: item name kept as the site gives it, section in 'category' (clean.py decides what goes in front)",
+   not r0["option"].startswith("국산 프리미엄 보톡스") and r0["category"].endswith("국산 프리미엄 보톡스"), (r0["option"], r0["category"]))
+# which section titles may go in front of a name (build2/clean.py title_words — 2026-10-14 '20만원3921만재생' spec labels)
+sys.path.insert(0, os.path.join(ROOT, "build2"))
+import clean  # noqa: E402
+for title, want in [("◆국산 프리미엄 보톡스", "국산 프리미엄 보톡스"), ("레이저 제모", "레이저 제모"), ("볼뉴머/슈링크 유니버스 이벤트", "볼뉴머/슈링크 유니버스"),
+                    ("20만원 39.21만", ""), ("만원 1.96만", ""), ("미백 | 톤업 | 색소 | 토닝", ""), ("콜라겐 재생｜스킨부스터", ""),
+                    ("※카카오톡 플러스친구 혜택", ""), ("추천조합", ""), ("26년 10월 2차) 한글날 맞이 만원으로 맘껏누림 큰잔치", ""),
+                    ("10월 리쥬란 특가", "리쥬란")]:
+    ok(f"section title '{title}' → '{want}'", clean.title_words(title) == want, clean.title_words(title))
 
 # 셀린 (list page + the detail the page loads when an event is clicked, 2026-10-15 raw probe)
 sites = cellin.branch_sites(fx("cellin_list.html"))

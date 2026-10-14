@@ -40,4 +40,7 @@
   `go()`류는 그려질 때의 `params`가 아니라 지금 주소(`location.hash`)에 덧붙인다. 화면·입력칸을 바꾸면
   `tests/e2e/clickable.js`(회귀에 포함)를 돌린다.
 - `app/`이나 `build2/`를 push하면 Pages가 다시 배포된다. push 전에 사용자에게 확인한다.
+- 규격 이름이 깨지지 않게(2026-10-14 사고): 수집기는 상품명을 사이트 그대로 저장하고, 칸·묶음 제목을 앞에 붙이는 일은
+  `build2/clean.py`(`title_words`)만 한다. 비교 규격 이름 규칙은 `build2/labels.py`(빌드 가드) — 수집기·정리·분류 규칙을
+  바꾸면 `python3 tests/labels_test.py`를 돌린다.
 - 문서는 새로 만들기보다 기존 기준 문서를 고친다.

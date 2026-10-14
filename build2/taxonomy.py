@@ -23,6 +23,7 @@ import hashlib, re, sys
 from collections import Counter, defaultdict
 
 from xkeys import ADDON, ADDON_ONLY, COND, comp, sessions
+import labels
 
 # compare-tab categories (same names as xkeys categories)
 CATS = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디", "패키지", "기타"]
@@ -377,6 +378,27 @@ def comp_spaces(s):
     return re.sub(r"(\d),(\d{3})", r"\1\2", s)
 
 
+def _spaced(word, text):
+    """a residual with the name's word breaks put back for display ('비타민수분크라이오셀' out of '비타민 수분 크라이오셀 …' →
+    '비타민 수분 크라이오셀'): each letter is found in order in the name, and anything skipped between two letters (a space
+    or a word taken out) becomes a break — after first looking for the letters with only spaces between. The signature keeps
+    the glued form, so key ids don't change."""
+    src = comp_spaces(text or "")
+    m = re.search(r"\s*".join(map(re.escape, word)), src) if word else None
+    if m:                                                  # the words as they stand in the name, only spaces between
+        return re.sub(r"\s+", " ", m.group(0))
+    out, at = [], -1
+    for ch in word:
+        j = src.find(ch, at + 1)
+        if j < 0:
+            return word                                    # can't be lined up (a unit rewritten by comp()): as it was
+        if out and j > at + 1:
+            out.append(" ")
+        out.append(ch)
+        at = j
+    return "".join(out)
+
+
 def _family_variant(raw, fam, sess, display=None):
     full = comp(raw)
     st = _strip(raw)
@@ -391,6 +413,7 @@ def _family_variant(raw, fam, sess, display=None):
     # 'name - detail' (블리비: '바디 인모드 리프팅 - 팔뚝/허벅지/…', '다한증보톡스 - 겨드랑이/손/발')
     parts = re.split(r"\s+-\s+", st, maxsplit=1)
     main, detail = parts[0], (parts[1] if len(parts) > 1 else "")
+    main_text, detail_text = main, detail
     main, detail = comp(main), comp(detail)
     rest_full = full
     tags, famname, cat = [], fam["name"], fam["cat"]
@@ -416,17 +439,24 @@ def _family_variant(raw, fam, sess, display=None):
         return None, "원산지 둘 이상"
     rest = _clean(main, fam)
     det = "·".join(x for x in (re.sub(r"등$", "", _clean(p, fam)) for p in re.split(r"[/,·]", detail)) if x)
+    rest_shown = _spaced(rest, main_text)
+    det_shown = "·".join(_spaced(x, detail_text) for x in det.split("·")) if det else ""
     if fam.get("paren"):
         par = "·".join(x for p in re.findall(r"\(([^()]+)\)", raw) for x in (_clean(comp(y), fam) for y in re.split(r"[/,·]", p)) if x)
         det = "·".join(x for x in (det, par) if x)
-    area = ""
+        det_shown = "·".join(x for x in (det_shown, "·".join(_spaced(x, raw) for x in par.split("·")) if par else "") if x)
+    area, sig_name = "", None
     if fam.get("area"):
         area = _area(display or raw) or "부위 미표기"        # '제모 · 여자': the clinic names no area
-        famname, rest, det = f"{area.replace('/', '·')} 제모", "", ""
+        sig_name = f"{area.replace('/', '·')} 제모"
+        # shown with the clinic's word breaks ('손가락 or 발가락', '브라질리언 항문포함'); the signature keeps the glued form
+        famname = "·".join(_spaced(a, display or raw) for a in area.split("/")) + " 제모" if area != "부위 미표기" else sig_name
+        rest, det = "", ""
+        rest_shown, det_shown = "", ""
     shown = lambda w: [t["label"] for t in tags if t["where"] == w]
     pre, post = shown("pre"), shown("post")
-    tail = ([rest] if rest else []) + ([f"({det})"] if det else []) + ([amount] if amount else []) + ([f"{sess}회"] if sess > 1 else [])
-    sig = "|".join([fam["id"], famname, ",".join(lab), rest, det, amount, str(sess)])
+    tail = ([rest_shown] if rest else []) + ([f"({det_shown})"] if det else []) + ([amount] if amount else []) + ([f"{sess}회"] if sess > 1 else [])
+    sig = "|".join([fam["id"], sig_name or famname, ",".join(lab), rest, det, amount, str(sess)])
     return dict(fam=fam["id"], famname=famname, cat=cat, tags=lab, area=area, residual=rest, detail=det, amount=amount, sess=sess, sig=sig,
                 label=" ".join(pre + [famname] + post + tail), sub=" ".join(pre + post + tail) or "기본",
                 rx=fam["rx"] + ("|보톡스|보툴" if fam["id"] == "toxin" else "")), ""
@@ -450,7 +480,7 @@ def build(rows, min_branches=3):
     for i, v in enumerate(vs):
         if v:
             by_sig[v["sig"]].append(i)
-    keys, row_keys, owned = {}, [""] * len(rows), {}
+    keys, row_keys, owned, rejected = {}, [""] * len(rows), {}, []
     for sig, idx in by_sig.items():
         branches = {(rows[i]["brand"], rows[i]["branch"]) for i in idx}
         if len(branches) < min_branches:
@@ -461,6 +491,13 @@ def build(rows, min_branches=3):
             owned[sig] = top[0][0]          # this spec is one of the hand-made keys: keep using that key
             continue
         v = vs[idx[0]]
+        bad = labels.problems(v["label"], [rows[i]["name"] for i in idx])
+        if bad:
+            # a label that would show price / date / promotion words or words we glued (build2/labels.py): no compare key —
+            # its prices stay in the app as single prices, and the label is listed for a person to fix the rule that made it
+            rejected.append(dict(label=v["label"], why=bad, n=len(branches), example=rows[idx[0]]["name"]))
+            why["규격 이름 이상(build2/labels.py)"] += len(idx)
+            continue
         kid = key_id(sig)
         keys[sig] = dict(id=kid, cat=v["cat"], label=v["label"], fam=v["fam"], famname=v["famname"], sub=v["sub"], sig=sig, n=len(branches), rx=v["rx"],
                          detail=v["detail"])
@@ -512,7 +549,8 @@ def build(rows, min_branches=3):
     covered = sum(1 for i, r in enumerate(rows) if row_keys[i] or any(k.startswith("X") for k in (r.get("keys") or "").split()))
     few = sum(1 for i, v in enumerate(vs) if v and not row_keys[i] and not any(k.startswith("X") for k in (rows[i].get("keys") or "").split()))
     why["판매 지점 3곳 미만(비교 대상 없음)"] = few
-    stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why))
+    stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why),
+                 label_rejected=sorted(rejected, key=lambda x: -x["n"]))
     return row_keys, list(keys.values()), list(fams.values()), stats
 
 
