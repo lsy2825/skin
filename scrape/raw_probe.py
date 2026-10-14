@@ -16,6 +16,8 @@ URLS = [u for u in os.environ.get("RAW_URLS", "").split(",") if u]
 FOLLOW = os.environ.get("RAW_FOLLOW") == "1"
 REQ = re.compile(r"""(?:url\s*:\s*|\.(?:get|post|load|getJSON)\(\s*|fetch\(\s*|action\s*=\s*)["']([^"'\s]{3,200}?\.(?:php|asp|aspx|jsp|json|html?)(?:\?[^"'\s]*)?)["']""", re.I)
 MAX = 40
+# never followed: anything that submits or acts (forms, contact/ask handlers, sign-in, orders) — reading only
+ACTS = re.compile(r"proc|contact|ask|login|logout|member|join|order|pay|insert|write|save|delete|update|reserv|regist|send|mail", re.I)
 
 
 def main():
@@ -55,8 +57,27 @@ def main():
         for t in texts:
             for m in REQ.finditer(t):
                 v = urljoin(r.url, m.group(1))
-                if urlparse(v).netloc == host and v not in follow:
+                if urlparse(v).netloc == host and v not in follow and not ACTS.search(urlparse(v).path):
                     follow.append(v)
+    # RAW_POST='url|key=v&…;…' — the same read request a page sends when an item is clicked (셀린 _contentDetail.php idx=…);
+    # at most 3, never to an address that acts (ACTS), robots.txt first
+    for spec in [x for x in os.environ.get("RAW_POST", "").split(";") if x][:3]:
+        url, _, form = spec.partition("|")
+        ok, rb = probe.allowed(url)
+        rec = {"url": url, "why": "POST " + form, "robots": rb}
+        if not ok or ACTS.search(urlparse(url).path):
+            pages.append(dict(rec, skipped=True))
+            continue
+        probe.get(url.rsplit("/", 1)[0] + "/")       # keeps the 1 request/s spacing per site (probe.get records the time)
+        try:
+            r = probe.session.post(url, data=dict(x.split("=", 1) for x in form.split("&") if "=" in x), timeout=25)
+            r.encoding = r.apparent_encoding or "utf-8"
+            fn = f"{n:02d}.post.html"
+            n += 1
+            open(os.path.join(OUT, fn), "w", encoding="utf-8").write(r.text)
+            pages.append(dict(rec, status=r.status_code, file=fn, bytes=len(r.content)))
+        except Exception as e:
+            pages.append(dict(rec, error=type(e).__name__))
     if FOLLOW:
         for v in follow[:12]:
             if len(pages) < MAX:
