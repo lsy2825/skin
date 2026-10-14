@@ -2799,9 +2799,19 @@
     const prodTag = (i) => mixed ? h("span", { class: "k prodk" }, rowProds(i).join("·") || "제품 표기 없음") : null;
     const clinicsCard = (rk) => {
       const medAll = median(rk.map((x) => x.p)), min0 = rk.length ? Math.min(...rk.map((x) => x.p)) : 0;
+      // round-2 O3: the first rows go in with the tap; the rest follow in small batches after the screen has painted, so a
+      // sort or view change answers at once instead of building ~170 rows (and laying them all out) before the next paint.
+      // Same rows, same order, all of them in the end; batches stop if this card was replaced meanwhile.
+      const inBatches = (ul, items, make) => {
+        const FIRST = 30, STEP = 40;
+        items.slice(0, FIRST).forEach(make);
+        let at = FIRST;
+        const more = () => { if (!ul.isConnected) return; const end = Math.min(items.length, at + STEP); for (; at < end; at++) make(items[at], at); if (at < items.length) setTimeout(more, 0); };
+        if (at < items.length) requestAnimationFrame(() => setTimeout(more, 0));
+      };
       // only the view on screen is built (list or cards)
       const buildList = () => { const list = h("ul", { class: "list" });
-      rk.slice(0, 300).forEach((x, n) => {
+      inBatches(list, rk.slice(0, 300), (x, n) => {
         const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
         // positions (1, 2, 3 …) read as a ranking: shown only with flags.lowestHighlight
         list.append(h("li", { class: "rk", "data-b": x.b, onmouseenter: () => dotHl(x.b), onfocusin: () => dotHl(x.b), onmouseleave: () => dotHl(null) }, h("button", { class: "rank" + (FLAGS.lowestHighlight ? (n < 3 && st.sort === "price" ? " top" : "") : " nonum"), type: "button", onclick: () => nav(`branch/${x.b}`) },
@@ -2814,7 +2824,7 @@
       return list; };
       // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date)
       const buildCards = () => { const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
-      rk.slice(0, 300).forEach((x, n) => {
+      inBatches(cards, rk.slice(0, 300), (x, n) => {
         const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
         cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${Math.min(rk.length, 300)}: ${bname(x.b)}` },
           h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${Math.min(rk.length, 300)}`)),
