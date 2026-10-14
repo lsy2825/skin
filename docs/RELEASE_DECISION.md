@@ -13,7 +13,7 @@
 | 가격 계산 정확성(같은 규격끼리, 중간값 하나, 1회 특가 반복 금지) | 통과(단위) | `tests/round2.test.js`, `tests/pricing.test.js` |
 | 계정 섞임 없음 | 통과(브라우저, 가짜 로그인) — 로그인 자체가 꺼져 있음 | `tests/e2e/accounts_r2.js` 14/14 |
 | 느린 망에서 저장본 표시 | 통과(실험실) | `docs/PERFORMANCE.md` 31.5초 → 1.5초 |
-| 전체 회귀 | `docs/evidence/regression_r2.log` 참조 | 결과는 최종 보고에 적음 |
+| 전체 회귀(`tests/run_regression.sh`) | 통과 34/34 묶음(브라우저는 Chromium 에뮬레이션) | 첫 실행 27/34 → 기대값 낡은 시험 5개 수정, 앱 결함 2개 수정(비교 카드 순서·재방문 인사) → 재실행 34/34. 로그는 review_round2.zip `evidence/` |
 | 실기기(iOS Safari·Android Chrome) | **미검증** | 장비 없음 |
 | 사용자 관찰 5명 이상 | **미실시** | — |
 
