@@ -126,7 +126,7 @@ export function createApp({ config, rpc: rawRpc, toss = null, demo = null, visio
   });
   r.del("/v1/reports/:id", async (req, p) => { const u = await auth(req); return rpc("commerce_delete_report", { report_id: p.id, user_id: u.id }); });
   r.post("/v1/reports/:id/corrections", async (req, p) => { const u = await auth(req); await limit.any(`any:${u.id}`); return (await runner()).correct(u, p.id, (await readJson(req)).edits); });
-  r.post("/v1/reports/:id/ask", async (req, p) => { const u = await auth(req); await limit.job(`job:${u.id}`); const b = await readJson(req); return (await runner()).ask(u, p.id, b.question, b.turn_key); });
+  r.post("/v1/reports/:id/ask", async (req, p) => { const u = await auth(req); await limit.job(`job:${u.id}`); const b = await readJson(req); return (await runner()).ask(u, p.id, b.question, b.turn_key, b.prev); });
   r.post("/v1/push/subscribe", async (req) => { const u = await auth(req); await limit.any(`any:${u.id}`); return rpc("commerce_push_subscribe", { user_id: u.id, ...checkSubscription(await readJson(req)) }); });
   r.post("/v1/watch/rules", async (req) => {
     const u = await auth(req); await limit.any(`any:${u.id}`);

@@ -107,5 +107,23 @@
     return { ok: true };
   }
 
-  return { screen, facts, spec, deterministicAnswer, check, amounts: NUMS };
+  // a follow-up that only changes the spec ('그럼 4cc는?', '3회는?', '여성은요?') keeps the treatment of the question before
+  // it: the new spec replaces the old one in the previous question. A question that names a treatment of its own stands
+  // alone. Nothing is stored — the caller passes the previous question it already shows.
+  const SPEC_TOKEN = /\d+\s*(?:cc|CC|ml|U|u|유닛|샷|회|부위)|여성|여자|남성|남자/g;
+  function followUp(prev, q, ctx) {
+    const t = String(q || "").trim(), p = String(prev || "").trim();
+    if (!p || !t) return t;
+    // does the new question name a treatment of its own? judged on the question without its spec ('100U' must not match a
+    // key word '10'), and number-only key words never count
+    const nq = Search.norm(t.replace(SPEC_TOKEN, " "));
+    const namesOwn = ctx.keys.some((k) => k.words.some((w) => w.length >= 2 && !/^\d+$/.test(w) && nq.includes(w)));
+    if (namesOwn) return t;
+    const sp = spec(t), lead = /^(그럼|그러면|그건|이건|그거|이번엔|혹시)/.test(t);
+    if (!specText(sp) && !lead) return t;
+    const kept = p.replace(SPEC_TOKEN, " ").replace(/\s+/g, " ").trim();
+    const add = (t.match(SPEC_TOKEN) || []).join(" ");
+    return add ? `${kept} ${add}` : kept;
+  }
+  return { screen, facts, spec, followUp, deterministicAnswer, check, amounts: NUMS };
 });

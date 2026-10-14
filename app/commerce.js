@@ -328,7 +328,7 @@
       return h("div", { class: "row", style: "gap:6px;margin-top:8px;flex-wrap:nowrap" }, t, h("button", { class: "btn sm", type: "button", onclick: () => {
         const q = t.value.trim(); if (!q) return;
         const s = state(), rep = s.reports.find((x) => x.id === r.id), sc = window.JomiQA.screen(q);
-        const turn = sc.blocked ? { q, kind: "SCREENED", answer: sc.answer } : (() => { const fx = window.JomiQA.facts(q, A.ctx()); return { q, kind: "RULES", answer: window.JomiQA.deterministicAnswer(fx), facts: fx }; })();
+        const turn = sc.blocked ? { q, kind: "SCREENED", answer: sc.answer } : (() => { const last = (rep.payload.turns || []).filter((x) => x.kind === "RULES").pop() || {}, prev = last.asked || last.q; const asked = window.JomiQA.followUp(prev, q, A.ctx()); const fx = window.JomiQA.facts(asked, A.ctx()); return { q, asked, kind: "RULES", answer: window.JomiQA.deterministicAnswer(fx), facts: fx }; })();
         W.updateReport(s, r.id, { ...rep.payload, turns: [...rep.payload.turns, turn] }); save(s); render(); } }, "묻기"));
     }
     function shareText(r) {

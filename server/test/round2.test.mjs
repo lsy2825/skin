@@ -300,4 +300,12 @@ test("R15: empty / safety / not-found follow-ups take no slot; a retried turn ke
   const broken = jobRunner({ rpc: async (fn, p) => { if (fn === "commerce_jomi_turn" && p.action === "append") throw new Error("db down"); return rpc(fn, p); }, ctx: CTX, ai: null });
   await assert.rejects(broken.ask({ id: u }, j.report_id, "리쥬란 힐러 1cc는요?", key("turn")));
   assert.equal(await used(), before + 1, "released after the failure");
+  // follow-up: '그럼 4cc는?' alone names no treatment (free, not found); with the previous question it is a turn on 4cc
+  const lone = await run.ask({ id: u }, j.report_id, "그럼 4cc는?", key("t"));
+  assert.equal(lone.free, true);
+  const fu = await run.ask({ id: u }, j.report_id, "그럼 4cc는?", key("t"), "리쥬란힐러 2cc 가격 알려줘");
+  assert.ok(!fu.free, JSON.stringify(fu.turn));
+  assert.equal(fu.turn.q, "그럼 4cc는?");
+  assert.match(fu.turn.asked, /리쥬란힐러.*4cc/);
+  assert.doesNotMatch(fu.turn.asked, /2cc/);
 });

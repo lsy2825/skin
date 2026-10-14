@@ -6,7 +6,7 @@
 //  3. check(): every won amount in the answer must be one of the facts' numbers, and no dosing / diagnosis wording may appear;
 //     otherwise the deterministic answer built from the same facts is shown instead (no extra charge, logged as GUARD_FALLBACK).
 import JomiQA from "../../../app/domain/jomiqa.js";
-export const { screen, facts, deterministicAnswer, check, amounts } = JomiQA;
+export const { screen, facts, followUp, deterministicAnswer, check, amounts } = JomiQA;
 
 export const JOMI_SYSTEM = [
   "너는 피부과 가격 비교 앱 '윤실장'의 고양이 캐릭터 죠미야. 존댓말로 짧게(5문장 이내) 답해.",

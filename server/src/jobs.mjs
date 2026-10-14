@@ -157,10 +157,12 @@ export function jobRunner({ rpc, ctx, vision, ai, aiLimits = {}, fetchText = fet
     // the next question of a Jomi session (round-2 R15). Free answers — empty question, safety notice, no treatment named,
     // no group of the asked spec — are decided BEFORE a slot is taken and cost nothing. A paid turn takes one slot per
     // turn_key (a retry after a lost response returns the stored answer), and a failure gives the slot back.
-    async ask(user, reportId, question, turnKey) {
+    async ask(user, reportId, question, turnKey, prev) {
       const q = str(question, 500), s = Jomi.screen(q), at = now().toISOString();
       if (s.blocked) return { turn: { q, kind: "SCREENED", code: s.code, answer: s.answer, at }, free: true };
-      const f = Jomi.facts(q, ctx);
+      // '그럼 4cc는?': the previous question (sent by the client, the same user's own text) gives the treatment
+      const asked = Jomi.followUp ? Jomi.followUp(str(prev || "", 500), q, ctx) : q;
+      const f = Jomi.facts(asked, ctx);
       if (!f.groups.length) return { turn: { q, kind: f.noSpecMatch ? "NO_SPEC_MATCH" : "NOT_FOUND", answer: Jomi.deterministicAnswer(f), at }, free: true };
       const key = KEY.test(turnKey || "") ? turnKey : null;
       const slot = await rpc("commerce_jomi_turn", { action: "take", report_id: reportId, user_id: user.id, turn_key: key }).catch((e) => { throw fromDb(e); });
@@ -168,8 +170,8 @@ export function jobRunner({ rpc, ctx, vision, ai, aiLimits = {}, fetchText = fet
       let turn;
       try {
         const useAi = ai && ai.apiKey && ai.model ? await aiAllowed(user, ai.model).catch(() => false) : false;
-        const a = await Jomi.answer(q, ctx, { ai: useAi ? ai : null, rpc, jobId: slot.job_id, userId: user.id });
-        turn = { q, ...a, at };
+        const a = await Jomi.answer(asked, ctx, { ai: useAi ? ai : null, rpc, jobId: slot.job_id, userId: user.id });
+        turn = { q, ...(asked !== q ? { asked } : {}), ...a, at };
         await rpc("commerce_jomi_turn", { action: "append", report_id: reportId, user_id: user.id, turn_key: key, turn });
       } catch (e) {
         await rpc("commerce_jomi_turn", { action: "release", report_id: reportId, user_id: user.id, turn_key: key }).catch(() => {});
