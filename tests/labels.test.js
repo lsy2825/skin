@@ -10,6 +10,7 @@ const RULES = {
   날짜: /\d{1,2}\s*월\s*\d{1,2}\s*일|\d{2,4}\s*년\s*\d{1,2}\s*월|까지/,
   홍보: /이벤트|특가|할인|혜택|맞이|누림|기념|잔치|페스타|추천|플러스친구|카카오톡|런칭|안내|선착순|최저가/,
   기호: /[|｜※♥★☆]/,
+  괄호: { test: (s) => /\(\s*\)|\[\s*\]|\(\s|\s\)/.test(s) || (s.match(/\(/g) || []).length !== (s.match(/\)/g) || []).length },
 };
 
 for (const [name, rx] of Object.entries(RULES)) {
@@ -24,6 +25,7 @@ test("규칙이 실제 사고 이름을 잡음 (규칙 자체 확인)", () => {
   assert.ok(RULES.날짜.test("레디어스 10월1일10월31일까지"));
   assert.ok(RULES.홍보.test("필로드 브랜드10주년기념무한 4cc"));
   assert.ok(RULES.기호.test("미백 | 톤업 | 색소 | 토닝 피코토닝"));
+  assert.ok(RULES.괄호.test("피코토닝 10+10회 ()") && RULES.괄호.test("피코토닝 1+1회 (1회 )") && RULES.괄호.test(") 비타민관리"));
   for (const okLabel of ["바디 온다 리프팅 8만 J 3회", "(단색) 피코문신제거 500원", "국산 사각턱 보톡스 50U", "리쥬란 HB 플러스 2cc"])
     assert.ok(!Object.values(RULES).some((rx) => rx.test(okLabel)), okLabel);
 });

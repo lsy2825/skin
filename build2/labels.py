@@ -12,6 +12,7 @@ Rules
   날짜    '10월 1일', '26년 10월', '까지'
   홍보    이벤트·특가·할인·혜택·맞이·누림·기념·추천·안내·카카오톡 …
   기호    | ｜ ※ ♥ ★ ☆
+  괄호    빈 괄호 '()', 괄호 안쪽 끝 공백 '(1회 )', 짝이 안 맞는 괄호 ('E) 비타민관리')
   붙은 글자 a word of 8+ letters that is not written that way (spaces and all) in any of the key's own price names —
           i.e. words we joined, not the clinic ('울쎄라피프라임300샷' is how a clinic wrote it)
 """
@@ -42,6 +43,8 @@ def problems(label, names=None):
         out.append("홍보")
     if MARK.search(label):
         out.append("기호")
+    if re.search(r"\(\s*\)|\[\s*\]|\(\s|\s\)", label) or label.count("(") != label.count(")"):
+        out.append("괄호")
     if names is not None:
         src = [_norm(n) for n in names]
         for w in WORD.split(label):

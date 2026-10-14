@@ -21,7 +21,7 @@ def ok(name, cond, detail=""):
 # 1) the rules
 for label, want in [("피코토닝 20만원3921만재생 5회", ["가격", "붙은 글자"]), ("피코토닝 미백톤업색소토닝", ["붙은 글자"]),
                     ("레디어스 10월1일10월31일까지 1시린지", ["날짜", "붙은 글자"]), ("필러 리쥬비엘 브랜드10주년기념무한 1cc", ["홍보", "붙은 글자"]),
-                    ("벨라콜린 | 지방세포파괴주사 2ml", ["기호"]), ("리쥬란 HB 플러스 2cc", []), ("바디 온다 리프팅 8만 J 3회", []),
+                    ("벨라콜린 | 지방세포파괴주사 2ml", ["기호"]), ("피코토닝 10+10회 ()", ["괄호"]), (") 비타민관리", ["괄호"]), ("리쥬란 HB 플러스 2cc", []), ("바디 온다 리프팅 8만 J 3회", []),
                     ("(단색) 피코문신제거 500원", []), ("국산 사각턱 보톡스 50U", [])]:
     names = ["리쥬란 HB 플러스 2cc", "바디온다리프팅 8만 J 3회", "피코문신제거 500원", "국산 사각턱 보톡스 50유닛", "벨라콜린 | 지방세포파괴주사 2ml"]
     got = labels.problems(label, names)
@@ -37,6 +37,10 @@ ok("띄어 써도 키(서명)는 붙인 그대로 — 묶음 id가 바뀌지 않
 hv, _ = taxonomy.variant("[여성] 손가락 or 발가락 제모 1회", cat="제모")
 ok("제모 부위는 병원 표기대로 띄어 씀", hv and hv["famname"] == "손가락 or 발가락 제모", hv and hv["famname"])
 
+for raw, want in [("피코토닝 10+10회 ()", "피코토닝 10+10회"), ("피코토닝 1+1회 (1회 )", "피코토닝 1+1회 (1회)"), (") 비타민관리", "비타민관리"),
+                  ("男) 인중 + 앞턱 1회", "남성 인중 + 앞턱 1회"), ("\uf981) 종아리 + 무릎 1회", "여성 종아리 + 무릎 1회"), ("스킨보톡스 (국산) 1회", "스킨보톡스 (국산) 1회")]:
+    ok(f"괄호 정리: '{raw}' → '{want}'", taxonomy._tidy(raw) == want, taxonomy._tidy(raw))
+
 # 3) the build guard: a label with a problem makes no compare key (its prices stay, not grouped) and is listed
 rows = [dict(brand="A", branch=f"{i}점", name="피코토닝 20만원 39.21만 재생 5회", mname="피코토닝 20만원 39.21만 재생 5회", addon="0", kind="일반", cat="피부·레이저", keys="")
         for i in range(4)]
@@ -47,7 +51,7 @@ ok("빌드 가드: 뺀 규격은 stats.label_rejected에 남음", stats["label_r
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
 bad = [(k[2], labels.problems(k[2])) for k in D["keys"] if labels.problems(k[2])]
-ok(f"app/data.json: 비교 규격 {len(D['keys']):,}개 모두 가격·날짜·홍보 문구·기호 없음", not bad, bad[:5])
+ok(f"app/data.json: 비교 규격 {len(D['keys']):,}개 모두 가격·날짜·홍보 문구·기호·괄호 문제 없음", not bad, bad[:5])
 vp = os.path.join(ROOT, "data2", "variants.json")
 if os.path.exists(vp):
     rej = json.load(open(vp, encoding="utf-8"))["stats"].get("label_rejected", [])

@@ -19,7 +19,7 @@ hash of the variant signature, so it stays the same from week to week while the 
 usage: python build2/taxonomy.py            # self-test
        python build2/taxonomy.py --report   # variants found in data2/clean.csv → data2/variants_report.txt
 """
-import hashlib, re, sys
+import hashlib, re, sys, unicodedata
 from collections import Counter, defaultdict
 
 from xkeys import ADDON, ADDON_ONLY, COND, comp, sessions
@@ -321,6 +321,29 @@ def variant(name, addon=False, kind="", cat="", display=None):
     return _exact(display or raw, sess, cat, bundle)
 
 
+def _tidy(s):
+    """a shown name without what removing price-kind words leaves behind: '피코토닝 10+10회 ()' / '(1회 )' → no empty or
+    loose brackets; a leading list marker ('E) 비타민관리') dropped, '男) 인중' → '남성 인중' (2026-10-14)"""
+    s = re.sub(r"[\uf900-\ufaff]", lambda m: unicodedata.normalize("NFKC", m.group()), s or "")   # '女' written as U+F981
+    s = re.sub(r"^\s*[A-Z]\)\s*", "", s)
+    # a bracket with no partner is a list marker ('첫방문) 비타민관리' once 첫방문 is taken off, '남성)인중'): a space instead
+    out, depth = [], 0
+    for ch in s:
+        if ch == ")" and depth == 0:
+            ch = " "
+        depth += (ch == "(") - (ch == ")")
+        out.append(ch)
+    s = "".join(out)
+    if depth > 0:
+        s = s[::-1].replace("(", " ", depth)[::-1]
+    s = re.sub(r"(?<![가-힣])男(?![가-힣])", "남성", s)
+    s = re.sub(r"(?<![가-힣])女(?![가-힣])", "여성", s)
+    s = re.sub(r"\(\s*\)|\[\s*\]", " ", s)
+    s = re.sub(r"\(\s+", "(", s)
+    s = re.sub(r"\s+\)", ")", s)
+    return re.sub(r"\s+", " ", s).strip(" -·")
+
+
 def _exact(raw, sess, rowcat, bundle):
     """names no family rule covers (or that a rule can't read): same product only when the whole name is the same
     (labels and explanations included, price-kind words and session counts aside). Bundles go to '패키지'."""
@@ -349,14 +372,14 @@ def _exact(raw, sess, rowcat, bundle):
     if bundle:
         first = next((f for f in FAMILIES if f["_rx"].search(comp(raw))), None)
         famname, cat = (f"{first['name']} 포함 패키지" if first else "기타 패키지"), "패키지"
-        label = re.sub(r"\s+", " ", KINDONLY.sub("", disp)).strip(" -·")
+        label = _tidy(KINDONLY.sub("", disp))
         sub = label
         rx = first["rx"] if first else re.escape(comp(label)[:6])
         fid = "package"
     else:
         base = re.sub(r"\([^()]*\)", " ", disp)
         base = AMOUNT.sub(" ", comp_spaces(base))
-        base = re.sub(r"\s+", " ", KINDWORDS.sub(" ", base)).strip(" -·")
+        base = _tidy(KINDWORDS.sub(" ", base))
         if not base:
             return None, "이름 없음"
         famname = base
