@@ -5,6 +5,9 @@ window.APP_CONFIG = {
   supabaseAnonKey: "",
   providers: ["kakao", "google"],
   // 기능 플래그: 법률 검토(의료광고·환자 알선·개인정보)가 필요한 기능은 꺼 둬요. 지금 앱에는 광고·예약 기능 자체가 없어요.
+  // 크레딧·프리미엄(5.0): DEMO = 시연 지갑(이 기기에만, 실제 돈 아님). apiBase를 넣으면 서버(server/) 모드 — 결제·잔액·작업은 서버만 정해요.
+  // 실제 결제(PRODUCTION)는 주인 승인 + 결제사 계약 + 법률 검토 뒤에만: docs/PRODUCTION_LAUNCH_CHECKLIST.md
+  commerce: { mode: "DEMO", apiBase: "" },
   flags: {
     ops: true,          // 내정보 → 운영 현황(수집 상태·검토 큐), 비밀번호 화면 뒤에만 있어요
     ads: false,         // 광고·협찬 표시(만들지 않음, 가격 순위와 분리 원칙)

@@ -23,7 +23,7 @@ const CTX = PriceCtx.fromData(DATA, "2026-10-14");
 const D = await freshDb("api");
 test.after(() => D.drop());
 const rpc = (fn, p) => D.call(fn, p);
-const SECRET = "test-jwt-secret-not-a-real-one";
+const SECRET = `t-${crypto.randomUUID()}`;   // generated per run: no secret-looking literal in the repository
 // sandbox approval exists only in this throwaway database (the seed keeps WEB_PG inactive)
 await D.pool.query("update public.credit_products set approved_by = 'test-sandbox', active = true where channel = 'WEB_PG'");
 await D.pool.query(`insert into public.model_cost_config (provider, model, effective_date, input_cost_per_million, cached_input_cost_per_million, output_cost_per_million,
@@ -406,10 +406,10 @@ test("Apple / Google adapters (contract only, generated certificates and a mocke
   // Google: mocked token + purchases.products.get / consume
   const { generateKeyPairSync } = await import("node:crypto");
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const gcalls = [];
+  const gcalls = [], FAKE_OAUTH = crypto.randomUUID();
   const gfetch = async (url, o = {}) => {
     gcalls.push(url);
-    if (url.startsWith("https://oauth2.googleapis.com/token")) return new Response(JSON.stringify({ access_token: "ya29.test" }), { status: 200 });
+    if (url.startsWith("https://oauth2.googleapis.com/token")) return new Response(JSON.stringify({ access_token: FAKE_OAUTH }), { status: 200 });
     if (url.endsWith(":consume")) return new Response("{}", { status: 200 });
     if (/tokens\/tok-pending$/.test(url)) return new Response(JSON.stringify({ purchaseState: 2, orderId: "GPA.1" }), { status: 200 });
     return new Response(JSON.stringify({ purchaseState: 0, consumptionState: 0, orderId: "GPA.3333-4444", purchaseTimeMillis: String(Date.now()), purchaseType: 0 }), { status: 200 });

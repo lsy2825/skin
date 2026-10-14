@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Full regression (docs/REGRESSION_TEST_REPORT.md). Needs: a local PostgreSQL (pg_ctlcluster 16 main start), Chromium (Playwright),
+# APP_PIN in the environment (never written in the repository). Prints one line per suite and the failing lines; exit 1 on any failure.
+set -u
+cd "$(dirname "$0")/.."
+: "${APP_PIN:?APP_PIN 환경 변수가 필요해요}"
+PORT=8766; export BASE="http://localhost:$PORT/"
+python3 -m http.server $PORT --directory app >/dev/null 2>&1 & SRV=$!
+trap 'kill $SRV 2>/dev/null' EXIT
+sleep 1
+fail=0
+run() { local name="$1"; shift; local out; out=$("$@" 2>&1); local rc=$?
+  local sum; sum=$(printf '%s\n' "$out" | grep -E '^[0-9]+/[0-9]+ passed|^# (pass|fail) [0-9]+|violations|passed|PASS:|FAIL:' | tail -3 | tr '\n' ' ')
+  if [ $rc -eq 0 ]; then echo "OK   | $name | $sum"; else echo "FAIL | $name | $sum"; printf '%s\n' "$out" | grep -E '^FAIL|not ok|Error' | head -8; fail=1; fi; }
+run "unit (tests/*.test.js)" bash -c "node --test tests/*.test.js"
+run "server ledger (PostgreSQL)" bash -c "cd server && node --test test/ledger.test.mjs"
+run "server API (PostgreSQL + mocked providers)" bash -c "cd server && node --test test/api.test.mjs"
+run "DB security policies" bash tests/db/run_security_tests.sh
+run "secret scan" python3 tests/security/scan_secrets.py
+for t in commerce50 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets; do
+  run "e2e $t" node tests/e2e/$t.js
+done
+exit $fail

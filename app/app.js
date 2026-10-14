@@ -2300,8 +2300,21 @@
       h("div", { class: "chips wrapc", style: "margin-top:8px" }, Object.entries({ ops: "운영 현황", ads: "광고", booking: "예약 연결", emailAlerts: "메일 알림", publicIndex: "검색 노출", lowestHighlight: "최저가 지점 강조", branchRanking: "지점 순위", discountEmphasis: "할인 강조" }).map(([k, l]) =>
         h("span", { class: "chip", style: "cursor:default" }, `${l}: ${FLAGS[k] ? "켬" : "끔"}`))),
       h("div", { class: "sub", style: "margin-top:8px" }, `로그인: ${window.Auth && window.Auth.enabled ? "켬" : "끔(키 없음)"}`)));
+    if (window.Economics && window.DemoWallet) box.append(economicsCard());
     return box;
   };
+  // unit economics (docs/PRICING_AND_UNIT_ECONOMICS.md): assumptions until the server's measured numbers exist
+  function economicsCard() {
+    const W = window.DemoWallet, fc = Object.fromEntries(Object.entries(W.FEATURES).map(([k, v]) => [k, v.credits]));
+    const t = window.Economics.table(W.PRODUCTS, fc, "WEB_PG");
+    return h("div", { class: "card", "data-testid": "economics" }, h("div", { class: "row" }, h("h3", {}, "크레딧 단위 경제성"), h("span", { class: "k k4" }, "가정")),
+      h("div", { class: "sub", style: "margin-top:4px" }, "부가세·결제 수수료를 뺀 크레딧 1개의 순수익과 기능별 남는 돈. 수수료·AI 비용은 계약·청구서가 생기면 실제 값으로 바꿔요."),
+      h("table", { class: "tbl", style: "margin-top:8px" }, h("thead", {}, h("tr", {}, ["묶음", "가격", "부가세", "수수료", "순수익", "크레딧당"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, t.packs.map((p) => h("tr", {}, h("td", {}, p.code), h("td", { class: "num" }, won(p.price_krw)), h("td", { class: "num" }, won(p.vat)), h("td", { class: "num" }, won(p.fee)), h("td", { class: "num" }, won(p.net)), h("td", { class: "num" }, `${p.net_per_credit}원`))))),
+      h("div", { class: "tiny", style: "margin-top:4px" }, t.packs[0].fee_note),
+      h("details", { class: "fold", style: "margin-top:8px" }, h("summary", {}, `기능별 (가장 싼 크레딧 ${t.worst_net_per_credit}원 기준)`),
+        h("ul", { class: "plain" }, t.features.map((f) => h("li", {}, `${W.FEATURES[f.code].title}: ${f.credits}C → ${won(f.revenue)} − 비용 ${won(f.cost)}(가정) = ${won(f.margin)}`)))));
+  }
 
   // ---------------- 알아두면 좋은 점: how prices are collected, compared and checked
   // ---------------- 데이터 상태 (docs/DATA_TRANSPARENCY_SPEC.md) · 앱 설치 · 이 기기 — on top of '알아두면 좋은 점' (#data, #about)
@@ -4445,7 +4458,7 @@
           h("span", { class: "t row" }, b != null ? bdot(b) : null, brLabel(br) || "지점 미입력"), h("span", { class: "p num" }, `${v.n}회`),
           h("span", { class: "m" }, h("span", {}, `마지막 ${v.last}`), v.sum ? h("span", {}, `합계 ${won(v.sum)}`) : null, b == null ? h("span", {}, "앱 목록에 없는 곳") : null))); }))));
     // more pages
-    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난주보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, ic, l, s]) =>
+    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["wallet", "wallet", "크레딧", "시연 지갑 · 충전 · 이용 내역 · 광고 없는 기간"], ["premium", "sparkles", "프리미엄 도구", "이벤트·견적 읽기, 보고서, 고급 계획 (크레딧)"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난주보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, ic, l, s]) =>
       h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(v) }, h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, l), h("span", { class: "sub", style: "display:block;font-weight:500" }, s))), icon("chevron-right", "sm")))))));
     // ---- 내 설정 (what this phone shows) — separate from the data information below
     const theme = store.get("theme", "auto");
@@ -4526,7 +4539,7 @@
     if (!el) return;
     const items = cur().items.filter(itemOk);
     // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings and the map don't show it
-    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
+    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map", "wallet", "premium", "report"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
     document.body.classList.add("has-fcart");
     const plan = cartPlan(items), best = plan.full[0];
     el.replaceChildren(icon("shopping-bag", "sm"), FLAGS.lowestHighlight ? `${items.length}개 · ${best ? `한 곳 ${won(best.total)}부터` : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`}`
@@ -4551,7 +4564,7 @@
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
-      map: "explore", branch: "explore", about: "me", ops: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
+      map: "explore", branch: "explore", about: "me", ops: "me", wallet: "me", premium: "me", report: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     main.replaceChildren(views[view](rest.join("/"), params));
     main.removeAttribute("aria-busy");
@@ -4568,6 +4581,25 @@
   // the top bar gets a hairline once the page scrolls under it
   window.addEventListener("scroll", () => $("#top").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
 
+  // 크레딧·프리미엄 화면 (commerce.js). The price context for reports is built once per data version from the rows already loaded.
+  let pctx = null, pctxFor = "";
+  const premiumCtx = () => {
+    const v = `${D.meta.updated}|${today()}`;
+    if (!pctx || pctxFor !== v) {
+      pctx = PriceCtx.build({ rows: ROWS, S, branches: D.branches, keys: D.keys, trend: D.trend, updated: D.meta.updated, today: today(), brands: D.meta.brands,
+        price: (r) => r[14], live: (r) => !r[15] });           // r[14] = the clinic's listed price, r[15] = 0 live (see applyData)
+      pctxFor = v;
+    }
+    return pctx;
+  };
+  if (window.Commerce && window.PriceCtx && window.Premium && window.DemoWallet) window.Commerce.install({ h, icon, sheet, toast, nav, render, store, won, views, copyText,
+    ctx: premiumCtx,
+    cartItems: () => cur().items.filter((it) => it.t === "k" && KI[it.k] != null).map((it) => ({ k: it.k, q: it.q || 1 })),
+    region: () => (st.region && st.region !== "수도권" ? st.region : ""),
+    regionLabel: () => (st.region === "수도권" ? "전국(수도권 묶음은 보고서에서 전국으로 계산)" : regionName()),
+    addKey: (id) => { if (KI[id] != null) addKeySheet(KI[id]); },
+    jomiNotice: (text) => sheet("죠미", () => h("div", {}, jomiSay("thinking", text), h("div", { class: "tiny", style: "margin-top:8px" }, "이 질문에는 크레딧을 쓰지 않았어요."))),
+  });
   applyTheme();
   applyMotion();   // 죠미 설정 → 움직임 (or the device's reduce-motion setting)
   if (st.when && (!st.when.date || st.when.date < new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))) { st.when = null; store.set("when", null); }

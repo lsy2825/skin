@@ -87,7 +87,7 @@
         requires_user_confirmation: false,
       };
       if (!offer.unit) offer.uncertainties.push("용량·샷 수가 적혀 있지 않아요");
-      if (offer.sessions == null && !offer.is_pass) offer.uncertainties.push("횟수가 적혀 있지 않아요(1회로 단정하지 않음)");
+      if (offer.sessions == null && !offer.is_pass) offer.uncertainties.push("횟수가 적혀 있지 않아요");
       if (offer.vat_status === "UNKNOWN") offer.uncertainties.push("부가세 포함 여부가 적혀 있지 않아요");
       if (prices.length > 2) offer.uncertainties.push("한 줄에 가격이 3개 이상이라 어느 가격인지 확인이 필요해요");
       if (parts.length > 1) offer.uncertainties.push("여러 시술이 묶인 패키지예요");

@@ -1,4 +1,59 @@
-# 최종 구현 보고서 — YOONSILJANG 4.0
+# 최종 구현 보고서 — YOONSILJANG 5.0 (수익화·AI 커머스)
+
+기준일: 2026-10-14. 지시서: "YOONSILJANG 5.0 — COMPLETE MONETIZATION & AI COMMERCE SYSTEM".
+테스트 결과는 이 환경에서 **실제로 돌린 것만** 적었어요. 실제 결제사·실제 AI·네이티브 앱으로 한 테스트는 없어요.
+
+## 요약
+
+| 릴리스 | 결과 | 완료 수준 |
+|---|---|---|
+| A 점검·구조 | 저장소 점검·분류표, 구조, 카탈로그 버전 규칙, 경제성 가정 (`MONETIZATION_ARCHITECTURE.md`, `PRICING_AND_UNIT_ECONOMICS.md`) | DEMO_READY |
+| B 지갑·상점 | 추가 전용 원장·지갑 투영·주문 스냅샷·지급 1회·예약/차감/반환·환불·광고 없는 기간(SQL, PostgreSQL 테스트 10). 앱 시연 지갑·충전 화면 | DEMO_READY · 서버 미배포 → BLOCKED_EXTERNAL_DEPENDENCY |
+| C AI | OpenAI Responses API 사진 읽기(엄격 스키마, 가격 글자 재확인, 비용 기록, 대체 호출 무차감), 죠미 안전장치 | 모의 테스트만 · 키 없음 → BLOCKED_EXTERNAL_DEPENDENCY |
+| D 분석 | 이벤트 글·견적 읽기, 매칭, 보고서 7종, 고급 계획(30일), 공유 요약, 무료 고치기 | DEMO_READY |
+| E 토스 샌드박스 | 주문·승인·웹훅 재조회·대사·중복 결제 자동 취소·관리자 환불 | 모의 토스 테스트만 · 테스트 키 없음 → BLOCKED_EXTERNAL_DEPENDENCY |
+| F 푸시·분석 | 가격 지켜보기 규칙·중복 없는 알림·조용한 시간·내용 없는 푸시(VAPID), `commerce_economics`, 운영 '가정' 카드 | 모의 테스트만 → BLOCKED_EXTERNAL_DEPENDENCY |
+| G 네이티브 | Apple JWS·Google Play 검증 계약 | 네이티브 앱 없음 → BLOCKED_EXTERNAL_DEPENDENCY |
+| H 운영 준비 | 체크리스트·보안 점검 문서 | NEEDS_LEGAL_REVIEW · PRODUCTION_READY 아님 |
+
+## 무엇을 만들었나 (파일)
+
+- DB: `supabase/monetization.sql`(표 22개, `commerce_*` 함수 40여 개, RLS·권한), `supabase/commerce_seed.sql`(카탈로그 v1: DEMO만 활성).
+- 서버: `server/src/` — `app.mjs`(API), `payments/{toss,flow,store}.mjs`, `ai/{openai,jomi}.mjs`, `jobs.mjs`, `push.mjs`, `safe.mjs`, `auth.mjs`, `config.mjs`, `worker.mjs`, `server/wrangler.toml.example`.
+- 공용 모듈(앱·서버): `app/domain/{offerparse,match,pricectx,premium,jomiqa,demowallet,economics}.js`.
+- 앱: `app/commerce.js`(크레딧·충전·프리미엄 도구·보고서 화면), `app.js`(설치·메뉴·운영 경제성 카드), `config.js`(commerce 설정), SW `pc-v16`.
+- 도구·테스트: `tools/unit_economics.js`, `tests/run_regression.sh`, `tests/offer.test.js`, `tests/commerce.test.js`, `tests/e2e/commerce50.js`, `server/test/{ledger,api}.test.mjs`.
+- 문서 20개: MONETIZATION_ARCHITECTURE, PRICING_AND_UNIT_ECONOMICS, WEB_CHECKOUT_INTEGRATION, APPLE_IAP_INTEGRATION, GOOGLE_PLAY_BILLING_INTEGRATION, CREDIT_LEDGER_SPEC, CREDIT_REFUND_POLICY_SPEC, AD_FREE_ENTITLEMENTS, AI_VISION_PIPELINE, JOMI_AI_GUARDRAILS, PREMIUM_REPORTS_SPEC, PREMIUM_PLANNER_SPEC, PRICE_WATCH_AND_PUSH, CRAWLING_COST_TRACKER, OPERATIONAL_COST_DASHBOARD, SECURITY_AND_PRIVACY_AUDIT, PAYMENT_SANDBOX_QA, NATIVE_STORE_READINESS, PRODUCTION_LAUNCH_CHECKLIST, 이 보고서.
+
+## 테스트 (실제 실행)
+
+| 묶음 | 결과 |
+|---|---|
+| `server/test/ledger.test.mjs` (PostgreSQL 16) | 10/10 |
+| `server/test/api.test.mjs` (PostgreSQL + 모의 결제사·AI·푸시) | 12/12 |
+| `node --test tests/*.test.js` (기존 71 + 5.0 11) | 82/82 |
+| `tests/e2e/commerce50.js` (Chromium, 390px) | 27/27 |
+| 전체 회귀 | 원장 10/10 · API 12/12 · DB 보안 통과 · e2e commerce50 27/27, qa7, ux_qa, concern, xss, jomi, objective, frame, table_attr, compare_cards, v5_features, demo_features, data_sync, pricenow, audit40, taxonomy40, pricing40, ops40 통과. 단위 82/82·비밀값 검사는 고친 뒤 따로 다시 돌려 통과(첫 실행은 실행 방식 오류·테스트의 비밀값처럼 보이는 문자열 2개로 실패). audit_ui·a11y·touch_targets는 이 커밋 시점에 실행 중 — 결과는 다음 커밋에 적어요 |
+
+## 한계 (정직하게)
+
+- 서버는 저장소에만 있고 배포되지 않았어요. 실제 토스 샌드박스·OpenAI·Apple·Google·푸시 서비스와 통신한 적이 없어요.
+- 배포된 앱은 DEMO: 시연 크레딧은 결제가 아니고 이 기기에만 있어요.
+- AI 사진 읽기는 시연에서 닫혀 있어요(가짜 결과 없음). 가격 이력 보고서는 기록이 2주뿐이라 판매하지 않아요.
+- 앱의 사진 업로드 화면(EXIF 제거)과 서버 모드 결제창·푸시 구독 화면은 서버 연결 때 추가해요.
+- 환불 정책·약관·가격은 초안/실험값이고 법률 검토 전이에요.
+
+## 사용자(주인)가 정해야 할 것
+
+1. 실험 가격을 그대로 쓸지(₩990/1,990/3,900, 기능 크레딧).
+2. 토스페이먼츠 계약·테스트 키 발급, Supabase 운영 프로젝트, Cloudflare 계정 — 생기면 SANDBOX 검증(`PAYMENT_SANDBOX_QA.md` §3).
+3. OpenAI 사용 여부(사진이 국외 사업자로 전송됨 → 개인정보 고지 필요)와 모델·단가.
+4. 법률 검토 범위(`PRODUCTION_LAUNCH_CHECKLIST.md` §2).
+5. 네이티브 앱을 만들지(만들면 스토어 결제 필수).
+
+---
+
+# (이전) 최종 구현 보고서 — YOONSILJANG 4.0
 
 기준일: 2026-10-14.
 - 지시서: "YOONSILJANG 4.0 — THE ULTIMATE PRODUCT OVERHAUL"

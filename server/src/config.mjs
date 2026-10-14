@@ -31,7 +31,7 @@ export function loadConfig(env) {
       // model names are configuration: check the provider's current model list and prices before changing them
       model: E("OPENAI_MODEL_DEFAULT"), strongModel: E("OPENAI_MODEL_STRONG"), textModel: E("OPENAI_MODEL_TEXT"),
       maxOutputTokens: +E("AI_MAX_OUTPUT_TOKENS", "1500"),
-      maxKrwPerJob: +E("AI_MAX_KRW_PER_JOB", "60"),              // hard budget per paid job (1 credit ≈ 165원 of revenue)
+      maxKrwPerJob: +E("AI_MAX_KRW_PER_JOB", "60"),              // hard budget per paid job (1 credit ≈ 131원 net on the web, docs/PRICING_AND_UNIT_ECONOMICS.md)
       timeoutMs: +E("AI_TIMEOUT_MS", "45000"),
     },
     push: { publicKey: E("VAPID_PUBLIC_KEY"), privateJwk: E("VAPID_PRIVATE_JWK"), subject: E("VAPID_SUBJECT", "mailto:privacy@example.invalid") },
