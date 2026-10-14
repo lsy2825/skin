@@ -12,8 +12,10 @@ const KNOWN = {
   NO_DELIVERABLE: [422, "결과를 만들지 못했어요"], CREDITS_ALREADY_SPENT: [409, "이미 쓴 크레딧이 있어 자동 환불할 수 없어요(고객센터 확인)"],
   REFUND_AMOUNT_INVALID: [400, "환불 금액이 올바르지 않아요"], NO_WATCH_ENTITLEMENT: [402, "가격 지켜보기 이용권이 필요해요"], TOO_MANY_RULES: [429, "지켜보기 규칙은 50개까지예요"],
   BAD_REQUEST: [400, "요청 형식이 올바르지 않아요"], WOULD_GO_NEGATIVE: [409, "잔액이 0보다 작아질 수 없어요"], PAYMENT_NOT_FOUND: [404, "결제를 찾지 못했어요"],
+  REPORT_NOT_FOUND: [404, "보고서를 찾지 못했어요"], JOB_NOT_FOUND: [404, "작업을 찾지 못했어요"],
 };
 export const fromDb = (e) => {
+  if (e instanceof HttpError) return e;
   const code = Object.keys(KNOWN).find((k) => String(e && e.message).includes(k));
   if (code) return new HttpError(KNOWN[code][0], code, KNOWN[code][1], e.detail);
   return new HttpError(500, "INTERNAL", "잠시 후 다시 시도해 주세요");

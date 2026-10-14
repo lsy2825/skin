@@ -27,15 +27,15 @@ export function loadConfig(env) {
     toss: { secretKey: toss, clientKey: E("TOSS_CLIENT_KEY"), base: E("TOSS_API_BASE", "https://api.tosspayments.com") },
     openai: {
       apiKey: E("OPENAI_API_KEY"),
-      base: E("OPENAI_API_BASE", "https://api.openai.com/v1"),
+      base: E("OPENAI_API_BASE", "https://api.openai.com").replace(/\/(v1)?\/?$/, ""),   // adapters add /v1/responses
       // model names are configuration: check the provider's current model list and prices before changing them
-      model: E("OPENAI_MODEL_DEFAULT"), strongModel: E("OPENAI_MODEL_STRONG"),
+      model: E("OPENAI_MODEL_DEFAULT"), strongModel: E("OPENAI_MODEL_STRONG"), textModel: E("OPENAI_MODEL_TEXT"),
       maxOutputTokens: +E("AI_MAX_OUTPUT_TOKENS", "1500"),
       maxKrwPerJob: +E("AI_MAX_KRW_PER_JOB", "60"),              // hard budget per paid job (1 credit ≈ 165원 of revenue)
       timeoutMs: +E("AI_TIMEOUT_MS", "45000"),
     },
     push: { publicKey: E("VAPID_PUBLIC_KEY"), privateJwk: E("VAPID_PRIVATE_JWK"), subject: E("VAPID_SUBJECT", "mailto:privacy@example.invalid") },
-    apple: { bundleId: E("APPLE_BUNDLE_ID"), rootCertsB64: E("APPLE_ROOT_CERTS_B64") },
+    apple: { bundleId: E("APPLE_BUNDLE_ID"), environment: E("APPLE_ENVIRONMENT", mode === "PRODUCTION" ? "Production" : "Sandbox"), rootCertsB64: E("APPLE_ROOT_CERTS_B64").split(",").map((s) => s.trim()).filter(Boolean) },
     google: { packageName: E("GOOGLE_PLAY_PACKAGE"), serviceAccountJson: E("GOOGLE_SERVICE_ACCOUNT_JSON") },
     dataUrl: E("DATA_URL", "https://lsy2825.github.io/skin/data.json"),
     uploadMaxBytes: +E("UPLOAD_MAX_BYTES", String(8 * 1024 * 1024)),

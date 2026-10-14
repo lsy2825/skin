@@ -810,7 +810,7 @@ create or replace function public.commerce_share_report(p jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare t text;
 begin
-  update public.premium_reports set share_token = coalesce(share_token, encode(gen_random_bytes(18), 'hex'))
+  update public.premium_reports set share_token = coalesce(share_token, replace(pg_catalog.gen_random_uuid()::text || pg_catalog.gen_random_uuid()::text, '-', ''))
    where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null and share_summary is not null
    returning share_token into t;
   return jsonb_build_object('token', t);
@@ -821,6 +821,30 @@ declare r public.premium_reports;
 begin
   select * into r from public.premium_reports where share_token = p ->> 'token' and deleted_at is null and retain_until > now();
   return case when found then jsonb_build_object('kind', r.kind, 'title', r.title, 'created_at', r.created_at, 'summary', r.share_summary) end;
+end $$;
+
+-- the owner edits a paid result (corrections re-matched, follow-up questions of a Jomi session): free, never a new charge
+create or replace function public.commerce_update_report(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare r public.premium_reports;
+begin
+  if p -> 'payload' is null or jsonb_typeof(p -> 'payload') <> 'object' or length((p -> 'payload')::text) > 400000 then raise exception 'BAD_REQUEST' using errcode = '22023'; end if;
+  update public.premium_reports set payload = p -> 'payload', share_summary = coalesce(p -> 'share_summary', share_summary),
+         title = coalesce(nullif(left(p ->> 'title', 200), ''), title)
+   where id = (p ->> 'report_id')::uuid and user_id = (p ->> 'user_id')::uuid and deleted_at is null returning * into r;
+  if not found then raise exception 'REPORT_NOT_FOUND' using errcode = '22023'; end if;
+  return to_jsonb(r);
+end $$;
+
+-- one reconciliation run, for the operations screen (checked orders, fixed ones, anything that did not add up)
+create or replace function public.commerce_reconcile_log(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare id bigint;
+begin
+  insert into public.payment_reconciliation_jobs (started_at, finished_at, checked, fixed, mismatches)
+  values (coalesce((p ->> 'started_at')::timestamptz, now()), now(), coalesce((p ->> 'checked')::int, 0), coalesce((p ->> 'fixed')::int, 0), coalesce(p -> 'mismatches', '[]'))
+  returning payment_reconciliation_jobs.id into id;
+  return jsonb_build_object('id', id);
 end $$;
 
 -- push subscriptions and price watch rules (rules need an active watch entitlement)
@@ -846,6 +870,94 @@ begin
   return jsonb_build_object('id', id, 'until', e.ends_at);
 end $$;
 
+-- price watch runner (scheduled, after a data update): active rules whose entitlement is still open
+create or replace function public.commerce_watch_due(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('id', r.id, 'user_id', r.user_id, 'key_id', r.key_id, 'kind', r.kind, 'target_krw', r.target_krw,
+           'region', r.region, 'quiet_start', r.quiet_start, 'quiet_end', r.quiet_end, 'baseline', r.baseline) order by r.id)
+    from public.price_watch_rules r join public.premium_entitlements e on e.id = r.entitlement_id
+   where r.active and e.ends_at > now() and r.id > coalesce((p ->> 'after')::bigint, 0) limit 500), '[]'::jsonb);
+end $$;
+-- one notice per (rule, change): a second run over the same data inserts nothing
+create or replace function public.commerce_watch_event(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare v_id bigint;
+begin
+  if p ->> 'event_key' is null then                    -- first look at a new rule: remember where prices stood, no notice
+    update public.price_watch_rules set baseline = p -> 'baseline' where id = (p ->> 'rule_id')::bigint and baseline is null;
+    return jsonb_build_object('id', null, 'new', false);
+  end if;
+  insert into public.price_watch_events (user_id, rule_id, event_key, payload)
+  select r.user_id, r.id, left(p ->> 'event_key', 200), p -> 'payload' from public.price_watch_rules r where r.id = (p ->> 'rule_id')::bigint
+  on conflict do nothing returning price_watch_events.id into v_id;
+  if p -> 'baseline' is not null then update public.price_watch_rules set baseline = p -> 'baseline' where id = (p ->> 'rule_id')::bigint; end if;
+  return jsonb_build_object('id', v_id, 'new', v_id is not null);
+end $$;
+-- users with notices not yet pushed (quiet hours are decided by the runner, which leaves those for the next run)
+create or replace function public.commerce_push_pending(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('user_id', x.user_id, 'n', x.n, 'subs', x.subs))
+    from (select e.user_id, count(*) n, (select coalesce(jsonb_agg(jsonb_build_object('endpoint', s.endpoint)), '[]'::jsonb) from public.push_subscriptions s where s.user_id = e.user_id) subs
+            from public.price_watch_events e where e.notified_at is null and e.created_at > now() - interval '3 days' group by e.user_id limit 1000) x), '[]'::jsonb);
+end $$;
+create or replace function public.commerce_push_done(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  if p ? 'user_id' then update public.price_watch_events set notified_at = now() where user_id = (p ->> 'user_id')::uuid and notified_at is null; end if;
+  if p ? 'endpoint' then
+    if coalesce((p ->> 'gone')::boolean, false) then delete from public.push_subscriptions where endpoint = p ->> 'endpoint';
+    elsif coalesce((p ->> 'ok')::boolean, false) then update public.push_subscriptions set last_ok_at = now(), failures = 0 where endpoint = p ->> 'endpoint';
+    else update public.push_subscriptions set failures = failures + 1 where endpoint = p ->> 'endpoint'; delete from public.push_subscriptions where endpoint = p ->> 'endpoint' and failures >= 5;
+    end if;
+  end if;
+  return jsonb_build_object('ok', true);
+end $$;
+-- the notices a user reads in the app after a push (the push itself carries no content)
+create or replace function public.commerce_notices(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return coalesce((select jsonb_agg(jsonb_build_object('id', id, 'rule_id', rule_id, 'payload', payload, 'created_at', created_at) order by created_at desc)
+    from (select * from public.price_watch_events where user_id = (p ->> 'user_id')::uuid order by created_at desc limit 50) e), '[]'::jsonb);
+end $$;
+
+-- what the store screen shows: the active products of the channels this environment sells, and the feature prices
+create or replace function public.commerce_catalog(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+begin
+  return jsonb_build_object(
+    'products', coalesce((select jsonb_agg(jsonb_build_object('code', code, 'version', version, 'channel', channel, 'store_product_id', store_product_id,
+        'price_krw', price_krw, 'vat_included', vat_included, 'credits', paid_credits, 'adfree_days', adfree_days) order by channel, price_krw)
+      from public.credit_products where active and channel in (select jsonb_array_elements_text(coalesce(p -> 'channels', '["DEMO"]'::jsonb)))), '[]'::jsonb),
+    'features', coalesce((select jsonb_agg(jsonb_build_object('code', code, 'version', version, 'credits', credits, 'entitlement_days', entitlement_days, 'title', title) order by code)
+      from public.premium_features where active), '[]'::jsonb));
+end $$;
+
+-- unit economics for a period (operations screen): money in, credits, AI and service costs. Every number is a sum of rows;
+-- AI calls without a price schedule are counted separately (unpriced), never guessed. BUDGET rows are reported apart from ACTUAL.
+create or replace function public.commerce_economics(p jsonb) returns jsonb
+language plpgsql security definer set search_path = '' as $$
+declare f date := coalesce((p ->> 'from')::date, current_date - 30); t date := coalesce((p ->> 'to')::date, current_date);
+begin
+  return jsonb_build_object('from', f, 'to', t,
+    'revenue', (select jsonb_object_agg(channel, jsonb_build_object('orders', n, 'gross_krw', g)) from (
+        select o.channel, count(*) n, sum(o.amount_krw) g from public.orders o where o.fulfilled_at::date between f and t group by o.channel) x),
+    'refunds', (select jsonb_build_object('count', count(*), 'krw', coalesce(sum(amount_krw), 0), 'credits_reversed', coalesce(sum(credits_reversed), 0),
+        'credits_unrecovered', coalesce(sum(credits_unrecovered), 0)) from public.payment_refunds where created_at::date between f and t),
+    'credits', (select jsonb_object_agg(type || ':' || bucket, s) from (select type, bucket, sum(amount) s from public.credit_transactions
+        where created_at::date between f and t group by type, bucket) x),
+    'features', (select jsonb_object_agg(feature_code, jsonb_build_object('jobs', n, 'succeeded', ok, 'released', rel, 'credits_captured', cr)) from (
+        select feature_code, count(*) n, count(*) filter (where status = 'SUCCEEDED') ok, count(*) filter (where status = 'RELEASED') rel,
+               coalesce(sum(credits) filter (where status = 'SUCCEEDED'), 0) cr from public.premium_jobs where created_at::date between f and t group by feature_code) x),
+    'ai', (select jsonb_build_object('calls', count(*), 'cost_krw', coalesce(sum(cost_krw), 0), 'unpriced_calls', count(*) filter (where cost_krw is null),
+        'fallback_calls', count(*) filter (where call_kind = 'FALLBACK'), 'failed_calls', count(*) filter (where not ok)) from public.ai_usage_records where created_at::date between f and t),
+    'ai_by_feature', (select jsonb_object_agg(coalesce(feature_code, '-'), c) from (select j.feature_code, round(sum(a.cost_krw), 2) c
+        from public.ai_usage_records a left join public.premium_jobs j on j.id = a.job_id where a.created_at::date between f and t group by j.feature_code) x),
+    'service_costs', (select jsonb_object_agg(kind, jsonb_build_object('krw', s, 'items', items)) from (select kind, sum(amount_krw) s, jsonb_agg(jsonb_build_object('category', category, 'item', item, 'krw', amount_krw, 'source', source)) items
+        from public.service_cost_records where period_start <= t and period_end >= f group by kind) x));
+end $$;
+
 -- only the API server (service_role) calls these; users and anon cannot, even through PostgREST
 do $$ declare f text; begin
   foreach f in array array['commerce_audit(text,text,text,jsonb,text)', 'commerce_post(uuid,text,text,int,int,int,text,text,text,text,uuid,uuid,bigint,bigint)',
@@ -855,7 +967,7 @@ do $$ declare f text; begin
     'commerce_grant_promo(jsonb)', 'commerce_admin_adjust(jsonb)', 'commerce_record_ai_usage(jsonb)', 'commerce_record_event(jsonb)',
     'commerce_event_done(jsonb)', 'commerce_delete_report(jsonb)', 'commerce_forbid_change()', 'commerce_get_order(jsonb)',
     'commerce_open_orders(jsonb)', 'commerce_payment(jsonb)', 'commerce_store_grant(jsonb)', 'commerce_report(jsonb)', 'commerce_reports(jsonb)',
-    'commerce_share_report(jsonb)', 'commerce_shared(jsonb)', 'commerce_push_subscribe(jsonb)', 'commerce_watch_rule(jsonb)']
+    'commerce_share_report(jsonb)', 'commerce_shared(jsonb)', 'commerce_update_report(jsonb)', 'commerce_reconcile_log(jsonb)', 'commerce_watch_due(jsonb)', 'commerce_watch_event(jsonb)', 'commerce_push_pending(jsonb)', 'commerce_push_done(jsonb)', 'commerce_notices(jsonb)', 'commerce_catalog(jsonb)', 'commerce_economics(jsonb)', 'commerce_push_subscribe(jsonb)', 'commerce_watch_rule(jsonb)']
   loop
     execute format('revoke all on function public.%s from public, anon, authenticated', f);
     execute format('grant execute on function public.%s to service_role', f);

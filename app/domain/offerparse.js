@@ -56,7 +56,8 @@
       let name = line;
       for (const p of prices) name = name.replace(p.text, " ");
       name = name.replace(/~?\s*\d{1,2}[./월]\s*\d{1,2}\s*일?\s*까지|~\s*\d{1,2}[./]\d{1,2}|(?:20\d{2})[.\-/]\d{1,2}[.\-/]\d{1,2}/g, " ");   // dates are read separately
-      name = name.replace(/정상가|할인가|이벤트가|판매가|가격|→|->|⇒|~|:|\*|★|☆|♥|▶|\(\s*\)|\[\s*\]/g, " ").replace(/\s+/g, " ").trim();
+      name = name.replace(/\(?\s*(?:VAT|부가세|부가가치세)\s*(?:포함|별도|미포함|제외)\s*\)?/gi, " ");   // VAT is read separately too
+      name = name.replace(/정상가|정가|할인가|이벤트가|판매가|가격|→|->|⇒|~|:|\*|★|☆|♥|▶|\(\s*\)|\[\s*\]/g, " ").replace(/\s+/g, " ").trim();
       if (name.length < 2) { out.warnings.push(`'${line.slice(0, 40)}' — 가격만 있고 시술 이름이 없어 건너뛰었어요`); continue; }
       // energy written in joules ('10,000줄', '10000J') → KJ, the unit the comparison groups use
       name = name.replace(/(\d{1,3}(?:,\d{3})+|\d{4,})\s*(?:줄|J)(?![A-Za-z가-힣])/g, (m, n) => { const v = +n.replace(/,/g, ""); return v % 1000 ? m : `${v / 1000}KJ`; });
@@ -116,5 +117,11 @@
     return e;
   }
 
-  return { parse, validate, VAT, MAX_TEXT };
+  // the one price a short text says ('99,000원', '9.9만원'), or null when it says none or several
+  function priceOf(text) {
+    const ms = [...String(text || "").slice(0, 60).matchAll(PRICE)];
+    return ms.length === 1 ? wonOf(ms[0]) : null;
+  }
+
+  return { parse, validate, VAT, MAX_TEXT, MAX_OFFERS, priceOf, endDate };
 });
