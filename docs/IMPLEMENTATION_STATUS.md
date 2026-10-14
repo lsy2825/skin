@@ -8,6 +8,7 @@
 - 보안: `docs/SECURITY_AUDIT.md` · `SECURITY_ARCHITECTURE.md` · `SECURITY_REMEDIATION.md` · `SECURITY_TEST_REPORT.md` · `INCIDENT_RESPONSE_PLAN.md`
 - 디자인 시스템(2026 개편: 토큰·컴포넌트·그래프·화면 구조·검사 결과): `docs/DESIGN_SYSTEM.md`
 - 가격의 객관적 배치(정렬·최저가 강조·가격 옆 정보): `docs/OBJECTIVE_DISPLAY_POLICY.md`
+- 시연 단계 기능 15개(빠른 비교·규격·조건 요약·저장·체크리스트·제공 표·보고서 등): `docs/DEMO_FEATURES.md`
 - 마스코트 죠미: `docs/JOMI_CHARACTER_GUIDE.md` · `JOMI_ASSET_INVENTORY.md` · `JOMI_INTERACTION_SPEC.md` · `JOMI_COPYWRITING.md` · `JOMI_UI_UX_QA.md`
 
 **실제로 돌린 테스트** (이 세션, 2026-10-13)
@@ -48,6 +49,13 @@
 - **안 한 것:** 리뷰많은순·추천순
   - 리뷰 데이터가 없어요.
   - 추천 기준을 만들면 그 자체가 병원 추천이 돼요. 근거는 문서 §2에 있어요.
+
+## 시연 단계 기능 15개 (2026-10-14, DEMO-FIRST 지시서) — `docs/DEMO_FEATURES.md`
+- **된 것(모두 실제 데이터로 이 휴대폰 안에서 작동):** 빠른 비교·비교함(2~4곳), 시술 규격 확인, 가격 적용 조건 요약, 비교 저장(저장 시점 vs 지금), 즉시 갱신(목록 ↔ 그래프), 쉬운 용어, 방문 전 체크리스트, 지점별 제공 시술 표, 가격 확인 요청(시연/실제 구분), 관심 시술 가격, 비교 보고서, 지역별 가격, 업데이트 소식, 죠미 설정
+- **② 유지:** 여러 지점 비교의 차액은 사용자가 정한 기준 지점(비교함 맨 위)과의 차이예요. '가장 낮은 곳'을 따로 표시하지 않아요.
+- **함께 고친 것:** 관심 탭의 '최저 · 병원 이름'(→ 중간값·범위), 분포 그래프 설명의 'N번째로 싼 곳', 탐색 '시술별 가격 비교' 설명의 '최저가'
+- **시연과 정식 구분:** 로그인·회원가입·약관 동의는 연결하지 않았어요. 마이에 "정식 출시 때 열려요"와 준비된 것(카카오·Google·Apple 화면 배치, `auth.js`, 동기화, DB 정책)만 적었어요. 가격 확인 요청의 '기기에만 저장'은 시연이라고 적어요.
+- **확인:** `tests/e2e/demo_features.js`, `tests/spec.test.js`(`QA_REPORT.md`)
 
 ## v5.0 지시서 50개 항목 (2026-10-13, 코드로 확인)
 상태: **COMPLETE** 됨 · **PARTIAL** 일부 · **MISSING** 없음 · **BROKEN** 고장 · **BLOCKED** 사용자 자료·결정·외부 키 필요 · **NEEDS VERIFICATION** 이 환경에서 확인 불가

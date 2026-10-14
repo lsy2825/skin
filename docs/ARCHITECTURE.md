@@ -191,6 +191,9 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
   - `intel.js`: 이력 통계, 알림 판정
   - `stats.js`: 묶음 통계(지점별 최저가·중간값), 가격의 위치, 지점 수준 순서, 목록 정렬(지역·이름 / 가까운 / 최근 확인 / 낮은·높은 가격). `app.js`의 `gstat`·`rowPos`·`branchRanks`·`ranking`이 이걸 불러요(`tests/stats.test.js`)
   - `concern.js`: 피부 고민 분류
+  - `spec.js`: 상품명에서 시술 규격(제품·원산지·등급·용량/샷·횟수·부위·성별)과 가격 적용 조건(첫 방문·체험가·부가세·기간·그 밖) 읽기 — 없는 정보는 '미확인'(`tests/spec.test.js`)
+- **`app/terms.js`:** 쉬운 용어 18개(정적 글, 데이터 아님). 가격 용어와 단위·시술 용어를 나눠 표시
+- **시연 기능 화면:** `#quick`(빠른 비교), `#snap/<id>`(저장한 비교), `#terms`(쉬운 용어). 저장은 모두 localStorage(`docs/DEMO_FEATURES.md`)
 - **공용 화면 조각**
   - `sheet`, `nameSheet`, `undoToast`, `copyText`, `favBtn`, `switchEl`
   - `priceTable`(필터·칩·결과 수·범위·프리셋), `noResults`(대안 제안)

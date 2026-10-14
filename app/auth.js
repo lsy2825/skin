@@ -32,7 +32,8 @@
   const providerName = (u) => (u && u.app_metadata && u.app_metadata.provider) || "";
   window.Auth = {
     enabled,
-    providers: (cfg.providers || ["kakao", "google"]).filter((p) => p === "kakao" || p === "google"),
+    // Supabase OAuth providers the app is laid out for; each needs its own keys in the Supabase dashboard (docs/로그인_설정.md)
+    providers: (cfg.providers || ["kakao", "google"]).filter((p) => p === "kakao" || p === "google" || p === "apple"),
     get user() { return user; },
     providerName,
     onChange(f) { listeners.push(f); },

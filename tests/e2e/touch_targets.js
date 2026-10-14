@@ -7,11 +7,11 @@ const BASE = process.env.BASE || 'http://localhost:8766/';
 const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요 (예: APP_PIN=xxxx node ' + process.argv[1] + ')'); process.exit(2); }
 (async () => { const b = await chromium.launch(); const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
-  await p.goto(BASE); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])); }); await p.reload();
+  await p.goto(BASE); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])); localStorage.setItem('pc:short', JSON.stringify(['블리비|강남역점', '쁨|홍대점', '톡스앤필|강남본점'])); }); await p.reload();
   for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
   let tot = 0, bad = 0; const ex = {};
   for (const r of ['home', 'explore', 'saved', 'compare?k=X12', 'compare?k=X24', 'guide', 'search/%EB%B3%B4%ED%86%A1%EC%8A%A4', 'table', 'cart', 'me', 'branch/3', 'versus', 'change', 'about', 'ops', 'rank', 'concern?c=wrinkle',
-      'table?q=%EB%B3%B4%ED%86%A1%EC%8A%A4&att=%EA%B5%AD%EC%82%B0', 'cards:compare?k=X12']) {   // + 세부 구분 filter, compare as cards
+      'table?q=%EB%B3%B4%ED%86%A1%EC%8A%A4&att=%EA%B5%AD%EC%82%B0', 'cards:compare?k=X12', 'quick', 'terms']) {   // + 세부 구분 filter, compare as cards, quick compare, terms
     const cards = r.startsWith('cards:'); await p.goto(BASE + '#' + r.replace('cards:', '')); await p.waitForTimeout(500);
     if (cards) { await p.locator('#clinics .seg.vsw button', { hasText: '카드' }).click(); await p.waitForTimeout(400); }
     const res = await p.evaluate(async () => { let n = 0, fail = []; const els = [...document.querySelectorAll('#main button, #main select, #main input:not([type=hidden]), #main a[href]')];
