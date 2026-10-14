@@ -28,9 +28,17 @@
   const personal = (text, cs) => new RegExp(cs.safety.personal.pattern).test(squash(text));
 
   // a synonym hits when its spaceless form is in the spaceless text; one-syllable synonyms only as a whole word
+  // verb forms of a '-짐/-진' word ('꺼짐' → 꺼지·꺼졌·꺼져, '처진' → 처지·처졌·처져, '패임' → 패이·패였·패여): people write
+  // '볼이 꺼졌어요', not '볼 꺼짐' (2026-10-15)
+  const FORMS = (s) => {
+    const m = /^(.+)(짐|진)$/.exec(s), n = /^(.+)(임|인)$/.exec(s);
+    if (m && m[1].length >= 1) return [s, m[1] + "지", m[1] + "졌", m[1] + "져"];
+    if (n && n[1].length >= 1 && /[패]$/.test(n[1])) return [s, n[1] + "이", n[1] + "였", n[1] + "여"];
+    return [s];
+  };
   function hits(text, syns) {
     const t = squash(text), toks = tokens(text);
-    const found = syns.map(squash).filter((s) => s && (s.length > 1 ? t.includes(s) : toks.some((w) => w.startsWith(s) && TAIL.test(w.slice(s.length)))));
+    const found = [...new Set(syns.map(squash).filter(Boolean).flatMap((s) => FORMS(s).map((x) => [x, s])).filter(([x]) => (x.length > 1 ? t.includes(x) : toks.some((w) => w.startsWith(x) && TAIL.test(w.slice(x.length))))).map(([, s]) => s))];
     // keep only the longest of overlapping hits ('이마주름' counts once, not also as '주름')
     return found.filter((s) => !found.some((o) => o !== s && o.length > s.length && o.includes(s)));
   }

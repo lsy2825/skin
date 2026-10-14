@@ -75,7 +75,7 @@
     prod: null, prodK: null,                       // compare: product / device filter of the clinic list (key it belongs to)
   };
   let CHK = new Map();
-  let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, concernText = "", concernPick = null;
+  let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, pendingChat = "", concernPick = null;   // pendingChat: a message from the home box for 죠미와 대화 (memory only)
   let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache, KB, kbByFam, kbByFid;
   // carts: old single cart [{k, q}] becomes the first saved cart
   function newId() { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (Math.random() * 16) >> (c / 4)).toString(16)); }
@@ -1417,9 +1417,11 @@
     const t = String(v || "").trim();
     if (!t) return;
     if (partial()) { pending = () => routeQuery(t); $("#main").replaceChildren(fullWait()); return; }
-    if (FLAGS.concernSearch && CONC.concerns.length && !famFind(t).length) {
-      const r = Concern.classify(t, CONC);
-      if (r.safety.length || r.matches.length) { concernText = t; nav("concern"); return; }
+    // not a price search: a concern, a warning sign, two treatments compared, a question about the app or small talk goes to
+    // 죠미와 대화 with the words in memory only (not the URL)
+    if (FLAGS.concernSearch && !famFind(t).length) {
+      const r = JomiChat.understand(t, chatCtx(), JomiChat.memory());
+      if (["concern", "safety", "help", "chit", "compare2"].includes(r.kind) || r.safety.length) { pendingChat = t; nav("concern"); return; }
     }
     nav(`search/${encodeURIComponent(t)}`);
   }
@@ -2506,7 +2508,7 @@
     return box;
   };
   // ---------------- 피부 고민으로 찾기 (app/domain/concern.js + knowledge/concerns.json), on this phone only
-  // The typed words live in memory (concernText) for this visit: never in the URL, localStorage, recent searches or any
+  // The typed words live in memory (the chat thread) for this visit: never in the URL, localStorage, recent searches or any
   // request. Every medical sentence on the page comes from the knowledge files; the page itself adds headings only.
   // It never diagnoses, judges suitability, decides doses, ranks treatments or names a clinic.
   const concernOf = (id) => CONC.concerns.find((c) => c.id === id);
@@ -2544,57 +2546,147 @@
         h("div", { class: "tiny" }, "고민 설명 근거: ", c.sources.length ? c.sources.flatMap((x, i) => [i ? ", " : "", h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.publisher)]) : "근거 자료 미정리"),
         h("p", { class: "tiny" }, "설명은 미리 정리해 둔 문장만 보여줘요(앱이 새로 지어낸 의학 문장은 없어요). 지금은 모두 의료진 검수 전 초안이에요. " + DISCLAIM)));
   }
-  // chat-style layout for an information service: the guide's 'messages' are the knowledge files' own sentences,
-  // the user's words stay in memory (this visit, this tab) and are shown back only on this screen
+  // ---------------- 죠미와 대화 (domain/jomichat.js): treatment names, prices by spec · region · brand, two treatments, app help,
+  // concerns and follow-ups ('그럼 4cc는?'). The thread lives in memory for this visit only (never the URL, storage or a request);
+  // medical sentences come only from the knowledge files, prices only from the collected data. 2026-10-15: the old screen knew
+  // concern words only (17.7% of the evaluation set understood) and kept the sent text in the box.
   const mascotImg = (size, expr = "curious") => jomiImg(expr, "face", size);
+  let chatTurns = [], chatMemo = null, chatCtxFor = null, chatCtxMemo = null;
+  function chatCtx() {
+    if (chatCtxMemo && chatCtxFor === D) return chatCtxMemo;
+    const nl = nlCtx(), BRANDS = D.meta.brands.map((b) => b[0]);
+    // one lowest live price per branch; a place or brand named in the message replaces the screen's filter for this answer
+    const price = (id, w = {}) => {
+      const k = KI[id], ps = [];
+      if (k == null) return { n: 0 };
+      for (const b of byKB[k].keys()) {
+        if (w.brand ? BRANDS[BR[b].brand] !== w.brand : !brandOn(b)) continue;
+        if (w.region ? !regOk(b, w.region) : !w.area && !regionOk(b)) continue;
+        if (w.area && !areaOk(b, w.area)) continue;
+        const i = bestAt(k, b);
+        if (i >= 0) ps.push(ROWS[i][3]);
+      }
+      return JomiChat.summary(ps);
+    };
+    chatCtxMemo = JomiChat.ctx({ fams: FAM.map((f) => ({ name: f.name, cat: f.cat, fid: f.fid, desc: f.desc, n: f.n, src: f, keys: f.vs.map((v) => ({ id: KEYS[v.k].id, label: KEYS[v.k].label })) })),
+      brands: nl.brands, sido: nl.sido, areas: nl.areas, concerns: CONC.concerns.length ? CONC : null, kbOf: (f) => kbOf(f.src), price });
+    chatCtxFor = D;
+    return chatCtxMemo;
+  }
+  const whereText = (w) => [w.brand, w.region, w.area ? `${w.area} 근처` : ""].filter(Boolean).join(" · ") || regionName();
+  function priceLine(p, w) {
+    if (!p || !p.n) return h("p", { class: "sub" }, `${whereText(w)}에서는 모은 가격이 없어요. 지역이나 브랜드를 바꿔 물어봐 줘.`);
+    return h("div", { class: "cprice" },
+      h("div", { class: "row", style: "gap:12px;flex-wrap:wrap" }, h("span", {}, "최저 ", h("b", { class: "num" }, won(p.min))), h("span", {}, "중간 ", h("b", { class: "num" }, won(p.med))),
+        h("span", { class: "sub" }, `최고 ${won(p.max)}`)),
+      h("div", { class: "tiny" }, `${whereText(w)} · ${p.n}곳의 지점별 최저가 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"} · ${D.meta.updated} 모음. 병원에 꼭 확인하세요.`));
+  }
+  function famAnswer(r, f, key, p) {
+    const e = kbOf(f.src), ks = f.keys.filter((k) => k.id !== key.id).slice(0, 6);
+    const tq = (w) => { const np = new URLSearchParams({ q: f.name, sort: "price" }); if (w.region) np.set("reg", w.region); if (w.area) np.set("area", w.area); if (w.brand) np.set("brand", D.meta.brands.findIndex((b) => b[0] === w.brand)); return `table?${np}`; };
+    return h("div", { class: "card cans" },
+      h("div", { class: "row", style: "gap:6px" }, h("h3", { style: "margin:0" }, key.label), h("span", { class: "sp" }), h("span", { class: "sub" }, `${f.n}곳에서 팔아요`)),
+      r.spec && !r.specHonored ? h("p", { class: "tiny" }, `'${r.spec}' 묶음은 없어서 가장 많이 파는 규격으로 보여줘요.`) : null,
+      priceLine(p, r.where),
+      e ? h("p", { style: "margin:8px 0 0" }, `${e.one_liner} ${e.purpose}`) : f.desc.length ? h("p", { class: "sub", style: "margin:8px 0 0" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
+      e ? h("div", { class: "row", style: "gap:4px;margin-top:4px" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
+      h("div", { class: "row", style: "gap:6px;margin-top:10px;flex-wrap:wrap" },
+        h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("bar-chart-3", "sm"), "지점별 가격 비교"),
+        Object.keys(r.where).length ? h("button", { class: "btn sm soft", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
+      ks.length ? h("div", { style: "margin-top:10px" }, h("div", { class: "tiny" }, "다른 규격도 물어볼 수 있어요"),
+        h("div", { class: "chips wrapc", style: "margin-top:4px" }, ks.map((k) => h("button", { class: "chip", type: "button", onclick: () => chatSend(`${k.label} 얼마야`) }, k.label)))) : null);
+  }
+  function chatAnswer(r) {
+    const parts = [];
+    let face = "happy";
+    for (const x of r.safety) parts.push(h("div", { class: `card ${x.level === "emergency" ? "calert" : "cwarn"}`, role: "alert" }, h("h3", {}, icon("triangle-alert", "sm"), x.title), h("p", {}, x.message)));
+    if (r.kind === "safety") return { face: "worried", parts };
+    if (r.personal) parts.push(h("div", { class: "card note" }, h("b", {}, "개인 맞춤 판단은 하지 않아요"), h("p", { style: "margin:4px 0 0" }, (CONC.safety && CONC.safety.personal.message) || "나에게 맞는 시술·용량은 진찰한 의료진만 정해요.")));
+    if (r.guess) parts.push(h("p", { class: "jomi-line" }, `혹시 '${r.fams[0].name}' 말하는 거야? (${r.guess.join(", ")})`));
+    if (r.kind === "help" || r.kind === "chit") {
+      parts.push(h("p", {}, r.say));
+      if (r.go) parts.push(h("button", { class: "btn sm soft", type: "button", onclick: () => nav(r.go[0]) }, r.go[1], icon("chevron-right", "sm")));
+      return { face: r.kind === "chit" ? "happy" : "explaining", parts };
+    }
+    if (r.kind === "compare2") {
+      parts.push(h("p", { class: "jomi-line" }, "두 시술을 나란히 놓아 볼게. 어느 쪽이 맞는지는 의료진과 정해."));
+      r.prices.forEach(({ key, price }, n) => parts.push(famAnswer({ ...r, spec: "", where: r.where }, r.fams[n], key, price)));
+      return { face: "explaining", parts };
+    }
+    if (r.kind === "concern") {
+      const cs = r.concerns.map((m) => [concernOf(m.id), m]).filter(([c]) => concernVisible(c));
+      if (cs.length) parts.push(h("p", { class: "jomi-line" }, J.lines.concernFound || "적은 말과 관련된 고민 정보야."));
+      for (const [c, m] of cs) parts.push(concernCard(c, m));
+      if (r.fams.length) parts.push(h("div", { class: "chips wrapc" }, r.fams.map((f) => h("button", { class: "chip", type: "button", onclick: () => chatSend(`${f.name} 가격`) }, `${f.name} 가격`))));
+      return { face: "thinking", parts };
+    }
+    if (r.kind === "treatment" || r.kind === "price") {
+      const f = r.fams[0];
+      if (r.followUp) parts.push(h("p", { class: "jomi-line" }, `앞에서 말한 ${f.name} 기준이야.`));
+      parts.push(famAnswer(r, f, r.key, r.price));
+      if (r.fams.length > 1) parts.push(h("div", {}, h("div", { class: "tiny" }, "이름이 비슷한 시술"), h("div", { class: "chips wrapc", style: "margin-top:4px" },
+        r.fams.slice(1).map((x) => h("button", { class: "chip", type: "button", onclick: () => chatSend(x.name) }, x.name)))));
+      if (r.concerns.length) parts.push(h("div", { class: "row", style: "gap:6px;flex-wrap:wrap" }, h("span", { class: "tiny" }, "관련 고민:"),
+        r.concerns.map((m) => concernOf(m.id)).filter(concernVisible).map((c) => h("button", { class: "linkbtn", type: "button", onclick: () => chatSend(c.name) }, c.name))));
+      return { face: "happy", parts };
+    }
+    face = "empty";
+    parts.push(h("p", {}, "음… 그 말은 아직 잘 모르겠어. 시술 이름이나 '리쥬란 2cc 얼마야', '강남 슈링크', '이마 주름'처럼 적어 줘."));
+    if (r.suggestions.length) parts.push(h("div", {}, h("div", { class: "tiny" }, "이걸 찾았어?"), h("div", { class: "chips wrapc", style: "margin-top:4px" },
+      r.suggestions.map((n) => h("button", { class: "chip", type: "button", onclick: () => chatSend(n) }, n)))));
+    return { face, parts };
+  }
+  let chatSend = () => {};
   views.concern = (arg, params) => {
     const box = h("div", { class: "view" });
     box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
-    if (!FLAGS.concernSearch) { box.append(h("div", { class: "card empty" }, "피부 고민으로 찾기는 지금 꺼져 있어요.")); return box; }
+    if (!FLAGS.concernSearch) { box.append(h("div", { class: "card empty" }, "죠미와 대화는 지금 꺼져 있어요.")); return box; }
+    if (!chatMemo) chatMemo = JomiChat.memory();
     const picked = params.get("c");   // a concern id from a chip or the search page — never the typed words
-    const ta = h("textarea", { rows: "1", maxlength: String(Concern.MAX_LEN), placeholder: "예: 이마랑 미간 주름이 신경 쓰여요", "aria-label": "피부 고민 적기" });
-    ta.value = concernText;
+    const ta = h("textarea", { rows: "1", maxlength: String(JomiChat.MAX_LEN), placeholder: "예: 카프리 레이저 얼마야? · 이마 주름이 신경 쓰여요", "aria-label": "죠미에게 말하기", enterkeyhint: "send" });
     const grow = () => { ta.style.height = "auto"; ta.style.height = `${Math.min(132, ta.scrollHeight)}px`; };
     ta.addEventListener("input", grow);
     const thread = h("div", { class: "chat", "aria-live": "polite" });
-    const out = h("div", { class: "cout answers" });
     const visible = CONC.concerns.filter(concernVisible);
+    const ex = ["카프리 레이저", "리쥬란 2cc 얼마야", "강남 슈링크 제일 싼 곳", "슈링크랑 울쎄라 차이", "부가세 포함이야?"];
     const intro = h("div", { class: "msg bot" }, mascotImg(32), h("div", { class: "bub" },
-      h("p", {}, J.lines.concernAsk || "어떤 점이 신경 쓰이는지 편하게 적어 주세요."),
-      h("p", { class: "tiny" }, "진단이나 상담이 아니고, 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 낱말 사전으로 분류하고, 의학 설명은 지식 파일의 문장만 보여줘요."),
-      visible.length ? h("div", { style: "margin-top:12px" }, h("div", { class: "eyebrow", style: "margin-bottom:8px" }, "고민 고르기"),
-        h("div", { class: "chips wrapc" }, visible.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => nav(`concern?c=${c.id}`, true) }, c.name)))) : null));
-    const paint = (r, said) => {
-      const me = said ? h("div", { class: "msg user" }, h("div", { class: "bub" }, said)) : null;
-      if (r.empty) { fill(thread, intro); return; }
-      let face = "thinking";   // 생각하는 죠미 while she shows what she found; 시무룩 when nothing matched
-      const parts = r.safety.map((x) => h("div", { class: `card ${x.level === "emergency" ? "calert" : "cwarn"}`, role: "alert" },
-        h("h3", {}, icon("triangle-alert", "sm"), x.title), h("p", {}, x.message)));
-      // a warning sign of an emergency: the clinician comes first, so no treatment information at all
-      if (!r.safety.some((x) => x.level === "emergency")) {
-        if (r.personal) parts.push(h("div", { class: "card note" }, h("b", {}, "개인 맞춤 판단은 하지 않아요"), h("p", { style: "margin:4px 0 0" }, CONC.safety.personal.message)));
-        if (r.clipped) parts.push(h("div", { class: "note" }, `앞 ${Concern.MAX_LEN}자만 분류했어요.`));
-        const cs = r.matches.map((m) => [concernOf(m.id), m]).filter(([c]) => concernVisible(c));
-        if (!cs.length) face = "empty";
-        if (!cs.length) parts.push(h("div", { class: "card" }, h("h3", {}, "어떤 고민인지 찾지 못했어요"),
-          h("p", { class: "sub" }, "'고민 고르기'에서 골라 보거나 낱말을 바꿔 적어 보세요(예: 주름, 기미, 여드름, 땀). 증상이 걱정되면 피부과 진료를 받아 보세요.")));
-        if (cs.length > 1) parts.push(h("div", { class: "sub", style: "margin:0 4px" }, `적은 말과 관련된 고민 ${cs.length}가지예요(찾은 낱말이 많은 순).`));
-        if (cs.length) parts.push(h("p", { class: "jomi-line" }, J.lines.concernFound || ""));
-        for (const [c, m] of cs) parts.push(concernCard(c, m));
+      h("p", {}, "안녕, 나는 죠미야! 시술 이름, 가격(용량·횟수·지역), 피부 고민, 앱 쓰는 법을 물어봐 줘."),
+      h("div", { class: "chips wrapc", style: "margin-top:8px" }, ex.map((t) => h("button", { class: "chip", type: "button", onclick: () => chatSend(t) }, t))),
+      h("p", { class: "tiny" }, "진단이나 상담이 아니고 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 규칙으로 알아듣고, 가격은 모은 가격, 의학 설명은 지식 파일의 문장만 보여줘요."),
+      visible.length ? h("details", { class: "fold small", style: "margin-top:8px" }, h("summary", {}, "피부 고민 고르기"),
+        h("div", { class: "chips wrapc", style: "margin-top:6px" }, visible.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => chatSend(c.name) }, c.name)))) : null));
+    const paint = () => {
+      const kids = [intro];
+      for (const t of chatTurns) {
+        kids.push(h("div", { class: "msg user" }, h("div", { class: "bub" }, t.q)));
+        const a = chatAnswer(t.r);
+        kids.push(h("div", { class: "msg bot" }, mascotImg(32, a.face), h("div", { class: "cout answers" }, a.parts)));
       }
-      fill(out, parts);
-      fill(thread, intro, me, h("div", { class: "msg bot" }, mascotImg(32, face), out));
+      fill(thread, kids);
     };
-    const run = () => { concernText = ta.value; paint(Concern.classify(concernText, CONC), concernText.trim() || null); };
-    ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); run(); } });
-    box.append(h("div", { class: "cg-head", style: "padding:0 4px" }, mascotImg(44), h("div", { style: "min-width:0" }, h("h2", {}, "피부 고민 가이드"),
-      h("span", { class: "infotag" }, icon("info", "xs"), "정보 안내 서비스 · 진단·의료 상담 아님"))));
+    chatSend = (text) => {
+      const q = String(text || "").trim().slice(0, JomiChat.MAX_LEN);
+      if (!q) return;
+      const r = JomiChat.understand(q, chatCtx(), chatMemo);
+      chatTurns.push({ q, r });
+      if (chatTurns.length > 30) chatTurns = chatTurns.slice(-30);
+      track("jomi_chat", { kind: r.kind });     // the kind only — never the words
+      ta.value = ""; grow();                     // the sent words leave the box (they stay in the thread above)
+      paint();
+      const last = thread.lastElementChild;
+      if (last) last.scrollIntoView({ block: "start", behavior: "smooth" });
+    };
+    const send = () => { const v = ta.value; chatSend(v); ta.focus({ preventScroll: true }); };
+    ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+    box.append(h("div", { class: "cg-head", style: "padding:0 4px" }, mascotImg(44), h("div", { style: "min-width:0" }, h("h2", {}, "죠미와 대화"),
+      h("span", { class: "infotag" }, icon("info", "xs"), "시술·가격·고민 안내 · 진단·의료 상담 아님")),
+      chatTurns.length ? h("button", { class: "linkbtn", type: "button", style: "margin-left:auto", onclick: () => { chatTurns = []; chatMemo = JomiChat.memory(); paint(); } }, "대화 지우기") : null));
     box.append(thread);
-    box.append(h("div", { class: "composer" }, h("div", { class: "crow" }, ta, h("button", { class: "btn send", type: "button", onclick: run }, icon("send", "sm"), "찾기")),
-      h("div", { class: "meta" }, icon("lock", "xs"), `저장·전송하지 않아요 · 주소와 검색 기록에도 남지 않아요 · ${Concern.MAX_LEN}자까지`)));
-    if (picked && concernOf(picked)) paint({ safety: [], personal: false, matches: [{ id: picked, hits: [] }] }, concernOf(picked).name);
-    else if (concernText.trim()) paint(Concern.classify(concernText, CONC), concernText);
-    else paint({ empty: true });
+    box.append(h("div", { class: "composer" }, h("div", { class: "crow" }, ta, h("button", { class: "btn send", type: "button", onclick: send }, icon("send", "sm"), "보내기")),
+      h("div", { class: "meta" }, icon("lock", "xs"), `이 화면에만 있어요 · 저장·전송하지 않아요 · ${JomiChat.MAX_LEN}자까지`)));
+    paint();
+    if (pendingChat) { const t = pendingChat; pendingChat = ""; setTimeout(() => chatSend(t), 0); }
+    else if (picked && concernOf(picked)) setTimeout(() => chatSend(concernOf(picked).name), 0);
     setTimeout(grow, 0);
     return box;
   };

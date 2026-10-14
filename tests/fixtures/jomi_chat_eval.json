@@ -1,0 +1,1129 @@
+{
+"_about": "죠미 대화 이해 평가 세트(2026-10-15). 사람이 실제로 적을 법한 말을 의도별로 손으로 적음. tools/jomi_chat_eval.js가 채점.",
+"items": [
+{
+"q": "카프리",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "카프리 레이저",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "카프리가 뭐야?",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "카프리 레이저 어떤 시술이야",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "리쥬란",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "리쥬란 힐러 뭐야",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "쥬베룩 어떤거야?",
+"intent": "treatment",
+"fam": "쥬베룩"
+},
+{
+"q": "슈링크",
+"intent": "treatment",
+"fam": "슈링크"
+},
+{
+"q": "울쎄라 뭐임",
+"intent": "treatment",
+"fam": "울쎄라"
+},
+{
+"q": "인모드가 뭔가요",
+"intent": "treatment",
+"fam": "인모드"
+},
+{
+"q": "아쿠아필 효과 궁금해",
+"intent": "treatment",
+"fam": "아쿠아필"
+},
+{
+"q": "포텐자는 어떤 시술?",
+"intent": "treatment",
+"fam": "포텐자"
+},
+{
+"q": "레디어스 알려줘",
+"intent": "treatment",
+"fam": "레디어스"
+},
+{
+"q": "리투오가 뭐에요",
+"intent": "treatment",
+"fam": "리투오"
+},
+{
+"q": "온다 리프팅 설명해줘",
+"intent": "treatment",
+"fam": "온다"
+},
+{
+"q": "써마지",
+"intent": "treatment",
+"fam": "써마지"
+},
+{
+"q": "올리지오 궁금",
+"intent": "treatment",
+"fam": "올리지오"
+},
+{
+"q": "물광주사 뭐야",
+"intent": "treatment",
+"fam": "물광"
+},
+{
+"q": "피코토닝이 뭐야",
+"intent": "treatment",
+"fam": "피코토닝"
+},
+{
+"q": "제네시스 레이저",
+"intent": "treatment",
+"fam": "제네시스"
+},
+{
+"q": "라라필?",
+"intent": "treatment",
+"fam": "라라필"
+},
+{
+"q": "블랙필 어때",
+"intent": "treatment",
+"fam": "블랙필"
+},
+{
+"q": "엑셀V 뭐야",
+"intent": "treatment",
+"fam": "엑셀"
+},
+{
+"q": "스킨바이브",
+"intent": "treatment",
+"fam": "스킨바이브"
+},
+{
+"q": "셀르디엠 알려줘",
+"intent": "treatment",
+"fam": "셀르디엠"
+},
+{
+"q": "덴서티 리프팅",
+"intent": "treatment",
+"fam": "덴서티"
+},
+{
+"q": "볼뉴머 뭐야",
+"intent": "treatment",
+"fam": "볼뉴머"
+},
+{
+"q": "아그네스",
+"intent": "treatment",
+"fam": "아그네스"
+},
+{
+"q": "릴리이드",
+"intent": "treatment",
+"fam": "릴리이드"
+},
+{
+"q": "PTT가 뭐야",
+"intent": "treatment",
+"fam": "PTT"
+},
+{
+"q": "잼버 알려줘",
+"intent": "treatment",
+"fam": "잼버"
+},
+{
+"q": "레티젠?",
+"intent": "treatment",
+"fam": "레티젠"
+},
+{
+"q": "스컬트라 궁금해",
+"intent": "treatment",
+"fam": "스컬트라"
+},
+{
+"q": "텐써마 뭐야",
+"intent": "treatment",
+"fam": "텐써마"
+},
+{
+"q": "리니어지",
+"intent": "treatment",
+"fam": "리니어지"
+},
+{
+"q": "세르프 리프팅",
+"intent": "treatment",
+"fam": "세르프"
+},
+{
+"q": "에버클이 뭐예요",
+"intent": "treatment",
+"fam": "에버클"
+},
+{
+"q": "ASCE 엑소좀",
+"intent": "treatment",
+"fam": "엑소좀"
+},
+{
+"q": "프락셀",
+"intent": "treatment",
+"fam": "프락셀"
+},
+{
+"q": "실리프팅 알려줘",
+"intent": "treatment",
+"fam": "실리프팅"
+},
+{
+"q": "염증주사가 뭐야",
+"intent": "treatment",
+"fam": "염증주사"
+},
+{
+"q": "태반주사",
+"intent": "treatment",
+"fam": "태반주사"
+},
+{
+"q": "백옥주사 뭐야",
+"intent": "treatment",
+"fam": "백옥주사"
+},
+{
+"q": "신데렐라주사",
+"intent": "treatment",
+"fam": "신데렐라"
+},
+{
+"q": "윤곽주사 어떤거",
+"intent": "treatment",
+"fam": "윤곽주사"
+},
+{
+"q": "코 조각주사",
+"intent": "treatment",
+"fam": "조각주사"
+},
+{
+"q": "문신제거",
+"intent": "treatment",
+"fam": "문신제거"
+},
+{
+"q": "점빼기",
+"intent": "treatment",
+"fam": "점"
+},
+{
+"q": "착색토닝",
+"intent": "treatment",
+"fam": "착색토닝"
+},
+{
+"q": "물방울 리프팅",
+"intent": "treatment",
+"fam": "물방울"
+},
+{
+"q": "LDM",
+"intent": "treatment",
+"fam": "LDM"
+},
+{
+"q": "벨로테로 리바이브",
+"intent": "treatment",
+"fam": "리바이브"
+},
+{
+"q": "엘란쎄",
+"intent": "treatment",
+"fam": "엘란쎄"
+},
+{
+"q": "히알라제가 뭐야",
+"intent": "treatment",
+"fam": "히알라제"
+},
+{
+"q": "기미주사",
+"intent": "treatment",
+"fam": "기미주사"
+},
+{
+"q": "제로팻주사",
+"intent": "treatment",
+"fam": "제로팻"
+},
+{
+"q": "NMN 스킨부스터",
+"intent": "treatment",
+"fam": "NMN"
+},
+{
+"q": "카프리 레이저 가격",
+"intent": "price",
+"fam": "카프리"
+},
+{
+"q": "카프리 얼마야",
+"intent": "price",
+"fam": "카프리"
+},
+{
+"q": "리쥬란 얼마야?",
+"intent": "price",
+"fam": "리쥬란"
+},
+{
+"q": "슈링크 가격 알려줘",
+"intent": "price",
+"fam": "슈링크"
+},
+{
+"q": "울쎄라 제일 싼 곳",
+"intent": "price",
+"fam": "울쎄라"
+},
+{
+"q": "사각턱 보톡스 최저가",
+"intent": "price",
+"fam": "사각턱"
+},
+{
+"q": "인모드 시세",
+"intent": "price",
+"fam": "인모드"
+},
+{
+"q": "쥬베룩 비용",
+"intent": "price",
+"fam": "쥬베룩"
+},
+{
+"q": "아쿠아필 얼마정도해",
+"intent": "price",
+"fam": "아쿠아필"
+},
+{
+"q": "겨드랑이 제모 가격",
+"intent": "price",
+"fam": "겨드랑이"
+},
+{
+"q": "스킨보톡스 얼마",
+"intent": "price",
+"fam": "스킨보톡스"
+},
+{
+"q": "다한증 보톡스 비용 얼마나 들어",
+"intent": "price",
+"fam": "다한증"
+},
+{
+"q": "피코토닝 얼마야",
+"intent": "price",
+"fam": "피코토닝"
+},
+{
+"q": "포텐자 가격 궁금해",
+"intent": "price",
+"fam": "포텐자"
+},
+{
+"q": "써마지 얼마임",
+"intent": "price",
+"fam": "써마지"
+},
+{
+"q": "점빼기 얼마",
+"intent": "price",
+"fam": "점"
+},
+{
+"q": "브라질리언 제모 얼마",
+"intent": "price",
+"fam": "브라질리언"
+},
+{
+"q": "레디어스 평균 가격",
+"intent": "price",
+"fam": "레디어스"
+},
+{
+"q": "리투오 싼데 어디야",
+"intent": "price",
+"fam": "리투오"
+},
+{
+"q": "온다 리프팅 가격대",
+"intent": "price",
+"fam": "온다"
+},
+{
+"q": "물광주사 가격",
+"intent": "price",
+"fam": "물광"
+},
+{
+"q": "주름 보톡스 얼마에요",
+"intent": "price",
+"fam": "주름 보톡스"
+},
+{
+"q": "턱끝 필러 가격",
+"intent": "price",
+"fam": "턱끝"
+},
+{
+"q": "코필러 얼마",
+"intent": "price",
+"fam": "코 필러"
+},
+{
+"q": "입술필러 비용",
+"intent": "price",
+"fam": "입술"
+},
+{
+"q": "제네시스 토닝 가격",
+"intent": "price",
+"fam": "제네시스"
+},
+{
+"q": "실리프팅 얼마야",
+"intent": "price",
+"fam": "실리프팅"
+},
+{
+"q": "문신제거 비용",
+"intent": "price",
+"fam": "문신"
+},
+{
+"q": "백옥주사 얼마",
+"intent": "price",
+"fam": "백옥"
+},
+{
+"q": "올리지오 가격",
+"intent": "price",
+"fam": "올리지오"
+},
+{
+"q": "리쥬란 2cc 얼마",
+"intent": "price",
+"fam": "리쥬란",
+"spec": "2cc"
+},
+{
+"q": "리쥬란 4cc 가격",
+"intent": "price",
+"fam": "리쥬란",
+"spec": "4cc"
+},
+{
+"q": "슈링크 300샷 가격",
+"intent": "price",
+"fam": "슈링크",
+"spec": "300샷"
+},
+{
+"q": "슈링크 600샷 얼마야",
+"intent": "price",
+"fam": "슈링크",
+"spec": "600샷"
+},
+{
+"q": "사각턱 보톡스 50유닛 얼마",
+"intent": "price",
+"fam": "사각턱",
+"spec": "50U"
+},
+{
+"q": "울쎄라 300샷 최저가",
+"intent": "price",
+"fam": "울쎄라",
+"spec": "300샷"
+},
+{
+"q": "써마지 600샷 가격",
+"intent": "price",
+"fam": "써마지",
+"spec": "600샷"
+},
+{
+"q": "쥬베룩 2cc 얼마야",
+"intent": "price",
+"fam": "쥬베룩",
+"spec": "2cc"
+},
+{
+"q": "인모드 1회 가격",
+"intent": "price",
+"fam": "인모드",
+"spec": "1회"
+},
+{
+"q": "아쿠아필 3회 가격",
+"intent": "price",
+"fam": "아쿠아필",
+"spec": "3회"
+},
+{
+"q": "피코토닝 10회 얼마",
+"intent": "price",
+"fam": "피코토닝",
+"spec": "10회"
+},
+{
+"q": "레이저토닝 10회 가격",
+"intent": "price",
+"fam": "레이저토닝",
+"spec": "10회"
+},
+{
+"q": "겨드랑이 제모 5회 얼마",
+"intent": "price",
+"fam": "겨드랑이",
+"spec": "5회"
+},
+{
+"q": "올리지오 300샷 가격",
+"intent": "price",
+"fam": "올리지오",
+"spec": "300샷"
+},
+{
+"q": "주름 보톡스 1부위 얼마",
+"intent": "price",
+"fam": "주름 보톡스",
+"spec": "1부위"
+},
+{
+"q": "필러 1cc 가격",
+"intent": "price",
+"fam": "필러",
+"spec": "1cc"
+},
+{
+"q": "카프리 레이저 5회 얼마",
+"intent": "price",
+"fam": "카프리",
+"spec": "5회"
+},
+{
+"q": "리투오 1회 얼마",
+"intent": "price",
+"fam": "리투오",
+"spec": "1회"
+},
+{
+"q": "강남 리쥬란 가격",
+"intent": "price",
+"fam": "리쥬란",
+"where": "강남"
+},
+{
+"q": "서울 슈링크 제일 싼 곳",
+"intent": "price",
+"fam": "슈링크",
+"where": "서울"
+},
+{
+"q": "부산 보톡스 얼마",
+"intent": "price",
+"fam": "보톡스",
+"where": "부산"
+},
+{
+"q": "블리비 리쥬란 얼마",
+"intent": "price",
+"fam": "리쥬란",
+"where": "블리비"
+},
+{
+"q": "쁨 울쎄라 가격",
+"intent": "price",
+"fam": "울쎄라",
+"where": "쁨"
+},
+{
+"q": "홍대 제모 싼 곳",
+"intent": "price",
+"fam": "제모",
+"where": "홍대"
+},
+{
+"q": "경기 인모드 가격",
+"intent": "price",
+"fam": "인모드",
+"where": "경기"
+},
+{
+"q": "밴스 사각턱 보톡스",
+"intent": "price",
+"fam": "사각턱",
+"where": "밴스"
+},
+{
+"q": "대전 아쿠아필",
+"intent": "price",
+"fam": "아쿠아필",
+"where": "대전"
+},
+{
+"q": "수원 피코토닝 얼마",
+"intent": "price",
+"fam": "피코토닝",
+"where": "수원"
+},
+{
+"q": "인천 써마지 가격",
+"intent": "price",
+"fam": "써마지",
+"where": "인천"
+},
+{
+"q": "톡스앤필 리쥬란",
+"intent": "price",
+"fam": "리쥬란",
+"where": "톡스앤필"
+},
+{
+"q": "리주란",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "울세라 가격",
+"intent": "treatment",
+"fam": "울쎄라"
+},
+{
+"q": "shurink",
+"intent": "treatment",
+"fam": "슈링크"
+},
+{
+"q": "카프리레이저 얼마",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "포텐사",
+"intent": "treatment",
+"fam": "포텐자"
+},
+{
+"q": "주베룩",
+"intent": "treatment",
+"fam": "쥬베룩"
+},
+{
+"q": "rejuran 가격",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "thermage",
+"intent": "treatment",
+"fam": "써마지"
+},
+{
+"q": "서마지 얼마",
+"intent": "treatment",
+"fam": "써마지"
+},
+{
+"q": "아쿠아필링",
+"intent": "treatment",
+"fam": "아쿠아필"
+},
+{
+"q": "인모드fx",
+"intent": "treatment",
+"fam": "인모드"
+},
+{
+"q": "볼뉴마",
+"intent": "treatment",
+"fam": "볼뉴머"
+},
+{
+"q": "엑소솜",
+"intent": "treatment",
+"fam": "엑소좀"
+},
+{
+"q": "레디어쓰",
+"intent": "treatment",
+"fam": "레디어스"
+},
+{
+"q": "슈링그",
+"intent": "treatment",
+"fam": "슈링크"
+},
+{
+"q": "리쥬렌",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "까프리",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "피코토닝레이저",
+"intent": "treatment",
+"fam": "피코토닝"
+},
+{
+"q": "사각턱보톡스",
+"intent": "treatment",
+"fam": "사각턱"
+},
+{
+"q": "겨털제모",
+"intent": "treatment",
+"fam": "겨드랑이"
+},
+{
+"q": "보톡",
+"intent": "treatment",
+"fam": "보톡스"
+},
+{
+"q": "울쎄라피 프라임",
+"intent": "treatment",
+"fam": "울쎄라"
+},
+{
+"q": "젠틀맥스 제모",
+"intent": "treatment",
+"fam": "제모"
+},
+{
+"q": "아포지 제모 가격",
+"intent": "treatment",
+"fam": "제모"
+},
+{
+"q": "슈링크랑 울쎄라 차이",
+"intent": "compare2",
+"fam": "슈링크",
+"fam2": "울쎄라"
+},
+{
+"q": "리쥬란 쥬베룩 뭐가 달라",
+"intent": "compare2",
+"fam": "리쥬란",
+"fam2": "쥬베룩"
+},
+{
+"q": "인모드 vs 슈링크",
+"intent": "compare2",
+"fam": "인모드",
+"fam2": "슈링크"
+},
+{
+"q": "피코토닝이랑 레이저토닝 차이가 뭐야",
+"intent": "compare2",
+"fam": "피코토닝",
+"fam2": "레이저토닝"
+},
+{
+"q": "써마지 올리지오 비교",
+"intent": "compare2",
+"fam": "써마지",
+"fam2": "올리지오"
+},
+{
+"q": "아쿠아필 라라필 차이",
+"intent": "compare2",
+"fam": "아쿠아필",
+"fam2": "라라필"
+},
+{
+"q": "이마 주름이 신경 쓰여요",
+"intent": "concern",
+"concern": "wrinkle"
+},
+{
+"q": "미간 주름",
+"intent": "concern",
+"concern": "wrinkle"
+},
+{
+"q": "턱이 각져 보여",
+"intent": "concern",
+"concern": "jaw"
+},
+{
+"q": "얼굴이 처졌어",
+"intent": "concern",
+"concern": "sagging"
+},
+{
+"q": "볼이 꺼졌어요",
+"intent": "concern",
+"concern": "volume"
+},
+{
+"q": "기미가 너무 많아",
+"intent": "concern",
+"concern": "pigment"
+},
+{
+"q": "잡티 없애고 싶어",
+"intent": "concern",
+"concern": "pigment"
+},
+{
+"q": "여드름이 계속 나요",
+"intent": "concern",
+"concern": "acne"
+},
+{
+"q": "모공이 넓어",
+"intent": "concern",
+"concern": "scar"
+},
+{
+"q": "여드름 흉터",
+"intent": "concern",
+"concern": "scar"
+},
+{
+"q": "얼굴이 빨개요",
+"intent": "concern",
+"concern": "redness"
+},
+{
+"q": "피부가 건조해",
+"intent": "concern",
+"concern": "dryness"
+},
+{
+"q": "겨드랑이 땀이 많아",
+"intent": "concern",
+"concern": "sweat"
+},
+{
+"q": "털이 많아서 고민",
+"intent": "concern",
+"concern": "hair"
+},
+{
+"q": "점 빼고 싶어",
+"intent": "concern",
+"concern": "mole"
+},
+{
+"q": "이중턱 고민",
+"intent": "concern",
+"concern": "contour"
+},
+{
+"q": "문신 지우고 싶어",
+"intent": "concern",
+"concern": "tattoo"
+},
+{
+"q": "피부톤이 칙칙해",
+"intent": "concern",
+"concern": "pigment"
+},
+{
+"q": "탄력이 없어졌어",
+"intent": "concern",
+"concern": "sagging"
+},
+{
+"q": "눈밑이 꺼져 보여",
+"intent": "concern",
+"concern": "volume"
+},
+{
+"q": "블랙헤드 많아",
+"intent": "concern",
+"concern": "acne"
+},
+{
+"q": "홍조가 심해",
+"intent": "concern",
+"concern": "redness"
+},
+{
+"q": "팔자주름",
+"intent": "concern",
+"concern": "volume"
+},
+{
+"q": "턱살 빼고 싶어",
+"intent": "concern",
+"concern": "contour"
+},
+{
+"q": "부가세 포함이야?",
+"intent": "help",
+"help": "vat"
+},
+{
+"q": "VAT 별도가 뭐야",
+"intent": "help",
+"help": "vat"
+},
+{
+"q": "장바구니 어떻게 써",
+"intent": "help",
+"help": "cart"
+},
+{
+"q": "장바구니에 담으면 뭐가 좋아",
+"intent": "help",
+"help": "cart"
+},
+{
+"q": "체험가가 뭐야",
+"intent": "help",
+"help": "event"
+},
+{
+"q": "첫방문 가격은 뭐야",
+"intent": "help",
+"help": "event"
+},
+{
+"q": "중간값이 뭐야",
+"intent": "help",
+"help": "median"
+},
+{
+"q": "가격 언제 업데이트돼?",
+"intent": "help",
+"help": "data"
+},
+{
+"q": "데이터 언제 모은거야",
+"intent": "help",
+"help": "data"
+},
+{
+"q": "가격이 실제랑 달라요",
+"intent": "help",
+"help": "report"
+},
+{
+"q": "틀린 가격 신고",
+"intent": "help",
+"help": "report"
+},
+{
+"q": "가까운 병원 찾고 싶어",
+"intent": "help",
+"help": "map"
+},
+{
+"q": "지도로 볼 수 있어?",
+"intent": "help",
+"help": "map"
+},
+{
+"q": "가격 내리면 알려줘",
+"intent": "help",
+"help": "alert"
+},
+{
+"q": "알림 설정",
+"intent": "help",
+"help": "alert"
+},
+{
+"q": "어떤 병원들 비교해?",
+"intent": "help",
+"help": "brands"
+},
+{
+"q": "몇 군데 병원 있어",
+"intent": "help",
+"help": "brands"
+},
+{
+"q": "내 정보 저장돼?",
+"intent": "help",
+"help": "privacy"
+},
+{
+"q": "비교는 어떻게 해",
+"intent": "help",
+"help": "howto"
+},
+{
+"q": "이 앱 어떻게 써",
+"intent": "help",
+"help": "howto"
+},
+{
+"q": "예약할 수 있어?",
+"intent": "help",
+"help": "booking"
+},
+{
+"q": "예약 대신 해줘",
+"intent": "help",
+"help": "booking"
+},
+{
+"q": "안녕",
+"intent": "chit",
+"chit": "hello"
+},
+{
+"q": "안녕하세요",
+"intent": "chit",
+"chit": "hello"
+},
+{
+"q": "하이",
+"intent": "chit",
+"chit": "hello"
+},
+{
+"q": "고마워",
+"intent": "chit",
+"chit": "thanks"
+},
+{
+"q": "감사합니다",
+"intent": "chit",
+"chit": "thanks"
+},
+{
+"q": "넌 누구야",
+"intent": "chit",
+"chit": "who"
+},
+{
+"q": "죠미야",
+"intent": "chit",
+"chit": "who"
+},
+{
+"q": "ㅋㅋㅋ",
+"intent": "chit",
+"chit": "laugh"
+},
+{
+"q": "뭐 할 수 있어?",
+"intent": "chit",
+"chit": "who"
+},
+{
+"q": "필러 맞고 피부가 하얗게 변했어",
+"intent": "safety",
+"level": "emergency"
+},
+{
+"q": "숨쉬기가 힘들어요",
+"intent": "safety",
+"level": "emergency"
+},
+{
+"q": "나한테 맞는 시술 추천해줘",
+"intent": "safety",
+"level": "personal"
+},
+{
+"q": "보톡스 몇 유닛 맞아야 돼?",
+"intent": "safety",
+"level": "personal"
+},
+{
+"q": "임신 중인데 보톡스 돼?",
+"intent": "safety",
+"level": "personal"
+},
+{
+"q": "그럼 4cc는?",
+"intent": "followup",
+"prev": "리쥬란 가격",
+"fam": "리쥬란",
+"spec": "4cc"
+},
+{
+"q": "강남은?",
+"intent": "followup",
+"prev": "슈링크 얼마",
+"fam": "슈링크",
+"where": "강남"
+},
+{
+"q": "제일 싼 곳은?",
+"intent": "followup",
+"prev": "울쎄라 가격",
+"fam": "울쎄라"
+},
+{
+"q": "가격은?",
+"intent": "followup",
+"prev": "카프리 레이저",
+"fam": "카프리"
+},
+{
+"q": "3회는 얼마야",
+"intent": "followup",
+"prev": "인모드",
+"fam": "인모드",
+"spec": "3회"
+},
+{
+"q": "부산은 얼마야",
+"intent": "followup",
+"prev": "사각턱 보톡스 가격",
+"fam": "사각턱",
+"where": "부산"
+},
+{
+"q": "얼마야?",
+"intent": "followup",
+"prev": "아쿠아필 뭐야",
+"fam": "아쿠아필"
+},
+{
+"q": "600샷은?",
+"intent": "followup",
+"prev": "써마지 가격",
+"fam": "써마지",
+"spec": "600샷"
+}
+]
+}

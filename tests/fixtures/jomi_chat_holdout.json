@@ -1,0 +1,302 @@
+{
+"_about": "죠미 대화 평가 — 따로 적은 문장(엔진을 맞추는 데 쓰지 않음). 첫 채점 결과를 그대로 보고.",
+"items": [
+{
+"q": "카프리 레이저 받으려는데 어떤 거야",
+"intent": "treatment",
+"fam": "카프리"
+},
+{
+"q": "리쥬란힐러 효과가 궁금함",
+"intent": "treatment",
+"fam": "리쥬란"
+},
+{
+"q": "요즘 쥬베룩 많이 하던데 그게 뭐야",
+"intent": "treatment",
+"fam": "쥬베룩"
+},
+{
+"q": "울쎄라 맞아보려고",
+"intent": "treatment",
+"fam": "울쎄라"
+},
+{
+"q": "인모드 해본 사람?",
+"intent": "treatment",
+"fam": "인모드"
+},
+{
+"q": "포텐자 시술 설명 좀",
+"intent": "treatment",
+"fam": "포텐자"
+},
+{
+"q": "레디어스는 어떤 주사야",
+"intent": "treatment",
+"fam": "레디어스"
+},
+{
+"q": "엑셀브이",
+"intent": "treatment",
+"fam": "엑셀"
+},
+{
+"q": "제네시스 토닝이 뭔지 모르겠어",
+"intent": "treatment",
+"fam": "제네시스"
+},
+{
+"q": "물광 주사 알려줘요",
+"intent": "treatment",
+"fam": "물광"
+},
+{
+"q": "써마지flx",
+"intent": "treatment",
+"fam": "써마지"
+},
+{
+"q": "코 필러 궁금해요",
+"intent": "treatment",
+"fam": "코 필러"
+},
+{
+"q": "턱보톡스",
+"intent": "treatment",
+"fam": "턱"
+},
+{
+"q": "다한증 주사",
+"intent": "treatment",
+"fam": "다한증"
+},
+{
+"q": "브라질리언 왁싱 말고 레이저",
+"intent": "treatment",
+"fam": "브라질리언"
+},
+{
+"q": "카프리 레이저 한번에 얼마야",
+"intent": "price",
+"fam": "카프리"
+},
+{
+"q": "리쥬란 한 번 맞는데 얼마 들어",
+"intent": "price",
+"fam": "리쥬란"
+},
+{
+"q": "슈링크 300샷 얼마 정도 해요?",
+"intent": "price",
+"fam": "슈링크",
+"spec": "300샷"
+},
+{
+"q": "보톡스 사각턱 50유닛 최저가 알려줘",
+"intent": "price",
+"fam": "사각턱",
+"spec": "50U"
+},
+{
+"q": "울쎄라 제일 저렴한 곳 어디",
+"intent": "price",
+"fam": "울쎄라"
+},
+{
+"q": "아쿠아필 평균 얼마야",
+"intent": "price",
+"fam": "아쿠아필"
+},
+{
+"q": "서울에서 인모드 싼 곳",
+"intent": "price",
+"fam": "인모드",
+"where": "서울"
+},
+{
+"q": "강남역 쥬베룩 가격",
+"intent": "price",
+"fam": "쥬베룩",
+"where": "강남"
+},
+{
+"q": "블리비에서 슈링크 얼마",
+"intent": "price",
+"fam": "슈링크",
+"where": "블리비"
+},
+{
+"q": "겨드랑이 레이저 제모 5회 가격",
+"intent": "price",
+"fam": "겨드랑이",
+"spec": "5회"
+},
+{
+"q": "피코토닝 10회 패키지 얼마",
+"intent": "price",
+"fam": "피코토닝",
+"spec": "10회"
+},
+{
+"q": "부산 피코토닝",
+"intent": "price",
+"fam": "피코토닝",
+"where": "부산"
+},
+{
+"q": "레이저토닝 얼마 해?",
+"intent": "price",
+"fam": "레이저토닝"
+},
+{
+"q": "온다 가격 궁금",
+"intent": "price",
+"fam": "온다"
+},
+{
+"q": "포텐자 비용이 어떻게 돼",
+"intent": "price",
+"fam": "포텐자"
+},
+{
+"q": "울쎄라랑 써마지 뭐가 다른데",
+"intent": "compare2",
+"fam": "울쎄라",
+"fam2": "써마지"
+},
+{
+"q": "리쥬란이랑 쥬베룩 비교해줘",
+"intent": "compare2",
+"fam": "리쥬란",
+"fam2": "쥬베룩"
+},
+{
+"q": "요즘 눈가에 주름이 생겼어",
+"intent": "concern",
+"concern": "wrinkle"
+},
+{
+"q": "얼굴 라인이 처져서 고민",
+"intent": "concern",
+"concern": "sagging"
+},
+{
+"q": "볼살 빼고 싶어요",
+"intent": "concern",
+"concern": "contour"
+},
+{
+"q": "피부에 잡티가 많이 올라왔어",
+"intent": "concern",
+"concern": "pigment"
+},
+{
+"q": "코에 피지가 많아",
+"intent": "concern",
+"concern": "acne"
+},
+{
+"q": "볼이 너무 붉어",
+"intent": "concern",
+"concern": "redness"
+},
+{
+"q": "겨드랑이털 없애고 싶어",
+"intent": "concern",
+"concern": "hair"
+},
+{
+"q": "손에 땀이 많이 나",
+"intent": "concern",
+"concern": "sweat"
+},
+{
+"q": "가격에 부가세 들어가있어?",
+"intent": "help",
+"help": "vat"
+},
+{
+"q": "가격이 병원이랑 다르게 나와요",
+"intent": "help",
+"help": "report"
+},
+{
+"q": "몇 일마다 가격 바뀌어?",
+"intent": "help",
+"help": "data"
+},
+{
+"q": "병원 예약도 돼?",
+"intent": "help",
+"help": "booking"
+},
+{
+"q": "장바구니는 뭐하는 거야",
+"intent": "help",
+"help": "cart"
+},
+{
+"q": "싸지면 알림 와?",
+"intent": "help",
+"help": "alert"
+},
+{
+"q": "체험가는 아무나 받을 수 있어?",
+"intent": "help",
+"help": "event"
+},
+{
+"q": "반가워 죠미",
+"intent": "chit",
+"chit": "hello"
+},
+{
+"q": "고맙습니다!",
+"intent": "chit",
+"chit": "thanks"
+},
+{
+"q": "너 뭐하는 애야",
+"intent": "chit",
+"chit": "who"
+},
+{
+"q": "보톡스 맞고 숨이 막혀요",
+"intent": "safety",
+"level": "emergency"
+},
+{
+"q": "저한테 어떤 시술이 좋을까요",
+"intent": "safety",
+"level": "personal"
+},
+{
+"q": "4cc는 얼마야",
+"intent": "followup",
+"prev": "쥬베룩 얼마",
+"fam": "쥬베룩",
+"spec": "4cc"
+},
+{
+"q": "서울은?",
+"intent": "followup",
+"prev": "인모드 가격",
+"fam": "인모드",
+"where": "서울"
+},
+{
+"q": "그거 얼마야",
+"intent": "followup",
+"prev": "리투오 뭐야",
+"fam": "리투오"
+},
+{
+"q": "그럼 600샷은",
+"intent": "followup",
+"prev": "울쎄라",
+"fam": "울쎄라",
+"spec": "600샷"
+}
+]
+}

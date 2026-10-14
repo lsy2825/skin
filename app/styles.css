@@ -587,6 +587,11 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .opt[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .opt:disabled { opacity: .45; }
 .cout { display: grid; gap: 12px; }
+/* 죠미와 대화: one answer card per treatment — the collected price first */
+.cans h3 { font-size: 16px; }
+.cprice { margin-top: 8px; display: grid; gap: 4px; }
+.cprice .num { font-size: 17px; }
+.msg.bot .answers > p { margin: 0; line-height: 1.6; }
 
 /* ---------- sheet, toast, skeleton */
 .sheet-bg { position: fixed; inset: 0; z-index: 80; background: var(--scrim); display: flex; align-items: flex-end; justify-content: center; animation: fadein .2s ease both; }
