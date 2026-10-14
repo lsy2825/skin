@@ -2,7 +2,7 @@
 
 usage: python build2/appdata.py [--date YYYY-MM-DD]
 data.json (compact, strings interned in `s`):
-  meta      updated date, row counts, brand list [name, color, note], kinds, cats, tags
+  meta      updated = newest collection date (shown as '수집'), built = build date, row counts, brand list [name, color, note], kinds, cats, tags
   cols      the price rows, stored one list per field (cols[f][row]); like values sit together, so gzip makes the file about
             a quarter smaller than row arrays. Fields in colDelta are stored as differences from the row before (the app and
             the tools add them back up). A row = [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s,
@@ -405,24 +405,27 @@ def main():
                              S(region(g.get("address", ""))), S(site), "", "",
                              # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
                              {"road": 0, "street": 1, "district": 2}.get(g.get("geo_level"), 3)])
-    # freshness: newest fetch date per branch; older than the build date by more than a day = previous data kept
+    # freshness: newest fetch date per branch; more than a day older than the newest collection in the data = this run did
+    # not refresh it (its scrape failed or was blocked, previous data kept). Measured from the newest collection, not the
+    # build date: a rebuild without scraping (a code push, --skip-scrape) the next day must not call every branch old.
     for r in rows:
         b = branches[bi[(r["brand"], r["branch"])]]
         d = (r["fetched_at"] or "")[:10]
         if d > b[7]:
             b[7] = d
+    collected = max((b[7] for b in branches if b[7]), default="") or a.date
     for b in branches:
-        b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(a.date) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
+        b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(collected) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
         b[7] = S(b[7])
     ALLK, VFAM = variant_keys()
     prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     prev_data, prev_rows = load_prev(prev_txt)
     recl_now = reclassified(prev_data, prev_rows, rows) & {k[0] for k in ALLK}
     # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
-    recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != a.date]
-    same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == a.date), [])
+    recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != collected]
+    same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == collected), [])
     if recl_now or same_day:
-        recl.append([a.date, sorted(set(same_day) | recl_now)])
+        recl.append([collected, sorted(set(same_day) | recl_now)])
     recl = recl[-12:]
     out_rows = []
     best = {}
@@ -437,11 +440,12 @@ def main():
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
                 best[kk] = min(best.get(kk, 10 ** 12), int(r["sale"]))
-    # weekly snapshot + changes against the previous one
+    # weekly snapshot + changes against the previous one — dated by the collection, not the build: a rebuild without scraping
+    # on a later day rewrites that collection's snapshot instead of adding an observation that never happened
     hist = os.path.join(ROOT, "data2", "history")
     os.makedirs(hist, exist_ok=True)
-    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < a.date)
-    save_snapshot(hist, a.date, best)
+    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < collected)
+    save_snapshot(hist, collected, best)
     changes, prev_date = [], ""
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
@@ -459,15 +463,17 @@ def main():
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
-    achg, anew, agone, aprev = G.snapshot_and_changes(hist, a.date, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
+    achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
-        "meta": {"updated": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
+        # updated = the newest collection (what the app calls '수집'); built = the build date (expired events and the weekly
+        # snapshot are counted from it)
+        "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
-        "trend": trend(hist, a.date, rows, {k: d for d, ks in recl for k in ks}),
+        "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }

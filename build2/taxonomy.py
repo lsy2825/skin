@@ -280,6 +280,8 @@ def _area(raw):
     return "/".join(re.sub(r"[^\w가-힣]", "", p) for p in parts if re.sub(r"[^\w가-힣]", "", p))
 
 
+# group-title words that can change what an option is (sex, body area): with these the group title stays in the signature
+GROUP_MEANS = re.compile(r"남성|여성|남자|여자|바디|얼굴|전신|부위|팔|다리|겨드랑|가슴|등|복부|허벅지|종아리|목|이마|눈|코|입|턱|볼|두피|헤어|손|발|어깨|엉덩|브라질|비키니")
 KINDWORDS = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|첫방문|첫시술|1인1회|선착순|NEW|BEST|HOT|웰컴|신규|[♥★☆※♡]|\d+회")
 KINDONLY = re.compile(r"체험가|한정가|이벤트|EVENT|특가|선착순|NEW|BEST|HOT|[♥★☆※♡]")
 # compare category for rows no family covers, from the clinic's own category (clean.py cat)
@@ -333,6 +335,11 @@ def _exact(raw, sess, rowcat, bundle):
         lb = KINDWORDS.sub("", AMOUNT.sub("", comp(re.sub(r"\([^()]*\)", " ", seg[-1]))))
         gb = comp(" ".join(seg[:-1]))
         if len(lb) >= 2 and lb in gb:
+            src = seg[-1]
+        elif len(lb) >= 3 and not GROUP_MEANS.search(gb):
+            # '트러블 E · 여드름 옵션 · 여드름 약처방 2주', '스킨부스터 E · 재생주사 · 비타란 2CC 1회': the group titles are the clinic's page
+            # sections and differ between branches of one chain; an option that names the product by itself decides alone.
+            # Titles that say who or where ('남성 · …', '바디 · …') can change the product, so those keep the full name.
             src = seg[-1]
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
     if not sigtext:
