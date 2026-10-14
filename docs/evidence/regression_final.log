@@ -1,0 +1,45 @@
+# 전체 회귀 (2026-10-15, O3·데이터·주소 후, round2-candidate)
+OK   | unit (tests/*.test.js) | # pass 109 # fail 0 
+OK   | server ledger (PostgreSQL) | # pass 11 # fail 0 
+OK   | server API (PostgreSQL + mocked providers) | # pass 15 # fail 0 
+OK   | server round 2 (PostgreSQL: accounts, idempotency, refunds, deadlines, AI budget) | # pass 15 # fail 0 
+OK   | CSP vs config origins | 
+OK   | DB security policies | 
+OK   | secret scan | 
+OK   | comparison keys (xkeys) | 
+OK   | weekly value guard | 
+OK   | brand collectors (parsers on saved public pages) | PASS: 0 failing 
+OK   | branch addresses (own address, loose forms, on saved public pages) | PASS: 6 / 6 | 0 failing 
+OK   | backup / restore (incl. ledger) | 
+OK   | e2e accounts_r2 | 14/14 passed 
+OK   | e2e commerce50 | 25/25 passed 
+OK   | e2e admin51 | 10/10 passed 
+OK   | e2e devices51 | 12/12 passed (Chromium emulation only) 
+OK   | e2e qa7 | 
+FAIL | e2e ux_qa | 
+FAIL | 필터 바꾼 뒤 포커스 유지 | 지역 → BUTTON, table?reg=%EC%A0%84%EA%B5%AD
+OK   | e2e concern | 
+OK   | e2e xss | 
+OK   | e2e jomi | 
+OK   | e2e objective | 
+OK   | e2e frame | 
+OK   | e2e table_attr | 
+OK   | e2e compare_cards | 
+OK   | e2e v5_features | 
+OK   | e2e demo_features | 
+OK   | e2e data_sync | 
+OK   | e2e o2_home | 
+OK   | e2e o3_search | 
+OK   | e2e pricenow | 
+OK   | e2e audit40 | 
+OK   | e2e taxonomy40 | 
+OK   | e2e pricing40 | 
+OK   | e2e ops40 | 
+OK   | e2e audit_ui | 
+OK   | e2e a11y | 
+OK   | e2e touch_targets | 
+
+# ux_qa '필터 바꾼 뒤 포커스 유지' 실패 = 실제 결함: 전체 가격표를 '전국'으로 바꾸면 가격 약 14만 개를 Math.min(...배열)에 넣어 호출 스택이 넘쳐 화면 오류. 반복문으로 고친 뒤:
+OK   | e2e ux_qa | TOTAL 25/25 PASS
+OK   | e2e o3_search (전국 전체 가격표 시험 추가) | TOTAL 7/7 PASS
+OK   | e2e qa7 32/32 · pricenow 44/44 · v5_features 27/27 · table_attr 13/13 · demo_features 47/47 · 단위 109/109 · 비밀 정보 검사 통과

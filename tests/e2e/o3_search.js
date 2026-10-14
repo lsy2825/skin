@@ -29,6 +29,11 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     const txt = await p.locator('#main').innerText();
     ok(`검색 '${q}' 결과가 나옴`, /\d[\d,]*개/.test(txt) && !/가격이 없어요/.test(txt), txt.split('\n').find((l) => /\d[\d,]*개/.test(l)) || '');
   }
+  // every price in the country with no words (~140k): the range line used Math.min(...array) and overflowed the stack
+  const cons = []; p.on('console', (m) => { if (m.type() === 'error') cons.push(m.text().slice(0, 120)); });
+  await p.evaluate(() => { location.hash = `#table?reg=${encodeURIComponent('전국')}`; }); await p.waitForTimeout(1500);
+  const stat = await p.locator('#main .searchstat').innerText().catch(() => '');
+  ok('전체 가격표 · 전국(필터 없음)이 열림', /가격 [\d,]+개/.test(stat) && !cons.length, stat || cons.join(' | '));
   ok('페이지 오류 없음', !errs.length, errs.join(' | '));
   await b.close();
   const pass = R.filter(Boolean).length;
