@@ -77,7 +77,9 @@ const metaFor = (buf, updated) => { const sha = crypto.createHash('sha256').upda
   await p.unroute('**/data-meta.json'); await p.unroute('**/data.json');
 
   // 5) a corrupted download (checksum differs) is refused 3 times; the saved copy stays in use and in the cache
-  const bad = Buffer.from(newer); bad[bad.length - 10] = 0x20;
+  // one digit near the end changed: still valid JSON, only the checksum differs (a fixed byte offset could land on a
+  // comma and make the file unparsable instead — 2026-10-15 after a data rebuild)
+  const bad = Buffer.from(newer); { let i = bad.length - 10; while (i > 0 && !(bad[i] >= 0x30 && bad[i] <= 0x39)) i--; bad[i] = bad[i] === 0x31 ? 0x32 : 0x31; }
   const nm2 = metaFor(orig, meta.updated); nm2.version = `${meta.updated}.${nm2.sha256.slice(0, 8)}`;
   await p.route('**/data-meta.json', (r) => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ...nm2, version: '2026-10-28.' + nm2.sha256.slice(0, 8), updated: '2026-10-28' }) }));
   let tries = 0; await p.route('**/data.json', (r) => { tries++; r.fulfill({ status: 200, contentType: 'application/json', body: bad }); });
