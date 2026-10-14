@@ -4,6 +4,9 @@
 // every image is one of the registry's files cut from the user's own artwork (expression sheet), each expression its own.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/jomi.js [out-dir]
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
+// round 2: Jomi's lines come from the line engine (app/domain/jomilines.js), which picks a variant — so a check accepts any
+// variant of the intent (optionally only records whose id starts with `only`) instead of one fixed sentence.
+const said = (p, intent, text, only) => p.evaluate(([i, t, o]) => window.JomiLines.RECORDS.filter((r) => r.intent === i && (!o || r.id.startsWith(o))).some((r) => r.variants.some((v) => (t || '').includes(v))), [intent, text, only]);
 const BASE = process.env.BASE || 'http://localhost:8766/';
 const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요'); process.exit(2); }
@@ -32,7 +35,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('Esc로 닫히고 포커스가 죠미 버튼으로', await p.locator('.sheet').count() === 0 && await p.evaluate(() => document.activeElement.id === 'jomibtn' && !document.documentElement.classList.contains('sheet-open')));
     ok('본 날짜만 저장(이 기기)', /^"\d{4}-\d{2}-\d{2}"$/.test(await p.evaluate(() => localStorage.getItem('pc:jomiSeen'))));
     await p.reload(); await p.waitForSelector('.pc');
-    ok('새로고침 뒤 홈 인사가 재방문 인사로', /또 왔네/.test(await p.locator('.jomi-hello').textContent()));
+    ok('새로고침 뒤 홈 인사가 재방문 인사로(첫 방문 인사 아님)', await said(p, 'home', await p.locator('.jomi-hello').textContent()) && !(await said(p, 'home', await p.locator('.jomi-hello').textContent(), 'home.first')), await p.locator('.jomi-hello').textContent());
     await p.click('.jomi-hello'); await p.waitForTimeout(400);
     ok('재방문: 짧은 인사 + 전체 소개 다시 보기', await p.locator('.jomi-intro:not(.first)').count() === 1 && /또 왔네! 오늘은 어떤 시술이 궁금해/.test(await p.locator('.sheet').innerText()));
     await p.locator('.sheet .linkbtn', { hasText: '전체 소개 다시 보기' }).click(); await p.waitForTimeout(400);
@@ -62,7 +65,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
     await p.locator('.actions .addbtn').click(); await p.waitForTimeout(250); await p.locator('.sheet button', { hasText: /회 담기$/ }).click(); await p.waitForTimeout(300);
     const tt = await p.locator('#toast').textContent();
-    ok('담으면 죠미 확인 토스트 + 되돌리기', /담았어/.test(tt) && await p.locator('#toast.jt img.mascot').count() === 1 && /되돌리기/.test(tt) && (await p.locator('#cart-n').textContent()) === '1', tt);
+    ok('담으면 죠미 확인 토스트 + 되돌리기', await said(p, 'added', tt) && await p.locator('#toast.jt img.mascot').count() === 1 && /되돌리기/.test(tt) && (await p.locator('#cart-n').textContent()) === '1', tt);
     ok('담은 뒤 버튼이 바로 "담김"', /담김/.test(await p.locator('.actions .addbtn').textContent()));
     await p.locator('#toast button', { hasText: '되돌리기' }).click(); await p.waitForTimeout(300);
     ok('되돌리기 → 장바구니에서 빠짐', await p.locator('#cart-n').isHidden() && (await p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts'))[0].items.length)) === 0);
@@ -74,7 +77,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('알림을 만들기 전에는 윙크 토스트 없음', !/알려줄게/.test(await p.locator('#toast.on').textContent().catch(() => '')) || before === await p.locator('#toast').textContent());
     await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(300);
     const at = await p.locator('#toast').textContent(), saved = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]').length);
-    ok('알림 저장 뒤 죠미 윙크 + 조건 요약 + 알림 관리', saved === 1 && /알려줄게/.test(at) && /지켜보기 \(\d가지 변화\)|목표가 이하|새 최저가|파는 지점/.test(at) && /알림 관리/.test(at) && (await p.locator('#toast img').getAttribute('data-expr')) === 'wink', at);
+    ok('알림 저장 뒤 죠미 윙크 + 조건 요약 + 알림 관리', saved === 1 && await said(p, 'alertSet', at) && /지켜보기 \(\d가지 변화\)|목표가 이하|새 최저가|파는 지점/.test(at) && /알림 관리/.test(at) && (await p.locator('#toast img').getAttribute('data-expr')) === 'wink', at);
     await p.locator('#toast button', { hasText: '알림 관리' }).click(); await p.waitForTimeout(300);
     ok('알림 관리 → 관심 탭', /#saved/.test(p.url()) && /가격 알림/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#home'); await p.waitForTimeout(400);
@@ -85,15 +88,15 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   // empty states, loading, error recovery, reduced motion
   { const { ctx, p } = await page(); await p.waitForSelector('.pc');
     await p.goto(BASE + '#cart'); await p.waitForTimeout(300);
-    ok('빈 장바구니: 죠미 + 안내 + 다음 행동', await p.locator('#main .jomi-empty img').count() === 1 && /아직 담은 시술이 없네!/.test(await p.locator('#main').innerText()) && await p.locator('#main .btn', { hasText: '시술 고르러 가기' }).count() === 1);
+    ok('빈 장바구니: 죠미 + 안내 + 다음 행동', await p.locator('#main .jomi-empty img').count() === 1 && await said(p, 'emptyCart', await p.locator('#main').innerText()) && await p.locator('#main .btn', { hasText: '시술 고르러 가기' }).count() === 1);
     await p.goto(BASE + '#search/zzqqxx?nl=0'); await p.waitForTimeout(600);
-    ok('검색 결과 없음: 시무룩한 죠미 + 바꿔 보기 안내', /아직 찾지 못했어/.test(await p.locator('#main').innerText()) && await p.locator('#main .jomi-empty').count() === 1 && /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src')));
+    ok('검색 결과 없음: 시무룩한 죠미 + 바꿔 보기 안내', await said(p, 'emptySearch', await p.locator('#main').innerText()) && await p.locator('#main .jomi-empty').count() === 1 && /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src')));
     await p.goto(BASE + '#concern'); await p.waitForTimeout(300);
     ok('피부 고민 가이드: 궁금한 죠미', /expr-curious-96/.test(await p.locator('#main .msg.bot img').first().getAttribute('src')));
     await p.locator('#main textarea').fill('이마 주름이 신경 쓰여요'); await p.locator('#main textarea').press('Enter'); await p.waitForTimeout(300);
     ok('찾은 정보를 보여줄 때: 생각하는 죠미', /expr-thinking-96/.test(await p.locator('#main .msg.bot img').last().getAttribute('src')));
     await p.goto(BASE + '#guide'); await p.waitForTimeout(300);
-    ok('시술 사전: 죠미 한마디', /스킨보톡스랑 주름보톡스는 뭐가 다를까/.test(await p.locator('#main .jomi-say').innerText()));
+    ok('시술 사전: 죠미 한마디', await said(p, 'guideTip', await p.locator('#main .jomi-say').innerText()));
     await ctx.close(); }
   { let fail = true;
     const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); });
