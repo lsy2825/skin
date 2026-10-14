@@ -16,7 +16,7 @@
   - `domain/*.js` — 화면 없는 로직(가격 계산·검색·분류·통계·동기화). 단위 테스트 있음
   - `commerce.js` + 일부 domain — 유료 화면, 처음 쓸 때 늦게 불러옴(`COMMERCE_JS`)
   - `gate.js` — 비밀번호 화면(화면 잠금일 뿐, 데이터는 공개 주소에 있음)
-  - `data.json` / `data-meta.json` — 주간 빌드 산출물. 직접 고치지 않는다
+  - `data.json` / `data-meta.json` / `home.json` — 주간 빌드 산출물. 직접 고치지 않는다(`home.json`은 첫 방문에 먼저 읽는 홈 요약, `build2/homedata.py`)
 - `scrape/` — 브랜드별 수집기 → `build2/` 정리·묶기·앱 데이터 생성 → `app/data.json`
 - `tests/` — 단위(`*.test.js`), 화면(`e2e/`), 보안(`security/`, `db/`), 성능(`perf/`)
 - `server/`, `supabase/` — 결제·로그인용(현재 꺼져 있음, `app/config.js`가 비면 비활성)
