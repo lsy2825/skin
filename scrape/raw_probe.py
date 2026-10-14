@@ -46,7 +46,7 @@ def main():
         host = urlparse(r.url).netloc
         soup = BeautifulSoup(r.text, "html.parser")
         srcs = [urljoin(r.url, s["src"]) for s in soup.find_all("script", src=True)]
-        local = [s for s in srcs if urlparse(s).netloc == host][:6]
+        local = [] if os.environ.get("RAW_NOSCRIPTS") == "1" else [s for s in srcs if urlparse(s).netloc == host][:6]
         texts = [r.text]
         for s in local:
             if len(pages) >= MAX:
