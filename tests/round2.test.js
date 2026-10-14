@@ -170,16 +170,19 @@ test("D5/D8: a prototype name is an unknown key; 초성 and typed operator words
 });
 
 test("R09/O1: the saved copy is shown while the version check is still pending (a stalled data-meta request cannot hold the screen)", async () => {
+  // app/state/data.js (split from app.js, docs/APP_JS_SPLIT_PLAN.md 2단계) runs in a VM; its network/storage calls are replaced through App.Data.io
   const vm = require("node:vm");
-  const app = fs.readFileSync(path.join(__dirname, "../app/app.js"), "utf8");
-  const src = app.slice(app.indexOf("  function loadData()"), app.indexOf("  // state → header"));
+  const src = fs.readFileSync(path.join(__dirname, "../app/state/data.js"), "utf8");
   let resolveMeta, applied = 0;
-  const box = { AbortController, Promise, Date, JSON, Object, Error, setTimeout, TextDecoder, Uint8Array, SYNC: { have: false }, loadP: null, loadCtl: null, paintSync() {},
-    cacheGet: async () => ({ meta: { version: "v" }, text: "{}" }), fetchMeta: () => new Promise((r) => { resolveMeta = r; }), Sync: { checkData: () => [] },
-    applyData: () => applied++, cacheClear: async () => {}, tick: async () => {} };
+  const win = { App: {}, Sync: { checkData: () => [], checkMeta: () => [], RETRY_MS: [] }, isSecureContext: true };
+  const box = { window: win, AbortController, Promise, Date, JSON, Object, Error, URL, setTimeout, clearTimeout, TextDecoder, Uint8Array };
   vm.createContext(box); vm.runInContext(src, box);
+  const Data = win.App.Data;
+  Data.io.cacheGet = async () => ({ meta: { version: "v" }, text: "{}" });
+  Data.io.fetchMeta = () => new Promise((r) => { resolveMeta = r; });
+  Data.setHooks({ apply: () => applied++, paint() {} });
   let readyAt = null;
-  const lp = box.loadData().then(() => { readyAt = applied; });
+  const lp = Data.loadData().then(() => { readyAt = applied; });
   await new Promise((r) => setTimeout(r, 20));
   assert.equal(applied, 1, "cached data applied before the meta answer");
   assert.equal(readyAt, 1, "the app was released (ready) before the meta answer");
@@ -187,5 +190,5 @@ test("R09/O1: the saved copy is shown while the version check is still pending (
   await lp;
   assert.equal(applied, 1, "same version: nothing applied twice");
   // fetchMeta has its own deadline
-  assert.match(app, /async function fetchMeta\(signal, ms = 8000\)/);
+  assert.match(src, /async function fetchMeta\(signal, ms = 8000\)/);
 });
