@@ -41,3 +41,17 @@
   느려지면 배포 전에 하나로 합치는 간단한 빌드 단계를 고려한다(추측: 지금 규모에서는 큰 차이 없을 가능성이 높음).
 - 한 단계 = 커밋 하나. push(=자동 배포)는 단계 몇 개를 모아 확인한 뒤.
 - 줄 번호는 2026-10-14 기준이라 작업하면서 바뀐다. 구역 주석(`// ---------------- 이름`)으로 찾는다.
+
+## 진행 기록
+| 단계 | 커밋 | 내용 | 검증 |
+|---|---|---|---|
+| 0 기준선 | — | 2차 최종 회귀 34/34 + `first_load.js` 3회 | slow4g 첫 방문 중앙값 8,891ms · 재방문 2,138ms · 1,279KB/39요청 |
+| 1 `app/core.js` | `39e1112` | `$ h safeUrl fill icon won km store toast undoToast actToast copyText` + 계정 공간(`App.scope/setScope`) | 단위 93 · ux_qa·xss·a11y·accounts_r2·jomi·data_sync·commerce50 |
+| 2 `app/state/data.js` | `b8442ba` | 가격 동기화(`App.Data`, 화면 훅 apply/paint, `io` 교체 가능), `App.data()/App.rows()` | 단위 93(R09를 data.js로) · ux_qa·xss·a11y·data_sync·pricenow·ops40·jomi |
+| 3-1 `app/screens/ops.js` | `0f66a26` | 운영 현황. 화면 파일은 `App.screens`에 등록 → app.js가 시작 직전 설치, 바뀌는 데이터는 `App.state()`로 그릴 때 읽음 | 단위 93 · ops40·admin51·commerce50·ux_qa·a11y·xss |
+
+계획과 다른 점: `sheet`·`nav`는 아직 app.js 안에 있어요(렌더·기록과 얽혀 있어서). 화면 파일에는 `App.nav`로 넘겨요.
+
+측정(3-1 뒤, 같은 조건 3회): slow4g 첫 방문 중앙값 8,839ms · 재방문 2,140ms · 요청 42개(+3). **차이 없음(오차 범위).** 파일이 늘어 요청은 3개 늘었지만 시간 영향은 보이지 않아요. app.js 4,825줄 → 4,527줄.
+
+다음: 3-2(about·사전·용어)부터 같은 방식. 화면 하나 = 커밋 하나.
