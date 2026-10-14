@@ -59,7 +59,7 @@
     const el = $("#toast");
     const btn = document.createElement("button");
     btn.type = "button"; btn.textContent = "되돌리기";
-    btn.addEventListener("click", () => { el.classList.remove("on", "act"); toastStop(); undo(); toast("되돌렸어요"); });
+    btn.addEventListener("click", () => { el.classList.remove("on", "act"); toastStop(); undo(); toast((App.jline && App.jline("undone")) || "되돌렸어요"); });
     el.replaceChildren(document.createTextNode(text + " "), btn);
     el.classList.remove("jt"); el.classList.add("on", "act"); toastTimer(6000, ["on", "act"]);
   }
@@ -69,7 +69,7 @@
     el.replaceChildren(h("span", { class: "tt" }, text), h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); toastStop(); act[1](); } }, act[0]));
     el.classList.remove("jt"); el.classList.add("on", "act"); toastTimer(5000, ["on", "act"]);
   }
-  async function copyText(text, done = "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
+  async function copyText(text, done = (App.jline && App.jline("copied")) || "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
 
   Object.assign(App, { $, h, safeUrl, fill, icon, won, km, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
 })();

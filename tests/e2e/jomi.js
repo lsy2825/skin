@@ -38,6 +38,11 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('새로고침 뒤 홈 인사가 재방문 인사로(첫 방문 인사 아님)', await said(p, 'home', await p.locator('.jomi-hello').textContent()) && !(await said(p, 'home', await p.locator('.jomi-hello').textContent(), 'home.first')), await p.locator('.jomi-hello').textContent());
     await p.click('.jomi-hello'); await p.waitForTimeout(400);
     ok('재방문: 짧은 인사 + 전체 소개 다시 보기', await p.locator('.jomi-intro:not(.first)').count() === 1 && /또 왔네! 오늘은 어떤 시술이 궁금해/.test(await p.locator('.sheet').innerText()));
+    // the full line set (app/data/jomi_lines.json) arrives after the prices: 2,000+ lines, and the returning sheet shows one of them
+    const lines = await p.waitForFunction(() => window.JomiLines && window.JomiLines.stats().variants >= 2000 && window.JomiLines.stats(), null, { timeout: 15000 }).then((h) => h.jsonValue()).catch(() => null);
+    ok('죠미 대사 파일을 받아 2,000개 이상으로 늘어남', !!lines, JSON.stringify(lines));
+    const tipT = await p.locator('.sheet .jomi-tip').textContent().catch(() => '');
+    ok('재방문 시트: 오늘의 한마디(팁·응원 중 하나)', /오늘의 한마디/.test(tipT) && (await said(p, 'tip', tipT) || await said(p, 'cheer', tipT)), tipT);
     await p.locator('.sheet .linkbtn', { hasText: '전체 소개 다시 보기' }).click(); await p.waitForTimeout(400);
     ok('전체 소개 다시 열기', await p.locator('.jomi-intro.first').count() === 1 && await p.locator('.sheet').count() === 1);
     await p.mouse.click(195, 40); await p.waitForTimeout(200);
@@ -104,7 +109,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     const txt = await p.locator('#main').innerText();
     ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && await said(p, 'error', txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
     fail = false; await p.locator('#main .btn', { hasText: '다시 시도' }).click(); await p.waitForTimeout(200);
-    ok('다시 시도 중: 졸린 죠미 + 로딩 안내(스크린리더용 status)', await said(p, 'loading', await p.locator('#main [role=status]').innerText()) && /expr-sleeping-96/.test(await p.locator('#main [role=status] img').getAttribute('src')));
+    ok('다시 시도 중: 졸린 죠미 + 로딩 안내(스크린리더용 status)', (await said(p, 'retrying', await p.locator('#main [role=status]').innerText()) || await said(p, 'loading', await p.locator('#main [role=status]').innerText())) && /expr-sleeping-96/.test(await p.locator('#main [role=status] img').getAttribute('src')));
     await p.waitForSelector('.pc', { timeout: 15000 }).catch(() => {});
     ok('다시 시도 → 정상 화면', await p.locator('.pc').count() > 0 && (await p.locator('#main').getAttribute('aria-busy')) === null);
     await ctx.close(); }

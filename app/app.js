@@ -24,17 +24,24 @@
     let visits = 1; try { visits = +localStorage.getItem("pc:visits") || 1; } catch (e) { /* ignore */ }
     // visits are counted once per tab; someone who has already met 죠미 (intro seen) is not greeted as a first-timer again
     try { if (visits <= 1 && localStorage.getItem("pc:jomiSeen")) visits = 2; } catch (e) { /* ignore */ }
-    const p = L.pick(intent, { visits, hour: new Date().getHours(), offline: typeof navigator !== "undefined" && navigator.onLine === false }, recent);
+    const now = new Date();
+    const p = L.pick(intent, { visits, hour: now.getHours(), dow: now.getDay(), month: now.getMonth() + 1, offline: typeof navigator !== "undefined" && navigator.onLine === false }, recent);
     if (!p) return fb();
     try { localStorage.setItem("pc:jomiRecent", JSON.stringify([...recent, p.id].slice(-20))); } catch (e) { /* ignore */ }
     return p.text;
   };
+  App.jline = jline;   // core.js toasts (되돌리기, 복사) use it when it is there
+  // the full line set (app/data/jomi_lines.json, ~29KB gzip) arrives after the prices are on screen; until then (or if it
+  // never comes) the built-in lines answer. Cached by the service worker like any other app file.
+  let jomiLinesP = null;
+  const loadJomiLines = () => jomiLinesP || (jomiLinesP = fetch("data/jomi_lines.json").then((r) => (r.ok ? r.json() : null))
+    .then((j) => { if (j && window.JomiLines) window.JomiLines.load(j); }).catch(() => {}));
   try { if (!sessionStorage.getItem("pc:counted")) { sessionStorage.setItem("pc:counted", "1"); localStorage.setItem("pc:visits", String((+localStorage.getItem("pc:visits") || 0) + 1)); } } catch (e) { /* ignore */ }
   const jomiEmpty = (expr, title, ...kids) => h("div", { class: "empty jomi-empty" }, jomiImg(expr, "portrait", 88), h("b", {}, title), ...kids);
   // a link to this exact screen (the receiver still needs the PIN); the phone's share sheet when there is one
   async function shareLink(title, hash) {
     const url = `${location.origin}${location.pathname}#${hash}`;
-    try { if (navigator.share) { await navigator.share({ title, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+    try { if (navigator.share) { await navigator.share({ title, url }); const t = jline("shared"); if (t) jomiToast("happy", t); return; } } catch (e) { if (e && e.name === "AbortError") return; }
     copyText(url, "링크를 복사했어요 — 받는 사람도 비밀번호가 필요해요");
   }
   // 죠미's toast: her face, one short line, optionally one action (되돌리기 / 관심 보기 / 알림 관리). One toast at a time:
@@ -99,6 +106,7 @@
   App.data = () => D; App.rows = () => ROWS;
   // state → header dot + text, the loading line, and the notice bar under the header (offline / new prices ready / failed)
   function syncState() { return Sync.stateOf({ ...SYNC, updated: D ? D.meta.updated : "", today: today(), stale: D ? BR.filter((b) => fresh(b.i).stale).length : 0 }); }
+  let toldReady = false;   // 죠미 says once that new prices are ready (the notice bar keeps the button)
   function paintSync(parsing) {
     const ss = syncState(), up = $("#upd");
     if (up) up.dataset.state = ss.state;
@@ -107,6 +115,7 @@
     if (lm && !D) lm.textContent = parsing ? "받은 가격을 정리하는 중…" : SYNC.total ? `${jl} ${Math.min(99, Math.floor((SYNC.got / SYNC.total) * 100))}% (${(SYNC.got / 1e6).toFixed(1)}/${(SYNC.total / 1e6).toFixed(1)}MB)` : SYNC.got ? `${jl} ${(SYNC.got / 1e6).toFixed(1)}MB` : jl;
     const bar = $("#netbar");
     if (!bar || !D) return;
+    if (SYNC.ready && !toldReady) { toldReady = true; const t = jline("newPrices"); if (t) setTimeout(() => jomiToast("happy", t), 300); }
     let kids = null;
     if (ss.offline) kids = [icon("wifi-off", "sm"), h("span", {}, `저장된 가격 정보입니다. 현재 가격과 다를 수 있습니다. (${D.meta.updated} 수집)`)];
     else if (SYNC.ready) kids = [icon("refresh-cw", "sm"), h("span", {}, `새 가격(${SYNC.server ? SYNC.server.updated : ""})이 준비됐어요`), h("button", { type: "button", class: "nb-act", onclick: () => location.reload() }, "새 가격 보기")];
@@ -615,7 +624,7 @@
             : rp.length ? h("div", { class: "note", style: "margin-top:14px" }, `${KEYS[s.k].label} · ${regionName()} ${rp.length}곳 · ${won(Math.min(...rp))}~${won(Math.max(...rp))} · 중간값 ${won(median(rp))}`) : null,
           h("div", { class: "row", style: "margin-top:14px" },
             have ? h("button", { class: "btn gray", type: "button", onclick: () => { const c = st.carts[s.ci], pos = c.items.indexOf(have); c.items = c.items.filter((x) => x !== have); saveCarts(); close(); render();
-              undoToast("장바구니에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
+              undoToast(jline("removed") || "장바구니에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
             h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
               const c = st.carts[s.ci], it = have || { t: "k", k: KEYS[s.k].id, q: s.q };
               if (have) have.q = s.q; else { c.items.push(it); track("cart_add", { k: it.k }); }
@@ -1281,7 +1290,7 @@
           h("button", { class: "addbtn", type: "button", "aria-label": `${alertName(a)} 알림 해지`, onclick: () => {
             const before = st.alerts.slice(); st.alerts = st.alerts.filter((x) => x !== a); saveAlerts(); render();
             undoToast("알림을 해지했어요", () => { st.alerts = before; saveAlerts(); render(); }); } }, "해지")))); }))
-      : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("bell-plus")), h("b", {}, "아직 알림이 없어요"), "시술 비교 화면이나 장바구니에서 '가격 알림'을 누르면 알림을 만들 수 있어요."));
+      : h("div", { class: "empty" }, h("div", { class: "ei" }, icon("bell-plus")), h("b", {}, jline("emptyAlerts") || "아직 알림이 없어요"), "시술 비교 화면이나 장바구니에서 '가격 알림'을 누르면 알림을 만들 수 있어요."));
     // 알림 기록: what fired (and the real past changes of a watched treatment), newest first
     card.append(h("div", { class: "row", style: "padding:12px 14px 2px" }, h("h3", { style: "font-size:15px" }, "알림 기록"), h("span", { class: "sp" }),
       st.notes.length ? h("button", { class: "linkbtn", type: "button", onclick: () => { const before = st.notes.slice(); st.notes = []; saveAlerts(); render(); undoToast("알림 기록을 지웠어요", () => { st.notes = before; saveAlerts(); render(); }); } }, "기록 지우기") : null));
@@ -1533,7 +1542,7 @@
       const pic = h("button", { class: "jomi-pic", type: "button", "aria-label": `${J.name} 쓰다듬기` }, jomiImg(first ? "welcome" : "default", "portrait", first ? 128 : 84, `윤실장 공식 안내냥 ${J.name}`));
       const quip = h("p", { class: "jomi-quip", "aria-live": "polite" });
       // a small discoverable touch: tapping her gets a hop and a line (only general app tips, nothing medical)
-      pic.addEventListener("click", () => { const L = J.lines.easter || []; if (!L.length) return; quip.textContent = L[taps++ % L.length]; pic.classList.remove("hop"); void pic.offsetWidth; pic.classList.add("hop"); });
+      pic.addEventListener("click", () => { const L = J.lines.easter || []; const t = jline("quip") || L[taps++ % (L.length || 1)]; if (!t) return; quip.textContent = t; pic.classList.remove("hop"); void pic.offsetWidth; pic.classList.add("hop"); });
       const go = (route) => () => { close(); nav(route); };
       const actions = h("div", { class: "jomi-actions" },
         FLAGS.concernSearch ? h("button", { class: "btn soft", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "피부 고민 탐색") : null,
@@ -1542,7 +1551,8 @@
       return h("div", { class: `jomi-intro${first ? " first" : ""}` }, pic, quip, id,
         first ? [h("div", { class: "jomi-words" }, (J.lines.intro || []).map((t) => h("p", {}, t))),
           h("ul", { class: "jomi-does" }, (J.lines.does || []).map((t) => h("li", {}, icon("check", "xs"), t))), h("p", { class: "tiny" }, J.lines.doesNot || "")]
-          : [h("p", { class: "jomi-back" }, J.lines.back || ""), h("button", { class: "linkbtn", type: "button", onclick: () => { close(); jomiSheet(true); } }, "전체 소개 다시 보기", icon("chevron-right", "xs"))],
+          : [h("p", { class: "jomi-back" }, J.lines.back || ""), (() => { const t = jline(Math.random() < 0.7 ? "tip" : "cheer"); return t ? h("p", { class: "jomi-tip tiny" }, h("b", {}, "오늘의 한마디 "), t) : null; })(),
+            h("button", { class: "linkbtn", type: "button", onclick: () => { close(); jomiSheet(true); } }, "전체 소개 다시 보기", icon("chevron-right", "xs"))],
         actions);
     });
   }
@@ -1594,10 +1604,10 @@
       favB.length ? h("ul", { class: "list" }, favB.map((b) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${b}`) }, h("span", { class: "t row", style: "gap:10px;flex-wrap:nowrap" }, icon("store", "sm"), bname(b)),
           h("span", { class: "sub" }, dist(b) != null ? km(dist(b)) : BR[b].region), h("span", { class: "m" }, `가격 ${byB[b].length}개 · 확인 ${verified(b)}`)))))
         : favK.length ? h("p", { class: "sub", style: "padding:0 14px 14px" }, "지점 화면에서 하트를 누르면 여기에 모여요.")
-          : jomiEmpty("empty", "관심 시술이 없어요", "시술 비교나 지점 화면에서 하트를 누르면 여기에 모이고, 가격 변화도 여기서 봐요.")));
+          : jomiEmpty("empty", jline("emptySaved") || "관심 시술이 없어요", "시술 비교나 지점 화면에서 하트를 누르면 여기에 모이고, 가격 변화도 여기서 봐요.")));
     { const sc = snapsCard(); if (sc) box.append(sc); }
     const rc = recentChips();
-    box.append(h("div", { class: "card" }, h("h3", {}, "최근 본 것"), rc ? h("div", { style: "margin-top:12px" }, rc) : h("p", { class: "sub", style: "margin:6px 0 0" }, "시술이나 지점을 보면 여기에 남아요(이 기기).")));
+    box.append(h("div", { class: "card" }, h("h3", {}, "최근 본 것"), rc ? h("div", { style: "margin-top:12px" }, rc) : h("p", { class: "sub", style: "margin:6px 0 0" }, jline("emptyRecent") || "시술이나 지점을 보면 여기에 남아요(이 기기).")));
     const presets = store.get("presets", []);
     if (presets.length) box.append(h("div", { class: "card flush" }, h("div", { style: "padding:14px 14px 4px" }, h("h3", {}, "저장한 검색 조건")),
       h("ul", { class: "list" }, presets.map((x) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`${x.route}${x.qs ? "?" + x.qs : ""}`) },
@@ -2063,7 +2073,7 @@
           h("button", { class: "btn gray", type: "button", onclick: () => { keep("copy"); copyText(body(), "신고 내용을 복사했어요 — 직접 보내 주세요"); close(); } }, "내용 복사"),
           h("a", { class: "btn", style: "flex:1;text-align:center;text-decoration:none", target: "_blank", rel: "noopener",
             href: `https://github.com/lsy2825/skin/issues/new?${new URLSearchParams({ title: `[가격 신고] ${bname(r[0])} ${S[r[2]]}`.slice(0, 120), body: body(), labels: "price-report" })}`,
-            onclick: () => { keep("github"); setTimeout(close, 100); } }, "GitHub로 신고(실제 접수)")),
+            onclick: () => { keep("github"); setTimeout(close, 100); const t = jline("reported"); if (t) setTimeout(() => jomiToast("happy", t), 150); } }, "GitHub로 신고(실제 접수)")),
         h("p", { class: "tiny", style: "margin-top:6px" }, "GitHub 화면이 열리면 거기서 '제출'을 눌러야 접수돼요. 보낸 내역은 관심 탭 '가격 확인 요청'에 상태와 함께 남아요."));
       paint();
       return box;
@@ -4506,7 +4516,7 @@
     loadData().then(() => { clearTimeout(slow);
       // a stored region no branch has (an old version's value, a typo) would empty every list: back to the default
       if (st.region && st.region !== "수도권" && !BR.some((b) => b.region === st.region)) { st.region = "수도권"; store.set("region", st.region); paintRegion(); }
-      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); }).catch((e) => {
+      if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); loadJomiLines(); checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); }).catch((e) => {
       clearTimeout(slow); D = null; console.error(e);
       const main = $("#main"); main.removeAttribute("aria-busy");
       main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", jline("error") || "문제가 생겼어요",
@@ -4514,14 +4524,14 @@
         SYNC.failed ? h("span", { class: "tiny", style: "display:block;margin-top:6px" }, `자세히: ${SYNC.failed}${SYNC.tries > 1 ? ` (${SYNC.tries}번 시도)` : ""}`) : null,
         h("button", { class: "btn block", type: "button", style: "margin-top:16px", onclick: () => {
           main.setAttribute("aria-busy", "true");
-          main.replaceChildren(h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg("sleeping", "face", 40), h("span", { id: "load-msg" }, jline("loading") || "불러오는 중…")), h("div", { class: "skel", style: "height:180px" })));
+          main.replaceChildren(h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg("sleeping", "face", 40), h("span", { id: "load-msg" }, jline("retrying") || jline("loading") || "불러오는 중…")), h("div", { class: "skel", style: "height:180px" })));
           boot(); } }, icon("refresh-cw", "sm"), "다시 시도")))));
     });
   }
   boot();
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then
-    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadSW) actToast("앱이 새 버전으로 바뀌었어요", ["새로고침", () => location.reload()]); });
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadSW) actToast(jline("appUpdated") || "앱이 새 버전으로 바뀌었어요", ["새로고침", () => location.reload()]); });
     navigator.serviceWorker.register("sw.js").catch(() => {});
   }
 })();

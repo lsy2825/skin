@@ -10,9 +10,10 @@
   else root.JomiLines = factory();
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
-  // conditions: visits ('first' | 'return' | 'regular' = 5+), hour [from, to) local, offline
+  // conditions: visits ('first' | 'return' | 'regular' = 5+), hour [from, to) local, offline, dow [0 = Sunday …],
+  // month [from, to] (wraps: [12, 2] = winter). A record with a dow / month condition never shows when the caller gives none.
   const R = (id, intent, variants, o = {}) => ({ id, intent, variants, priority: o.priority || 0, cooldown: o.cooldown ?? 3, when: o.when || {}, tone: o.tone || "friendly", fixed: !!o.fixed });
-  const RECORDS = [
+  let RECORDS = [
     // home greeting
     R("home.first", "home", ["안녕! 난 죠미야. 같은 용량끼리 가격을 비교해 줄게.", "처음 왔구나! 시술 이름을 적으면 같은 조건끼리 가격을 모아 줄게."], { when: { visits: "first" }, priority: 3 }),
     R("home.morning", "home", ["좋은 아침! 오늘은 어떤 시술 가격이 궁금해?", "아침부터 왔네! 궁금한 시술 이름을 적어 줘."], { when: { visits: "return", hour: [5, 11] }, priority: 2 }),
@@ -45,6 +46,8 @@
     if (w.visits && w.visits !== visitsOf(ctx.visits || 1) && !(w.visits === "return" && visitsOf(ctx.visits || 1) === "regular")) return false;
     if (w.hour) { const h = ctx.hour ?? 12, hh = h < w.hour[0] ? h + 24 : h; if (!(hh >= w.hour[0] && hh < w.hour[1])) return false; }
     if (w.offline != null && !!ctx.offline !== w.offline) return false;
+    if (w.dow && (ctx.dow == null || !w.dow.includes(ctx.dow))) return false;
+    if (w.month) { const m = ctx.month; if (m == null) return false; const [a, b] = w.month; if (a <= b ? m < a || m > b : m < a && m > b) return false; }
     return true;
   }
   // → { id, text, rec } | null. recent: ids 'recordId#variant' used lately (newest last), kept by the caller (≤ 20)
@@ -65,5 +68,17 @@
   // the copy rules every line must keep (tested): short, no won amounts, no dose / diagnosis / guarantee / clinic pick
   const BANNED = /\d[\d,]*\s*원|진단해|처방|용량을?\s*(추천|권장)|효과\s*(보장|확실)|부작용\s*없|여기(가|로)\s*(제일|가장)|최저가/;
   const check = () => RECORDS.flatMap((r) => r.variants.filter((t) => t.length > 90 || BANNED.test(t)).map((t) => `${r.id}: ${t}`));
-  return { RECORDS, pick, stats, check, visitsOf };
+  // the full line set (app/data/jomi_lines.json, loaded after the prices): non-medical lines only. It replaces the built-in
+  // non-fixed records above (kept as the fallback before it arrives); the fixed safety lines always stay as they are.
+  // A record is taken only in the expected shape and when its lines pass the copy rules.
+  function load(json) {
+    const recs = (json && Array.isArray(json.records) ? json.records : []).filter((r) => r && typeof r.id === "string" && typeof r.intent === "string" &&
+      Array.isArray(r.variants) && r.variants.length && r.variants.every((t) => typeof t === "string" && t.length <= 90 && !BANNED.test(t)));
+    if (!recs.length) return 0;
+    const fixed = RECORDS.filter((r) => r.fixed);
+    const fixedIntents = new Set(fixed.map((r) => r.intent));
+    RECORDS = [...fixed, ...recs.filter((r) => !fixedIntents.has(r.intent)).map((r) => R(r.id, r.intent, r.variants, r))];
+    return recs.length;
+  }
+  return { get RECORDS() { return RECORDS; }, pick, stats, check, visitsOf, load };
 });
