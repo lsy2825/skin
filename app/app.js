@@ -179,7 +179,8 @@
       const ks = S[r[7]];
       if (ks) for (const id of ks.split(" ")) { const m = byKB[KI[id]]; if (!m) continue; if (!m.has(r[0])) m.set(r[0], []); m.get(r[0]).push(i); }   // home.json: ids not shipped
     });
-    nameIdx = null; prodIdx = null;
+    nameIdx = null; prodIdx = null; SIDX = null; normBySid = null;
+    if (!D.meta.partial) setTimeout(prepSearchIndex, 0);   // O3: the search index in a worker, before anyone searches
     GR = (D.groups || []).map(([s, cat, nb, med, mn, mx], i) => ({ i, label: S[s], cat, nb, med, mn, mx }));
     byG = GR.map(() => []);
     ROWS.forEach((r, i) => { if (r[9] != null && r[9] >= 0) byG[r[9]].push(i); });
@@ -1690,13 +1691,25 @@
 
   // ---------------- search index (aliases, typo correction, autocomplete — app/domain/search.js), built on first use
   let SIDX = null, normBySid = null;
+  const searchNames = () => { const sids = [...new Set(ROWS.map((r) => r[2]))]; return { sids, names: sids.map((i) => S[i]), extra: [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)] }; };
+  const takeIndex = (sids, idx) => { SIDX = idx; normBySid = new Map(sids.map((sid, n) => [sid, idx.normNames[n]])); return SIDX; };
   function searchIndex() {
     if (SIDX) return SIDX;
-    const sids = [...new Set(ROWS.map((r) => r[2]))];
-    SIDX = Search.buildIndex(sids.map((i) => S[i]), [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)]);
-    normBySid = new Map(sids.map((sid, n) => [sid, SIDX.normNames[n]]));
-    return SIDX;
+    const { sids, names, extra } = searchNames();   // the worker has not answered yet (or there is none): build it here
+    return takeIndex(sids, Search.buildIndex(names, extra));
   }
+  // round-2 O3: the same index built in a worker as soon as the full price data is in (never from home.json's rows)
+  function prepSearchIndex() {
+    if (SIDX || partial() || typeof Worker === "undefined") return;
+    const forD = D, { sids, names, extra } = searchNames();
+    let w;
+    try { w = new Worker("workers/search_index.js"); } catch (e) { return; }
+    w.onmessage = (e) => { w.terminate(); if (D === forD && !SIDX && e.data && e.data.ok) takeIndex(sids, e.data.idx); };
+    w.onerror = () => w.terminate();
+    w.postMessage({ names, extra });
+  }
+  App.searchReady = () => !!SIDX;
+  App.searchIndexData = () => SIDX;   // tests: the worker's index against one built here (tests/e2e/o3_search.js)
   const suggestTerms = () => [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)];
   // popular = procedure families sold at the most branches
   let POP = null;
@@ -1780,15 +1793,25 @@
   }
   // every filter as a predicate; skip = one dimension to ignore (for 'how many results would this option give')
   // cq = Search.compile(query) or null (docs/ADVANCED_SEARCH_SPEC.md: words, -뺄 낱말, a|b, 300샷, 1회?)
+  // branch-level checks (brand switched on, region, area) for one pass over the rows: once per branch instead of once per
+  // row and per count (round-2 O3 — a search ran them ~13 × 140k times). Set only for the loop that asked for it.
+  let GATE = null;
+  function withGate(f, fn) {
+    const arr = new Uint8Array(BR.length);
+    for (const b of BR) arr[b.i] = (brandOn(b.i) ? 1 : 0) | (regOk(b.i, f.reg) ? 2 : 0) | (areaOk(b.i, f.area) ? 4 : 0);
+    const prev = GATE; GATE = { f, arr };
+    try { return fn(); } finally { GATE = prev; }
+  }
   function rowPasses(i, f, cq, skip = "") {
-    const r = ROWS[i];
-    if (!(f.old ? r[17] !== 1 : live(i)) || !brandOn(r[0]) || (!st.special && isSpecial(r))) return false;
+    const r = ROWS[i], G = GATE && GATE.f === f ? GATE.arr[r[0]] : -1;
+    if (!(f.old ? r[17] !== 1 : live(i)) || !(G >= 0 ? G & 1 : brandOn(r[0])) || (!st.special && isSpecial(r))) return false;
+    if (skip !== "q" && cq && !cq.empty && !cq.test(normBySid.get(r[2]))) return false;   // the most selective check first
     if (skip !== "fv" && f.fv && (f.fv === "only") !== isFirstVisit(r)) return false;
     if (skip !== "bun" && f.bun && (f.bun === "only") !== isBundle(r)) return false;
     if (skip !== "vu" && f.vu === "no" && r[12] === 0) return false;
     if (skip !== "prod" && f.prod && !prodOf(r[2]).includes(f.prod)) return false;
-    if (skip !== "reg" && !regOk(r[0], f.reg)) return false;
-    if (skip !== "area" && !areaOk(r[0], f.area)) return false;
+    if (skip !== "reg" && !(G >= 0 ? G & 2 : regOk(r[0], f.reg))) return false;
+    if (skip !== "area" && !(G >= 0 ? G & 4 : areaOk(r[0], f.area))) return false;
     if (skip !== "cat" && f.cat >= 0 && r[1] !== f.cat) return false;
     if (skip !== "brand" && f.brand >= 0 && BR[r[0]].brand !== f.brand) return false;
     if (skip !== "b" && f.b >= 0 && r[0] !== f.b) return false;
@@ -1798,7 +1821,6 @@
     if (skip !== "cond" && ((f.cond === "plain" && isSpecial(r)) || (f.cond === "special" && !isSpecial(r)))) return false;
     if (skip !== "amt" && f.amt && amtOf(i) !== f.amt) return false;
     if (skip !== "att" && !attOk(i, f.atts || [])) return false;
-    if (skip !== "q" && cq && !cq.empty && !cq.test(normBySid.get(r[2]))) return false;
     return true;
   }
   // ---- 가격 조건 (one sheet for every price condition: 조건부·종류·첫 방문·묶음·회차·부가세·만료/미확인)
@@ -1892,9 +1914,10 @@
     let hits = [];
     const cnt = { cat: {}, brand: {}, kind: {}, sess: {}, cond: {}, amt: {}, att: {}, prod: {}, fv: {}, bun: {} };
     const attOn = toks.length > 0 || f.cat >= 0 || f.atts.length > 0;   // the whole table's attributes say little; shown once narrowed
-    const pr = [];
-    for (let i = 0; i < ROWS.length; i++) {
-      if (!(f.old ? ROWS[i][17] !== 1 : live(i)) || !brandOn(ROWS[i][0])) continue;
+    const pr = [], qOn = cq && !cq.empty;
+    withGate(f, () => { for (let i = 0; i < ROWS.length; i++) {
+      if (!(f.old ? ROWS[i][17] !== 1 : live(i)) || !(GATE.arr[ROWS[i][0]] & 1)) continue;
+      if (qOn && !cq.test(normBySid.get(ROWS[i][2]))) continue;   // every count below needs the words too
       const all = rowPasses(i, f, cq);
       if (all) hits.push(i);
       const r = ROWS[i];
@@ -1910,7 +1933,7 @@
       if (attOn && rowPasses(i, f, cq, "prod")) for (const x of prodOf(r[2])) cnt.prod[x] = (cnt.prod[x] || 0) + 1;
       if (rowPasses(i, f, cq, "fv")) { const k = isFirstVisit(r) ? "only" : "no"; cnt.fv[k] = (cnt.fv[k] || 0) + 1; }
       if (rowPasses(i, f, cq, "bun")) { const k = isBundle(r) ? "only" : "no"; cnt.bun[k] = (cnt.bun[k] || 0) + 1; }
-    }
+    } });
     const box = h("div", { class: "view", style: "animation:none" });
     const sel = (label, key, val, opts, extra = {}) => h("label", { class: "flabel" }, label, h("select", { class: "pick", onchange: (e) => go({ [key]: e.target.value, ...extra }) },
       opts.map(([v, l, n]) => h("option", { value: v, selected: String(v) === String(val), disabled: n === 0 && String(v) !== String(val) }, n == null ? l : `${l} (${n.toLocaleString()})`))));
@@ -2036,7 +2059,7 @@
   // zero results: offer the nearest searches that do return something
   function noResults(f, cq, go, route = "") {
     const toks = cq && !cq.empty ? cq.raw : [];
-    const count = (ff, c) => { let n = 0; for (let i = 0; i < ROWS.length; i++) if (rowPasses(i, ff, c)) n++; return n; };
+    const count = (ff, c) => withGate(ff, () => { let n = 0; for (let i = 0; i < ROWS.length; i++) if (rowPasses(i, ff, c)) n++; return n; });
     const reQ = (q) => route.startsWith("search/") ? nav(`search/${encodeURIComponent(q)}?nl=0`, true) : go({ q });
     const bare = { ...f, cat: -1, brand: -1, b: -1, kind: -1, sess: "", cond: "", amt: "", min: 0, max: 0, area: "", reg: "전국" };
     const tips = [];

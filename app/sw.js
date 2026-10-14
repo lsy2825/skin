@@ -1,6 +1,6 @@
 // Offline cache: the app shell (code network-first, images cache-first) and map tiles. data.json / data-meta.json / home.json are not
 // handled here: app.js saves a checked copy of the price file itself and says when it shows that saved copy offline.
-const VER = "pc-v22";
+const VER = "pc-v23";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use).
 // round-2 O5: the install list is what the app needs to START and to run offline. Code loaded later (commerce screens, the
 // map library, large Jomi portraits) is cached the first time it is used — installing it up front undid the lazy loading.
@@ -21,7 +21,7 @@ self.addEventListener("fetch", (e) => {
   if (u.hostname === "api.github.com") return;   // collection-run status: live from GitHub, never from a cache (ADMIN_OPERATIONS_SPEC.md)
   // other origins (sign-in, the commerce API, anything with a user's token) are never cached; map tiles are the one exception
   if (u.origin !== location.origin && !u.hostname.endsWith("tile.openstreetmap.org")) return;
-  const net = u.hostname.endsWith("tile.openstreetmap.org") || u.pathname.endsWith("app.js") || u.pathname.endsWith("core.js") || u.pathname.includes("/state/") || u.pathname.includes("/screens/") || u.pathname.endsWith("styles.css") || u.pathname.endsWith("icons.js") || u.pathname.endsWith("jomi.js") || u.pathname.endsWith("auth.js") || u.pathname.endsWith("commerce.js") || u.pathname.endsWith("config.js") || u.pathname.includes("/domain/") || u.pathname.endsWith("index.html") || u.pathname.endsWith("/");
+  const net = u.hostname.endsWith("tile.openstreetmap.org") || u.pathname.endsWith("app.js") || u.pathname.endsWith("core.js") || u.pathname.includes("/state/") || u.pathname.includes("/screens/") || u.pathname.endsWith("styles.css") || u.pathname.endsWith("icons.js") || u.pathname.endsWith("jomi.js") || u.pathname.endsWith("auth.js") || u.pathname.endsWith("commerce.js") || u.pathname.endsWith("config.js") || u.pathname.includes("/domain/") || u.pathname.includes("/workers/") || u.pathname.endsWith("index.html") || u.pathname.endsWith("/");
   if (net) {
     e.respondWith(fetch(e.request).then((r) => { if (r.ok) { const c = r.clone(); caches.open(VER).then((x) => x.put(e.request, c)); } return r; })
       .catch(() => caches.match(e.request, { ignoreSearch: true })));
