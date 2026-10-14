@@ -47,6 +47,7 @@ jobs:
             i="${shard%/*}"
             cp ../data2/raw/"$key".csv "$PROBE_OUT/raw/$key.$i.csv" 2>/dev/null || true
             cp ../data2/raw/"$key".log.json "$PROBE_OUT/raw/$key.$i.log.json" 2>/dev/null || true
+            python branch_rows.py "$key" "$PROBE_OUT/raw/$key.$i.branches.csv" || echo "branch addresses $key $shard failed"
           fi
       - name: Pack the output
         run: python scrape/probe_report.py split probe_out probe_chunks
