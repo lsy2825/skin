@@ -2,7 +2,7 @@
 // handled here: app.js saves a checked copy of the price file itself and says when it shows that saved copy offline.
 const VER = "pc-v16";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use)
-const SHELL = ["./", "index.html", "styles.css", "icons.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "domain/stats.js", "domain/spec.js", "domain/sync.js", "domain/classify.js", "domain/offerparse.js", "domain/match.js", "domain/pricectx.js", "domain/premium.js", "domain/jomiqa.js", "domain/demowallet.js", "domain/economics.js", "commerce.js", "terms.js",
+const SHELL = ["./", "index.html", "styles.css", "icons.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "domain/stats.js", "domain/jomilines.js", "domain/spec.js", "domain/sync.js", "domain/classify.js", "domain/offerparse.js", "domain/match.js", "domain/pricectx.js", "domain/premium.js", "domain/jomiqa.js", "domain/demowallet.js", "domain/economics.js", "commerce.js", "terms.js",
   "vendor/fonts/pretendard/pretendard.css", "manifest.webmanifest", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css",
   "icons/icon-192.png", "jomi.js", "assets/jomi/expr-default-160.png",
   "assets/jomi/expr-default-96.webp", "assets/jomi/expr-welcome-96.webp", "assets/jomi/expr-curious-96.webp", "assets/jomi/expr-thinking-96.webp", "assets/jomi/expr-happy-96.webp", "assets/jomi/expr-wink-96.webp", "assets/jomi/expr-empty-96.webp", "assets/jomi/expr-sleeping-96.webp",

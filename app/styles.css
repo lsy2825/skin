@@ -919,3 +919,9 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 /* 4.0 ops: run status + review center */
 .runs li, .rvq li { padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
 .runst { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* round 2: the home's promise line and trust link */
+.trustline { display: flex; align-items: center; gap: 8px; width: 100%; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--line, #e6e0da);
+  border-radius: 12px; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; min-height: 44px; }
+.trustline span { flex: 1; min-width: 0; }
+details.fold.small > summary { cursor: pointer; }

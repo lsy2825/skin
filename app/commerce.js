@@ -103,15 +103,15 @@
         h("dl", { class: "kv", style: "margin-top:10px" },
           h("dt", {}, "구매 크레딧"), h("dd", {}, `${b.paid - b.paid_reserved}${b.paid_reserved ? ` (+사용 중 ${b.paid_reserved})` : ""} · 유효기간 없음`),
           h("dt", {}, "보너스 크레딧"), h("dd", {}, `${b.promo - b.promo_reserved} · 먼저 써요`),
-          h("dt", {}, "광고 없는 기간"), h("dd", {}, af ? `${af.slice(0, 10)}까지` : "없음")),
+          af ? h("dt", {}, "광고 없는 기간(예전 묶음)") : null, af ? h("dd", {}, `${af.slice(0, 10)}까지`) : null),
         h("div", { class: "note", style: "margin-top:10px" }, "• 자동 충전·정기 결제가 없어요. 필요할 때만 한 번씩 사요.", h("br"),
           "• 가격 찾기·비교·장바구니·관심·지도·죠미 기본 기능은 계속 무료예요.", h("br"),
-          "• 광고 없는 기간은 크레딧과 따로예요. 기간이 끝나도 크레딧은 그대로 남아요. 지금 앱에는 광고가 없어요.", h("br"),
+          "• 크레딧으로 쓰는 도구는 3가지예요(이벤트 글 읽기·여러 이벤트 비교·견적 읽기). 나머지는 무료 화면으로 옮겼어요.", h("br"),
           "• 한 번 연 보고서는 다시 열어도 크레딧이 들지 않아요. 결과를 못 만들면 차감하지 않아요.")));
       box.append(h("div", { class: "card flush" }, h("div", { class: "row", style: "padding:14px 14px 4px" }, h("h3", {}, "충전"), h("span", { class: "sp" }), h("span", { class: "sub" }, "부가세 포함 · 시험 가격")),
         h("ul", { class: "list" }, W.PRODUCTS.map((p) => h("li", {}, h("button", { class: "item", type: "button", "data-testid": `pack-${p.code}`, onclick: () => buySheet(p) },
           h("span", { class: "t" }, `${p.code} · ${credits(p.credits)}`), h("span", { class: "p num" }, won(p.price_krw)),
-          h("span", { class: "m" }, h("span", {}, `크레딧당 약 ${won(Math.round(p.price_krw / p.credits))}`), h("span", {}, `광고 없는 기간 ${p.adfree_days}일`), h("span", {}, "부가세 포함"))))))));
+          h("span", { class: "m" }, h("span", {}, `크레딧당 약 ${won(Math.round(p.price_krw / p.credits))}`), h("span", {}, "부가세 포함"))))))));
       const tx = [...s.tx].reverse().slice(0, 30);
       box.append(h("div", { class: "card flush" }, h("div", { style: "padding:14px 14px 4px" }, h("h3", {}, "이용 내역")),
         tx.length ? h("ul", { class: "list" }, tx.map((x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, `${TYPE_L[x.type] || x.type}${x.bucket === "PROMO" ? " (보너스)" : ""}`),
@@ -120,7 +120,7 @@
       box.append(h("div", { class: "card" }, h("h3", {}, "환불·이용 안내 (초안 — 법률 검토 전)"),
         h("ul", { class: "plain", style: "margin-top:8px" }, h("li", {}, "쓰지 않은 구매 크레딧은 결제 후 7일 안에 전액 환불을 요청할 수 있어요(초안)."),
           h("li", {}, "일부를 쓴 뒤에는 남은 구매 크레딧만큼 비례 환불을 검토해요(초안)."), h("li", {}, "보너스 크레딧은 환불 대상이 아니에요."),
-          h("li", {}, "결제 취소·환불이 되면 그 묶음의 크레딧과 광고 없는 기간이 함께 빠져요. 이미 받은 보고서는 남아요.")),
+          h("li", {}, "결제 취소·환불이 되면 그 묶음의 크레딧이 함께 빠져요. 이미 받은 보고서는 남아요.")),
         h("div", { class: "row", style: "margin-top:12px;gap:8px" }, h("button", { class: "btn sm", type: "button", onclick: () => nav("premium") }, icon("sparkles", "sm"), "프리미엄 도구"),
           h("button", { class: "btn sm gray", type: "button", onclick: () => { if (!confirm("시연 지갑을 처음 상태로 되돌릴까요? 시연 크레딧과 시연 보고서가 지워져요.")) return; save(W.empty()); render(); toast("시연 지갑을 비웠어요"); } }, "시연 지갑 비우기"))));
       return box;
@@ -129,7 +129,7 @@
       const key = newKey("ord");                         // one key per sheet: a double tap is the same order
       sheet(`${p.code} 충전`, (close) => h("div", {},
         h("dl", { class: "kv" }, h("dt", {}, "가격"), h("dd", { class: "num" }, `${won(p.price_krw)} (부가세 포함)`), h("dt", {}, "크레딧"), h("dd", {}, `${credits(p.credits)} · 유효기간 없음`),
-          h("dt", {}, "광고 없는 기간"), h("dd", {}, `${p.adfree_days}일 (지금 기간 끝에 이어 붙여요)`)),
+          h("dt", {}, "쓸 수 있는 곳"), h("dd", {}, "이벤트 글 읽기 1 · 여러 이벤트 비교 2 · 견적 읽기 1")),
         h("div", { class: "note", style: "margin-top:10px" }, MODE === "DEMO" ? "시연 결제예요. 실제 돈이 나가지 않고 카드 정보도 묻지 않아요." : "결제는 토스페이먼츠 결제창에서 해요. 크레딧은 서버가 결제를 확인한 뒤에 들어와요."),
         h("button", { class: "btn block", type: "button", style: "margin-top:14px", "data-testid": "buy-confirm", onclick: () => {
           const s = state(), r = W.buy(s, p.code, key); save(s); close(); render();
@@ -143,12 +143,21 @@
       box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h2", {}, "프리미엄 도구"), demoBadge(), h("span", { class: "sp" }),
         h("button", { class: "btn sm gray", type: "button", onclick: () => nav("wallet") }, icon("wallet", "sm"), credits(b.available))),
         h("div", { class: "sub", style: "margin-top:4px" }, "쓰기 전에 크레딧을 보여주고, 결과를 못 만들면 차감하지 않아요. 가격은 모두 병원 사이트에서 모은 숫자예요(AI가 가격을 만들지 않아요).")));
-      for (const [group, tools] of TOOLS) box.append(h("div", { class: "card flush menu" }, h("div", { style: "padding:14px 14px 4px" }, h("h3", {}, group)),
-        h("ul", { class: "list" }, tools.map(([code, ic, title, desc]) => { const f = W.FEATURES[code], off = code === "EVENT_IMAGE_DECODER" && MODE === "DEMO";
+      // round-2 BIZ01: only what the free screens do not already give is sold; everything else says where it went
+      const sold = TOOLS.flatMap(([, t]) => t).filter(([code]) => W.FEATURES[code].sold);
+      box.append(h("div", { class: "card flush menu" }, h("div", { style: "padding:14px 14px 4px" }, h("h3", {}, "크레딧으로 쓰는 도구")),
+        h("ul", { class: "list" }, sold.map(([code, ic, title, desc]) => { const f = W.FEATURES[code];
           return h("li", {}, h("button", { class: "item", type: "button", "data-testid": `tool-${code}`, onclick: () => toolSheet(code, title) },
-            h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, title),
-              h("span", { class: "sub", style: "display:block;font-weight:500" }, off ? "시연에서는 사진을 읽지 않아요 — 서버·AI 연결 후 열려요" : desc))),
-            h("span", { class: "k k4" }, f.days && code !== "PRICE_WATCH_7D" && code !== "PRICE_WATCH_30D" ? `${f.credits}C · ${f.days}일` : `${f.credits}C`))); }))));
+            h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, title), h("span", { class: "sub", style: "display:block;font-weight:500" }, desc))),
+            h("span", { class: "k k4" }, `${f.credits}C`))); }))));
+      const MOVED = { PRODUCT_DEEP_COMPARE: ["무료로 옮김", "versus"], REGIONAL_PRICE_REPORT: ["무료로 옮김", "compare"], ADVANCED_CART_PLANNER: ["무료로 옮김", "cart"],
+        CONSOLIDATED_REPORT: ["판매 안 함", null], PRICE_HISTORY_REPORT: ["자료가 쌓이면", "change"], PRICE_WATCH_7D: ["서버 알림 준비 중", "saved"], PRICE_WATCH_30D: ["서버 알림 준비 중", "saved"],
+        EVENT_IMAGE_DECODER: ["AI 연결 전", null], JOMI_QA_SESSION: ["판매 보류", "concern"] };
+      const rest = TOOLS.flatMap(([, t]) => t).filter(([code]) => !W.FEATURES[code].sold);
+      box.append(h("details", { class: "card flush fold" }, h("summary", { style: "padding:14px" }, `팔지 않는 도구 ${rest.length}가지 — 무료 화면으로 옮겼거나 준비 중`),
+        h("ul", { class: "list" }, rest.map(([code, ic, title]) => { const [why, to] = MOVED[code] || ["판매 안 함", null];
+          return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, title)), h("span", { class: "k kx" }, why),
+            to ? h("button", { class: "linkbtn", type: "button", onclick: () => nav(to) }, "무료 화면 열기") : null)); }))));
       box.append(reportsCard(s));
       return box;
     };
@@ -208,7 +217,10 @@
           h("div", { class: "note", style: "margin-top:12px" }, `이 기능은 ${credits(f.credits)}${f.days && !code.startsWith("PRICE_WATCH") ? ` (같은 장바구니는 ${f.days}일 동안 다시 계산 무료)` : ""}. 지금 쓸 수 있는 크레딧 ${b.available}. 결과를 못 만들면 차감하지 않아요.`),
           h("button", { class: "btn block", type: "button", style: "margin-top:12px", "data-testid": "run-tool", onclick: () => {
             const res = run(code, inp.read());
-            if (res.error) { err.textContent = res.error; err.hidden = false; if (res.buy) err.append(" ", h("button", { class: "linkbtn", type: "button", onclick: () => { close(); nav("wallet"); } }, "충전하기")); return; }
+            if (res.error) { err.textContent = res.error; err.hidden = false; if (res.buy) err.append(" ", h("button", { class: "linkbtn", type: "button", onclick: () => { close(); nav("wallet"); } }, "충전하기"));
+              if (res.preview) { const items = (res.preview.payload.items || (res.preview.payload.events || []).flatMap((e) => e.items || [])); err.after(h("div", { class: "card", "data-testid": "free-preview" }, h("h3", {}, "읽은 내용 (무료 미리보기)"),
+                items.length ? itemsView(res.preview, items, false) : h("div", { class: "sub" }, "가격이 적힌 줄을 읽었지만 같은 묶음을 찾지 못했어요."))); }
+              return; }
             close();
             if (res.screened) { A.jomiNotice(res.screened); return; }
             nav(`report/${res.report_id}`); toast(res.credits ? `${credits(res.credits)}을 썼어요` : "이용권으로 무료 계산했어요"); } }, `${credits(f.credits)} 쓰기`));
@@ -224,7 +236,7 @@
       const s = state(); let rj;
       try { rj = W.reserve(s, code, newKey("job"), scopeOf(code, input)); }
       catch (e) { return e.message === "INSUFFICIENT_CREDITS" ? { error: `크레딧이 부족해요(필요 ${e.need}, 있음 ${e.available}).`, buy: true } : { error: "지금 쓸 수 없는 기능이에요" }; }
-      let rep = null;
+      let rep = null, preview = null;
       try {
         if (code === "JOMI_QA_SESSION") {
           const fx = window.JomiQA.facts(input.question, ctx);
@@ -235,10 +247,10 @@
           rep = { kind: "PRICE_WATCH", title: `가격 지켜보기 ${days}일`, payload: { days, note: "가격은 주 1회 모아요. 새 데이터가 들어온 뒤 알림 조건을 확인해요(실시간 아님).", data_updated: ctx.updated } };
         } else {
           rep = P.build(code, input, ctx);
-          if (!P.usable(rep)) rep = null;
+          if (!P.usable(rep)) { preview = rep; rep = null; }
         }
       } catch (e) { rep = null; }
-      if (!rep) { W.release(s, rj.job.id, "NO_DELIVERABLE"); save(s); return { error: code === "JOMI_QA_SESSION" ? "질문에서 시술 이름을 찾지 못했어요. 크레딧은 돌려드렸어요." : "결과를 만들지 못해 크레딧을 돌려드렸어요." }; }
+      if (!rep) { W.release(s, rj.job.id, "NO_DELIVERABLE"); save(s); if (preview) return { preview, error: "비교할 수 있는 같은 묶음을 찾지 못해 크레딧을 쓰지 않았어요. 읽은 내용만 아래에 무료로 보여 드려요(저장 안 함)." }; return { error: code === "JOMI_QA_SESSION" ? "질문에서 시술 이름을 찾지 못했어요. 크레딧은 돌려드렸어요." : "결과를 만들지 못해 크레딧을 돌려드렸어요." }; }
       const c = W.capture(s, rj.job.id, rep); save(s);
       return { report_id: c.report_id, credits: rj.job.credits };
     }

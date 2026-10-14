@@ -140,3 +140,31 @@ test("R11: the CSP allows exactly the origins the config calls (an API origin mi
   assert.equal(check(fixed, withApi).ok, true);
   assert.equal(check(fixed, withApi.replace('mode: "DEMO"', 'mode: "WEB_PG"')).ok, false, "Toss origins required for web payments");
 });
+
+test("Jomi lines engine: conditions + priority, no immediate repeat, fixed safety lines never vary, copy rules hold", () => {
+  const L = require("../app/domain/jomilines.js");
+  assert.deepEqual(L.check(), [], "no line breaks the copy rules (amounts, dose, diagnosis, guarantees, clinic picks, length)");
+  const st = L.stats();
+  assert.ok(st.variants >= 40 && st.intents >= 10, JSON.stringify(st));
+  // counts are reported separately — variants are not 'unique answers'
+  assert.ok(st.records < st.variants);
+  assert.match(L.pick("home", { visits: 1 }).id, /^home\.first/);
+  assert.match(L.pick("home", { visits: 3, hour: 23 }).id, /^home\.night/);
+  assert.match(L.pick("error", { offline: true }).id, /^offline/);
+  for (const intent of ["home", "loading", "emptySearch", "saved", "added"]) {
+    const recent = []; let prev = null, repeats = 0;
+    for (let i = 0; i < 30; i++) { const p = L.pick(intent, { visits: 3, hour: 14 }, recent); if (p.id === prev) repeats++; prev = p.id; recent.push(p.id); }
+    assert.equal(repeats, 0, intent);
+  }
+  for (const r of L.RECORDS.filter((x) => x.fixed)) assert.equal(r.variants.length, 1, r.id);
+  assert.equal(L.pick("concernFound").text, "적어 준 말과 관련된 정보를 찾아봤어. 결정은 꼭 의료진과 상담해서 해 줘.");
+});
+
+test("D5/D8: a prototype name is an unknown key; 초성 and typed operator words are read sensibly", () => {
+  const Search = require("../app/domain/search.js");
+  const KI = Object.assign(Object.create(null), { X01: 0 });
+  assert.equal(KI["__proto__"], undefined); assert.equal(KI.constructor, undefined);
+  assert.deepEqual(Search.compile("ㅂㅌㅅ", null).fixes, [["ㅂㅌㅅ", "보톡스"]]);
+  const and = Search.compile("보톡스 AND", null);
+  assert.equal(and.parts.length, 1); assert.match(and.warn[0], /쓰지 않아도/);
+});

@@ -174,6 +174,20 @@
     }
     return best ? best.w : null;
   }
+  // 초성 검색 (round-2 D8): 'ㅂㅌㅅ' → the spelling people type whose initial consonants match ('보톡스'), searched normally.
+  // Candidates: the alias dictionary's spellings and canonical forms, then the index words (most frequent first).
+  const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ";
+  const choOf = (w) => [...w].map((c) => { const k = c.charCodeAt(0) - 0xac00; return k >= 0 && k < 11172 ? CHO[Math.floor(k / 588)] : c; }).join("");
+  const isCho = (t) => /^[ㄱ-ㅎ]{2,}$/.test(t);
+  function choWord(t, index) {
+    const seen = new Set(), cands = [];
+    for (const [canon, sp] of Object.entries(ALIASES)) for (const w of [canon, ...sp]) if (/^[가-힣]+$/.test(w) && !seen.has(w)) { seen.add(w); cands.push({ w, c: 1e6 }); }
+    for (const x of (index && index.words) || []) if (/^[가-힣]+$/.test(x.w) && !seen.has(x.w)) { seen.add(x.w); cands.push({ w: x.w, c: x.c }); }
+    const hit = cands.filter((x) => choOf(x.w) === t).sort((a, b) => b.c - a.c || a.w.length - b.w.length)[0];
+    return hit ? hit.w : null;
+  }
+  // operator words people type out of habit ('보톡스 AND 리쥬란'): spaces already mean AND — the word itself is not searched
+  const OPWORD = /^(and|or|그리고|또는|&&?)$/i;
   // does the query use any operator? (then natural-language reading is skipped: the user wrote it on purpose)
   const hasOps = (q) => /(^|\s)[-−]\S|\||\d\s*(샷|회|개|부위|줄|분|u|cc|kj|mm|cm|유닛)[?？]/i.test(q || "");   // a plain question mark (어디가 싸?) is not one
   // q → { test(normName), unstated(normName) → [unit label], parts: [{kind, label}], warn: [..], fixes: [[typed, used]],
@@ -183,6 +197,8 @@
     for (let tok of String(q || "").trim().split(/\s+/)) {
       if (!tok) continue;
       raw.push(tok);
+      if (OPWORD.test(tok)) { warn.push(`‘${tok}’는 쓰지 않아도 돼요 — 띄어 쓰면 모두 들어간 이름을 찾아요(또는: ‘|’)`); continue; }
+      if (isCho(tok)) { const w = choWord(tok, index); if (w) { fixes.push([tok, w]); tok = w; } else { warn.push(`초성 ‘${tok}’에 맞는 시술 이름을 찾지 못했어요`); continue; } }
       let neg = false, maybe = false;
       if (/^[-−]/.test(tok)) { neg = true; tok = tok.replace(/^[-−]+/, ""); if (!tok) { warn.push("'-' 뒤에 뺄 낱말이 없어서 무시했어요"); continue; } }
       if (/[?？]+$/.test(tok)) { maybe = true; tok = tok.replace(/[?？]+$/, ""); if (!tok) { warn.push("'?'는 숫자와 단위 뒤에 붙여요(예: 1회?)"); continue; } }
@@ -315,5 +331,5 @@
   }
   const attrGroup = (name) => (ATTRS.find(([, list]) => list.some(([n]) => n === name)) || [""])[0];
 
-  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup, qtys, compile, hasOps };
+  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup, qtys, compile, hasOps, choOf, choWord };
 });
