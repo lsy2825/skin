@@ -1,9 +1,11 @@
 // Offline cache: the app shell is cache-first, data.json and map tiles are network-first (fall back to the last copy).
-const VER = "pc-v12";
+const VER = "pc-v13";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use)
 const SHELL = ["./", "index.html", "styles.css", "icons.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "domain/stats.js", "domain/spec.js", "terms.js",
   "vendor/fonts/pretendard/pretendard.css", "manifest.webmanifest", "vendor/leaflet/leaflet.js", "vendor/leaflet/leaflet.css",
-  "icons/icon-192.png", "jomi.js", "assets/jomi/jomi-face-96.webp", "assets/jomi/jomi-face-160.png", "assets/jomi/jomi-portrait-360.webp", "icons/favicon-32.png", "icons/apple-touch-icon.png"];
+  "icons/icon-192.png", "jomi.js", "assets/jomi/expr-default-160.png",
+  "assets/jomi/expr-default-96.webp", "assets/jomi/expr-welcome-96.webp", "assets/jomi/expr-curious-96.webp", "assets/jomi/expr-thinking-96.webp", "assets/jomi/expr-happy-96.webp", "assets/jomi/expr-wink-96.webp", "assets/jomi/expr-empty-96.webp", "assets/jomi/expr-sleeping-96.webp",
+  "assets/jomi/expr-default-360.webp", "assets/jomi/expr-welcome-360.webp", "assets/jomi/expr-curious-360.webp", "assets/jomi/expr-thinking-360.webp", "assets/jomi/expr-happy-360.webp", "assets/jomi/expr-wink-360.webp", "assets/jomi/expr-empty-360.webp", "assets/jomi/expr-sleeping-360.webp", "icons/favicon-32.png", "icons/apple-touch-icon.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(VER).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== VER).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

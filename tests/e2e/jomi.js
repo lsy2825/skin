@@ -1,7 +1,7 @@
 // 죠미(Jomi) in a real browser: the introduction sheet (tap only, first vs returning, kept after reload, Esc / outside /
 // navigation close it, focus returns, the page behind doesn't scroll), feedback toasts (cart with undo, saved, alert only
 // after it is stored), empty / loading / error states, reduced motion, mascot kept out of the price screen, and that
-// every image is one of the registry's files cut from the official artwork.
+// every image is one of the registry's files cut from the user's own artwork (expression sheet), each expression its own.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/jomi.js [out-dir]
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -46,10 +46,14 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('뒤로 가면 열린 시트도 닫힘', await p.locator('.sheet').count() === 0 && await p.evaluate(() => !document.documentElement.classList.contains('sheet-open')));
     // images: only the registry's files, all loaded
     const imgs = await p.evaluate(async () => { await new Promise((r) => setTimeout(r, 300)); return [...document.querySelectorAll('img.mascot')].map((i) => [i.getAttribute('src'), i.naturalWidth]); });
-    const reg = await p.evaluate(() => Object.values(window.JOMI.files));
+    const reg = await p.evaluate(() => [...Object.values(window.JOMI.files), ...Object.values(window.JOMI.expressions).flatMap((e) => [e.face, e.portrait].filter(Boolean))]);
     ok('죠미 그림은 레지스트리 파일만, 모두 로드', imgs.length > 0 && imgs.every(([s, w]) => reg.includes(s) && w > 0) && !p.ext.length, JSON.stringify(imgs.slice(0, 3)));
-    const files = await p.evaluate(async () => Promise.all(Object.values(window.JOMI.files).map(async (f) => [f, (await fetch(f)).status])));
-    ok('레지스트리 파일이 모두 있음', files.every(([, s]) => s === 200), JSON.stringify(files));
+    const files = await p.evaluate(async () => Promise.all([...new Set([...Object.values(window.JOMI.files), ...Object.values(window.JOMI.expressions).flatMap((e) => [e.face, e.portrait].filter(Boolean))])].map(async (f) => [f, (await fetch(f)).status])));
+    ok('레지스트리 파일이 모두 있음', files.length >= 17 && files.every(([, s]) => s === 200), `${files.length}개 ` + JSON.stringify(files.filter(([, s]) => s !== 200)));
+    // the user's expression sheet: every approved expression has its own face + portrait; pending ones name a fallback that has art
+    const ex = await p.evaluate(() => Object.entries(window.JOMI.expressions).map(([k, e]) => [k, e.art, !!e.face, !!e.portrait, e.fallback || '', !!(window.JOMI.expressions[e.fallback] || {}).face]));
+    ok('승인된 표정 8개는 각자 그림, 나머지는 대신 쓸 표정이 있음', ex.filter((x) => x[1] === 'approved').length === 8 && ex.every(([, art, f, po, fb, fbArt]) => art === 'approved' ? f && po : fb && fbArt), JSON.stringify(ex.filter((x) => x[1] !== 'approved')));
+    ok('헤더·로딩은 기본·졸린 표정 그림', /expr-default-96/.test(await p.locator('#jomibtn img').getAttribute('src')));
     ok('스크립트 오류 없음', !p.errs.length, p.errs.join(' '));
     await ctx.close(); }
 
@@ -83,7 +87,11 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await p.goto(BASE + '#cart'); await p.waitForTimeout(300);
     ok('빈 장바구니: 죠미 + 안내 + 다음 행동', await p.locator('#main .jomi-empty img').count() === 1 && /아직 담은 시술이 없네!/.test(await p.locator('#main').innerText()) && await p.locator('#main .btn', { hasText: '시술 고르러 가기' }).count() === 1);
     await p.goto(BASE + '#search/zzqqxx?nl=0'); await p.waitForTimeout(600);
-    ok('검색 결과 없음: 죠미 + 바꿔 보기 안내', /아직 찾지 못했어/.test(await p.locator('#main').innerText()) && await p.locator('#main .jomi-empty').count() === 1);
+    ok('검색 결과 없음: 시무룩한 죠미 + 바꿔 보기 안내', /아직 찾지 못했어/.test(await p.locator('#main').innerText()) && await p.locator('#main .jomi-empty').count() === 1 && /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src')));
+    await p.goto(BASE + '#concern'); await p.waitForTimeout(300);
+    ok('피부 고민 가이드: 궁금한 죠미', /expr-curious-96/.test(await p.locator('#main .msg.bot img').first().getAttribute('src')));
+    await p.locator('#main textarea').fill('이마 주름이 신경 쓰여요'); await p.locator('#main textarea').press('Enter'); await p.waitForTimeout(300);
+    ok('찾은 정보를 보여줄 때: 생각하는 죠미', /expr-thinking-96/.test(await p.locator('#main .msg.bot img').last().getAttribute('src')));
     await p.goto(BASE + '#guide'); await p.waitForTimeout(300);
     ok('시술 사전: 죠미 한마디', /스킨보톡스랑 주름보톡스는 뭐가 다를까/.test(await p.locator('#main .jomi-say').innerText()));
     await ctx.close(); }
@@ -91,9 +99,9 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     const { ctx, p } = await page({}, async (p) => { await p.route('**/data.json', async (r) => { if (fail) return r.fulfill({ status: 500, body: 'x' }); await new Promise((s) => setTimeout(s, 900)); r.continue(); }); });
     await p.waitForTimeout(800);
     const txt = await p.locator('#main').innerText();
-    ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼', /불러오지 못했어요/.test(txt) && /다시 시도해 볼까/.test(txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
+    ok('오류: 무엇이 안 됐는지 + 다시 시도 버튼 (곤란한 표정 대신 시무룩)', /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src') || '') && /불러오지 못했어요/.test(txt) && /다시 시도해 볼까/.test(txt) && await p.locator('#main .btn', { hasText: '다시 시도' }).count() === 1, txt.split('\n').slice(0, 2).join(' / '));
     fail = false; await p.locator('#main .btn', { hasText: '다시 시도' }).click(); await p.waitForTimeout(200);
-    ok('다시 시도 중: 로딩 안내(스크린리더용 status)', /오늘의 가격을 살펴보는 중/.test(await p.locator('#main [role=status]').innerText()));
+    ok('다시 시도 중: 졸린 죠미 + 로딩 안내(스크린리더용 status)', /오늘의 가격을 살펴보는 중/.test(await p.locator('#main [role=status]').innerText()) && /expr-sleeping-96/.test(await p.locator('#main [role=status] img').getAttribute('src')));
     await p.waitForSelector('.pc', { timeout: 15000 }).catch(() => {});
     ok('다시 시도 → 정상 화면', await p.locator('.pc').count() > 0 && (await p.locator('#main').getAttribute('aria-busy')) === null);
     await ctx.close(); }

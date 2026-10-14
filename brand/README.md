@@ -20,7 +20,12 @@
   - `make_logotype.py` → `logotype.svg`: '윤실장' 로고타입
     - Pretendard(OFL) 글자 윤곽을 자간을 좁혀 그리고, 윤의 ㅇ 위에 고양이 귀, 끝에 코랄 점을 더했어요.
     - 색은 `currentColor`라 라이트·다크 모드를 따라가요. `app/index.html`에 인라인으로 넣었어요.
-  - `make_mascot.py` → `app/assets/jomi/`(얼굴 원형 96·160px, 상반신 360px): 아이콘 그림에서 잘라내기만 했어요(새로 그린 그림 아님).
+  - `make_mascot.py` → `app/assets/jomi/jomi-*`(얼굴 원형 96·160px, 상반신 360px): 아이콘 그림에서 잘라내기만 했어요(새로 그린 그림 아님). 2026-10-14부터 화면에서는 아래 표정 시트 그림을 써요.
     - 고양이 이름은 **죠미(Jomi)**예요. `docs/JOMI_CHARACTER_GUIDE.md`, `docs/JOMI_ASSET_INVENTORY.md`
     - 상단 바·비밀번호 화면·고민 가이드에 써요.
   - 앱 테마는 분홍에서 웜 아이보리·버터·세이지·차콜·코랄로 바꿨어요. 아이콘 그림 자체는 그대로예요.
+- **2026-10-14 죠미 표정 시트(사용자 제공):** `jomi-expressions-original.webp` (1536×1024, 투명 배경, 덮어쓰지 않음)
+  - 표정 8개(기본 미소·자기소개·궁금한·생각하는·신나는·윙크하는·시무룩한·졸린)와 이름표가 있는 시트예요.
+  - `make_expressions.py` → `app/assets/jomi/expr-<표정>-96.webp`(얼굴), `-360.webp`(전신), `expr-default-160.png`(PIN). 이름표 글자는 지우고 그림만 잘라요.
+  - 앱 안의 죠미 그림은 이제 모두 이 시트에서 와요. 앱 아이콘(홈 화면·파비콘)은 그대로 아이콘 원본이에요.
+  - 확인 필요: 시트 이름표는 '조미', 앱은 '죠미' / 아이콘은 하트 펜던트, 시트는 'ㅈ' 동전 (`docs/JOMI_ASSET_INVENTORY.md`)

@@ -31,10 +31,10 @@
   const CAT_IC = { "톡신": "syringe", "보톡스·필러": "syringe", "윤곽·필러": "droplet", "리프팅": "sparkles", "부스터": "leaf", "스킨부스터": "leaf", "피부": "sun",
     "피부·레이저": "sun", "제모·바디": "zap", "제모": "zap", "바디": "flower-2", "패키지": "gift", "기타": "circle-plus" };
   const catIcon = (c, cls = "") => icon(CAT_IC[c] || "circle-dot", cls);
-  // ---------------- 죠미 (app/jomi.js registry): one image per expression; expressions without their own artwork yet
-  // fall back to the official pose. Text always goes with her — she never carries meaning alone.
+  // ---------------- 죠미 (app/jomi.js registry): one image per expression; an expression without its own artwork yet
+  // shows its fallback expression, then the default. Text always goes with her — she never carries meaning alone.
   const J = window.JOMI || { name: "죠미", en: "Jomi", role: "", files: {}, expressions: {}, lines: {} };
-  const jomiSrc = (expr, kind) => (J.expressions[expr] || {})[kind] || J.files[kind];
+  const jomiSrc = (expr, kind) => { const e = J.expressions[expr] || {}; return e[kind] || (J.expressions[e.fallback] || {})[kind] || J.files[kind]; };
   const jomiImg = (expr = "default", kind = "face", size = 32, alt = "") => h("img", { class: `mascot jomi${kind === "portrait" ? " portrait" : ""}`, src: jomiSrc(expr, kind),
     alt, width: size, height: size, decoding: "async", "data-expr": expr });
   const jomiSay = (expr, text, ...more) => h("div", { class: "jomi-say" }, jprefs().freq === "off" ? null : jomiImg(expr, "face", 32), h("div", { class: "bub" }, h("p", {}, text), ...more));
@@ -514,7 +514,7 @@
     sheet(fam ? fam.f.name : KEYS[k0].label, (close) => {
       const box = h("div", {});
       const paint = () => {
-        const top = ranking(s.k, "price")[0];
+        const rk = ranking(s.k, "price"), top = FLAGS.lowestHighlight ? rk[0] : null, rp = rk.map((x) => x.p);   // ② off: range, no clinic named
         const have = st.carts[s.ci].items.find((c) => c.t === "k" && c.k === KEYS[s.k].id);
         fill(box,
           fam && fam.f.vs.length > 1 ? h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "옵션"),
@@ -525,7 +525,8 @@
             h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
           cartPicker(s.ci, (i) => { s.ci = i; paint(); }),
           top ? h("div", { class: "hero", style: "margin-top:14px" }, h("span", { class: "hl" }, `${KEYS[s.k].label} · 가장 싼 곳`), h("span", { class: "hb" }, bname(top.b)),
-            h("span", { class: "hp num" }, won(top.p))) : null,
+            h("span", { class: "hp num" }, won(top.p)))
+            : rp.length ? h("div", { class: "note", style: "margin-top:14px" }, `${KEYS[s.k].label} · ${regionName()} ${rp.length}곳 · ${won(Math.min(...rp))}~${won(Math.max(...rp))} · 중간값 ${won(median(rp))}`) : null,
           h("div", { class: "row", style: "margin-top:14px" },
             have ? h("button", { class: "btn gray", type: "button", onclick: () => { const c = st.carts[s.ci], pos = c.items.indexOf(have); c.items = c.items.filter((x) => x !== have); saveCarts(); close(); render();
               undoToast("장바구니에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
@@ -892,7 +893,7 @@
     const legend = series.length > 1 ? h("div", { class: "row lclegend" }, series.map((s) => h("span", { class: "row", style: "gap:6px" }, h("span", { class: "key", style: `background:${s.color}` }), s.name))) : null;
     const table = h("table", { class: "lctable", hidden: true }, h("thead", {}, h("tr", {}, h("th", {}, "날짜"), series.map((s) => h("th", {}, s.name)))),
       h("tbody", {}, dates.map((d, i) => h("tr", {}, h("td", {}, d), series.map((s) => h("td", { class: "num" }, s.values[i] != null ? won(s.values[i]) : "-"))))));
-    const tbtn = h("button", { class: "linkbtn", type: "button", onclick: () => { table.hidden = !table.hidden; tbtn.lastChild.textContent = table.hidden ? "표로 보기" : "표 닫기"; } }, icon("table", "xs"), h("span", {}, "표로 보기"));
+    const tbtn = h("button", { class: "linkbtn", type: "button", style: "min-height:28px", onclick: () => { table.hidden = !table.hidden; tbtn.lastChild.textContent = table.hidden ? "표로 보기" : "표 닫기"; } }, icon("table", "xs"), h("span", {}, "표로 보기"));
     kbox.append(g, tip);
     wrap.append(legend || "", kbox, h("div", { class: "row" }, h("span", { class: "sp" }), tbtn), table);
     return wrap;
@@ -2032,6 +2033,7 @@
     const paint = (r, said) => {
       const me = said ? h("div", { class: "msg user" }, h("div", { class: "bub" }, said)) : null;
       if (r.empty) { fill(thread, intro); return; }
+      let face = "thinking";   // 생각하는 죠미 while she shows what she found; 시무룩 when nothing matched
       const parts = r.safety.map((x) => h("div", { class: `card ${x.level === "emergency" ? "calert" : "cwarn"}`, role: "alert" },
         h("h3", {}, icon("triangle-alert", "sm"), x.title), h("p", {}, x.message)));
       // a warning sign of an emergency: the clinician comes first, so no treatment information at all
@@ -2039,6 +2041,7 @@
         if (r.personal) parts.push(h("div", { class: "card note" }, h("b", {}, "개인 맞춤 판단은 하지 않아요"), h("p", { style: "margin:4px 0 0" }, CONC.safety.personal.message)));
         if (r.clipped) parts.push(h("div", { class: "note" }, `앞 ${Concern.MAX_LEN}자만 분류했어요.`));
         const cs = r.matches.map((m) => [concernOf(m.id), m]).filter(([c]) => concernVisible(c));
+        if (!cs.length) face = "empty";
         if (!cs.length) parts.push(h("div", { class: "card" }, h("h3", {}, "어떤 고민인지 찾지 못했어요"),
           h("p", { class: "sub" }, "'고민 고르기'에서 골라 보거나 낱말을 바꿔 적어 보세요(예: 주름, 기미, 여드름, 땀). 증상이 걱정되면 피부과 진료를 받아 보세요.")));
         if (cs.length > 1) parts.push(h("div", { class: "sub", style: "margin:0 4px" }, `적은 말과 관련된 고민 ${cs.length}가지예요(찾은 낱말이 많은 순).`));
@@ -2046,7 +2049,7 @@
         for (const [c, m] of cs) parts.push(concernCard(c, m));
       }
       fill(out, parts);
-      fill(thread, intro, me, h("div", { class: "msg bot" }, mascotImg(32), out));
+      fill(thread, intro, me, h("div", { class: "msg bot" }, mascotImg(32, face), out));
     };
     const run = () => { concernText = ta.value; paint(Concern.classify(concernText, CONC), concernText.trim() || null); };
     ta.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); run(); } });
@@ -3108,7 +3111,7 @@
         } }, icon("trash-2", "sm"), st.carts.length > 1 ? "삭제" : "비우기")));
     if (!c.items.length) {
       box.append(h("div", { class: "card" }, jomiEmpty("cart", J.lines.emptyCart || "장바구니가 비어 있어요", h("span", { style: "display:block;color:var(--ink-2);margin-bottom:6px" }, J.lines.emptyCartSub || "시술을 담으면 병원별 비용을 비교할 수 있어요."),
-        "한 곳에서 다 받을 때, 여러 곳을 섞을 때, 브랜드·지역별로 어디가 가장 싼지 계산해 드려요. 시술 비교 화면이나 지점 가격표·검색 결과의 '담기'로 실제 옵션을 그대로 담을 수 있어요."),
+        "한 곳에서 다 받을 때, 여러 곳을 섞을 때, 브랜드·지역별로 지점마다 예상 총액을 계산해 드려요. 시술 비교 화면이나 지점 가격표·검색 결과의 '담기'로 실제 옵션을 그대로 담을 수 있어요."),
         h("button", { class: "btn block", type: "button", onclick: () => nav("compare") }, "시술 고르러 가기", icon("chevron-right", "sm")), st.carts.length > 1 ? manage : null));
       return box;
     }

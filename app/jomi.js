@@ -1,30 +1,33 @@
 // 죠미(Jomi) — 윤실장 공식 안내냥. One registry for every image and line of hers the app shows (docs/JOMI_*.md).
-// Every file is cut from the official artwork (brand/yoonsiljang-icon-original.webp, never overwritten) by
-// brand/make_mascot.py: nothing is redrawn or generated. The artwork has ONE pose — a smiling wink with the tongue out
-// and the heart collar — so 'default', 'happy' and 'wink' are that pose itself, and the other expressions show the same
-// pose until approved artwork of that expression is added (art: "pending"; what is needed: docs/JOMI_ASSET_INVENTORY.md).
-// To add one: put the files in app/assets/jomi/, give the entry { face: "...", portrait: "..." } and set art: "approved".
+// Images are cut, never redrawn or generated, from the user's own artwork (both files are kept as given, never overwritten):
+//   brand/jomi-expressions-original.webp — the 8-expression sheet (2026-10-14) → assets/jomi/expr-* (brand/make_expressions.py)
+//   brand/yoonsiljang-icon-original.webp — the app icon (wink, heart collar) → assets/jomi/jomi-* (brand/make_mascot.py);
+//     shown in the app until 2026-10-14, now only the app icon itself uses it (the crops are kept for a one-line rollback)
+// An expression without its own artwork yet (art: "pending") shows its `fallback` expression; to add one, put the files in
+// app/assets/jomi/, give the entry { face, portrait } and set art: "approved". What is still missing: JOMI_ASSET_INVENTORY.md
+const E = (id) => ({ face: `assets/jomi/expr-${id}-96.webp`, portrait: `assets/jomi/expr-${id}-360.webp` });
 window.JOMI = {
   name: "죠미",
   en: "Jomi",
   role: "윤실장 공식 안내냥 · 피부시술 정보 도우미",
   files: {
-    face: "assets/jomi/jomi-face-96.webp",          // head in a circle (shown at 20–48 px)
-    faceLg: "assets/jomi/jomi-face-160.png",        // head in a circle, PNG (PIN screen)
-    portrait: "assets/jomi/jomi-portrait-360.webp", // head, paws, heart collar (intro sheet, empty states)
+    face: "assets/jomi/expr-default-96.webp",        // head in a circle, transparent (shown at 20–48 px)
+    faceLg: "assets/jomi/expr-default-160.png",      // the same head, PNG (PIN screen)
+    portrait: "assets/jomi/expr-default-360.webp",   // whole figure, transparent (intro sheet, empty states)
   },
+  // ids are what the screens ask for (jomiImg("wink") …); sheet = the name printed on the user's sheet
   expressions: {
-    default: { art: "original", mood: "기본 미소", use: "홈·헤더" },
-    welcome: { art: "pending", mood: "반가운 표정", use: "자기소개" },
-    curious: { art: "pending", mood: "궁금한 표정", use: "피부 고민 가이드" },
-    thinking: { art: "pending", mood: "생각하는 표정", use: "정보 찾는 중" },
-    explaining: { art: "pending", mood: "안경 쓴 설명 표정", use: "시술 사전" },
-    happy: { art: "original", mood: "신나는 표정", use: "담기·저장 완료" },
-    wink: { art: "original", mood: "윙크", use: "가격 알림 설정 완료" },
-    empty: { art: "pending", mood: "시무룩한 표정", use: "검색 결과 없음" },
-    cart: { art: "pending", mood: "장바구니를 든 표정", use: "빈 장바구니" },
-    sleeping: { art: "pending", mood: "졸린 표정", use: "로딩·대기" },
-    error: { art: "pending", mood: "곤란한 표정", use: "오류 복구" },
+    default: { art: "approved", ...E("default"), sheet: "기본 미소 조미", use: "홈·헤더·PIN" },
+    welcome: { art: "approved", ...E("welcome"), sheet: "자기소개 조미", use: "첫 자기소개" },
+    curious: { art: "approved", ...E("curious"), sheet: "궁금한 조미", use: "피부 고민 가이드" },
+    thinking: { art: "approved", ...E("thinking"), sheet: "생각하는 조미", use: "고민에 맞는 정보를 찾아 보여줄 때" },
+    explaining: { art: "pending", fallback: "welcome", mood: "안경 쓴 설명 표정", use: "시술 사전·쉬운 용어" },
+    happy: { art: "approved", ...E("happy"), sheet: "신나는 조미", use: "담기·저장 완료 (최저가 발견에는 쓰지 않음: ② 객관 표시)" },
+    wink: { art: "approved", ...E("wink"), sheet: "윙크하는 조미", use: "가격 알림 설정 완료" },
+    empty: { art: "approved", ...E("empty"), sheet: "시무룩한 조미", use: "검색 결과 없음·관심 없음" },
+    cart: { art: "pending", fallback: "default", mood: "장바구니를 든 표정", use: "빈 장바구니·빈 비교함" },
+    sleeping: { art: "approved", ...E("sleeping"), sheet: "졸린 조미", use: "로딩·대기" },
+    error: { art: "pending", fallback: "empty", mood: "곤란한 표정", use: "오류 복구" },
   },
   // her lines (docs/JOMI_COPYWRITING.md): friendly 반말, short, never a diagnosis, a dose or a pick for the user
   lines: {
