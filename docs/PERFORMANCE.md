@@ -57,3 +57,18 @@ node tests/perf/gzserve.js /tmp/old/app 8771 & node tests/perf/gzserve.js app 87
 APP_PIN=<PIN> A=http://localhost:8771/ B=http://localhost:8772/ RUNS=5 node tests/perf/compare_r2.js
 ```
 PIN은 저장소와 문서에 적지 않아요(환경 변수로만).
+
+## 브랜드 확대 뒤 (2026-10-14, 8개 체인·277곳·139,981행)
+
+조건: `tests/perf/first_load.js`(gzip 서버, slow4g = 150ms·1.6Mbps·CPU 4배 느리게 / fast = 제한 없음), 3회. 전은 app.js 분리 직후 같은 도구 3회.
+
+| 항목 (중앙값) | 전 (4개 체인·118곳) | 후 (8개 체인·277곳) |
+|---|---|---|
+| data.json gzip | 781KB | 1,879KB |
+| slow4g 첫 방문 → 가격 표시 | 8,839ms | **16,160ms** |
+| slow4g 전송량 | 1,312KB | 2,388KB |
+| slow4g 재방문 → 가격 표시 | 2,140ms | 2,730ms |
+| slow4g 누르기 반응 최대(INP 유사) | 256~272ms | 520~896ms |
+| fast 첫 방문 | 820ms | 1,107ms |
+
+**해석:** 데이터가 2.4배가 되면서 느린 망 첫 방문이 약 2배 느려지고, 휴대폰 CPU 조건에서 누르기 반응도 나빠졌어요(검색·필터가 더 많은 행을 훑음). 이 상태로 `main`에 합치면 비공개 베타 사용자가 체감할 정도라고 봐요(추측 — 실기기 측정 아님). 해결 1순위는 O2(홈 요약 데이터를 먼저 받고 전체는 뒤에서)이고, 다음은 O3(검색 색인 미리 만들기/Worker). 이번 작업에서는 데이터 반영까지만 했어요.

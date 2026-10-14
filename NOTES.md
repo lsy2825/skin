@@ -57,5 +57,8 @@
 2. GitHub Pages: 사용자가 Settings → Pages → Source를 "GitHub Actions"로 했는지 확인 → Actions에서 weekly-prices 수동 실행 →
    해외 서버에서 사이트가 열리는지 확인(report.md). 막히면 사용자 PC(Windows, Python 3.12) 작업 스케줄러로 월요일 실행 + push.
 3. 클라우드 샌드박스에서 병원 사이트가 막힐 수 있음(예전 리눅스 샌드박스에서 velyb.kr 403). 그러면 수집은 Actions에 맡기고 앱·규칙 작업만.
-4. 쁨 강남 스탠다드점 가격 위치 찾기. 유앤아이의원(uni114.co.kr)은 가격이 그림이라 보류. 미앤아이·밴스 제외(robots/그림).
+4. 쁨 강남 스탠다드점 가격 위치 찾기. ~~유앤아이의원(uni114.co.kr)은 가격이 그림이라 보류. 미앤아이·밴스 제외(robots/그림).~~
+   → 2026-10-14 다시 확인(사용자 요청 "유명 브랜드 조사해서 적용", GitHub 러너에서 robots 먼저 읽는 탐색 scrape/probe.py):
+   유앤아이·밴스 모두 robots가 가격 페이지를 허용하고 가격이 글자 → 추가. 데이뷰·닥터에버스도 추가. 셀린은 목록이 스크립트로 불러와져 보류.
+   이 컨테이너에서는 병원 사이트·Nominatim이 열리지 않아(curl 000) 수집·주소는 probe/** 워크플로(결과는 실행 주석으로 회수)로 돌림.
 5. 휴대폰 주소: https://lsy2825.github.io/skin/ (Pages 켜진 뒤). "홈 화면에 추가" 안내.
