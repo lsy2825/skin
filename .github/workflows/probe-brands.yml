@@ -1,12 +1,15 @@
 # Probe candidate clinic chains (scrape/probe.py) on a GitHub runner — the dev container cannot reach clinic sites.
-# Runs only on pushes to probe/** branches: it never commits, never deploys, holds no secrets, and only uploads what it
-# read (robots.txt answers + sample public price pages) as a short-lived artifact for a person to review.
+# Runs only on pushes to probe/** branches: it never deploys and holds no secrets. What it read (robots.txt answers +
+# sample public price pages) is committed back to THAT probe branch only (artifact downloads are blocked from the dev
+# container), with [skip ci] and probe_out/ ignored by the trigger so it does not run again. Probe branches are deleted
+# after review; main is never touched.
 name: probe brands
 on:
   push:
     branches: ["probe/**"]
+    paths-ignore: ["probe_out/**"]
 permissions:
-  contents: read
+  contents: write   # only to commit probe_out/ back to the probe branch that triggered this run
 concurrency:
   group: probe-brands
   cancel-in-progress: false
@@ -17,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          persist-credentials: false
+          persist-credentials: true
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
@@ -28,14 +31,16 @@ jobs:
         env:
           PROBE_OUT: ${{ github.workspace }}/probe_out
         run: python probe.py
-      - name: Run collectors in dry mode when present (raw CSV only, nothing committed)
+      - name: Run listed collectors when present (raw CSV copied into probe_out only)
         if: hashFiles('scrape/probe_collect.txt') != ''
         working-directory: scrape
         run: |
           mkdir -p ../probe_out/raw
           while read -r m; do [ -n "$m" ] && python "$m.py" && cp ../data2/raw/"$m".csv ../data2/raw/"$m".log.json ../probe_out/raw/ || echo "collector $m failed"; done < probe_collect.txt
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-        with:
-          name: probe-out
-          path: probe_out
-          retention-days: 7
+      - name: Commit the probe output to this probe branch only
+        if: startsWith(github.ref_name, 'probe/')
+        run: |
+          git config user.name "probe-bot"; git config user.email "probe-bot@users.noreply.github.com"
+          git add -f probe_out
+          git commit -q -m "probe output ${{ github.run_id }} [skip ci]" || exit 0
+          git push origin "HEAD:refs/heads/${{ github.ref_name }}"
