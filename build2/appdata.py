@@ -393,6 +393,9 @@ def main():
         return si[x]
 
     bnames = [b for b, _, _ in BRANDS]
+    # region only, for branches whose pages carry no address of their own (data2/branch_region_hint.json, with evidence)
+    hp = os.path.join(ROOT, "data2", "branch_region_hint.json")
+    HINT = {k: v for k, v in json.load(open(hp, encoding="utf-8")).items() if not k.startswith("_")} if os.path.exists(hp) else {}
     branches, bi = [], {}
     for r in rows:
         k = (r["brand"], r["branch"])
@@ -402,7 +405,7 @@ def main():
             bi[k] = len(branches)
             branches.append([bnames.index(r["brand"]), S(r["branch"]), S(clean_addr(g.get("address_full") or g.get("address", ""))),
                              float(g["lat"]) if g.get("lat") else None, float(g["lng"]) if g.get("lng") else None,
-                             S(region(g.get("address", ""))), S(site), "", "",
+                             S(region(g.get("address", "")) or HINT.get(f"{r['brand']}|{r['branch']}", {}).get("region", "")), S(site), "", "",
                              # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
                              {"road": 0, "street": 1, "district": 2}.get(g.get("geo_level"), 3)])
     # freshness: newest fetch date per branch; more than a day older than the newest collection in the data = this run did
