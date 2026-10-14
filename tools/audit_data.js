@@ -58,8 +58,9 @@ function audit(d) {
   // 3. rows per key, with the key label's product / quantity / session
   const byK = KEYS.map(() => []);
   rows.forEach((r, i) => { const ks = S[r[7]]; if (ks) for (const id of ks.split(" ")) { const k = KI.get(id); if (k == null) add("rowUnknownKey", { row: i, id }); else byK[k].push(i); } });
-  const prodIn = (t) => Spec.PRODUCTS.filter((p) => t.includes(p));
-  const labelSess = (l) => { const m = /(\d+)\s*회(?!당)/.exec(l); return m ? +m[1] : null; };
+  const prodIn = (t) => Spec.PRODUCTS.filter((p) => (Spec.norm ? Spec.norm(t) : t).includes(p));
+  // a bundle label ('눈밑 보톡스 1회 + 리쥬란아이 2회') counts its largest N회, like build2/xkeys.py sessions()
+  const labelSess = (l) => { const ms = [...l.matchAll(/(\d+)\s*회(?!당)/g)].map((m) => +m[1]); return ms.length ? (l.includes("+") ? Math.max(...ms) : ms[0]) : null; };
   for (const k of KEYS) {
     const ids = byK[k.i];
     if (!ids.length) { add("emptyKey", { id: k.id, label: k.label }); continue; }

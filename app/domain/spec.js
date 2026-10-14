@@ -21,8 +21,11 @@
   // name: the option as the clinic wrote it; o.label: the comparison key label (already-checked words, optional);
   // o.family: procedure family name (optional); o.sess: sessions in the price (1, n, 99 = pass)
   // → [{ k, v, state }] with state 'known' | 'assumed' (a reasonable reading, say so) | 'unknown'
+  // one spelling per product: clinics write the same device in Korean or Latin letters (엑셀브이 = 엑셀V; build2/taxonomy.py
+  // already treats them as one product)
+  const norm = (t) => String(t || "").replace(/엑셀\s*브이/g, "엑셀V");
   function parse(name, o = {}) {
-    const text = `${name || ""} ${o.label || ""}`;
+    const text = norm(`${name || ""} ${o.label || ""}`);
     const out = [];
     const prod = PRODUCTS.filter((p) => text.includes(p));
     out.push({ k: "시술", v: o.family || o.label || name || "", state: o.family || o.label ? "known" : "unknown" });
@@ -80,5 +83,5 @@
     return out;
   }
 
-  return { PRODUCTS, parse, diff, eligibility };
+  return { PRODUCTS, norm, parse, diff, eligibility };
 });
