@@ -2,31 +2,8 @@
 (function () {
   "use strict";
   if (document.documentElement.hasAttribute("data-framed")) return;   // shown inside another site's frame (gate.js clickjacking guard)
-  const $ = (s, el = document) => el.querySelector(s);
-  const h = (tag, attrs, ...kids) => {
-    const e = document.createElement(tag);
-    for (const [k, v] of Object.entries(attrs || {})) {
-      if (v == null || v === false) continue;
-      if (k === "class") e.className = v;
-      else if (k === "html") e.innerHTML = v;
-      else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
-      else if (k === "style") e.setAttribute("style", v);
-      else if ((k === "href" || k === "src") && !safeUrl(v)) continue;   // links built from scraped data
-      else e.setAttribute(k, v === true ? "" : v);
-    }
-    for (const c of kids.flat()) if (c != null && c !== false) e.append(c.nodeType ? c : document.createTextNode(String(c)));
-    return e;
-  };
-  // only relative links and http(s) / mailto / tel: a 'javascript:' or 'data:' URL from scraped data never becomes a link
-  function safeUrl(v) { const m = /^\s*([a-z][a-z0-9+.-]*):/i.exec(String(v)); return !m || /^(https?|mailto|tel)$/i.test(m[1]); }
-  const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((c) => c != null && c !== false));
-  // Lucide icon (icons.js: static markup shipped with the app, never data) → <svg class="i">
-  const icon = (n, cls = "") => {
-    const e = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    e.setAttribute("viewBox", "0 0 24 24"); e.setAttribute("class", cls ? `i ${cls}` : "i"); e.setAttribute("aria-hidden", "true");
-    e.innerHTML = (window.ICONS || {})[n] || "";
-    return e;
-  };
+  // shared helpers, storage and toasts live in core.js (docs/APP_JS_SPLIT_PLAN.md 1단계)
+  const { $, h, fill, icon, won, km, PERSONAL, store, toast, toastStop, toastTimer, undoToast, actToast, copyText } = window.App;
   // one icon per procedure category (both the compare categories and the data categories)
   const CAT_IC = { "톡신": "syringe", "보톡스·필러": "syringe", "윤곽·필러": "droplet", "리프팅": "sparkles", "부스터": "leaf", "스킨부스터": "leaf", "피부": "sun",
     "피부·레이저": "sun", "제모·바디": "zap", "제모": "zap", "바디": "flower-2", "패키지": "gift", "기타": "circle-plus" };
@@ -54,53 +31,20 @@
   };
   try { if (!sessionStorage.getItem("pc:counted")) { sessionStorage.setItem("pc:counted", "1"); localStorage.setItem("pc:visits", String((+localStorage.getItem("pc:visits") || 0) + 1)); } } catch (e) { /* ignore */ }
   const jomiEmpty = (expr, title, ...kids) => h("div", { class: "empty jomi-empty" }, jomiImg(expr, "portrait", 88), h("b", {}, title), ...kids);
-  const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
-  const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
-  // personal keys live in the space of whoever uses the phone (round-2 R01): "pc:<key>" before sign-in, "pc:u:<id>:<key>" for
-  // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
-  // (theme, region, VAT mode, Jomi preferences …) stay shared.
-  const PERSONAL = new Set(["me", "recs", "carts", "cart", "ci", "alerts", "notes", "favs", "snaps", "places", "locPlace", "recent", "recentQ", "short",
-    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets"]);
-  let SCOPE = (() => { try { const u = JSON.parse(localStorage.getItem("pc:lastUid") || "null"); return u && window.APP_CONFIG && window.APP_CONFIG.supabaseUrl ? `u:${u}:` : ""; } catch (e) { return ""; } })();
-  const keyOf = (k) => "pc:" + (PERSONAL.has(k) ? SCOPE : "") + k;
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(keyOf(k)); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(keyOf(k), JSON.stringify(v)); } catch (e) { /* storage unavailable */ } },
-    anon(k) { try { const v = localStorage.getItem("pc:" + k); return v == null ? null : JSON.parse(v); } catch (e) { return null; } },
-    dropAnon(k) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* ignore */ } },
-  };
-  let toastT;
-  const toast = (t) => { const el = $("#toast"); el.classList.remove("act", "jt"); el.textContent = t; el.classList.add("on"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on"), 1800); };
   // a link to this exact screen (the receiver still needs the PIN); the phone's share sheet when there is one
   async function shareLink(title, hash) {
     const url = `${location.origin}${location.pathname}#${hash}`;
     try { if (navigator.share) { await navigator.share({ title, url }); return; } } catch (e) { if (e && e.name === "AbortError") return; }
     copyText(url, "링크를 복사했어요 — 받는 사람도 비밀번호가 필요해요");
   }
-  async function copyText(text, done = "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
-  // a toast with a '되돌리기' button for 6 s (deleting carts, items, alerts, records, presets)
-  function undoToast(text, undo) {
-    const el = $("#toast");
-    const btn = document.createElement("button");
-    btn.type = "button"; btn.textContent = "되돌리기";
-    btn.addEventListener("click", () => { el.classList.remove("on", "act"); clearTimeout(toastT); undo(); toast("되돌렸어요"); });
-    el.replaceChildren(document.createTextNode(text + " "), btn);
-    el.classList.remove("jt"); el.classList.add("on", "act"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), 6000);
-  }
-  // a plain toast with one action button (5 s)
-  function actToast(text, act) {
-    const el = $("#toast");
-    el.replaceChildren(h("span", { class: "tt" }, text), h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); clearTimeout(toastT); act[1](); } }, act[0]));
-    el.classList.remove("jt"); el.classList.add("on", "act"); clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), 5000);
-  }
   // 죠미's toast: her face, one short line, optionally one action (되돌리기 / 관심 보기 / 알림 관리). One toast at a time:
   // a new one replaces the last, so the same success is never stacked.
   function jomiToast(expr, text, act) {
     const el = $("#toast");
     const kids = [jprefs().freq === "off" ? null : h("img", { class: "mascot", src: jomiSrc(expr, "face"), alt: "", width: 24, height: 24, "data-expr": expr }), h("span", { class: "tt" }, text)].filter(Boolean);   // 죠미 설정: 끄기 → no face
-    if (act) kids.push(h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); clearTimeout(toastT); act[1](); } }, act[0]));
+    if (act) kids.push(h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); toastStop(); act[1](); } }, act[0]));
     el.replaceChildren(...kids); el.classList.add("on", "jt"); el.classList.toggle("act", !!act);
-    clearTimeout(toastT); toastT = setTimeout(() => el.classList.remove("on", "act"), act ? 5000 : 2600);
+    toastTimer(act ? 5000 : 2600, ["on", "act"]);
   }
 
   // feature flags (app/config.js): features that need legal review stay off until it is done
@@ -4421,13 +4365,13 @@
     cartQ.clear(); clearTimeout(cartPush);
   }
   // who is using the phone changed (round-2 R01). A token refresh of the same account is not a change and merges nothing.
-  let lastUid = SCOPE ? SCOPE.slice(2, -1) : null, syncGen = 0;
+  let lastUid = App.scope() ? App.scope().slice(2, -1) : null, syncGen = 0;
   function onAccount(u) {
     const id = u ? u.id : null;
-    if (id === lastUid && (id ? SCOPE === `u:${id}:` : !SCOPE)) { if (id && D && !syncGen) syncFromAccount(); return; }
+    if (id === lastUid && (id ? App.scope() === `u:${id}:` : !App.scope())) { if (id && D && !syncGen) syncFromAccount(); return; }
     const fromAnon = !lastUid;
     lastUid = id; syncGen++;
-    SCOPE = id ? `u:${id}:` : "";
+    App.setScope(id ? `u:${id}:` : "");
     try { if (id) localStorage.setItem("pc:lastUid", JSON.stringify(id)); else localStorage.removeItem("pc:lastUid"); } catch (e) { /* ignore */ }
     reloadPersonal();
     if (D) { render(); if (id) syncFromAccount(fromAnon); }
