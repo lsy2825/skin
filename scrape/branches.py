@@ -84,6 +84,18 @@ def others(f):
     return out
 
 
+def drop_shared(rows):
+    """One address on several branches of the same brand is a head-office or footer address, not theirs (seen 2026-10-14:
+    four 유앤아이 branches whose pages show only the company address). Those rows lose the address and point, so the
+    branch is listed without a region instead of in the wrong one."""
+    from collections import Counter
+    n = Counter((r["brand"], r["address"]) for r in rows if r["address"])
+    for r in rows:
+        if r["address"] and n[(r["brand"], r["address"])] > 1:
+            r.update(address="", address_full="", lat="", lng="", geo_level="none")
+    return rows
+
+
 def geocode(addr, cache, s):
     if addr in cache:
         return cache[addr]
@@ -116,6 +128,7 @@ def main():
         out.append({"brand": brand, "branch": branch, "address": addr, "address_full": full,
                     "lat": g["lat"] if g else "", "lng": g["lng"] if g else "", "geo_level": g["level"] if g else "none"})
         json.dump(cache, open(CACHE, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=0)
+    out = drop_shared(out)
     with open(OUT, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(out[0].keys()))
         w.writeheader()

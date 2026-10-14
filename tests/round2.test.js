@@ -26,12 +26,14 @@ test("R03: one median everywhere — even counts average the middle two", () => 
   // the Jomi answer uses it too
   const ctx = { keys: [{ id: "k", label: "리쥬란", words: ["리쥬란"], sess: 1 }], prices: () => [{ p: 100 }, { p: 200 }], trend: { k: {} }, updated: "2026-10-14" };
   assert.equal(J.facts("리쥬란", ctx).groups[0].median, 150);
-  // the real data: 국산 필러 1cc over 110 branches is 74,500원 (the old upper-middle code said 79,000원)
+  // the real data (count changes as brands are added — 110 branches on 2026-10-14 before the four new chains, 210 after):
+  // whatever the count, Jomi's figure is exactly the shared median of the same prices
   const k = CTX.keys.find((x) => x.label === "국산 필러 1cc");
   const ps = CTX.prices(k.id, "").map((x) => x.p);
-  assert.equal(ps.length, 110);
-  assert.equal(Stats.median(ps), 74500);
-  assert.equal(J.facts("국산 필러 1cc", CTX).groups.find((g) => g.id === k.id).median, 74500);
+  assert.ok(ps.length >= 110 && ps.length % 2 === 0, `even count for this check (${ps.length})`);
+  const sorted = [...ps].sort((a, b) => a - b), mid = Math.round((sorted[ps.length / 2 - 1] + sorted[ps.length / 2]) / 2);
+  assert.equal(Stats.median(ps), mid, "even count: the middle two averaged");
+  assert.equal(J.facts("국산 필러 1cc", CTX).groups.find((g) => g.id === k.id).median, mid);
 });
 
 test("R04: row index 0 is a real row — the lowest price wins whatever the row order", () => {

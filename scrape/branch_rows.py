@@ -29,6 +29,7 @@ def main(key, out):
         g = branches.geocode(a, cache, s) if a else None
         rows.append({"brand": brand, "branch": p["branch"], "address": a, "address_full": full,
                      "lat": g["lat"] if g else "", "lng": g["lng"] if g else "", "geo_level": g["level"] if g else "none"})
+    rows = branches.drop_shared(rows)
     with open(out, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["brand", "branch", "address", "address_full", "lat", "lng", "geo_level"])
         w.writeheader()
