@@ -23,5 +23,23 @@
   "checked": "2026-10-13",
   "url": "https://incheon.lienjang.net/agree/info",
   "evidence": "모든 피부미용 시술의 경우 10% 부가세가 별도로 부과됩니다."
+ },
+ "밴스": {
+  "default": "excl",
+  "checked": "2026-10-14",
+  "url": "https://yeongdeungpo.vandsclinics.com/web/product?categoryId=6183",
+  "evidence": "묶음마다 '(VAT : 별도)'"
+ },
+ "유앤아이": {
+  "default": "excl",
+  "checked": "2026-10-14",
+  "url": "https://www.uni114.co.kr/",
+  "evidence": "LIMITED EVENT … 이벤트 기간 : 2026.10.01 ~ 2026.10.31 ※ VAT 별도"
+ },
+ "데이뷰": {
+  "default": "excl",
+  "checked": "2026-10-14",
+  "url": "https://daybeauclinic08.com/branch/event.php?uid=282",
+  "evidence": "VAT는 별도입니다."
  }
 }

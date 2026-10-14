@@ -31,6 +31,15 @@ REGISTRY = OrderedDict([
                   "seeds": [], "terms_reviewed": None}),
     ("forever", {"brand": "포에버", "method": "공개 HTML (Next.js 내장 데이터) — 일시 중지", "rate": "0.8 req/s, 동시 4",
                  "seeds": ["https://www.4-ever.co.kr/", "https://gn.4-ever.co.kr/ko/treatments"], "terms_reviewed": None}),
+    # added 2026-10-14 after a robots-first probe (scrape/probe.py); seeds = the pages the collectors start from
+    ("vands", {"brand": "밴스", "method": "공개 HTML (지점별 시술소개 카테고리)", "rate": "1 req/s, 동시 6",
+               "seeds": ["https://www.vandsclinics.com/", "https://yeongdeungpo.vandsclinics.com/web/product"], "terms_reviewed": None}),
+    ("uandi", {"brand": "유앤아이", "method": "공개 HTML (지점 홈 이벤트 가격 영역)", "rate": "1 req/s, 동시 6",
+               "seeds": ["https://www.uni114.co.kr/"], "terms_reviewed": None}),
+    ("daybeau", {"brand": "데이뷰", "method": "공개 HTML (지점별 이벤트 페이지)", "rate": "1 req/s, 동시 6",
+                 "seeds": ["https://daybeauclinic08.com/branch/index.php", "https://daybeauclinic08.com/branch/event.php"], "terms_reviewed": None}),
+    ("drevers", {"brand": "닥터에버스", "method": "공개 HTML (지점별 이벤트 페이지의 항목 데이터)", "rate": "1 req/s, 동시 6",
+                 "seeds": ["https://drevers.com/", "https://bucheon.drevers.com/event/"], "terms_reviewed": None}),
 ])
 VAT = re.compile(r"(부가세|부가가치세|VAT|vat)[^가-힣A-Za-z]{0,6}(\d{1,2}\s*%\s*)?[^.\n]{0,12}?(별도|포함|미포함)")
 

@@ -10,7 +10,8 @@ import argparse, csv, datetime, json, os, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW, ACC = os.path.join(ROOT, "data2", "raw"), os.path.join(ROOT, "data2", "accepted")
-SCRAPERS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장")]
+SCRAPERS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장"),
+            ("vands", "밴스"), ("uandi", "유앤아이"), ("daybeau", "데이뷰"), ("drevers", "닥터에버스")]   # last four: added 2026-10-14
 # 포에버(scrape/forever.py) paused 2026-10-13 at the user's request; add ("forever", "포에버") back to resume
 PY = sys.executable
 

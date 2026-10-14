@@ -1,7 +1,7 @@
 """Send probe_out/ back as run annotations (scrape/probe.py, .github/workflows/probe-brands.yml).
 
 Artifact and log downloads are blocked from the dev container, but a check run's annotations can be read through the
-API. So probe_out/ is packed (tar.gz -> base64) and cut into CHUNK-sized pieces; `split` writes them to files, `emit N`
+API. So probe_out/ is packed (tar.xz -> base64; xz keeps repeated rows across branches small) and cut into CHUNK-sized pieces; `split` writes them to files, `emit N`
 prints pieces N..N+9 as ::notice lines (GitHub keeps 10 notices per step, 50 per job — so the workflow runs one
 job per brand). Each piece starts with
 "index/sent/total/sha256 " (sha256 of the whole archive) so the reader can check it reassembled every piece.
@@ -15,10 +15,10 @@ MAX = 45       # 50 annotations per job, a few kept free for warnings
 
 def split(src, dst):
     buf = io.BytesIO()
-    # index.json first, then pages in order: if the job's annotation cap cuts the tail, the reader can still stream-read
-    # the front of the archive (summary + first pages)
+    # index.json first, then pages in order: if the job's annotation cap cuts the tail, the front of the archive
+    # (summary + first pages) can still be stream-read
     files = sorted((os.path.join(d, f) for d, _, fs in os.walk(src) for f in fs), key=lambda p: (not p.endswith("index.json"), p))
-    with tarfile.open(fileobj=buf, mode="w:gz", compresslevel=9) as t:
+    with tarfile.open(fileobj=buf, mode="w:xz", preset=9) as t:
         for f in files:
             t.add(f, arcname=os.path.join("probe_out", os.path.relpath(f, src)))
     raw = buf.getvalue()

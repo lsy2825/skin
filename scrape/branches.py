@@ -74,6 +74,13 @@ def others(f):
         if s.get("ok"):
             a, full = page_addr(f, f"https://{s['code']}.4-ever.co.kr/ko")
             out.append(("포에버", s["branch"], a, full))
+    # brands added 2026-10-14 (probe: scrape/probe.py): the page each collector already reads carries the branch address
+    for brand, key, path in (("밴스", "vands", "/web/product"), ("유앤아이", "uandi", "/direction/"),
+                             ("데이뷰", "daybeau", "/branch/event.php"), ("닥터에버스", "drevers", "/event/")):
+        for p in from_log(brand, key).get("pages", []):
+            if p.get("rows") and p.get("site"):
+                a, full = page_addr(f, p["site"] + path)
+                out.append((brand, p["branch"], a, full))
     return out
 
 

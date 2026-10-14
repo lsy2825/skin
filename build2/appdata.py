@@ -43,7 +43,12 @@ BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
           ("톡스앤필", "#0fa3a3", "지점별 '시술안내/가격'의 시술 상세 옵션. 옵션이 없는 시술은 '최저가부터' 가격"),
           ("리엔장", "#e0902a", "지점별 비급여 진료비 고시표(정가). 이벤트가가 아니며 표의 최종변경일이 오래됐을 수 있어요"),
-          ("포에버", "#3a7bd5", "지점별 '시술 안내'의 시술 상세 옵션(할인가, 없으면 정가). 부가세(VAT) 별도 가격")]
+          ("포에버", "#3a7bd5", "지점별 '시술 안내'의 시술 상세 옵션(할인가, 없으면 정가). 부가세(VAT) 별도 가격"),
+          # added 2026-10-14 — always appended (the app turns new brands on by their position: meta.brands index)
+          ("밴스", "#2f9e44", "지점별 '시술소개' 카테고리의 이벤트·상시 가격. 부가세(VAT) 별도"),
+          ("유앤아이", "#a0522d", "지점 홈의 이벤트 가격(탭별). 부가세(VAT) 별도"),
+          ("데이뷰", "#1d3557", "지점별 이벤트 페이지의 가격. '카톡플친 적용가'처럼 조건이 붙은 가격은 이름에 표시. 부가세(VAT) 별도"),
+          ("닥터에버스", "#c92a2a", "지점별 이벤트 페이지의 항목 가격. 카카오톡 친구 대상 이벤트는 이벤트 이름에 표시")]
 KINDS = ["일반", "체험가", "한정가", "구독권", "고시가"]
 # keys grouped into one procedure with selectable variants (cart / compare option picker). The regex finds a branch's
 # related rows (packages, other doses) when the user switches the option for one branch.
