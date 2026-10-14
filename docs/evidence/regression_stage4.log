@@ -1,0 +1,40 @@
+# 전체 회귀 (2026-10-14, 4단계 죠미 후, round2-candidate 93cf38e)
+OK   | unit (tests/*.test.js) | # pass 103 # fail 0 
+OK   | server ledger (PostgreSQL) | # pass 11 # fail 0 
+OK   | server API (PostgreSQL + mocked providers) | # pass 15 # fail 0 
+OK   | server round 2 (PostgreSQL: accounts, idempotency, refunds, deadlines, AI budget) | # pass 15 # fail 0 
+OK   | CSP vs config origins | 
+OK   | DB security policies | 
+OK   | secret scan | 
+OK   | comparison keys (xkeys) | 
+OK   | weekly value guard | 
+OK   | brand collectors (parsers on saved public pages) | PASS: 0 failing 
+OK   | backup / restore (incl. ledger) | 
+OK   | e2e accounts_r2 | 14/14 passed 
+OK   | e2e commerce50 | 25/25 passed 
+OK   | e2e admin51 | 10/10 passed 
+OK   | e2e devices51 | 12/12 passed (Chromium emulation only) 
+OK   | e2e qa7 | 
+FAIL | e2e ux_qa | 
+FAIL | 빈 장바구니 안내 | 
+OK   | e2e concern | 
+OK   | e2e xss | 
+OK   | e2e jomi | 
+OK   | e2e objective | 
+OK   | e2e frame | 
+OK   | e2e table_attr | 
+OK   | e2e compare_cards | 
+OK   | e2e v5_features | 
+OK   | e2e demo_features | 
+OK   | e2e data_sync | 
+OK   | e2e pricenow | 
+OK   | e2e audit40 | 
+OK   | e2e taxonomy40 | 
+OK   | e2e pricing40 | 
+OK   | e2e ops40 | 
+OK   | e2e audit_ui | 
+OK   | e2e a11y | 
+OK   | e2e touch_targets | 
+
+# ux_qa '빈 장바구니 안내': 기대값이 '담으면' 고정 — 안내 문구가 죠미 대사 30개 중 무작위(23개는 '담으면' 없음)라 낡은 기대값. 대사 목록 중 하나가 보이는지로 고친 뒤 다시 실행:
+OK   | e2e ux_qa | TOTAL 25/25 PASS (3+1회 반복 실행 모두 통과)

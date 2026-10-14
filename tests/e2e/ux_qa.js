@@ -73,7 +73,12 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload(); await unlock(p); await p.waitForSelector('.pc');
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
-    ok('빈 장바구니 안내', /담으면/.test(await p.locator('#main').innerText()));
+    // the guidance line is one of Jomi's emptyCartSub lines: the file (app/data/jomi_lines.json), the engine's built-in ones
+    // (before the file is read) or the app's plain fallback
+    { const sub = (rs) => rs.filter((r) => r.intent === 'emptyCartSub').flatMap((r) => r.variants);
+      const pool = sub(require('../../app/data/jomi_lines.json').records).concat(sub(require('../../app/domain/jomilines.js').RECORDS), ['시술을 담으면 병원별 비용을 비교할 수 있어요.']);
+      const txt = await p.locator('#main').innerText();
+      ok('빈 장바구니 안내', pool.some((v) => txt.includes(v)), txt.slice(0, 80)); }
     await p.goto(BASE + '#search/zzqqxx?nl=0'); await p.waitForTimeout(800);
     ok('검색 결과 없음 안내', /가격이 없어요/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#saved'); await p.waitForTimeout(400); const savedTxt = await p.locator('#main').innerText();
