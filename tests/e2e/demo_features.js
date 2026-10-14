@@ -87,7 +87,7 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     const spec = await p.locator('.speccard').innerText();
     ok('규격 확인: 제품·원산지·용량·횟수·부위 줄', ['제품·장비', '원산지', '용량', '횟수', '부위'].every((w) => spec.includes(w)), spec.split('\n').slice(0, 3).join(' / '));
     ok('규격 확인: 이름에 없는 건 "미확인"(채워 넣지 않음)', await p.locator('.speccard .st-unknown').count() > 0 && /미확인/.test(spec));
-    const sib = p.locator('.speccard .sibs .linkbtn').first();
+    const sib = p.locator('.speccard .specsib .linkbtn').first();
     if (await sib.count()) { const t = await sib.textContent(); await sib.click(); await p.waitForTimeout(500); ok('규격 확인: 비슷한 다른 규격으로 이동', !p.url().includes('k=X01'), t); await p.goBack(); await p.waitForTimeout(500); }
     else ok('규격 확인: 비슷한 다른 규격 목록', false, '없음');
     const reg = await p.locator('section[aria-label="지역별 같은 사양 가격"]').innerText().catch(() => '');

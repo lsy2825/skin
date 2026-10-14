@@ -3099,9 +3099,9 @@
       h("div", { class: "row" }, h("h3", {}, "시술 규격 확인"), h("span", { class: "sp" }), h("button", { class: "linkbtn", type: "button", onclick: () => nav("terms") }, icon("circle-help", "xs"), "쉬운 용어")),
       h("div", { class: "sub" }, "비교 기준 이름에서 읽은 규격이에요. '미확인'은 이름에 없다는 뜻이고, 앱이 채워 넣지 않아요."),
       specList(sp),
-      sibs.length ? h("div", { class: "sibs" }, h("b", {}, "비슷하지만 다른 규격(따로 비교해요)"), h("ul", { class: "plain" }, sibs.map((x) => h("li", {},
+      sibs.length ? h("div", { class: "specsib" }, h("b", {}, "비슷하지만 다른 규격(따로 비교해요)"), h("ul", { class: "plain" }, sibs.map((x) => h("li", {},
         h("button", { class: "linkbtn", type: "button", onclick: () => { st.key = x.v.k; nav(`compare?k=${encodeURIComponent(KEYS[x.v.k].id)}`); } }, x.v.label), " — ", x.d.map((d) => `${d.k} ${d.a} ↔ ${d.b}`).join(", "))))) : null,
-      looks.length ? h("div", { class: "sibs" }, h("b", {}, "이름이 비슷한 다른 시술"), h("div", { class: "chips wrapc", style: "margin-top:6px" }, looks.map((f) =>
+      looks.length ? h("div", { class: "specsib" }, h("b", {}, "이름이 비슷한 다른 시술"), h("div", { class: "chips wrapc", style: "margin-top:6px" }, looks.map((f) =>
         h("button", { class: "chip", type: "button", onclick: () => { st.key = f.vs[0].k; nav(`compare?k=${encodeURIComponent(KEYS[f.vs[0].k].id)}`); } }, f.name))),
         h("button", { class: "linkbtn", type: "button", style: "margin-top:6px", onclick: () => nav("guide") }, icon("book-open", "xs"), "무엇이 다른지 시술 사전에서")) : null);
   }

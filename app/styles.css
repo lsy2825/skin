@@ -775,8 +775,12 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .specs dt { color: var(--muted); }
 .specs dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .specs dd.st-unknown > span:first-child { color: var(--muted); }
-.speccard .sibs { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
-.speccard .sibs ul { margin: 6px 0 0; }
+/* own class: '.sibs' is the option prev/next pair (34 px buttons) and must not reach these chips */
+.speccard .specsib { display: block; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: 13.5px; }
+.speccard .specsib > b { display: block; }
+.speccard .specsib ul { margin: 6px 0 0; }
+.speccard .specsib .chips .chip { max-width: 100%; white-space: normal; text-align: left; }
+.speccard .specsib .linkbtn { display: inline-flex; width: auto; height: auto; }
 .specfold { margin-top: 6px; }
 .elig-wrap { margin: 2px 0 10px; }
 .elig-wrap .sh { font-size: 13px; color: var(--ink-2); }
