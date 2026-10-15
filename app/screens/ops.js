@@ -1,12 +1,20 @@
-// 운영 현황 화면 (#ops, behind the PIN screen) — split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-1). Registers itself in
-// App.screens; app.js installs every screen right before it starts, handing over the helpers it still owns.
+// 운영 현황 화면 (#ops, data only on the admin host — 6.0 security item 3) — split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-1).
+// Registers itself in App.screens; app.js installs every screen right before it starts, handing over the helpers it still owns.
+// The public host and the admin host serve the same files (cf/admin/wrangler.jsonc points at app/), so the screen decides by
+// hostname: anywhere else it shows one sentence and fetches nothing. The admin host itself sits behind Cloudflare Access
+// (cf/admin/src/handler.js, docs/SECURITY_ARCHITECTURE.md §7-1); the PIN screen is only a screen lock, not the protection.
 (function () {
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { h, fill, icon, won, store, views, FLAGS, fresh, verified, recheckQueue, bdot, bname, kbOf, loadCommerce, nav } = App;
+    const { h, fill, icon, won, store, views, FLAGS, fresh, verified, recheckQueue, bdot, bname, kbOf } = App;
     const Classify = window.Classify;
-    // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy) — behind the PIN screen
+    // localhost / 127.0.0.1 count as admin so local dev (python -m http.server) and the e2e tests see the full screen; a
+    // public hostname never equals these, and a page served from a real site cannot pretend to be them.
+    const ADMIN_HOSTS = ["yoonsiljang-admin.lsy2825.workers.dev", "localhost", "127.0.0.1"];
+    const onAdminHost = () => ADMIN_HOSTS.includes(location.hostname);
+    App.onAdminHost = onAdminHost;   // for app.js: a menu entry to #ops makes sense only where the screen has content
+    // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy)
     // 수집 실행 상태 (docs/ADMIN_OPERATIONS_SPEC.md §3), asked only when the button is pressed, no token ever in the app:
     // first the Cloudflare factory's /status (cf/factory, docs/CLOUDFLARE_MIGRATION.md), then — while the move is under way, or
     // if that answers nothing — GitHub's public API for weekly.yml (60 requests an hour per IP; unreadable once the repo is private)
@@ -77,10 +85,13 @@
       return h("div", { class: "card" }, h("h3", {}, "분류 검토 센터"), body);
     }
     views.ops = () => {
-      const { D, BR, byB, ROWS, KB, FAM } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
       box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
+      // not the admin host: one sentence, no data, no cards, no fetch (the data itself is public anyway; this keeps the
+      // operations view out of the public app)
+      if (!onAdminHost()) { box.append(h("div", { class: "card empty", "data-testid": "ops-admin-only" }, "운영 현황은 관리자 주소에서만 볼 수 있어요.")); return box; }
       if (!FLAGS.ops) { box.append(h("div", { class: "card empty" }, "운영 현황이 꺼져 있어요(config.js flags.ops).")); return box; }
+      const { D, BR, byB, ROWS, KB, FAM } = App.state();   // read now: these are replaced when new data arrives
       const A = D.meta.about || {}, REPO = "https://github.com/lsy2825/skin";
       // collection report of the last run
       const lines = (A.report || "").split("\n").filter((l) => l.startsWith("- ")).map((l) => l.slice(2).replace(/\*\*/g, ""));
@@ -139,24 +150,9 @@
         h("div", { class: "chips wrapc", style: "margin-top:8px" }, Object.entries({ ops: "운영 현황", ads: "광고", booking: "예약 연결", emailAlerts: "메일 알림", publicIndex: "검색 노출", lowestHighlight: "최저가 지점 강조", branchRanking: "지점 순위", discountEmphasis: "할인 강조" }).map(([k, l]) =>
           h("span", { class: "chip", style: "cursor:default" }, `${l}: ${FLAGS[k] ? "켬" : "끔"}`))),
         h("div", { class: "sub", style: "margin-top:8px" }, `로그인: ${window.Auth && window.Auth.enabled ? "켬" : "끔(키 없음)"}`)));
-      if (window.Economics && window.DemoWallet) box.append(economicsCard());
-      else { const slot = h("div", {}); box.append(slot); loadCommerce().then(() => { if (slot.isConnected) slot.replaceWith(economicsCard()); }).catch(() => {}); }
-      box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav("admin") },
-        h("span", { class: "t" }, h("span", { class: "mi" }, icon("shield-check", "sm")), h("span", {}, h("span", { style: "display:block" }, "관리자 대시보드(서버)"),
-          h("span", { class: "sub", style: "display:block;font-weight:500" }, "매출·결제·환불·크레딧·AI 비용 — 서버 연결 + 관리자 2단계 인증 필요"))), icon("chevron-right", "sm"))))));
+      // 6.0: no credit economics card and no link to the server admin dashboard here — the credit model is being removed
+      // (chat B's PR deletes commerce.js and the #admin screen), so nothing on this screen names credits any more.
       return box;
     };
-    // unit economics (docs/PRICING_AND_UNIT_ECONOMICS.md): assumptions until the server's measured numbers exist
-    function economicsCard() {
-      const W = window.DemoWallet, fc = Object.fromEntries(Object.entries(W.FEATURES).map(([k, v]) => [k, v.credits]));
-      const t = window.Economics.table(W.PRODUCTS, fc, "WEB_PG");
-      return h("div", { class: "card", "data-testid": "economics" }, h("div", { class: "row" }, h("h3", {}, "크레딧 단위 경제성"), h("span", { class: "k k4" }, "가정")),
-        h("div", { class: "sub", style: "margin-top:4px" }, "부가세·결제 수수료를 뺀 크레딧 1개의 순수익과 기능별 남는 돈. 수수료·AI 비용은 계약·청구서가 생기면 실제 값으로 바꿔요."),
-        h("table", { class: "tbl", style: "margin-top:8px" }, h("thead", {}, h("tr", {}, ["묶음", "가격", "부가세", "수수료", "순수익", "크레딧당"].map((x) => h("th", {}, x)))),
-          h("tbody", {}, t.packs.map((p) => h("tr", {}, h("td", {}, p.code), h("td", { class: "num" }, won(p.price_krw)), h("td", { class: "num" }, won(p.vat)), h("td", { class: "num" }, won(p.fee)), h("td", { class: "num" }, won(p.net)), h("td", { class: "num" }, `${p.net_per_credit}원`))))),
-        h("div", { class: "tiny", style: "margin-top:4px" }, t.packs[0].fee_note),
-        h("details", { class: "fold", style: "margin-top:8px" }, h("summary", {}, `기능별 (가장 싼 크레딧 ${t.worst_net_per_credit}원 기준)`),
-          h("ul", { class: "plain" }, t.features.map((f) => h("li", {}, `${W.FEATURES[f.code].title}: ${f.credits}C → ${won(f.revenue)} − 비용 ${won(f.cost)}(가정) = ${won(f.margin)}`)))));
-    }
   });
 })();
