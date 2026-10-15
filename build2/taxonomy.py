@@ -22,7 +22,7 @@ usage: python build2/taxonomy.py            # self-test
 import hashlib, re, sys, unicodedata
 from collections import Counter, defaultdict
 
-from xkeys import ADDON, ADDON_ONLY, COND, comp, sessions
+from xkeys import ADDON, COND, addon_only, comp, sessions
 import labels
 
 # compare-tab categories (same names as xkeys categories)
@@ -302,7 +302,7 @@ def variant(name, addon=False, kind="", cat="", display=None):
         return None, "추가 옵션·구독권"
     raw = name or ""
     full = comp(raw)
-    if re.search(r"옵션\s*\d*\)", raw) or ADDON_ONLY.search(full):
+    if re.search(r"옵션\s*\d*\)", raw) or addon_only(raw):
         return None, "추가 옵션"
     if COND.search(full):
         return None, "조건부 가격(○○ 이상 시)"

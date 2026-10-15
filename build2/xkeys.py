@@ -123,8 +123,19 @@ FAMS = [r"톡신", r"필러", r"슈링크", r"울쎄라", r"써마지", r"인모
         r"실리프팅|민트실", r"텐써마", r"엑셀브이|엑셀V", r"윤곽주사", r"제모"]
 COND = re.compile(r"\d+(샷|cc|U|회|부위|개)(이상|부터)")   # '(*300샷 이상 시)', '[4cc부터]', '(10개 이상부터 시술 가능)': a bigger purchase
 #                                                       than the unit (개: 2026-10-15, '아그네스 1개당 (10개 이상부터 …)')
-# 추가당 · 추가시 · 추가* (2026-10-15, 개선 보고서 E3): '미희주사 1cc 추가당', '가운데부위 추가시' are prices on top of a base
-ADDON_ONLY = re.compile(r"\[추가\]|^추가|추가$|추가\)|추가\d|추가당|추가\*|추가시(?!술)|\d(샷|cc|U)추가시|^ㄴ|\]ㄴ|추가구매|추가결제|옵션\)|\(옵션|\[옵션|옵션\]|추가옵션|옵션할인|단독불가|단독사용불가|단독시술불가|동시시술|함께시술|진행고객|시술고객|구매고객|결제고객|이용고객|패키지진행시|패키지구매시|패키지결제시")
+ADDON_ONLY = re.compile(r"\[추가\]|^추가|추가$|추가\)|추가\d|\d(샷|cc|U)추가시|^ㄴ|\]ㄴ|추가구매|추가결제|옵션\)|\(옵션|\[옵션|옵션\]|추가옵션|옵션할인|단독불가|단독사용불가|단독시술불가|동시시술|함께시술|진행고객|시술고객|구매고객|결제고객|이용고객|패키지진행시|패키지구매시|패키지결제시")
+# 추가당 · 추가시 · 추가* (2026-10-15, 개선 보고서 E3): '미희주사 1cc 추가당', '가운데부위 추가시', '울쎄라피 프라임 100샷 추가 당' are
+# prices on top of a base. Read outside brackets only: '염증주사 1부위 (1부위 추가 시 5000원)' is the base price, the bracket
+# explains the next area (addon_only)
+ADDON_PER = re.compile(r"추가당|추가\*|추가시(?!술)")
+
+
+def addon_only(name):
+    """True when a name is only sold on top of another procedure (comp() of the whole name, and the per-unit add-on words
+    outside brackets)"""
+    return bool(ADDON_ONLY.search(comp(name)) or ADDON_PER.search(comp(re.sub(r"\([^()]*\)", " ", name or ""))))
+
+
 ONCE = re.compile(r"체험가|체험|한정가|한정|첫방문|첫 방문|첫시술|첫 시술|1회한정|웰컴|첫구매|1인\s*1회|1인당\s*1회|신규고객|신규회원|신규방문|선착순")
 # '10회 한정가' / '5회 체험가' = a 10 / 5-session price (only '1회 한정' means once per person, and 1 is the default anyway)
 SESS = re.compile(r"(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))")
@@ -151,7 +162,7 @@ def match(key, name):
     c = comp(name)
     if COND.search(c):
         return False   # '(*300샷 이상 시)': the price needs a bigger purchase than the key's unit
-    if ADDON_ONLY.search(c):
+    if addon_only(name):
         return False   # '(목필러 옵션) 슈링크 100샷 추가': only sold on top of another procedure
     if sum(1 for f in FAMS if re.search(f, c)) >= 2:
         return False   # a bundle of two procedures ('볼뉴머300샷X슈링크300샷', '포텐자 + 쥬베룩') is not the key's unit

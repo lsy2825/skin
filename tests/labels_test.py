@@ -63,6 +63,10 @@ for name, why in [("미희주사 1cc 추가당 (특수부위 제외)", "추가 �
                   ("아그네스 1개당 (10개 이상부터 시술 가능)", "조건부")]:
     v, reason = taxonomy.variant(name)
     ok(f"E3 추가·조건 가격은 비교 묶음 없음: '{name}'", v is None and reason.startswith(why), reason)
+import xkeys  # noqa: E402
+x34 = next(k for k in xkeys.X if k[0] == "X34")
+ok("E3 괄호 안 '추가 시' 설명은 기본가를 빼지 않음(톡스앤필 '염증주사 1부위 (1부위 추가 시 5000원)')",
+   xkeys.match(x34, "[EVENT] 염증주사 1부위 (1부위 추가 시 5000원)") and taxonomy.variant("염증주사 1부위 (1부위 추가 시 5000원)")[0] is not None)
 # as clean.py hands them over: mname with the group title in front ('상체 제모 [여성]손 …'), name with ' · '
 w, _ = taxonomy.variant("상체 제모 [여성]손 5회 (손등 + 손가락)", cat="제모", display="상체 제모 · [여성]손 5회 (손등 + 손가락)")
 m, _ = taxonomy.variant("상체 제모 [남성]손 5회 (손등 + 손가락)", cat="제모", display="상체 제모 · [남성]손 5회 (손등 + 손가락)")
