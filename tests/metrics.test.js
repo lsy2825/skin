@@ -1,0 +1,111 @@
+// domain/metrics.js — 단계별 익명 집계 (6.0 지시서 약속 2, B5): eight step names only, once a day per phone, return_7d
+// decided on the phone, nothing but {"s":"<step>"} in the body, and nothing at all while it is off.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const M = require("../app/domain/metrics.js");
+
+const ON = { metrics: true, metricsApi: "https://m.example.test" };
+// a fake phone: storage, a beacon that records what it was given, and a settable calendar day
+function phone(cfg, { day = "2026-10-15", kept = null, queued = true } = {}) {
+  const calls = { load: 0, save: 0 }, sent = [];
+  let saved = kept;
+  const io = {
+    load: () => { calls.load++; return saved; },
+    save: (v) => { calls.save++; saved = JSON.parse(JSON.stringify(v)); },
+    beacon: (url, body) => { sent.push({ url, body }); return typeof queued === "function" ? queued() : queued; },
+    today: () => day,
+  };
+  const m = M.make(cfg, io);
+  return { m, sent, calls, kept: () => saved, setDay: (d) => { day = d; } };
+}
+
+test("the eight step names of the contract, nothing else", () => {
+  assert.deepEqual(M.STAGES, ["open", "first_price", "compare_open", "keep_cart", "keep_fav", "keep_alert", "cart_open", "return_7d"]);
+  const p = phone(ON);
+  assert.equal(p.m.hit("search"), false);
+  assert.equal(p.m.hit("__proto__"), false);
+  assert.equal(p.sent.length, 0);
+});
+
+test("off (the default config, or no https address): no storage read or write, no beacon", () => {
+  const offs = [undefined, {}, { metrics: false, metricsApi: "https://m.example.test" }, { metrics: true, metricsApi: "" },
+    { metrics: true, metricsApi: "http://m.example.test" }, { metrics: true, metricsApi: "not a url" }, { metrics: "true", metricsApi: "https://m.example.test" },
+    { metrics: true, metricsApi: "https://m.example.test/?u=1" }, { metrics: true, metricsApi: "https://user:pw@m.example.test" }];
+  for (const cfg of offs) {
+    const p = phone(cfg);
+    assert.equal(p.m.on, false, JSON.stringify(cfg));
+    p.m.opened();
+    for (const s of M.STAGES) p.m.hit(s);
+    assert.equal(p.m.pending("first_price"), false);
+    assert.deepEqual([p.sent.length, p.calls.load, p.calls.save], [0, 0, 0], JSON.stringify(cfg));
+  }
+  // the shipped config.js is off
+  const w = {}; new Function("window", require("node:fs").readFileSync(require("node:path").join(__dirname, "../app/config.js"), "utf8"))(w);
+  assert.equal(M.endpoint(w.APP_CONFIG), null);
+});
+
+test("the address: {metricsApi}/v1/m, a trailing slash or a base path kept as given", () => {
+  assert.equal(M.endpoint(ON), "https://m.example.test/v1/m");
+  assert.equal(M.endpoint({ metrics: true, metricsApi: "https://m.example.test/" }), "https://m.example.test/v1/m");
+  assert.equal(M.endpoint({ metrics: true, metricsApi: "https://x.workers.dev/api//" }), "https://x.workers.dev/api/v1/m");
+});
+
+test("the body is only the step name — no date, id, page or device", () => {
+  const p = phone(ON);
+  p.m.hit("keep_cart");
+  assert.deepEqual(p.sent, [{ url: "https://m.example.test/v1/m", body: '{"s":"keep_cart"}' }]);
+  assert.deepEqual(Object.keys(JSON.parse(p.sent[0].body)), ["s"]);
+  for (const s of M.STAGES) assert.equal(M.body(s), JSON.stringify({ s }));
+});
+
+test("each step once a day per phone; a new day sends it again", () => {
+  const p = phone(ON);
+  assert.equal(p.m.hit("keep_fav"), true);
+  assert.equal(p.m.hit("keep_fav"), false);
+  assert.equal(p.m.hit("keep_cart"), true);
+  assert.equal(p.m.pending("keep_fav"), false);
+  assert.equal(p.m.pending("first_price"), true);
+  const saves = p.calls.save;
+  p.m.hit("keep_fav"); p.m.hit("keep_cart");
+  assert.equal(p.calls.save, saves, "a step already sent today writes nothing");
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["keep_fav", "keep_cart"]);
+  p.setDay("2026-10-16");
+  assert.equal(p.m.pending("keep_fav"), true);
+  assert.equal(p.m.hit("keep_fav"), true);
+  assert.deepEqual(p.kept(), { d: "2026-10-16", s: ["keep_fav"] });
+});
+
+test("return_7d: decided on the phone from the last day kept — 1 to 7 days ago, never the same day or after 8", () => {
+  const cases = [[null, ["open"]], ["2026-10-15", []], ["2026-10-14", ["open", "return_7d"]], ["2026-10-08", ["open", "return_7d"]],
+    ["2026-10-07", ["open"]], ["2025-10-14", ["open"]], ["2026-10-16", ["open"]], ["garbage", ["open"]]];
+  for (const [d, want] of cases) {
+    const p = phone(ON, { kept: d && { d, s: ["open"] } });
+    p.m.opened();
+    assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), want, String(d));   // same day: 'open' already went
+    assert.equal(p.kept().d, "2026-10-15", "the kept day moves to today");
+  }
+  // month and year ends count calendar days
+  assert.equal(M.days("2026-12-31", "2027-01-01"), 1);
+  assert.equal(M.days("2026-02-28", "2026-03-07"), 7);
+  // opening twice on the same day sends nothing more
+  const p = phone(ON, { kept: { d: "2026-10-10", s: [] } });
+  p.m.opened(); p.m.opened();
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["open", "return_7d"]);
+});
+
+test("a beacon the browser did not queue is tried again later; a broken kept value counts as no visit", () => {
+  let ok = false;
+  const p = phone(ON, { queued: () => ok });
+  assert.equal(p.m.hit("cart_open"), false);
+  assert.equal(p.m.pending("cart_open"), true);
+  ok = true;
+  assert.equal(p.m.hit("cart_open"), true);
+  assert.equal(p.sent.length, 2);
+  const q = phone(ON, { kept: { d: "2026-10-15", s: "open" } });
+  assert.equal(q.m.hit("open"), true);
+  const r = phone(ON, { kept: { d: "2026-10-15", s: ["open", "made_up"] } });
+  assert.equal(r.m.hit("open"), false);
+  // a beacon that throws (a bad address at runtime) is a failed send, never an app error
+  const t = M.make(ON, { load: () => null, save: () => {}, today: () => "2026-10-15", beacon: () => { throw new TypeError("blocked"); } });
+  assert.equal(t.hit("open"), false);
+});

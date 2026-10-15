@@ -4,10 +4,13 @@ window.APP_CONFIG = {
   supabaseUrl: "",
   supabaseAnonKey: "",
   providers: ["kakao", "google"],
+  // 단계별 익명 집계(6.0 약속 2, app/domain/metrics.js): 켜면 단계 이름 하나({"s":"open"} 같은 것)만 {metricsApi}/v1/m 로 보내요.
+  // 날짜·기기·위치·검색어는 보내지 않고, 같은 단계는 한 기기에서 하루 한 번. 꺼져 있으면 아무것도 저장·전송하지 않아요.
+  // 켜는 조건: A의 집계 주소(cf/metrics) + C의 개인정보 처리방침 + 사용자 승인. 주소(https)를 넣으면 index.html CSP connect-src에도
+  // 넣고 node tools/check_csp.js 로 확인해요.
+  metrics: false,
+  metricsApi: "",
   // 기능 플래그: 법률 검토(의료광고·환자 알선·개인정보)가 필요한 기능은 꺼 둬요. 지금 앱에는 광고·예약 기능 자체가 없어요.
-  // 크레딧·프리미엄(5.0): DEMO = 시연 지갑(이 기기에만, 실제 돈 아님). apiBase를 넣으면 서버(server/) 모드 — 결제·잔액·작업은 서버만 정해요.
-  // 실제 결제(PRODUCTION)는 주인 승인 + 결제사 계약 + 법률 검토 뒤에만: docs/PRODUCTION_LAUNCH_CHECKLIST.md
-  commerce: { mode: "DEMO", apiBase: "" },
   flags: {
     ops: true,          // 내정보 → 운영 현황(수집 상태·검토 큐), 비밀번호 화면 뒤에만 있어요
     ads: false,         // 광고·협찬 표시(만들지 않음, 가격 순위와 분리 원칙)
