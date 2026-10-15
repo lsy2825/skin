@@ -113,6 +113,7 @@
 | 가격 변동 목록 가짜 항목 | 해결(C1) | 단위·빌드 비교 | `datameta.changes`, `appdata.reclassified`·`group_moved`·되살아난 id·`key_map` 성별·횟수 | labels_test | — |
 | E5 추가 옵션 칸 | 해결(C2, lsy2825/skin#51) | 단위·빌드 비교 | `xkeys.addon_only`, data.json 16번째 칸 `addon` | labels_test | 앱은 r[15]을 실행 중 칸으로 씀 → B가 먼저 옮김 |
 | E6 부가세 미확인 | 해결(C2, lsy2825/skin#51 — 미확인 23,408 → 3,314줄) | 단위·빌드 비교 | `data2/vat_policy.json` 닥터에버스·셀린, `clean.vat_of` | labels_test | 확인 못 한 지점(닥터에버스 4·셀린 2)은 미확인 |
+| E8·E9 변동 기록(기준 바뀐 날·처음 모은 체인) | E9 해결(C3 lsy2825/skin#53), E8은 main의 `trend` since·`meta.recl`(규칙이 바꾼 키를 최근 12번까지 기억 — 그 이상은 시험 없음) | 단위·빌드 비교 | `appdata.brand_first`·`meta.brandFirst`, `datameta.changes` `new_chains` | labels_test | 앱 안내 문구는 B |
 | 수집 예절 | 해결(lsy2825/skin#45) | 단위(가짜 시계) | `scrape/common.py` Fetcher(robots)·시계, `weekly.gate` | `tests/crawl_manners_cases.py`(brand_parsers_test가 돌림) | 이름표 연락처는 앱 주소로 먼저(사용자 2026-10-16), 정해지면 `BOT_INFO_URL` |
 
 ## 회귀 결과(2026-10-14)
