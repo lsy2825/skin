@@ -9,7 +9,9 @@ Checks (each returns problems as short Korean lines; no problem → no message, 
              collection is more than 8 days before today (KST), a brand with stale branches, an unreadable file
   guard      data2/report.md lines that build2/weekly.py writes when its data guard kept old data or skipped a brand
   factory    (watchdog) the latest weekly-prices runs on main, from the GitHub REST API: failed, missing for 26 hours, stuck
-  live       (watchdog) the app URL answers 200 and its data-meta.json parses; the live file is then used for freshness
+  live       (watchdog) the app URL answers 200 and its data-meta.json parses; the live file is then used for freshness —
+             only when PUBLIC_DEPLOY is "on"; while public hosting is paused the frozen public copy is skipped and freshness
+             is judged on the repository's app/data-meta.json
   workers    (watchdog) each URL in MONITOR_WORKER_URLS (space/comma separated, empty = skipped) answers below HTTP 500
 
 Messages hold brand names, dates, counts and the run link only — no personal data, no secrets. Standard library only.
@@ -206,9 +208,11 @@ def compose(title, problems, run_url=""):
     return "\n".join(lines)
 
 
-def heartbeat_text(meta, runs, run_url=""):
+def heartbeat_text(meta, runs, run_url="", paused=False):
     """the Monday 'still alive' line: silence on other days means healthy only while this keeps arriving"""
     lines = ["[주간 생존 신호] 윤실장 감시가 돌고 있어요. 지금 확인할 문제는 없어요."]
+    if paused:
+        lines.append("- 공개 주소 배포 멈춤 중(PUBLIC_DEPLOY): 공개 주소는 마지막 판 그대로이고 검사하지 않아요")
     if isinstance(meta, dict) and isinstance(meta.get("brands"), list):
         dates = sorted(d for d in (parse_date(r[5]) for r in meta["brands"] if isinstance(r, list) and len(r) >= 6) if d)
         if dates:
@@ -295,8 +299,14 @@ def run(args, env, fetch=http_fetch, now=None, send=telegram.send):
                 problems += guarded("factory", lambda: check_factory_runs(runs, now), problems, [])
         else:
             notes.append("가격 공장 실행 검사 건너뜀 (GITHUB_REPOSITORY/GITHUB_TOKEN 없음)")
-        live, live_meta = guarded("live", lambda: check_live(fetch, args.app_url), problems, ([], None))
-        problems += live
+        if env.get("PUBLIC_DEPLOY", "") == "on":
+            live, live_meta = guarded("live", lambda: check_live(fetch, args.app_url), problems, ([], None))
+            problems += live
+        else:
+            # public hosting paused (tools/factory.sh deploy): the public copy is frozen on purpose, so it is neither probed
+            # nor used for the collection dates — the repository's data is what the factory keeps building
+            live_meta = None
+            notes.append("공개 주소 검사 건너뜀 (공개 배포 멈춤 — PUBLIC_DEPLOY가 on이 아님)")
         meta, where = (live_meta, "배포된 data-meta.json") if live_meta else (file_meta, "app/data-meta.json")
         notes.append(f"수집일 검사 기준: {where}")
         problems += guarded("freshness", lambda: check_freshness(meta, today, where=where), problems, [])
@@ -308,7 +318,7 @@ def run(args, env, fetch=http_fetch, now=None, send=telegram.send):
     if problems:
         message = compose(title.format(n=len(problems)), problems, run_url)
     elif args.weekly_heartbeat and not args.report_only and today.weekday() == 0:
-        message = heartbeat_text(meta, runs, run_url)
+        message = heartbeat_text(meta, runs, run_url, paused=env.get("PUBLIC_DEPLOY", "") != "on")
     if message and args.send:
         send(message, env=env)
     return problems, notes, message

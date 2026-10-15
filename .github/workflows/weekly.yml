@@ -44,12 +44,13 @@ jobs:
           FACTORY_INSTALL: "1"
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # "on" = also deploy the public app; unset = admin host only (paused 2026-10-15)
       - name: Summary
         if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
       # GitHub Pages deploy removed 2026-10-15: the repository is private now (free plan: no Pages), the app lives only on
       # Cloudflare (factory.sh → wrangler deploy). Without the deploy token the run fails here instead of silently not deploying.
-      - name: Check the app was deployed to Cloudflare
+      - name: Check the Cloudflare deploy token is set
         if: steps.decide.outputs.run == 'true'
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}

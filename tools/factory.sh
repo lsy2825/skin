@@ -11,10 +11,14 @@
 # Needs: python deps from requirements.txt (FACTORY_INSTALL=1 installs them after the decision), node, git with an "origin"
 # remote it may push to. Saves by committing to main and pushing (FACTORY_NO_PUSH=1: commit only — dry runs and tests).
 # Deploys app/ with wrangler only when CLOUDFLARE_API_TOKEN is set; the token is taken out of the environment first so the
-# scrapers and build steps never see it. Two Workers get the same app/ folder: the public "yoonsiljang" (root wrangler.jsonc)
-# and the admin "yoonsiljang-admin" (cf/admin/wrangler.jsonc, behind Cloudflare Access — the ops screen lives there).
-# The public deploy must succeed; a failed admin deploy is reported (log line, GitHub warning) but does not fail the run —
-# the price data and the public app are already saved and up by then, and the admin host is not part of the product.
+# scrapers and build steps never see it. Two Workers can get the same app/ folder: the admin "yoonsiljang-admin"
+# (cf/admin/wrangler.jsonc, behind Cloudflare Access) on every build, and the public "yoonsiljang" (root wrangler.jsonc) ONLY
+# when PUBLIC_DEPLOY is exactly "on" — public hosting is paused by the owner's decision of 2026-10-15 (repository variable,
+# passed by weekly.yml). With the public app deployed, a public deploy failure fails the run and an admin failure is a warning.
+# While public hosting is paused the admin host is the only copy that gets new builds, so its deploy failure fails the run
+# (weekly.yml's alert job then sends the Telegram message). To resume: set the variable to "on", then run weekly-prices once
+# by hand (Run workflow, skip_scrape) so the public address catches up. Do not "Re-run" a weekly-prices run that started
+# before 2026-10-15's change: a re-run uses its old factory.sh, which still deploys the public Worker.
 # Writes run=true|false to $GITHUB_OUTPUT when set, and ok|skipped to $FACTORY_RESULT_FILE when set.
 set -euo pipefail
 MODE=${1:-weekly}
@@ -77,13 +81,23 @@ build() {   # $1 = "" (scrape) or --skip-scrape
 
 deploy() {
   if [ -z "$DEPLOY_TOKEN" ]; then log "no CLOUDFLARE_API_TOKEN — not deployed"; return 0; fi
-  log "deploy app/ to Cloudflare"
-  CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy
+  # Public hosting is paused (owner's decision 2026-10-15): the public Worker is deployed only when PUBLIC_DEPLOY is exactly
+  # "on" (GitHub → Settings → Secrets and variables → Actions → Variables → PUBLIC_DEPLOY). Off, the public address keeps
+  # serving its last version and is not updated; the admin host below (behind Cloudflare Access) still gets every build.
+  if [ "${PUBLIC_DEPLOY:-}" = on ]; then
+    log "deploy app/ to Cloudflare (public)"
+    CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy
+  else
+    log "public app NOT deployed (PUBLIC_DEPLOY is not 'on': public hosting paused) — the public address keeps its last version"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::notice title=Cloudflare::public app not deployed (PUBLIC_DEPLOY off) — admin host only"; fi
+  fi
   log "deploy app/ to Cloudflare (admin host, cf/admin)"
   # not fatal: one bad Access/Worker setting must not turn every daily run red and hide the real factory result
   if ! CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy --config cf/admin/wrangler.jsonc; then
-    log "admin host NOT deployed — public app is up; fix cf/admin and run 'rebuild'"
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::yoonsiljang-admin (cf/admin) not deployed — public app is up"; fi
+    log "admin host NOT deployed — fix cf/admin and run 'rebuild'"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::yoonsiljang-admin (cf/admin) not deployed"; fi
+    # public hosting paused: the admin host is the only copy that gets this build, so its failure must not pass silently
+    if [ "${PUBLIC_DEPLOY:-}" != on ]; then log "public hosting is paused, so this fails the run"; return 1; fi
   fi
   return 0
 }

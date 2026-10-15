@@ -1,8 +1,8 @@
-// Cloudflare Workers (static assets) — the same app/ folder GitHub Pages serves. 2026-10-15: hosting moves to Cloudflare.
-// Deployed by .github/workflows/weekly.yml after each data build (step 'Deploy to Cloudflare'), only when the repository
-// secrets CLOUDFLARE_API_TOKEN (permission: Edit Cloudflare Workers) and CLOUDFLARE_ACCOUNT_ID are set; without them the
-// step is skipped and GitHub Pages keeps serving. Limits that matter here: 25 MiB per file (data.json ≈ 15 MB), 20,000
-// files on the free plan (app/ has ~170).
+// The PUBLIC Worker "yoonsiljang" (static assets, app/). PUBLIC HOSTING IS PAUSED since 2026-10-15 (owner's decision): the
+// address keeps serving its last version. tools/factory.sh deploy() deploys this config only when the repository variable
+// PUBLIC_DEPLOY is exactly "on" — do not run a bare `wrangler deploy` here by hand (this file is the default config at the
+// repository root). The admin copy behind Cloudflare Access is cf/admin/wrangler.jsonc. Limits that matter: 25 MiB per file
+// (data.json ≈ 15 MB), 20,000 files on the free plan (app/ has ~180).
 {
   "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
   "name": "yoonsiljang",

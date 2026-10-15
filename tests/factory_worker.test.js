@@ -12,7 +12,7 @@ const load = () => import(path.join(__dirname, "../cf/factory/src/runs.js"));
 
 // run only deploy() from tools/factory.sh, under the script's own `set -euo pipefail`, with a fake wrangler that records its
 // arguments and fails on the config named in FAKE_FAIL ("public" = the root config, "admin" = cf/admin)
-function runDeploy({ fail = "", token = "tok", github = false } = {}) {
+function runDeploy({ fail = "", token = "tok", github = false, pub = "on" } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "factory-deploy-"));
   const calls = path.join(dir, "calls");
   fs.writeFileSync(path.join(dir, "wrangler"), [
@@ -28,6 +28,8 @@ function runDeploy({ fail = "", token = "tok", github = false } = {}) {
   const env = { ...process.env, CALLS: calls, FAKE_FAIL: fail };
   delete env.GITHUB_ACTIONS;
   if (github) env.GITHUB_ACTIONS = "true";
+  delete env.PUBLIC_DEPLOY;
+  if (pub !== null) env.PUBLIC_DEPLOY = pub;
   const r = spawnSync("bash", ["-c", script], { cwd: path.join(__dirname, ".."), env, encoding: "utf8" });
   const lines = fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n") : [];
   fs.rmSync(dir, { recursive: true, force: true });
@@ -59,6 +61,29 @@ test("factory deploy: a failed public deploy still fails the run, before the adm
   assert.notEqual(r.status, 0, r.out);
   assert.deepEqual(r.calls, ["token=tok args=deploy"], "admin deploy not attempted");
   assert.ok(!r.out.includes("after-deploy"));
+});
+
+test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but 'on') → admin host only; an admin failure then fails the run", () => {
+  for (const pub of [null, "", "off", "ON", "yes", "on "]) {
+    const r = runDeploy({ pub });
+    assert.equal(r.status, 0, r.out);
+    assert.deepEqual(r.calls, ["token=tok args=deploy --config cf/admin/wrangler.jsonc"], `PUBLIC_DEPLOY=${JSON.stringify(pub)}: only the admin Worker`);
+    assert.match(r.out, /public app NOT deployed/);
+    assert.match(r.out, /after-deploy/);
+    assert.ok(!r.out.includes("::notice"), "no GitHub annotation outside Actions");
+  }
+  const gh = runDeploy({ pub: null, github: true });
+  assert.match(gh.out, /^::notice title=Cloudflare::public app not deployed \(PUBLIC_DEPLOY off\)/m);
+  const bad = runDeploy({ pub: null, fail: "admin", github: true });
+  assert.notEqual(bad.status, 0, "public hosting paused: the admin host is the only fresh copy, so its failed deploy fails the run (→ Telegram)");
+  assert.match(bad.out, /^::warning title=Cloudflare::yoonsiljang-admin/m);
+  assert.match(bad.out, /public hosting is paused, so this fails the run/);
+  assert.ok(!bad.out.includes("after-deploy"));
+});
+
+test("weekly.yml hands PUBLIC_DEPLOY to the factory step (a repository variable, no secret)", () => {
+  const wf = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
+  assert.match(wf, /^ {10}PUBLIC_DEPLOY: \$\{\{ vars\.PUBLIC_DEPLOY \}\}/m);
 });
 
 test("factory deploy: without a token nothing is deployed", () => {

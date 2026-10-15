@@ -134,7 +134,7 @@
 
 | 항목 | 설계 | 상태 |
 |---|---|---|
-| 관리자 주소 | Cloudflare Worker `yoonsiljang-admin`(`cf/admin/`, 무료 플랜). 공개 Worker와 **같은 `app/` 폴더**를 내주고(`assets.directory ../../app`, 빌드 하나·주소 둘), `tools/factory.sh deploy()`가 공개 Worker 바로 다음에 배포해요. 관리자 Worker 배포가 실패해도 공장 실행은 실패하지 않아요(로그 한 줄 + GitHub 경고만 — 가격 데이터와 공개 앱은 이미 저장·배포된 뒤라서요); 공개 Worker 배포 실패는 그대로 실패예요 | 코드·단위 시험 **검증됨**(`tests/factory_worker.test.js`: 가짜 wrangler로 순서·토큰·실패 처리), 배포는 **미검증**(이 환경은 Cloudflare에 닿지 않아요) |
+| 관리자 주소 | Cloudflare Worker `yoonsiljang-admin`(`cf/admin/`, 무료 플랜). 공개 Worker와 **같은 `app/` 폴더**를 내주고(`assets.directory ../../app`, 빌드 하나·주소 둘), `tools/factory.sh deploy()`가 빌드마다 배포해요. 공개 Worker는 **2026-10-15부터 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만** 먼저 배포하고(그때 공개 배포 실패는 실행 실패, 관리자 배포 실패는 경고만), 공개 배포가 멈춘 동안에는 관리자 주소가 새 빌드를 받는 유일한 곳이라 **관리자 배포 실패가 실행 실패**예요(텔레그램 알림) | 코드·단위 시험 **검증됨**(`tests/factory_worker.test.js`: 가짜 wrangler로 순서·토큰·실패 처리), 배포는 **미검증**(이 환경은 Cloudflare에 닿지 않아요) |
 | 실패 시 닫힘(fail closed) | 모든 요청이 `src/index.js`를 먼저 지나요(`run_worker_first`). `Cf-Access-Jwt-Assertion` 헤더를 RS256으로 검증(kid·aud·iss·exp·nbf, 인증서는 `https://<팀>.cloudflareaccess.com/cdn-cgi/access/certs`에서 1시간 캐시·분당 1회 재조회)하거나 `ctx.access.aud`가 `ACCESS_AUD`와 같을 때만 파일을 내줘요. **`ACCESS_AUD`·`ACCESS_TEAM_DOMAIN`이 비어 있으면(기본값) 전부 403** — Access를 켜기 전에 배포돼도 아무것도 안 보여요 | **검증됨**(`cf/admin/test/`: 설정 없음·헤더 없음·위조·만료·다른 aud/iss·alg none·모르는 kid → 403, 올바른 토큰·`ctx.access` → 200; `local_dev.sh`: 실제 런타임에서 403/404) |
 | 보안 헤더 | Worker가 만든 응답에는 `app/_headers`가 적용되지 않아 같은 값 4개(`frame-ancestors 'none'`, HSTS 1년, `nosniff`, `strict-origin-when-cross-origin`)를 직접 붙이고, HTML은 `cache-control: no-store`(로그인이 끝난 뒤 화면이 남지 않게) | **검증됨**(단위) |
 | 오프라인 사본 없음 | `/sw.js`는 404 — 관리자 주소에서는 서비스 워커가 설치되지 않아 관리자 화면이 휴대폰에 남지 않아요 | **검증됨**(단위) |
@@ -176,9 +176,9 @@
 |---|---|---|
 | 가격 공장 실패·중단 | `weekly.yml` 마지막 단계(`failure() \|\| cancelled()`) | 그 실행 직후 |
 | 데이터 가드 발동(`data2/report.md`의 "지난 자료 유지", "수집 실패, 이전 자료도 없음", robots.txt 차단, 출처 정책 확인 실패, "지난 자료로 배포", 급변 가격 검토 대기) | `weekly.yml`(`health_check.py --report-only`) | 자료를 새로 만든 실행 직후 |
-| 브랜드 수집일이 오늘(KST)보다 8일 넘게 지남, 지난 자료를 쓰는 지점 | 두 곳 모두(`app/data-meta.json`, 감시 작업은 배포된 파일 우선) | 실행 직후 + 매일 |
+| 브랜드 수집일이 오늘(KST)보다 8일 넘게 지남, 지난 자료를 쓰는 지점 | 두 곳 모두(`app/data-meta.json`; 감시 작업은 `PUBLIC_DEPLOY`=`on`일 때 배포된 파일 우선, 공개 배포가 멈춘 동안은 저장소 파일) | 실행 직후 + 매일 |
 | 공장이 26시간 넘게 성공 못함, 예약 실행이 없음, 3시간 넘게 멈춤, 마지막 실행 실패(다시 알림) | `monitor.yml`(GitHub API, `actions: read`) | 매일 09:30 KST |
-| 앱 주소 200, 배포된 `data-meta.json` 읽힘 | `monitor.yml` | 매일 |
+| 앱 주소 200, 배포된 `data-meta.json` 읽힘(`PUBLIC_DEPLOY`=`on`일 때만 — 멈춘 동안은 건너뛰고 월요일 생존 신호에 '공개 주소 배포 멈춤 중'을 적어요) | `monitor.yml` | 매일 |
 | Worker 살아 있음(HTTP 500 미만이면 정상) | `monitor.yml`, 저장소 변수 `MONITOR_WORKER_URLS`에 적힌 주소만(비면 건너뜀) | 매일 |
 | 감시 자체가 살아 있음 | `monitor.yml`: 월요일에 문제가 없으면 "[주간 생존 신호]" 1건 | 매주 월요일 |
 
