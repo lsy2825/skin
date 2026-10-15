@@ -1550,8 +1550,11 @@
   // turns it on (metrics + metricsApi); then only {"s":"<step>"} goes out, each step once a day. While off: nothing stored,
   // nothing sent (tests/e2e/metrics.js counts zero requests).
   // the body is a string (text/plain, no CORS preflight); without sendBeacon, the no-cors keepalive POST chat A gave
+  // the phone's switch, also held in memory: storage that is blocked or full must not undo '끄기' for the rest of the visit
+  let metricsOffMem = null;
+  function metricsOff() { return metricsOffMem != null ? metricsOffMem : store.get("metricsOff", false) === true; }
   const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => Metrics.kstDay(),
-    off: () => store.get("metricsOff", false) === true,   // 마이 → 내 설정 '익명 이용 집계 보내기' (this phone, every account)
+    off: metricsOff,   // 마이 → 내 설정 '익명 이용 집계' (this phone, every account)
     beacon: (url, body) => navigator.sendBeacon ? navigator.sendBeacon(url, body)
       : (fetch(url, { method: "POST", body, keepalive: true, mode: "no-cors", credentials: "omit" }).catch(() => {}), true) });
   // behind the PIN screen (html.locked hides the page) nothing has been seen yet: steps wait; 'unlocked' draws the screen again
@@ -4811,16 +4814,22 @@
         switchEl("최근 본 것·최근 검색·이어서 보기 기록 남기기", histOn(), (v) => { store.set("histOff", !v); render(); toast(v ? "다시 기록해요" : "이제 기록하지 않아요(이미 있는 기록은 그대로)"); }),
         switchEl("사용 통계 남기기 (이 기기에만 · 시연 기록)", anOn(), (v) => { store.set("analytics", v ? "on" : "off"); render(); toast(v ? "이 기기에만 사용 통계를 남겨요(서버로 보내지 않아요)" : "사용 통계를 남기지 않아요(이미 있는 기록은 '보기'에서 지울 수 있어요)"); }),
         h("button", { class: "linkbtn", type: "button", onclick: () => eventsSheet() }, "사용 통계 보기·지우기", icon("chevron-right", "xs")),
-        // 단계별 익명 집계(B5): only when it is set up (config.js); on by default, off = nothing stored or sent from this phone
-        metrics.available ? switchEl("익명 이용 집계 보내기 (단계 이름만 · 하루 한 번)", !store.get("metricsOff", false), (v) => {
-          store.set("metricsOff", !v); if (!v) { try { localStorage.removeItem("pc:metrics"); } catch (e) { /* storage unavailable */ } }
-          render(); toast(v ? "익명 이용 집계를 보내요" : "이제 이 기기에서는 집계를 보내지 않아요"); }) : null,
         h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => {
           const before = Object.fromEntries(HIST_KEYS.map((k) => [k, store.get(k, null)]));
           for (const k of HIST_KEYS) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* storage unavailable */ } }
           try { localStorage.removeItem("pc:lastTable"); } catch (e) { /* an older version's key */ }
           render(); undoToast("보기 기록을 지웠어요", () => { for (const [k, v] of Object.entries(before)) if (v != null) store.set(k, v); render(); }); } }, "기록 지우기")),
         h("div", { class: "sub" }, "이 휴대폰에만 있어요(서버로 보내지 않아요). 내 견적·관심·알림은 지우지 않아요.")),
+      // 단계별 익명 집계(B5, user decision 2026-10-15: a switch, on by default). Its own row: unlike the one above it does go to
+      // a server. Shown only when it is set up (config.js). Off = nothing new stored or sent from this phone; the day's one
+      // record stays, so switching back on the same day does not count the phone twice.
+      metrics.available ? h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "익명 이용 집계"), h("b", { class: "now" }, metricsOff() ? "지금: 보내지 않음" : "지금: 보냄")),
+        switchEl("익명 이용 집계 보내기 (단계 이름만 · 하루 한 번)", !metricsOff(), (v) => {
+          store.set("metricsOff", !v);
+          const kept = store.get("metricsOff", null) === !v;   // false: storage blocked or full — memory only
+          metricsOffMem = !v;
+          render(); toast(v ? "익명 이용 집계를 보내요" : kept ? "이제 이 기기에서는 집계를 보내지 않아요" : "이 화면을 닫기 전까지 집계를 보내지 않아요(설정을 저장하지 못했어요)"); }),
+        h("div", { class: "sub" }, "앱을 쓴 단계 이름만 서버로 보내요(날짜·기기·위치·검색어 없음). 끄면 이 휴대폰에서는 보내지 않아요.")) : null,
       h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => window.lockApp && window.lockApp() }, "지금 잠그기"),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { store.set("brands", null); store.set("special", true); location.reload(); } }, "설정 초기화"))));
     // ---- 데이터 안내 (information, not settings)

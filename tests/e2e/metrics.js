@@ -105,6 +105,15 @@ const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } c
     ok('켜짐: 8일 전이면 return_7d 없음', steps(hits).includes('open') && !steps(hits).includes('return_7d'), steps(hits).join(','));
     const sw = await optSwitch(p);
     ok('켜짐: 내 설정에 집계 스위치가 있고 기본은 켜짐', !!sw && await sw.locator('input').isChecked());
+    // switched off while the app runs: nothing more goes and nothing new is written; the day's record is kept as it was
+    const before = await p.evaluate(() => localStorage.getItem('pc:metrics'));
+    await sw.click(); await p.waitForTimeout(300); hits.length = 0;
+    await p.locator('#tabs button[data-tab="saved"]').click(); await p.waitForTimeout(300);
+    await p.evaluate(() => { location.hash = '#compare?k=X12'; }); await p.waitForTimeout(800);
+    await p.locator('.cmphead .favbtn').click(); await p.waitForTimeout(300);
+    await p.locator('#tabs button[data-tab="cart"]').click(); await p.waitForTimeout(500);
+    ok('켜짐 → 스위치 끔: 그 뒤 /v1/m 0건, pc:metricsOff=true, 그날 기록은 그대로(새로 쓰지 않음)', hits.length === 0
+      && await p.evaluate((b) => localStorage.getItem('pc:metricsOff') === 'true' && localStorage.getItem('pc:metrics') === b, before), steps(hits).join(','));
     ok('켜짐: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
 
