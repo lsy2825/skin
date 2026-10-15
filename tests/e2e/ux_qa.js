@@ -90,7 +90,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('알림(관심 탭)·기록(마이) 없을 때 안내', /알림을 만들 수 있어요/.test(savedTxt) && /하트를 누르면/.test(savedTxt) && /기록하면/.test(await p.locator('#main').innerText()));
     // undo: favourite remove
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
-    await p.click('.keyhead .favbtn'); await p.click('.keyhead .favbtn'); await p.waitForTimeout(150);
+    await p.click('.cmphead .favbtn'); await p.click('.cmphead .favbtn'); await p.waitForTimeout(150);
     const hasUndo = await p.locator('#toast button').isVisible(); if (hasUndo) await p.click('#toast button'); await p.waitForTimeout(200);
     ok('즐겨찾기 빼기 되돌리기', hasUndo && (await p.evaluate(() => JSON.parse(localStorage.getItem('pc:favs')).k.includes('X12'))));
     // realtime total: qty change updates totals

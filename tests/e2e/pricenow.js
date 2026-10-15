@@ -121,6 +121,9 @@ const CAPITAL = ['서울', '경기', '인천'];
   // 12) brand overview: counts add up, median shown, no branch named by default; the brand sheet = the clinic list prices
   await go(p, 'compare?k=X12', 1000);
   const total = num(await p.locator('#clinics h3').first().textContent());
+  // 6.0: the brand overview is folded ('가격 종류별·브랜드별·지역별 보기') and the list shows its first rows until '모두 보기'
+  await p.locator('#cmpmore > summary').click(); await p.waitForTimeout(200);
+  if (await p.locator('#clinics .morelist').count()) { await p.locator('#clinics .morelist').click(); await p.waitForTimeout(600); }
   const tiles = await p.$$eval('.bcard .tile', (ts) => ts.map((t) => t.innerText));
   const sumN = tiles.reduce((s, t) => s + num((/(\d+)곳 · 중간값/.exec(t) || [, 0])[1]), 0);
   ok('S12 브랜드별: 지점 수 합 = 지점별 가격 수, 중간값·확인일, 기본은 지점명 강조 없음', tiles.length >= 2 && sumN === total && tiles.every((t) => /중간값/.test(t) && /확인 \d{4}-/.test(t)) && !tiles.some((t) => /브랜드 중 최저/.test(t)), `${tiles.length}개 브랜드 · ${sumN}/${total}곳`);
@@ -164,7 +167,7 @@ const CAPITAL = ['서울', '경기', '인천'];
   // 16) watch a treatment
   await open(p, {});   // default region 수도권
   await go(p, 'compare?k=X12', 900);
-  await p.locator('.actions button[aria-label="가격 알림"]').click(); await p.waitForTimeout(300);
+  await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button[aria-label="가격 알림"]').click(); await p.waitForTimeout(300);
   ok('S16 알림 종류 첫 번째 = 지켜보기, 변화 6가지 선택', (await p.locator('.sheet .opt[aria-pressed="true"]').first().textContent()).includes('지켜보기') && await p.locator('.sheet .pcgrp input[type=checkbox]').count() === 6);
   await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(400);
   const al = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts'))[0]);
