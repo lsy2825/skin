@@ -1,0 +1,6 @@
+@echo off
+rem Yoonsiljang - close port 8766: stops the local app server (start.bat or "python -m http.server 8766").
+rem Only a Python process is stopped (python, pythonw, py, python3.12 from Microsoft Store); anything else on the port is reported and left running.
+rem Keep this file ASCII-only: cmd.exe reads .bat files in the console code page, not UTF-8.
+powershell -NoProfile -Command "$ids = @(Get-NetTCPConnection -LocalPort 8766 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique); if ($ids.Count -eq 0) { 'Port 8766 is free - nothing to stop.' }; foreach ($i in $ids) { $p = Get-Process -Id $i -ErrorAction SilentlyContinue; if ($p -and $p.ProcessName -match '^(python|pythonw|py)[\d.]*$') { Stop-Process -Id $i -Force -ErrorAction SilentlyContinue; Wait-Process -Id $i -Timeout 5 -ErrorAction SilentlyContinue; if (Get-Process -Id $i -ErrorAction SilentlyContinue) { 'Could not stop ' + $p.ProcessName + ' (PID ' + $i + ') - close that server window yourself (it may have been started as administrator).' } else { 'Stopped ' + $p.ProcessName + ' (PID ' + $i + ') - port 8766 is closed.' } } elseif ($p) { 'Port 8766 is used by ' + $p.ProcessName + ' (PID ' + $i + ') - not a Python server, left running.' } }"
+pause
