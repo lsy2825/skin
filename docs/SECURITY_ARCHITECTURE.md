@@ -118,8 +118,8 @@
 ## 7. 인프라·가용성 (Phase 7)
 | 통제 | 상태 |
 |---|---|
-| HTTPS | `*.github.io`는 GitHub가 HTTPS를 강제해요(GitHub 문서 기준). 이 환경에서 직접 확인하지 못했어요(**미검증**). CSP `upgrade-insecure-requests` |
-| 보안 HTTP 헤더 | GitHub Pages는 헤더를 직접 정할 수 없어요. 그래서 meta 태그로 CSP와 Referrer-Policy를 넣었어요. `frame-ancestors`/`X-Frame-Options`(클릭재킹)와 HSTS 설정은 **미해결**: 전용 도메인 + 프록시가 필요해요. 대신 클릭재킹은 스크립트로 일부 막아요: 다른 사이트 프레임 안이면 화면을 숨기고 새 창 링크만 보여줘요(`app/gate.js`, 시험 `tests/e2e/frame.js`) |
+| HTTPS | 앱은 `https://yoonsiljang.lsy2825.workers.dev`(Cloudflare Workers, HTTPS만). `Strict-Transport-Security: max-age=31536000; includeSubDomains`를 보내요(`app/_headers`). 2026-10-15 모니터(A7)가 실제 응답 헤더로 **검증됨**. CSP `upgrade-insecure-requests` |
+| 보안 HTTP 헤더 | Cloudflare Workers 정적 파일의 `app/_headers`(A2)로 `Content-Security-Policy: frame-ancestors 'none'`(클릭재킹), HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`을 보내요. CSP 본문은 그대로 `index.html`의 meta 태그(B 소유). 2026-10-15 모니터(A7)가 실제 응답 헤더로 **검증됨**(`tests/security/headers_test.py`). 관리자 Worker(`cf/admin`)는 같은 4개를 코드에서 붙여요. GitHub Pages 시절의 `gate.js` 스크립트 완화는 뺐어요(B7 #32) |
 | Content Security Policy | 스크립트는 같은 사이트만, 지도 타일은 OSM만, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`. 14개 화면에서 위반 0건으로 **검증됨** |
 | 의존성 검사 | 버전 고정(requirements.txt, 액션 SHA). `.github/dependabot.yml`(주간 업데이트 PR). 로그인 라이브러리는 저장소 안에 복사해 둠(MIT). Dependabot alerts·CodeQL은 **사용자가 켜야 해요** |
 | 오류 모니터링 | **미해결.** 앱 오류를 모으는 곳이 없어요. 도입한다면 개인정보를 지우는 설정으로 해야 해요. 가격 공장·앱 주소 감시는 §9 |
@@ -162,8 +162,6 @@
 
 **미해결 취약점·공백**
 - git 기록의 PIN (교체 필요)
-- 같은 출처를 다른 Pages 사이트와 공유
-- 클릭재킹 헤더 (스크립트로 일부 완화)
 - IP별 요청 제한
 - 오류·트래픽 모니터링
 - main 브랜치 보호
