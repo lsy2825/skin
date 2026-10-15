@@ -1344,10 +1344,14 @@
   function pushSync() {
     if (!PUSH || !pushState()) return;
     clearTimeout(pushT);
+    // no rule left (the last alert removed): the subscription itself goes — nothing kept on the server that nothing uses
+    // (user decision 2026-10-15). It waits out the 6 s '되돌리기' toast, so an undo keeps it.
+    const empty = !pushRules().rules.length;
     pushT = setTimeout(async () => {
       const s = pushState();
       if (!s || partial()) return;
       const { rules } = pushRules(), h = Push.hash(rules);
+      if (!rules.length) { await pushUnsubscribe(); toast("남은 가격 알림이 없어 휴대폰 알림 받기를 껐어요"); render(); return; }
       if (h === s.h) return;
       try {
         const r = await pushFetch(Push.rulesReq(CFG, s.id, rules));
@@ -1357,7 +1361,7 @@
         if (r.ok) store.set("push", { ...now, h });
         else if (r.status === 404 || r.status === 410) { store.set("push", null); render(); }
       } catch (e) { /* offline: the next change or the next start sends them */ }
-    }, 600);
+    }, empty ? 6500 : 600);
   }
   // at start: the browser may have dropped the subscription (permission taken back) or renewed it — follow it
   async function pushCheck() {
@@ -1489,6 +1493,10 @@
           const off = h("button", { class: "btn sm gray", type: "button", style: "margin-top:8px", onclick: async () => {
             off.disabled = true; await pushUnsubscribe(); toast("가격 알림을 껐어요"); paint(); } }, "가격 알림 끄기");
           kids.push(off);
+        } else if (!rules.length) {
+          // nothing to send yet: the switch would only make an empty subscription (and remove it again)
+          kids.push(h("div", { class: "sub" }, "가격 알림을 하나 이상 만들면 켤 수 있어요. 비교 화면의 ⋯ → 가격 알림에서 만들어요."),
+            note ? h("div", { class: "tiny" }, note) : null);
         } else {
           kids.push(h("div", { class: "sub" }, "켜면 앱이 닫혀 있어도 관심 시술 가격이 바뀔 때 알려요(일주일에 한 번 묶어서). 누르기 전에는 권한을 묻지 않아요."),
             note ? h("div", { class: "tiny" }, note) : null);
