@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   update:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     permissions:
       contents: write    # commit the new data
     timeout-minutes: 90
@@ -62,7 +62,7 @@ jobs:
   alert:
     needs: update
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     timeout-minutes: 5
     permissions:
       contents: read     # private repo: checkout of the alert scripts and of the run's saved report

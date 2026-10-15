@@ -115,6 +115,19 @@ test("pr-checks.yml runs on EVERY pull request (no paths filter: the secret scan
   assert.match(c, /run: bash \.github\/scripts\/pr_checks\.sh/);
 });
 
+test("every job of every workflow runs on a fixed Ubuntu image, never ubuntu-latest (it moved to Ubuntu 26 on 2026-10-19)", () => {
+  let jobs = 0;
+  for (const f of fs.readdirSync(path.join(root, ".github/workflows")).filter((x) => /\.ya?ml$/.test(x))) {
+    const c = code(read(`.github/workflows/${f}`));
+    assert.doesNotMatch(c, /ubuntu-latest/, `${f}: pin the image (ubuntu-24.04); move to a newer one on purpose, in a PR`);
+    for (const m of c.matchAll(/^\s*runs-on:\s*(.*)$/gm)) {
+      jobs++;
+      assert.match(m[1].trim(), /^ubuntu-\d\d\.\d\d$/, `${f}: runs-on "${m[1].trim()}" is a fixed Ubuntu version`);
+    }
+  }
+  assert.ok(jobs >= 10, `found the jobs (${jobs})`);
+});
+
 test("pr-build.yml runs the factory's build commands on build-affecting PRs", () => {
   const c = code(read(".github/workflows/pr-build.yml"));
   const sh = read("tools/factory.sh");
