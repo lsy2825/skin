@@ -51,6 +51,25 @@ test("the day is the KST calendar date (the server's table), whatever the phone'
   assert.match(M.kstDay(), /^\d{4}-\d{2}-\d{2}$/);
 });
 
+test("the phone's switch (user decision 2026-10-15): switched off = no storage read or write, no beacon; on again = sends", () => {
+  let off = true; const calls = { load: 0, save: 0 }, sent = [];
+  const m = M.make(ON, { load: () => { calls.load++; return null; }, save: () => { calls.save++; }, today: () => "2026-10-15",
+    beacon: (u, b) => { sent.push(JSON.parse(b).s); return true; }, off: () => off });
+  assert.equal(m.available, true);
+  assert.equal(m.on, false);
+  m.opened(); for (const s of M.STAGES) m.hit(s);
+  assert.equal(m.pending("first_price"), false);
+  assert.deepEqual([sent.length, calls.load, calls.save], [0, 0, 0]);
+  off = false;
+  assert.equal(m.on, true);
+  m.hit("keep_fav");
+  assert.deepEqual(sent, ["open", "keep_fav"]);
+  // not set up: no switch to show
+  assert.equal(M.make({}, { off: () => false }).available, false);
+  // a switch that throws counts as not switched off (the operator setting decides)
+  assert.equal(M.make(ON, { load: () => null, save: () => {}, today: () => "2026-10-15", beacon: () => true, off: () => { throw new Error("x"); } }).on, true);
+});
+
 test("the address: {metricsApi}/v1/m, a trailing slash or a base path kept as given", () => {
   assert.equal(M.endpoint(ON), "https://m.example.test/v1/m");
   assert.equal(M.endpoint({ metrics: true, metricsApi: "https://m.example.test/" }), "https://m.example.test/v1/m");

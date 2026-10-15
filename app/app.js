@@ -1551,6 +1551,7 @@
   // nothing sent (tests/e2e/metrics.js counts zero requests).
   // the body is a string (text/plain, no CORS preflight); without sendBeacon, the no-cors keepalive POST chat A gave
   const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => Metrics.kstDay(),
+    off: () => store.get("metricsOff", false) === true,   // 마이 → 내 설정 '익명 이용 집계 보내기' (this phone, every account)
     beacon: (url, body) => navigator.sendBeacon ? navigator.sendBeacon(url, body)
       : (fetch(url, { method: "POST", body, keepalive: true, mode: "no-cors", credentials: "omit" }).catch(() => {}), true) });
   // behind the PIN screen (html.locked hides the page) nothing has been seen yet: steps wait; 'unlocked' draws the screen again
@@ -4810,6 +4811,10 @@
         switchEl("최근 본 것·최근 검색·이어서 보기 기록 남기기", histOn(), (v) => { store.set("histOff", !v); render(); toast(v ? "다시 기록해요" : "이제 기록하지 않아요(이미 있는 기록은 그대로)"); }),
         switchEl("사용 통계 남기기 (이 기기에만 · 시연 기록)", anOn(), (v) => { store.set("analytics", v ? "on" : "off"); render(); toast(v ? "이 기기에만 사용 통계를 남겨요(서버로 보내지 않아요)" : "사용 통계를 남기지 않아요(이미 있는 기록은 '보기'에서 지울 수 있어요)"); }),
         h("button", { class: "linkbtn", type: "button", onclick: () => eventsSheet() }, "사용 통계 보기·지우기", icon("chevron-right", "xs")),
+        // 단계별 익명 집계(B5): only when it is set up (config.js); on by default, off = nothing stored or sent from this phone
+        metrics.available ? switchEl("익명 이용 집계 보내기 (단계 이름만 · 하루 한 번)", !store.get("metricsOff", false), (v) => {
+          store.set("metricsOff", !v); if (!v) { try { localStorage.removeItem("pc:metrics"); } catch (e) { /* storage unavailable */ } }
+          render(); toast(v ? "익명 이용 집계를 보내요" : "이제 이 기기에서는 집계를 보내지 않아요"); }) : null,
         h("div", { class: "row", style: "margin-top:8px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => {
           const before = Object.fromEntries(HIST_KEYS.map((k) => [k, store.get(k, null)]));
           for (const k of HIST_KEYS) { try { localStorage.removeItem("pc:" + k); } catch (e) { /* storage unavailable */ } }
