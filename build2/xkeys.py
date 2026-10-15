@@ -8,7 +8,7 @@ count / unit checks pass. 블리비 can instead use the hand-checked benchmark i
 Every regex runs on `comp(name)`: spaces removed, 보톡스/보튤리눔 톡신 → 톡신, unit spellings unified
 (50유닛/50unit/50 U → 50U, CC → cc, 100 샷 → 100샷, 10,000J / 10KJ / 1만줄 → 10KJ).
 """
-import re
+import functools, re
 
 # id, category, label (shown), need (all), bad (any), opts
 #   bench: 블리비 benchmark ids (analyze.B) whose prices stand for this key
@@ -95,6 +95,7 @@ X = [
 ADDON = re.compile(r"\s*\+\s*(진정관리|크라이오셀|크라이오|촉촉팩|LED\(5분\)|LED|모델링팩|모델링|재생관리|수분팩|수분관리|진정팩|미백관리|비타민관리|(?:LDM|ldm)\s*\d*분?|맞춤관리)(\s*\d+회)?", re.I)
 
 
+@functools.lru_cache(maxsize=1 << 19)     # match() asks for the same name once per hand-made key (36x per row)
 def comp(s):
     s = s or ""
     s = ADDON.sub("", s)
@@ -121,8 +122,25 @@ def comp(s):
 FAMS = [r"톡신", r"필러", r"슈링크", r"울쎄라", r"써마지", r"인모드", r"온다", r"올리지오", r"볼뉴머|볼링크", r"티타늄",
         r"리쥬란", r"쥬베룩", r"토닝|제네시스", r"아쿠아필", r"포텐자", r"스컬트라", r"리프테라", r"물광", r"엑소좀",
         r"실리프팅|민트실", r"텐써마", r"엑셀브이|엑셀V", r"윤곽주사", r"제모"]
-COND = re.compile(r"\d+(샷|cc|U|회|부위)(이상|부터)")   # '(*300샷 이상 시)', '[4cc부터]': a bigger purchase than the unit
+COND = re.compile(r"\d+(샷|cc|U|회|부위|개)(이상|부터)")   # '(*300샷 이상 시)', '[4cc부터]', '(10개 이상부터 시술 가능)': a bigger purchase
+#                                                       than the unit (개: 2026-10-15, '아그네스 1개당 (10개 이상부터 …)')
 ADDON_ONLY = re.compile(r"\[추가\]|^추가|추가$|추가\)|추가\d|\d(샷|cc|U)추가시|^ㄴ|\]ㄴ|추가구매|추가결제|옵션\)|\(옵션|\[옵션|옵션\]|추가옵션|옵션할인|단독불가|단독사용불가|단독시술불가|동시시술|함께시술|진행고객|시술고객|구매고객|결제고객|이용고객|패키지진행시|패키지구매시|패키지결제시")
+# 추가당 · 추가시 · 추가* (2026-10-15, 개선 보고서 E3): '미희주사 1cc 추가당', '가운데부위 추가시', '울쎄라피 프라임 100샷 추가 당' are
+# prices on top of a base. Read outside brackets only: '염증주사 1부위 (1부위 추가 시 5000원)' is the base price, the bracket
+# explains the next area (addon_only)
+ADDON_PER = re.compile(r"추가당|추가\*|추가시(?!술)")
+
+
+@functools.lru_cache(maxsize=1 << 19)
+def addon_only(name):
+    """True when a name is only sold on top of another procedure (comp() of the whole name, and the per-unit add-on words
+    outside brackets)"""
+    out, prev = name or "", None
+    while out != prev:                       # nested brackets ('(… (부가세 별도) … 추가시 …)') come off from the inside out
+        out, prev = re.sub(r"\([^()]*\)", " ", out), out
+    return bool(ADDON_ONLY.search(comp(name)) or ADDON_PER.search(comp(out)))
+
+
 ONCE = re.compile(r"체험가|체험|한정가|한정|첫방문|첫 방문|첫시술|첫 시술|1회한정|웰컴|첫구매|1인\s*1회|1인당\s*1회|신규고객|신규회원|신규방문|선착순")
 # '10회 한정가' / '5회 체험가' = a 10 / 5-session price (only '1회 한정' means once per person, and 1 is the default anyway)
 SESS = re.compile(r"(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))")
@@ -132,27 +150,46 @@ COURSE_WORD = re.compile(r"프로그램|패키지|PKG|챌린지|솔루션|케어
 
 
 def sessions(name):
+    name = name or ""
+    if re.search(r"이용권|무제한|1년|1달|개월|\d+주\s*(패키지|PKG|프로그램|챌린지)", name) or (COURSE.search(name) and COURSE_WORD.search(name)):
+        return 99
+    # the option's own count, not a note in brackets or after '*': '[젠틀맥스] 남성 인중 + 앞턱 제모 5회 (*10회 53만원)' is a 5-session
+    # price (2026-10-15: read as 10회, 셀린 청주 5회 prices sat in 10회 keys). A count written only in a note ('배꼽주변 제모 (10회)',
+    # '브라질리언제모+항문 *5회') still counts.
+    outside = re.sub(r"\([^()]*\)", " ", name)
+    text = next((t for t in (outside.split("*")[0], outside) if SESS.search(t)), name)
     s = 1
-    for m in SESS.finditer(name):
+    for m in SESS.finditer(text):
         try:
             s = max(s, int(m.group(1)))
         except ValueError:
             pass
-    if re.search(r"이용권|무제한|1년|1달|개월|\d+주\s*(패키지|PKG|프로그램|챌린지)", name) or (COURSE.search(name) and COURSE_WORD.search(name)):
-        s = 99
+    # '10+1회' / '12+1회' is a course of eleven / thirteen sessions, not one (2026-10-15: read as 1회, 셀린 '인중 제모 10+1회'
+    # 50,000원 sat in the 1회 key whose median is 12,000원)
+    for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))", text):
+        s = max(s, int(m.group(1)) + int(m.group(2)))
     return s
+
+
+@functools.lru_cache(maxsize=1 << 19)
+def _single(name):
+    """the compared text of a name that can stand for some key's unit, or None — the checks every key shares, done once per name"""
+    c = comp(name)
+    if COND.search(c):
+        return None    # '(*300샷 이상 시)': the price needs a bigger purchase than the key's unit
+    if addon_only(name):
+        return None    # '(목필러 옵션) 슈링크 100샷 추가': only sold on top of another procedure
+    if sum(1 for f in FAMS if re.search(f, c)) >= 2:
+        return None    # a bundle of two procedures ('볼뉴머300샷X슈링크300샷', '포텐자 + 쥬베룩') is not the key's unit
+    return c
 
 
 def match(key, name):
     """name: raw display name. returns True when the row stands for the key's unit."""
     kid, cat, label, need, bad, opt = key
-    c = comp(name)
-    if COND.search(c):
-        return False   # '(*300샷 이상 시)': the price needs a bigger purchase than the key's unit
-    if ADDON_ONLY.search(c):
-        return False   # '(목필러 옵션) 슈링크 100샷 추가': only sold on top of another procedure
-    if sum(1 for f in FAMS if re.search(f, c)) >= 2:
-        return False   # a bundle of two procedures ('볼뉴머300샷X슈링크300샷', '포텐자 + 쥬베룩') is not the key's unit
+    c = _single(name)
+    if c is None:
+        return False
     if any(not re.search(p, c) for p in need):
         return False
     if any(re.search(p, c) for p in bad):

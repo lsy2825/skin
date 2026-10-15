@@ -99,6 +99,22 @@
 | A 메모: 가격 알림 시트 최저가 기준 | PR(#41) | 브라우저 | `alertSheet`가 `addAlert`와 같은 지역·특가로 읽음 | e2e alert_region(새) | watch '오른 경우' 규칙이 정해지면 문구(A5) |
 | '정보' 화면 Crawl-delay 문장 | PR(#44) | 단위·브라우저 | `views.about` 리엔장 줄 문장 삭제(코드와 다름) | e2e clickable·ux_qa | 새 문장은 C(#45 뒤), 등록부 `rate` 글자 3~5곳 불일치도 C |
 
+## C — 6.0 데이터(채팅 C, 2026-10-15)
+
+개선 보고서 E번호 기준. 검증은 `단위`(labels_test·taxonomy·xkeys) · `빌드 비교`(같은 저장 자료로 `weekly.py --skip-scrape` 전후, 따로 떼어 둔 작업 트리) · `검증 에이전트`(관점마다 찾기 1 + 반박 2, 8차까지).
+
+| ID | 구현 | 검증 | 코드 | 시험 | 남은 것 / 다음 조치 |
+|---|---|---|---|---|---|
+| E1 '병원 설명' 판촉 문구 | 해결(C1) | 단위·빌드 비교 | `labels.desc_problems`·`DESC_PROMO`, `taxonomy.build` 설명 세기(철자 묶음·지점 2곳 이상, 제모는 장비 이름만인 설명 뺌) | labels_test | 화면 숨김은 B1 그대로 |
+| E2·E10 대소문자·띄어쓰기·괄호 위치만 다른 규격 | 해결(C1) | 단위·빌드 비교 | `taxonomy.loose_sig`, 시술군 철자 통일, 사라진 id는 `meta.keymap` | labels_test | 괄호 속 '+' 띄어쓰기로 묶음·단품이 갈리는 것(블리비 듀얼토닝)은 main부터 있던 규칙 — 후속 |
+| E3 부위·크기만 남은 이름, 추가·조건부 가격 | 해결(C1) | 단위·빌드 비교 | `labels.problems` '부위만' + `product_head`, `xkeys.addon_only`, `COND` | labels_test | — |
+| E3 제모 성별·부위·장비 | 해결(C1) | 단위·빌드 비교·검증 에이전트 | `taxonomy._area`·`_area_parts`·`AREA_SPELL`·`hair_area`·`_segs`, `clean.py` 페이지 성별 | labels_test | 닥터에버스 월간 제모 페이지의 여성·남성 칸 제목을 수집기가 못 남김 → 두 메뉴 페이지의 성별 없는 제모 줄은 비교 묶음에서 뺌(가격표엔 남음). 수집기 고치기는 후속 |
+| E4 같은 가격 두 줄 | 해결(C1) | 단위·빌드 비교 | `clean.py` 합치기(이름·판매가, 가격표 줄 우선, 조건 교집합) | labels_test | — |
+| 가격 변동 목록 가짜 항목 | 해결(C1) | 단위·빌드 비교 | `datameta.changes`, `appdata.reclassified`·`group_moved`·되살아난 id·`key_map` 성별·횟수 | labels_test | — |
+| E5 추가 옵션 칸 | 진행(C2) | 단위·빌드 비교 | `xkeys.addon_only`, data.json 16번째 칸 `addon` | labels_test | 앱은 r[15]을 실행 중 칸으로 씀 → B가 먼저 옮김 |
+| E6 부가세 미확인 | 진행(C2) | 단위·빌드 비교 | `data2/vat_policy.json` 닥터에버스·셀린, `clean.vat_of` | labels_test | 확인 못 한 지점(닥터에버스 4·셀린 2)은 미확인 |
+| 수집 예절 | 해결(lsy2825/skin#45) | 단위(가짜 시계) | `scrape/common.py` Fetcher(robots)·시계, `weekly.gate` | `tests/crawl_manners_cases.py`(brand_parsers_test가 돌림) | 이름표 연락처는 앱 주소로 먼저(사용자 2026-10-16), 정해지면 `BOT_INFO_URL` |
+
 ## 회귀 결과(2026-10-14)
 
 전체 회귀 34/34 묶음 통과(단위 93, 서버 41, DB 보안·백업 복원, e2e 24개). 첫 실행에서 실패한 7개 중 2개는 앱 결함(비교 화면 '함께 확인할 것' 카드 위치, 죠미를 이미 만난 사람에게 첫 인사) → 앱 수정, 5개는 이번 제품 결정으로 낡은 기대값 → 시험 수정. 고친 내용은 커밋 `0fca15d`·`61e5a53`·`0ccd594`.

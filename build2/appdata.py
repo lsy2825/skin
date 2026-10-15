@@ -29,16 +29,17 @@ data.json (compact, strings interned in `s`):
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
 the 'before'.
 """
-import argparse, csv, datetime, glob, json, os, re, sys
+import argparse, csv, datetime, glob, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match as xmatch  # noqa: E402
+from xkeys import X, match as xmatch, sessions as xsessions  # noqa: E402
 import groups as G  # noqa: E402
 import knowledge  # noqa: E402
 import datameta  # noqa: E402
 import homedata  # noqa: E402
+import labels  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -335,9 +336,65 @@ def reclassified(prev, prow, rows):
         o = old.get(ident)
         if o is not None:
             out |= o ^ n
+    # a row at the same price whose kind or condition tags changed (2026-10-15: a page-wide '평일 낮' / '첫 방문' tag dropped by the
+    # fold rule) moves the key's plain lowest price without any clinic changing a price: 울쎄라 300샷 read as three price cuts
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    pkinds = prev["meta"].get("kinds") or KINDS
+    was, now = defaultdict(set), defaultdict(set)
+    for r in prow:
+        was[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].add((pkinds[r[5]], ps[r[6]] or ""))
+    for r in rows:
+        now[(r["brand"], r["branch"], r["name"], int(r["sale"]))].add((r["kind"], r["tags"] or ""))
+    # only when that changes whether the row counts as a plain price (a 체험가 row losing '첫 방문' moves nothing: 검증 7차)
+    plain = lambda st: any(k in ("일반", "고시가") and not t for k, t in st)
+    for ident, x in now.items():
+        if ident in was and plain(was[ident]) != plain(x):
+            out |= new.get(ident[:3], set()) | old.get(ident[:3], set())
+    # a row at the same price that joined or left an id while a same-named row at another price kept it (검증 8차: 톡스앤필 건대점
+    # '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became an add-on and left T2976BFB; the 290,000 row of the same name kept it, so the
+    # name-level sets above were equal and the key read as a rise 190,000 → 290,000)
+    wk, nk = defaultdict(set), defaultdict(set)
+    for r in prow:
+        wk[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].update((ps[r[7]] or "").split())
+    for r in rows:
+        nk[(r["brand"], r["branch"], r["name"], int(r["sale"]))].update(r["keys"].split())
+    for ident in wk.keys() & nk.keys():
+        out |= wk[ident] ^ nk[ident]
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return out & before
+
+
+def group_moved(prev, prow, rows, gid):
+    """(brand|branch, group key, price) of rows that are in both builds at the same price but now count for their automatic
+    group's regular price when they did not, or the other way round (2026-10-15: '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became
+    an add-on, and the group read it as a price rise 190,000 → 290,000 at 톡스앤필 건대점). A change whose old or new price is such
+    a row is the rules', not the clinic's."""
+    if not prev:
+        return set()
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    pkinds = prev["meta"].get("kinds") or KINDS
+    was = {}
+    for r in prow:
+        counted = len(r) > 9 and r[9] >= 0 and pkinds[r[5]] in ("일반", "고시가") and not ps[r[6]]
+        ident = (pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))
+        was[ident] = was.get(ident, False) or counted
+    now = {}
+    for r, g in zip(rows, gid):
+        ident = (r["brand"], r["branch"], r["name"], int(r["sale"]))
+        now[ident] = now.get(ident, False) or (g >= 0 and G.regular(r))
+    return {(f"{i[0]}|{i[1]}", G.comp(i[2]), i[3]) for i, c in now.items() if i in was and was[i] != c}
+
+
+def sex_word(label):
+    """여성 / 남성 / '' from a label in any of the clinics' forms (NFKC: one clinic writes 女 as the compatibility letter U+F981)"""
+    m = re.search(r"여성|여자|\(여\)|女|남성|남자|\(남\)|男", unicodedata.normalize("NFKC", label or ""))
+    return "" if not m else "여성" if m.group() in ("여성", "여자", "(여)", "女") else "남성"
+
+
+def bare_label(label):
+    """a label without its sex words and spaces: '여성 女 브라질리언 제모 5회' and '여성 브라질리언 제모 5회' are the same"""
+    return re.sub(r"\s+|여성|여자|남성|남자|\((?:여|남)\)|女|男", "", unicodedata.normalize("NFKC", label or ""))
 
 
 def key_map(prev, prow, rows, allk):
@@ -361,12 +418,32 @@ def key_map(prev, prow, rows, allk):
         nk = newk.get((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set())
         for k in old:
             size[k] += 1
-            for n in nk:
+            for n in sorted(nk):          # same order on every run (set order changed with PYTHONHASHSEED)
                 votes[k][n] += 1
+    nlabel = {k[0]: k[2] for k in allk if len(k) > 2}
     out = {}
     for k, n in size.items():
-        best = votes[k].most_common(1)
-        out[k] = [best[0][0] if best and best[0][1] * 2 >= n else "", plabel.get(k, k)]
+        c = votes[k]
+        top = max(c.values()) if c else 0
+        # a tie goes to the key of the old label's sex, then to the key with the old label's words ('브라질리언', not '브라질리언+항문':
+        # 검증 8차), then to the smaller id (not to the order rows came in)
+        sx, bare = sex_word(plabel.get(k, "")), bare_label(plabel.get(k, ""))
+        tied = sorted((i for i, x in c.items() if x == top),
+                      key=lambda i: (sex_word(nlabel.get(i, "")) != sx, bare_label(nlabel.get(i, "")) != bare, i))
+        to = tied[0] if tied and top * 2 >= n else ""
+        # an old label without a sex whose rows split evenly between a 여성 and a 남성 key has no successor (the id order would
+        # pick a sex for the saved item: '팔전체 제모' 4:4 → 남성, 검증 8차)
+        if to and not sx and sex_word(nlabel.get(to, "")) and {"여성", "남성"} <= {sex_word(nlabel.get(i, "")) for i in tied}:
+            to = ""
+        # never to another session count: '남성 목 제모 10회' is not '남성 목 제모 5회' even when half its old rows (5회 rows the
+        # old build keyed wrong) went there (검증 6차) — unless every old row went there (then the old label's count was the bug);
+        # never to the other sex ('남성 헤어라인 or 눈썹 제모' → a 여성 key on a tie, 검증 7차)
+        old_l, new_l = plabel.get(k, ""), nlabel.get(to, "")
+        if to and top < n and xsessions(old_l) != xsessions(new_l):
+            to = ""
+        if to and {"여성", "남성"} == {sex_word(old_l), sex_word(new_l)}:
+            to = ""
+        out[k] = [to, plabel.get(k, k)]
     for k, (to, label) in (prev["meta"].get("keymap") or {}).items():
         if k in now or k in out:
             continue
@@ -427,7 +504,16 @@ def main():
     ALLK, VFAM = variant_keys()
     prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     prev_data, prev_rows = load_prev(prev_txt)
-    recl_now = reclassified(prev_data, prev_rows, rows) & {k[0] for k in ALLK}
+    hist = os.path.join(ROOT, "data2", "history")
+    os.makedirs(hist, exist_ok=True)
+    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < collected)
+    prev = load_snapshot(prev_files[-1]) if prev_files else {}
+    # an id the app's data.json does not have but the last snapshot does (gone in an earlier rules change, back now with other
+    # rows): its snapshot prices are another mix of rows, so it is regrouped too (검증 6차: 'TAE6F24F 남성 얼굴 제모' read as
+    # 톡스앤필 목동 30,000 → 100,000)
+    prev_ids = {k[0] for k in (prev_data or {}).get("keys", [])}
+    revived = ({kk.split("|")[0] for kk in prev} - prev_ids) if prev_data else set()
+    recl_now = (reclassified(prev_data, prev_rows, rows) | revived) & {k[0] for k in ALLK}
     # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
     recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != collected]
     same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == collected), [])
@@ -449,14 +535,10 @@ def main():
                 best[kk] = min(best.get(kk, 10 ** 12), int(r["sale"]))
     # weekly snapshot + changes against the previous one — dated by the collection, not the build: a rebuild without scraping
     # on a later day rewrites that collection's snapshot instead of adding an observation that never happened
-    hist = os.path.join(ROOT, "data2", "history")
-    os.makedirs(hist, exist_ok=True)
-    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < collected)
     save_snapshot(hist, collected, best)
     changes, prev_date = [], ""
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
-        prev = load_snapshot(prev_files[-1])
         # every id regrouped after that snapshot (this build or an earlier build of a later day / the same day): its
         # 'change' since the snapshot is a new mix of rows, not a price change
         regrouped = {k for d, ks in recl for k in ks if d > prev_date} | recl_now
@@ -471,6 +553,11 @@ def main():
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
+    moved = group_moved(prev_data, prev_rows, rows, gid)
+    achg = [c for c in achg if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved and (bkeys[c[1]], gkeys[c[0]], c[3]) not in moved]
+    # the same for '새로 생김' / '없어짐': a row the rules moved into or out of a group is not a new or a gone price (검증 7차)
+    anew = [c for c in anew if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved]
+    agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
@@ -478,7 +565,7 @@ def main():
         # snapshot are counted from it)
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl},
+                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "labelRules": labels.RULES},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,

@@ -19,8 +19,8 @@ data-meta.json:
               removed: [[brand, branch, name, price]], counts: {price, added, removed}} — lists capped at CAP each
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
-import argparse, datetime, hashlib, json, os, sys
-from collections import defaultdict
+import argparse, datetime, hashlib, json, os, re, sys
+from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
@@ -49,6 +49,16 @@ def resolved(data):
     return {k: sorted(v) for k, v in out.items()}
 
 
+def fetched(data):
+    """{(brand, branch): collected date} — '' when the build has no date for it"""
+    s, brands = data["s"], [b[0] for b in data["meta"]["brands"]]
+    return {(brands[b[0]], s[b[1]]): (s[b[7]] if len(b) > 7 and b[7] is not None else "") for b in data["branches"]}
+
+
+# labels that tell products apart (build2/clean.py KEEP_LABEL): they stay in the name when matching
+KEEP_LABEL = r"국산|수입|독일|미국|대표원장|원장|남|여|PKG|패키지|\d"
+
+
 def version_of(txt_bytes, updated):
     return f"{updated}.{hashlib.sha256(txt_bytes).hexdigest()[:8]}"
 
@@ -68,6 +78,35 @@ def changes(prev, cur, prev_version):
             else:                                            # several prices under one name: what left / what came
                 added += [[k[0], k[1], k[2], p] for p in y if p not in x]
                 removed += [[k[0], k[1], k[2], p] for p in x if p not in y]
+    # a price still at the branch under the same name — its kind changed (일반 → 구독권), its word breaks, a ' · ' or a leading label
+    # ('[옵션] …', '[EVENT] …') changed, or a duplicate row was folded into one written slightly differently — did not come or go: left
+    # out of both lists (2026-10-15 — 300 닥터에버스 '1년 무제한' rows and the C1 folds would read as gone and new on the 가격 변동
+    # screen and in price alerts). Labels that tell products apart ('[남성]', '[국산]') stay.
+    def same(b, br, name, p):
+        name = re.sub(r"\[옵션\]", "", name)
+        while True:
+            m = re.match(r"^\s*\[([^\]]*)\]\s*", name)
+            if not m or re.search(KEEP_LABEL, m.group(1)):
+                break
+            name = name[m.end():]
+        return (b, br, re.sub(r"[\s·]+", "", name).casefold(), p)
+    before = {same(k[0], k[1], k[2], p) for k, ps in a.items() for p in ps}
+    after = {same(k[0], k[1], k[2], p) for k, ps in b.items() for p in ps}
+    added = [r for r in added if same(*r) not in before]
+    removed = [r for r in removed if same(*r) not in after]
+    # an option split off or folded in by a rule (2026-10-15: the old fold put '여성 … · 가슴 전체' 490,000원 under the 남성 row; an
+    # add-on listed on two product pages kept one page's title): the same option words at the same price stay at the branch under
+    # another heading. A row counts as new / gone only when no row of that branch with the same last part and price is on the
+    # other side as well.
+    tail = lambda b, br, name, p: same(b, br, name.split(" · ")[-1], p)
+    tb, ta = Counter(tail(*([k[0], k[1], k[2], p])) for k, ps in a.items() for p in ps), \
+        Counter(tail(*([k[0], k[1], k[2], p])) for k, ps in b.items() for p in ps)
+    added = [r for r in added if not (tb[tail(*r)] and ta[tail(*r)] >= 2)]
+    removed = [r for r in removed if not (ta[tail(*r)] and tb[tail(*r)] >= 2)]
+    # a branch collected on the same date in both builds has the same prices: what differs there comes from the rules
+    da, db = fetched(prev), fetched(cur)
+    fresh = lambda r: not (da.get((r[0], r[1])) and da.get((r[0], r[1])) == db.get((r[0], r[1])))
+    price, added, removed = [r for r in price if fresh(r)], [r for r in added if fresh(r)], [r for r in removed if fresh(r)]
     return {"from": prev_version, "price": price[:CAP], "added": added[:CAP], "removed": removed[:CAP],
             "counts": {"price": len(price), "added": len(added), "removed": len(removed)}}
 
