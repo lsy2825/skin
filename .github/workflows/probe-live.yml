@@ -1,0 +1,39 @@
+name: probe-live
+# One-off live check of the deployed Workers (no checkout, no secrets, nothing is written anywhere): read-only requests and
+# refusals only — the metrics counter is never incremented (no POST with the allowed Origin). Runs only on this probe branch.
+on:
+  push:
+    branches: ["probe/live-check"]
+permissions: {}
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Live checks
+        run: |
+          APP=https://yoonsiljang.lsy2825.workers.dev
+          MET=https://yoonsiljang-metrics.lsy2825.workers.dev
+          ADM=https://yoonsiljang-admin.lsy2825.workers.dev
+          note() { echo "::notice title=$1::$2"; }
+          code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@"; }
+          hdr() { curl -sI --max-time 20 "$1" | tr -d '\r' | grep -iE "^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy):" | tr '\n' ' '; }
+          # public app
+          HTML=$(curl -s --max-time 20 "$APP/" | tr '\n' ' ')
+          note "app open" "GET / -> $(code "$APP/") ; title: $(echo "$HTML" | grep -o '<title>[^<]*</title>' | head -1)"
+          note "app headers" "$(hdr "$APP/")"
+          note "app CSP connect-src (meta tag in the served HTML)" "$(echo "$HTML" | grep -o 'connect-src[^;"]*' | head -1)"
+          note "app CSP has metrics address" "$(echo "$HTML" | grep -c 'connect-src[^;"]*yoonsiljang-metrics.lsy2825.workers.dev') (1 = yes)"
+          note "app sw.js cache name" "$(curl -s --max-time 20 "$APP/sw.js" | grep -o 'const VER = "[^"]*"' | head -1)"
+          note "app config.js flags" "$(curl -s --max-time 20 "$APP/config.js" | grep -oE '(metricsApi|metrics|alertsApi|pushPublicKey)[^,;]{0,70}' | head -6 | tr '\n' '|')"
+          # metrics Worker: health, preflight from the app origin, refusals (never a counted POST)
+          note "metrics /health" "$(curl -s --max-time 20 "$MET/health") (HTTP $(code "$MET/health"))"
+          note "metrics preflight from the app origin" "$(curl -s -o /dev/null -D - --max-time 20 -X OPTIONS -H "Origin: $APP" -H 'Access-Control-Request-Method: POST' "$MET/v1/m" | tr -d '\r' | grep -iE '^(HTTP|access-control-allow-origin|access-control-allow-credentials)' | tr '\n' ' ')"
+          note "metrics POST from another origin (expect 403, nothing counted)" "HTTP $(code -X POST -H 'Origin: https://evil.example' -H 'Content-Type: text/plain' --data '{"s":"open"}' "$MET/v1/m")"
+          note "metrics POST without Origin (expect 403, nothing counted)" "HTTP $(code -X POST -H 'Content-Type: text/plain' --data '{"s":"open"}' "$MET/v1/m")"
+          note "metrics daily view without Access (expect 403)" "HTTP $(code "$MET/v1/m/daily")"
+          note "metrics unknown path (expect 404)" "HTTP $(code "$MET/nope")"
+          # admin Worker: closed until Access is configured
+          note "admin / (expect 403 until Access is set)" "HTTP $(code "$ADM/") ; $(hdr "$ADM/")"
+          note "admin /sw.js (expect 404)" "HTTP $(code "$ADM/sw.js")"
+          note "admin /data.json (expect 403)" "HTTP $(code "$ADM/data.json")"
