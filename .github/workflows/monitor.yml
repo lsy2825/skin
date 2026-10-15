@@ -41,6 +41,16 @@ jobs:
         run: |
           H=$(curl -sSI --max-time 20 https://yoonsiljang.lsy2825.workers.dev/ | tr -d '\r' | grep -iE '^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy):' | tr '\n' ' ')
           echo "::notice title=app security headers::${H:-none seen}"
+      # Which Telegram secret is missing (names only, never values) — the usual slip is the Variables tab or a typo.
+      - name: Telegram secrets present?
+        env:
+          HAS_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN != '' }}
+          HAS_CHAT: ${{ secrets.TELEGRAM_CHAT_ID != '' }}
+          VAR_TOKEN: ${{ vars.TELEGRAM_BOT_TOKEN != '' }}
+          VAR_CHAT: ${{ vars.TELEGRAM_CHAT_ID != '' }}
+        run: |
+          s() { [ "$1" = "true" ] && echo 있음 || echo 없음; }
+          echo "::notice title=텔레그램 secret::Repository secret TELEGRAM_BOT_TOKEN $(s "$HAS_TOKEN") · TELEGRAM_CHAT_ID $(s "$HAS_CHAT") / Variables 탭에 같은 이름: TOKEN $(s "$VAR_TOKEN") · CHAT_ID $(s "$VAR_CHAT")"
       - name: Check and alert (Telegram)
         env:
           GITHUB_TOKEN: ${{ github.token }}
