@@ -111,7 +111,6 @@ test("VER is pc-v28 and every SHELL file exists under app/ (one missing file bre
   for (const f of w.SHELL) {
     if (f === "./") continue;
     // domain/push.js is being written in parallel (B6, app side); until it lands only its place in SHELL is checked above
-    if (f === "domain/push.js" && !fs.existsSync(path.join(APP, f))) continue;
     assert.ok(fs.existsSync(path.join(APP, f)), `SHELL names a missing file: ${f}`);
   }
 });

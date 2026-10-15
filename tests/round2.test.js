@@ -153,8 +153,14 @@ test("R11: the CSP allows exactly the origins the config calls (a metrics addres
   // the alerts Worker (6.0 contract 1, B6): the same rules
   const withAlerts = cfg.replace('alertsApi: ""', 'alertsApi: "https://alerts.yoonsiljang.example/"');
   assert.match(check(html, withAlerts).problems.join(" "), /connect-src is missing the alertsApi origin https:\/\/alerts\.yoonsiljang\.example/);
-  assert.equal(check(html.replace("connect-src 'self'", "connect-src 'self' https://alerts.yoonsiljang.example"), withAlerts).ok, true);
+  assert.equal(check(html.replace("connect-src 'self'", "connect-src 'self' https://alerts.yoonsiljang.example"), withAlerts).problems.some((x) => /connect-src/.test(x)), false);
   assert.match(check(html, cfg.replace('alertsApi: ""', 'alertsApi: "http://alerts.yoonsiljang.example"')).problems.join(" "), /alertsApi must be https/);
+  // half set up (address without key) or a key the app refuses: the push button would never show — caught
+  const csp = html.replace("connect-src 'self'", "connect-src 'self' https://alerts.yoonsiljang.example");
+  const KEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString("base64url");
+  assert.match(check(csp, withAlerts).problems.join(" "), /push is set up but the app would hide it/);
+  assert.equal(check(csp, withAlerts.replace('pushPublicKey: ""', `pushPublicKey: "${KEY}"`)).ok, true);
+  assert.match(check(csp, withAlerts.replace('pushPublicKey: ""', 'pushPublicKey: "not-a-key"')).problems.join(" "), /push is set up but the app would hide it/);
   assert.equal(/commerce|apiBase/.test(cfg), false, "the credit/commerce settings are gone (6.0: no credits)");
 });
 

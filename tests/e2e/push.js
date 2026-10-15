@@ -4,7 +4,7 @@
 //  2. set up (config.js and the page's CSP rewritten in the test only; the browser's push service and the Worker faked):
 //     nothing is asked before the tap; the tap asks for the permission first, then subscribes with the public key and
 //     POSTs {subscription, rules}; removing the alert PUTs the new rules to /v1/push/rules/{id}; '끄기' DELETEs and
-//     unsubscribes; a refused permission sends nothing
+//     unsubscribes; a refused permission sends nothing; a Worker that fails takes back the subscription just made
 // The service worker's push and notificationclick handlers are unit-tested (tests/sw.test.js): headless Chromium has no
 // push service and cannot click a notification.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/push.js
@@ -17,7 +17,7 @@ const API = 'https://alerts.example.test';   // a made-up address: answered by t
 const KEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');   // a VAPID-shaped public key
 const SUB_ID = 'sub_12345678';
 
-async function start(b, cfg, answer = 'granted') {
+async function start(b, cfg, answer = 'granted', postStatus = 200) {
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const hits = [];
   // the browser side faked: Notification (its prompt), the service worker registration and its push manager
@@ -45,7 +45,7 @@ async function start(b, cfg, answer = 'granted') {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, PUT, DELETE', 'access-control-allow-headers': 'content-type' };
     await ctx.route(`${API}/**`, (route) => { const m = route.request().method();
       if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
-      if (m === 'POST') return route.fulfill({ status: 200, headers: { ...cors, 'content-type': 'application/json' }, body: JSON.stringify({ id: SUB_ID }) });
+      if (m === 'POST') return route.fulfill({ status: postStatus, headers: { ...cors, 'content-type': 'application/json' }, body: postStatus === 200 ? JSON.stringify({ id: SUB_ID }) : '{"error":"down"}' });
       return route.fulfill({ status: 204, headers: cors, body: '' }); });
   }
   const p = await ctx.newPage();
@@ -117,5 +117,14 @@ const log = (p) => p.evaluate(() => window.__push);
     const l = await log(p);
     ok('거절: 권한 1번 묻고 구독·요청 0, 화면은 브라우저 설정 안내', l.perm === 1 && l.subscribe.length === 0 && hits.length === 0 && /브라우저 설정/.test(await p.locator('#main .nfp').innerText()), JSON.stringify(l));
     ok('거절: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 4) the Worker fails: the browser subscription made by the tap is taken back (nothing can push while the screen says off)
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 500);
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const l = await log(p);
+    ok('서버 실패: 구독 1 → POST 실패 → 그 구독 해지, id 없음, 다시 받기 버튼', l.subscribe.length === 1 && l.unsub === 1 && hits.filter((x) => x.m === 'POST').length === 1
+      && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')) && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify(l));
+    ok('서버 실패: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();

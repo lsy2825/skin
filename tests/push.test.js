@@ -50,22 +50,26 @@ test("rules from the phone's alerts: the contract's four kinds, region '전국' 
     { type: "target", k: "X01", reg: "부산", target: 50000 },
     { type: "newlow", k: "X02", reg: "" },
     { type: "newmatch", k: "X03", reg: "서울" },
+    { type: "newmatch", k: "X04", reg: "전국" },
+    { type: "watch", k: "T9GONE1", reg: "서울" },
     { type: "cartdrop", cart: "견적 1", target: 300000 },
     { type: "target", row: { n: "리쥬란 2cc", br: "a|b" }, target: 100000 },
     { type: "expiring", row: { n: "보톡스 50U", br: "c|d" } },
     { type: "expiring", row: { n: "없는 상품", br: "e|f" } },
   ];
   const rowKeys = (row) => (row.n === "보톡스 50U" ? [{ key: "X05", region: "경기" }, { key: "X06", region: "경기" }] : []);
-  const r = P.rulesOf(alerts, rowKeys);
+  const r = P.rulesOf(alerts, rowKeys, (k) => k !== "T9GONE1");
   assert.deepEqual(r.rules, [
     { kind: "watch", key: "X24", region: "수도권" }, { kind: "target", key: "X24", max: 200000, region: "수도권" }, { kind: "newmatch", key: "X24", region: "수도권" },
     // X12: every change kind off, its 목표가 has no amount → nothing
     { kind: "target", key: "X01", max: 50000, region: "부산" },
     { kind: "watch", key: "X02" },
     { kind: "newmatch", key: "X03", region: "서울" },
+    { kind: "newmatch", key: "X04" },
+    // T9GONE1: the comparison is gone (no successor) — not sent
     { kind: "expiring", key: "X05", region: "경기" }, { kind: "expiring", key: "X06", region: "경기" },
   ]);
-  assert.equal(r.local, 3, "견적 합계, 지점 상품 목표가, 비교 키 없는 상품 — 앱을 열 때만");
+  assert.equal(r.local, 4, "견적 합계, 지점 상품 목표가, 비교 키 없는 상품, 없어진 비교 — 앱을 열 때만");
   assert.equal(r.cut, 0);
   for (const x of r.rules) { assert.ok(P.KINDS.includes(x.kind)); assert.deepEqual(Object.keys(x).filter((k) => !["kind", "key", "max", "region"].includes(k)), []); }
 });
@@ -87,6 +91,10 @@ test("the rules' fingerprint changes with the rules and only then; the kept stat
   assert.equal(P.hash(a), P.hash(JSON.parse(JSON.stringify(a))));
   assert.notEqual(P.hash(a), P.hash(b));
   assert.notEqual(P.hash([]), P.hash(a));
+  // same length, different content: a changed key, region or amount is sent again
+  assert.notEqual(P.hash([{ kind: "watch", key: "X24" }]), P.hash([{ kind: "watch", key: "X25" }]));
+  assert.notEqual(P.hash([{ kind: "target", key: "X24", max: 100000 }]), P.hash([{ kind: "target", key: "X24", max: 200000 }]));
+  assert.notEqual(P.hash([{ kind: "watch", key: "X24", region: "서울" }]), P.hash([{ kind: "watch", key: "X24", region: "부산" }]));
   assert.deepEqual(P.cleanState({ id: "id_12345678", ep: "https://x", h: "1:a", extra: 1 }), { id: "id_12345678", ep: "https://x", h: "1:a" });
   for (const bad of [null, {}, { id: "x", ep: "https://x", h: "1" }, { id: "id_12345678", ep: 3, h: "1" }]) assert.equal(P.cleanState(bad), null);
 });

@@ -35,6 +35,9 @@ function check(htmlText, cfgText) {
   // the app's own rule for the address (app/domain/metrics.js): with metrics on, an address it refuses means nothing is sent
   if (cfg.metrics === true && !require("../app/domain/metrics.js").endpoint(cfg))
     problems.push("metrics is on but metricsApi is not a plain https address (empty, a query, fragment or login) — the app sends nothing");
+  // push (B6): half set up, or set up with values the app refuses (app/domain/push.js), means no push button at all
+  if ((cfg.alertsApi || cfg.pushPublicKey) && !require("../app/domain/push.js").enabled(cfg))
+    problems.push("push is set up but the app would hide it: alertsApi must be a plain https address and pushPublicKey a 65-byte VAPID public key (base64url) — both together");
   if (cfg.supabaseUrl && !allows(connect, origin(cfg.supabaseUrl))) problems.push(`connect-src is missing ${origin(cfg.supabaseUrl)}`);
   const used = new Set([...Object.values(apis), ...KNOWN_ORIGINS]);
   for (const x of connect) if (/workers\.dev|yoonsiljang/.test(x) && !used.has(x)) problems.push(`connect-src allows ${x} but no config.js address uses it`);

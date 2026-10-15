@@ -1308,20 +1308,28 @@
   const rowPushKeys = (row) => { const sid = SI.get(row.n), b = BK.get(row.br); if (sid == null || b == null) return [];
     const i = (byName.get(sid) || []).find((x) => ROWS[x][0] === b);
     return i == null ? [] : (S[ROWS[i][7]] || "").split(" ").filter(Boolean).map((key) => ({ key, region: BR[b].region })); };
-  const pushRules = () => Push.rulesOf(st.alerts, rowPushKeys);
+  const pushRules = () => Push.rulesOf(st.alerts, rowPushKeys, (k) => KI[k] != null);
   const pushFetch = (req) => fetch(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body, credentials: "omit", cache: "no-store" });
   // the registration, or null: navigator.serviceWorker.ready never settles when registering failed
   const swReg = () => Promise.race([navigator.serviceWorker.getRegistration().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
   async function pushSubscribe() {
     const reg = await swReg();
     if (!reg || !reg.pushManager) throw new Error("no service worker");
-    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Push.keyBytes(CFG.pushPublicKey) });
-    const { rules } = pushRules(), req = Push.subscribeReq(CFG, sub, rules);
-    if (!req) throw new Error("unusable subscription");
-    const res = await pushFetch(req);
-    const id = res.ok ? Push.idOf(await res.json().catch(() => null)) : null;
-    if (!id) throw new Error(`subscribe ${res.status}`);
-    store.set("push", { id, ep: sub.endpoint, h: Push.hash(rules) });
+    const had = await reg.pushManager.getSubscription();
+    const sub = had || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Push.keyBytes(CFG.pushPublicKey) });
+    try {
+      const { rules } = pushRules(), req = Push.subscribeReq(CFG, sub, rules);
+      if (!req) throw new Error("unusable subscription");
+      const res = await pushFetch(req);
+      const id = res.ok ? Push.idOf(await res.json().catch(() => null)) : null;
+      if (!id) throw new Error(`subscribe ${res.status}`);
+      store.set("push", { id, ep: sub.endpoint, h: Push.hash(rules) });
+    } catch (e) {
+      // the Worker did not take it (or its answer was lost): the subscription made just now is taken back, so nothing can
+      // push to this phone while the screen says off (a row the Worker did keep gets 410 on its next send and goes)
+      if (!had) await sub.unsubscribe().catch(() => {});
+      throw e;
+    }
   }
   async function pushUnsubscribe() {
     const s = pushState(), req = s && Push.unsubscribeReq(CFG, s.id);
@@ -1343,7 +1351,10 @@
       if (h === s.h) return;
       try {
         const r = await pushFetch(Push.rulesReq(CFG, s.id, rules));
-        if (r.ok) store.set("push", { ...s, h });
+        // '끄기' (or a new subscription) may have happened while this was on its way: write only for the same id
+        const now = pushState();
+        if (!now || now.id !== s.id) return;
+        if (r.ok) store.set("push", { ...now, h });
         else if (r.status === 404 || r.status === 410) { store.set("push", null); render(); }
       } catch (e) { /* offline: the next change or the next start sends them */ }
     }, 600);
@@ -1351,15 +1362,23 @@
   // at start: the browser may have dropped the subscription (permission taken back) or renewed it — follow it
   async function pushCheck() {
     const s = pushState();
-    if (!PUSH || !s || !pushSupported()) return;
+    if (!PUSH || !pushSupported()) return;
     try {
+      if (!s) {
+        // subscribed in this browser but not known here (an earlier '받기' whose answer was lost): take it back
+        if (Notification.permission !== "granted") return;
+        const reg = await swReg(), sub = reg && reg.pushManager ? await reg.pushManager.getSubscription() : null;
+        if (sub) await sub.unsubscribe().catch(() => {});
+        return;
+      }
       if (Notification.permission !== "granted") { await pushUnsubscribe(); render(); return; }
       const reg = await swReg();
       if (!reg || !reg.pushManager) return;   // not registered yet: next start
       const sub = await reg.pushManager.getSubscription();
       if (!sub) { await pushUnsubscribe(); render(); return; }
       if (sub.endpoint !== s.ep) {
-        store.set("push", null); await pushSubscribe();
+        // renewed by the browser: POST the new one first; the old id goes only once that worked (offline: next start)
+        await pushSubscribe();
         const old = Push.unsubscribeReq(CFG, s.id); if (old) pushFetch(old).catch(() => {});
         return;
       }
@@ -1404,7 +1423,8 @@
           s.on.target ? h("label", { class: "flabel" }, "목표가 (이 금액 이하가 되면)", tgt) : null) : null,
         s.type === "target" || s.type === "cartdrop" ? h("label", { class: "flabel" }, s.type === "cartdrop" ? "이 금액 이하가 되면 (비우면 지금보다 내리면)" : "이 금액 이하가 되면", tgt) : null,
         h("div", { class: "sub", style: "margin-top:8px" }, "매주 실제로 모은 가격끼리 비교해서, 앱을 열 때 관심 탭과 위쪽 종 아이콘으로 알려요. 같은 변화는 다시 알리지 않아요. 값은 병원 표시가 기준이고, 화면의 부가세·지역 설정을 바꿔도 알림이 생기지 않아요."),
-        h("div", { class: "tiny", style: "margin-top:4px" }, PUSH ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
+        h("div", { class: "tiny", style: "margin-top:4px" }, PUSH ? (base.k || s.type === "expiring" ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
+          : "이 알림은 앱을 열 때만 알려요(앱이 닫혀 있을 때 오는 알림에는 이 종류가 없어요).")
           : "휴대폰 알림을 켜 두면 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
         h("button", { class: "btn", type: "button", style: "width:100%;margin-top:14px", onclick: () => {
           const v = Math.round(+tgt.value || 0);
@@ -4564,6 +4584,7 @@
     st.alerts = store.get("alerts", []); st.notes = store.get("notes", []);
     st.carts = loadCarts(); st.ci = Math.min(store.get("ci", 0) || 0, st.carts.length - 1);
     cartQ.clear(); clearTimeout(cartPush);
+    pushSync();   // the push subscription is this phone's: the rules follow whoever uses it now
   }
   // who is using the phone changed (round-2 R01). A token refresh of the same account is not a change and merges nothing.
   let lastUid = App.scope() ? App.scope().slice(2, -1) : null, syncGen = 0;

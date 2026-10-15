@@ -67,9 +67,11 @@
   //   시술 목표가 → target(max) · 시술 새 최저가 → watch (the nearest kind: a new low is a price change) · 시술 파는 지점 → newmatch
   //   지점 상품 '이벤트 종료 3일 전' → expiring for each comparison key of that product, in that branch's 시·도
   // What stays on the phone only (no matching kind): 내 견적 합계(cartdrop) and a branch product's 목표가.
-  // rowKeys(row) → [{key, region}] is the app's lookup for a branch product. Duplicates go; a target keeps the highest max
-  // per key and region; more than 20 are cut from the end (the newest alerts are last).
-  function rulesOf(alerts, rowKeys) {
+  // rowKeys(row) → [{key, region}] is the app's lookup for a branch product; known(key) says the comparison still exists
+  // (an alert on a key that is gone and has no successor never rings in the app either — it is not sent, and counts as
+  // local). Duplicates go; a target keeps the highest max per key and region; more than 20 are cut from the end (the
+  // newest alerts are last).
+  function rulesOf(alerts, rowKeys, known) {
     const out = [], seen = new Map();
     let local = 0;
     const add = (r) => {
@@ -81,7 +83,8 @@
     };
     for (const a of Array.isArray(alerts) ? alerts : []) {
       if (!a || typeof a !== "object") continue;
-      if (a.k) {
+      if (a.k && typeof known === "function" && !known(a.k)) local++;
+      else if (a.k) {
         const reg = regionOf(a.reg), on = a.on || {};
         if (a.type === "watch") {
           if (["drop", "lowbranch", "lowended", "recheck"].some((t) => on[t] !== false)) add(rule("watch", a.k, reg));
