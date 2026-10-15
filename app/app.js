@@ -2369,16 +2369,17 @@
   const kbFoot = (e) => h("p", { class: "tiny" }, `${reviewed(e) ? "" : "시술 설명은 의료진 검수 전이에요. "}${DISCLAIM}`);
   // short card on the compare tab: one line + purpose + how it differs, review state, quick view
   // compact: on top of the compare screen right under the picker — the one-liner shows, the rest folds
+  // hospitals' own words from product names (f.desc: '카톡플친 적용가' …) are promotion, not an explanation: not shown
+  // (audit U5, E1). Without a knowledge entry there is no box.
   function guideBox(f, compact = false) {
     const e = kbOf(f);
-    if (!e && !f.desc.length) return null;
+    if (!e) return null;
     if (compact) return h("div", { class: "guide gtop" },
       h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("b", {}, `${f.name}, 뭐예요?`), h("span", { class: "sp" }),
         e ? h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f) }, "자세히") : null),
-      e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`),
-      e && (e.method || f.desc.length) ? h("details", { class: "fold small" }, h("summary", {}, "더 보기 · 방식·병원 설명·검수 상태"),
-        e.method ? h("p", { class: "sub" }, e.method) : null,
-        f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
+      h("p", {}, `${e.one_liner} ${e.purpose}`),
+      e.method ? h("details", { class: "fold small" }, h("summary", {}, "더 보기 · 방식·검수 상태"),
+        h("p", { class: "sub" }, e.method),
         h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e)),
         h("button", { class: "linkbtn", type: "button", style: "margin-top:6px", onclick: () => nav(`guide?c=${encodeURIComponent(f.cat)}`) }, "시술 사전", icon("chevron-right", "xs"))) : null,
       e ? kbFoot(e) : h("p", { class: "tiny" }, "병원이 상품 이름에 적은 설명이에요."));
@@ -2388,7 +2389,6 @@
         h("button", { class: "linkbtn", type: "button", onclick: () => nav(`guide?c=${encodeURIComponent(f.cat)}`) }, "시술 사전", icon("chevron-right", "xs"))),
       e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : null,
       e && e.method ? h("p", { class: "sub" }, e.method) : null,
-      f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
       e ? h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e)) : null,
       e ? kbFoot(e) : h("p", { class: "tiny" }, "병원이 상품 이름에 적은 설명이에요."));
   }
@@ -2512,7 +2512,6 @@
           h("span", { class: "sub", style: "flex:none" }, `${members ? new Set(members.flatMap((m) => m.vs.flatMap((v) => [...byKB[v.k].keys()]))).size : f.n}곳`),
           members ? null : h("button", { class: "btn sm soft", type: "button", style: "flex:none", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, "가격 비교")),
         e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : null, e && e.method ? h("p", { class: "sub" }, e.method) : null,
-        f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
         e ? h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, members ? null : f) }, "부작용·주의사항·근거 보기")) : null,
         members ? h("div", { class: "chips wrapc", style: "margin-top:8px" }, members.map((m) => h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${KEYS[m.main].id}`) }, m.name))) : null);
     };
@@ -2616,7 +2615,7 @@
       h("div", { class: "row", style: "gap:6px" }, h("h3", { style: "margin:0" }, key.label), h("span", { class: "sp" }), h("span", { class: "sub" }, `${f.n}곳에서 팔아요`)),
       r.spec && !r.specHonored ? h("p", { class: "tiny" }, `'${r.spec}' 묶음은 없어서 가장 많이 파는 규격으로 보여줘요.`) : null,
       priceLine(p, r.where),
-      e ? h("p", { style: "margin:8px 0 0" }, `${e.one_liner} ${e.purpose}`) : f.desc.length ? h("p", { class: "sub", style: "margin:8px 0 0" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
+      e ? h("p", { style: "margin:8px 0 0" }, `${e.one_liner} ${e.purpose}`) : null,
       e ? h("div", { class: "row", style: "gap:4px;margin-top:4px" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
       h("div", { class: "row", style: "gap:6px;margin-top:10px;flex-wrap:wrap" },
         h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("chart-column", "sm"), "지점별 가격 비교"),
@@ -3878,7 +3877,7 @@
       h("div", { class: "sub" }, "이름이 비슷해도 놓는 곳과 목적이 달라요. 누르면 지점별 가격을 비교해요."),
       h("ul", { class: "list", style: "margin-top:4px" }, fams.slice(0, 12).map((f) => { const e = kbOf(f), top = ranking(f.main, "price")[0];
         return h("li", { class: "rk" }, h("button", { class: "item", type: "button", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, h("span", { class: "t" }, f.name),
-          h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, e ? e.purpose : f.desc[0] || `${f.cat} · ${f.n}곳`),
+          h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, e ? e.purpose : `${f.cat} · ${f.n}곳`),
           e && e.areas ? h("span", { class: "m" }, `부위: ${e.areas}`) : null),
           e ? h("button", { class: "infob", type: "button", "aria-label": `${f.name} 설명 보기`, onclick: () => kbSheet(e, f) }, icon("info")) : null); })),
       h("button", { class: "linkbtn", type: "button", style: "margin-top:8px", onclick: () => nav(`guide?q=${encodeURIComponent(qs)}`) }, fams.length > 12 ? `시술 사전에서 ${fams.length}가지 모두 보기` : "시술 사전에서 자세히 보기", icon("chevron-right", "xs"))));
