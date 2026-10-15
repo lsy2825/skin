@@ -2829,17 +2829,27 @@
   // 6.0 design ①: the sticky header — where am I (분야 › 시술 › 규격), the procedure in big type, ONE basis line that every
   // number below follows, the middle price, '담기' naming what it adds, and '⋯' for the tools the bottom bar used to hold
   function cmpHead(k, fam, rk, N) {
-    // 분야·시술 open '다른 시술 고르기'; 규격 goes to the spec steps. Focus follows (the button's name promises the move)
-    const jump = (other) => { const el = $("#cmppick"); if (!el) return; const d = other ? el.querySelector("details.cmpother") : null; if (d && !d.open) d.open = true;
-      el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-      const t = d ? d.querySelector("summary") : el.querySelector(".vchip[aria-checked=true], .vchip[aria-pressed=true], h3"); if (t) { if (!t.matches("button, summary")) t.tabIndex = -1; t.focus({ preventScroll: true }); } };
-    const seg = (t, other) => h("button", { type: "button", onclick: () => jump(other), "aria-label": `${t} — ${other ? "다른 시술 고르기" : "규격 바꾸기"}로 가기` }, t);
+    // each part of the path goes to its own control: 분야 → the category chips and 시술 → the treatment list (both in '다른 시술
+    // 고르기', opened), 규격 → the spec steps. Focus follows (the button's name promises the move) and the place flashes once,
+    // so a second tap with the picker already in view still shows where it went
+    const jump = (to) => { const el = $("#cmppick"); if (!el) return; const d = to === "spec" ? null : el.querySelector("details.cmpother"); if (d && !d.open) d.open = true;
+      (d || el).scrollIntoView({ behavior: smooth(), block: "start" });
+      const t = to === "cat" && d ? d.querySelector(".chip[aria-pressed=true]") || d.querySelector(".chip") || d.querySelector("summary")
+        : to === "fam" && d ? d.querySelector("select") || d.querySelector("summary")
+        : el.querySelector(".vchip[aria-checked=true], .vchip[aria-pressed=true], h3");
+      if (!t) return;
+      if (!t.matches("button, summary, select")) t.tabIndex = -1;
+      t.focus({ preventScroll: true });
+      const box = to === "cat" ? t.closest(".chips") || t : to === "fam" ? t.closest(".keyhead") || t : t;
+      box.classList.remove("flash"); void box.offsetWidth; box.classList.add("flash"); setTimeout(() => box.classList.remove("flash"), 1300); };
+    const SEG_T = { cat: "다른 분야 고르기", fam: "다른 시술 고르기", spec: "규격 바꾸기" };
+    const seg = (t, to) => h("button", { type: "button", onclick: () => jump(to), "aria-label": `${t} — ${SEG_T[to]}로 가기` }, t);
     const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, "›");
     const basis = N ? `${regionName()} · ${N.ptop ? "조건 없는 가격" : "조건부 포함"} · ${N.prices.length}곳 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`
       : `${regionName()} · 이 조건의 가격이 없어요`;
     return h("section", { class: "cmphead", "aria-label": "지금 비교하는 시술" },
-      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, true), sep(), seg(fam ? fam.f.name : k.label, true),
-        fam && fam.label !== k.label && fam.label !== fam.f.name ? [sep(), seg(fam.label, false)] : null),
+      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, "cat"), sep(), seg(fam ? fam.f.name : k.label, "fam"),
+        fam && fam.label !== k.label && fam.label !== fam.f.name ? [sep(), seg(fam.label, "spec")] : null),
       h("div", { class: "tline" }, h("h2", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
       h("div", { class: "basis" }, basis),
       h("div", { class: "hrow" }, h("div", { class: "hmed num" }, N ? [h("span", {}, "중간값"), won(N.med)] : null),

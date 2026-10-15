@@ -942,6 +942,10 @@ details.fold.small > summary { cursor: pointer; }
 .cmphead .crumb button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmphead .crumb button { border: 0; background: none; padding: 0 4px; min-height: 36px; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .cmphead .crumb .sep { color: var(--faint); }
+/* where a path button took you: one soft ring that fades (움직임 꺼짐 = html.calm: a plain ring for the same time) */
+.flash { border-radius: 10px; animation: flash 1.2s ease-out; }
+@keyframes flash { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
+html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-offset: 2px; }
 .cmphead .cmpt { margin: 0; font-size: 22px; font-weight: 760; letter-spacing: -0.035em; line-height: 1.25; min-width: 0; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .cmphead .tline { display: flex; align-items: center; gap: 8px; }
@@ -964,9 +968,8 @@ details.fold.small > summary { cursor: pointer; }
 .morelist { width: 100%; min-height: 48px; border: 0; border-top: 1px solid var(--line-soft); background: none; color: var(--accent); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; }
 .actsheet { display: grid; gap: 4px; }
 .actsheet button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: inherit; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
-/* targets the header's path jumps to land below the sticky top bar + compare header */
-#cmppick, #clinics, #cmpmore, #cmpabout { scroll-margin-top: calc(var(--top-h) + var(--cmph, 190px) + 8px); }
-/* focus moving up the list must not land under the sticky header (WCAG 2.4.11): the header's real height, set by app.js */
+/* the header's path jumps and focus moving up the list land below the sticky top bar + compare header (WCAG 2.4.11): the
+   header's real height, set by app.js. One offset only — a scroll-margin on the targets as well would add up to twice it */
 html.cmp-on { scroll-padding-top: calc(var(--top-h) + var(--cmph, 190px) + 8px); }
 /* landscape phones / big text: a sticky header would leave almost nothing to read — it scrolls with the page */
 @media (max-height: 500px) { .cmphead { position: static; } html.cmp-on { scroll-padding-top: var(--top-h); } }
