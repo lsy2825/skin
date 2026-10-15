@@ -2301,7 +2301,7 @@
         h("p", { class: "sub" }, `${md(D.meta.updated)} 수집 · ${br.length}개 체인 ${BR.length}곳. 전국 모든 피부과가 아니에요 — 동네 의원 대부분은 아직 없어요.`),
         h("ul", { class: "plain" }, br.map((x) => h("li", {}, h("b", {}, `${x.name} ${x.n}곳`), h("span", { class: "sub" }, ` — ${x.how}`))))),
       h("div", { class: "card" }, h("h3", {}, "이해관계"),
-        h("p", { class: "sub" }, "지금 이 앱은 병원·제약사·장비 회사에서 받는 돈이 없어요. 크레딧 화면은 시연이고 실제 결제가 아니에요. 수익 방식이 정해지면(이용자 결제, 병원 대상 서비스 등) 여기에 날짜와 함께 적어요.")),
+        h("p", { class: "sub" }, "지금 이 앱은 병원·제약사·장비 회사에서 받는 돈이 없어요. 수익 방식이 정해지면 여기에 날짜와 함께 적어요.")),
       h("div", { class: "card" }, h("h3", {}, "정정·삭제 요청"),
         h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 근거 화면의 '신고'(가격 오류 신고)로 받아요. 지금은 GitHub 공개 글로 접수돼요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
         h("button", { class: "btn line block", type: "button", onclick: () => nav("about") }, "데이터 상태와 출처 자세히", icon("chevron-right", "sm"))));
@@ -4547,7 +4547,7 @@
           h("span", { class: "t row" }, b != null ? bdot(b) : null, brLabel(br) || "지점 미입력"), h("span", { class: "p num" }, `${v.n}회`),
           h("span", { class: "m" }, h("span", {}, `마지막 ${v.last}`), v.sum ? h("span", {}, `합계 ${won(v.sum)}`) : null, b == null ? h("span", {}, "앱 목록에 없는 곳") : null))); }))));
     // more pages
-    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["wallet", "wallet", "크레딧", "시연 지갑 · 충전 · 이용 내역 · 광고 없는 기간"], ["premium", "sparkles", "프리미엄 도구", "이벤트·견적 읽기, 보고서, 고급 계획 (크레딧)"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, ic, l, s]) =>
+    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, ic, l, s]) =>
       h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(v) }, h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, l), h("span", { class: "sub", style: "display:block;font-weight:500" }, s))), icon("chevron-right", "sm")))))));
     // ---- 내 설정 (what this phone shows) — separate from the data information below
     const theme = store.get("theme", "auto");
@@ -4598,7 +4598,7 @@
       h("ul", { class: "list" }, shown.sort((a, b) => a.brand - b.brand || a.name.localeCompare(b.name, "ko")).map((b) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${b.i}`) },
         h("span", { class: "t row" }, bdot(b.i), bname(b.i)), h("span", { class: "sub" }, dist(b.i) != null ? km(dist(b.i)) : b.region), h("span", { class: "m" }, b.addr)))))));
     if (A && A.user) box.append(h("div", { class: "card" }, h("h3", {}, "계정"),
-      h("div", { class: "sub", style: "margin-top:6px" }, "탈퇴하면 계정의 프로필·기록·장바구니·관심·알림과 보고서 내용, 공유 링크가 바로 지워져요. 이 휴대폰에 남은 이 계정의 기록도 함께 지워요. 결제·크레딧 거래 기록이 있으면 그 기록만 법이 정한 기간 동안 이름·연락처 없이 보관해요(보관 기간은 확정 전)."),
+      h("div", { class: "sub", style: "margin-top:6px" }, "탈퇴하면 계정의 프로필·기록·장바구니·관심·알림이 바로 지워져요. 이 휴대폰에 남은 이 계정의 기록도 함께 지워요."),
       h("button", { class: "btn sm gray", type: "button", style: "margin-top:10px", onclick: async () => {
         if (!confirm("정말 탈퇴할까요? 계정의 개인 정보가 모두 지워지고 되돌릴 수 없어요.")) return;
         const uid = A.user.id;
@@ -4634,7 +4634,7 @@
     if (partial()) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }   // totals need every row
     const items = cur().items.filter(itemOk);
     // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings and the map don't show it
-    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map", "wallet", "premium", "report", "admin"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
+    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
     document.body.classList.add("has-fcart");
     const plan = cartPlan(items), best = plan.full[0];
     el.replaceChildren(icon("shopping-bag", "sm"), FLAGS.lowestHighlight ? `${items.length}개 · ${best ? `한 곳 ${won(best.total)}부터` : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`}`
@@ -4677,7 +4677,7 @@
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
-      map: "explore", branch: "explore", about: "me", principles: "me", ops: "me", wallet: "me", premium: "me", report: "me", admin: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
+      map: "explore", branch: "explore", about: "me", principles: "me", ops: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     // one screen failing must not leave the previous one up or a blank page (round-2 D5): show what happened and a way back
     let node = partial() && view !== "home" ? fullWait() : null;
@@ -4703,36 +4703,14 @@
   // the top bar gets a hairline once the page scrolls under it
   window.addEventListener("scroll", () => $("#top").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
 
-  // 크레딧·프리미엄 화면 (commerce.js). The price context for reports is built once per data version from the rows already loaded.
-  let pctx = null, pctxFor = "";
-  const premiumCtx = () => {
-    const v = `${D.meta.updated}|${today()}`;
-    if (!pctx || pctxFor !== v) {
-      pctx = PriceCtx.build({ rows: ROWS, S, branches: D.branches, keys: D.keys, trend: D.trend, updated: D.meta.updated, today: today(), brands: D.meta.brands,
-        price: (r) => r[14], live: (r) => !r[15] });           // r[14] = the clinic's listed price, r[15] = 0 live (see applyData)
-      pctxFor = v;
-    }
-    return pctx;
-  };
-  // the commerce screens' scripts load on first use (5.1 performance: the free core does not download or parse them at start)
-  const COMMERCE_JS = ["domain/offerparse.js", "domain/match.js", "domain/pricectx.js", "domain/premium.js", "domain/jomiqa.js", "domain/demowallet.js", "domain/economics.js", "commerce.js"];
-  let commerceP = null;
-  const loadCommerce = () => commerceP || (commerceP = COMMERCE_JS.reduce((p, src) => p.then(() => new Promise((ok, bad) => {
+  // the credit, premium, report and admin screens were removed (6.0: no credits, revenue from ads after launch). The ops
+  // screen (app/screens/ops.js, chat A) still draws its credit economics card from these two files until A6 removes it;
+  // then this loader and both files go.
+  const OPS_ECON_JS = ["domain/demowallet.js", "domain/economics.js"];
+  let econP = null;
+  const loadCommerce = () => econP || (econP = OPS_ECON_JS.reduce((p, src) => p.then(() => new Promise((ok, bad) => {
     const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error(src)); document.body.append(el);
-  })), Promise.resolve()).then(installCommerce).catch((e) => { commerceP = null; throw e; }));
-  for (const v of ["wallet", "premium", "report", "admin"]) views[v] = () => {
-    const box = h("div", { class: "view" }, h("div", { class: "jomi-load", role: "status" }, jomiImg("thinking", "face", 32), h("span", {}, "불러오는 중…")), h("div", { class: "skel", style: "height:160px" }));
-    loadCommerce().then(() => render()).catch(() => box.replaceChildren(h("div", { class: "card", role: "alert" }, "화면을 불러오지 못했어요. 연결을 확인하고 다시 열어 주세요.")));
-    return box;
-  };
-  function installCommerce() { if (window.Commerce && window.PriceCtx && window.Premium && window.DemoWallet) window.Commerce.install({ h, icon, sheet, toast, nav, render, store, won, views, copyText,
-    ctx: premiumCtx,
-    cartItems: () => cur().items.filter((it) => it.t === "k" && KI[it.k] != null).map((it) => ({ k: it.k, q: it.q || 1 })),
-    region: () => (st.region && st.region !== "수도권" ? st.region : ""),
-    regionLabel: () => (st.region === "수도권" ? "전국(수도권 묶음은 보고서에서 전국으로 계산)" : regionName()),
-    addKey: (id) => { if (KI[id] != null) addKeySheet(KI[id]); },
-    jomiNotice: (text) => sheet("죠미", () => h("div", {}, jomiSay("thinking", text), h("div", { class: "tiny", style: "margin-top:8px" }, "이 질문에는 크레딧을 쓰지 않았어요."))),
-  }); }
+  })), Promise.resolve()).catch((e) => { econP = null; throw e; }));
   applyTheme();
   applyMotion();   // 죠미 설정 → 움직임 (or the device's reduce-motion setting)
   if (st.when && (!st.when.date || st.when.date < new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))) { st.when = null; store.set("when", null); }
