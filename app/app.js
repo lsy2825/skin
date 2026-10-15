@@ -2359,10 +2359,14 @@
     lifting: ["슈링크 유니버스", "울쎄라", "써마지 FLX", "인모드", "올리지오"], toning: ["레이저토닝", "피코토닝", "제네시스", "착색토닝"] };
   const DISCLAIM = "일반적인 설명이에요. 진단이나 효과 보장이 아니고 특정 시술을 권하지 않아요. 나에게 맞는지는 의료진과 상담하세요.";
   const KB_REPO = "https://github.com/lsy2825/skin";
-  const reviewBadge = (e) => { const r = e.review || {}; const t = (KB.statuses || {})[r.status] || r.status;
-    return h("span", { class: `k ${r.status === "approved" ? "k1" : "kx"}`, title: r.status === "approved" ? `${r.reviewer} · ${r.reviewed_at}` : "의료진이 아직 확인하지 않은 초안이에요" }, r.status === "approved" ? `✓ ${t}` : t); };
-  const evidenceBadge = (e) => h("span", { class: `k ${e.sources.length ? "k4" : "kx"}`, title: "근거 문서의 종류예요(효과의 크기를 뜻하지 않아요)" },
-    e.sources.length ? `근거: ${(KB.evidence_levels || {})[e.evidence_level] || "출처"} ${e.sources.length}개` : "근거 자료 미정리");
+  // only a reviewed text gets a mark; a draft gets no red badge per procedure (audit U8) — the gray line under the text
+  // (kbFoot) says it once
+  const reviewed = (e) => !!e && (e.review || {}).status === "approved";
+  const reviewBadge = (e) => { const r = e.review || {};
+    return reviewed(e) ? h("span", { class: "k k1", title: `${r.reviewer} · ${r.reviewed_at}` }, `✓ ${(KB.statuses || {})[r.status] || r.status}`) : null; };
+  const evidenceBadge = (e) => e.sources.length ? h("span", { class: "k k4", title: "근거 문서의 종류예요(효과의 크기를 뜻하지 않아요)" },
+    `근거: ${(KB.evidence_levels || {})[e.evidence_level] || "출처"} ${e.sources.length}개`) : null;
+  const kbFoot = (e) => h("p", { class: "tiny" }, `${reviewed(e) ? "" : "시술 설명은 의료진 검수 전이에요. "}${DISCLAIM}`);
   // short card on the compare tab: one line + purpose + how it differs, review state, quick view
   // compact: on top of the compare screen right under the picker — the one-liner shows, the rest folds
   function guideBox(f, compact = false) {
@@ -2377,7 +2381,7 @@
         f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
         h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e)),
         h("button", { class: "linkbtn", type: "button", style: "margin-top:6px", onclick: () => nav(`guide?c=${encodeURIComponent(f.cat)}`) }, "시술 사전", icon("chevron-right", "xs"))) : null,
-      h("p", { class: "tiny" }, e ? DISCLAIM : "병원이 상품 이름에 적은 설명이에요."));
+      e ? kbFoot(e) : h("p", { class: "tiny" }, "병원이 상품 이름에 적은 설명이에요."));
     return h("div", { class: "guide" },
       h("div", { class: "row", style: "gap:6px;flex-wrap:nowrap" }, h("b", {}, `${f.name}, 뭐예요?`), h("span", { class: "sp" }),
         e ? h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f) }, "자세히") : null,
@@ -2386,7 +2390,7 @@
       e && e.method ? h("p", { class: "sub" }, e.method) : null,
       f.desc.length ? h("p", { class: "sub" }, `병원 설명: ${f.desc.join(" · ")}`) : null,
       e ? h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e)) : null,
-      h("p", { class: "tiny" }, e ? DISCLAIM : "병원이 상품 이름에 적은 설명이에요."));
+      e ? kbFoot(e) : h("p", { class: "tiny" }, "병원이 상품 이름에 적은 설명이에요."));
   }
   // what to check together with a price (docs/OBJECTIVE_DISPLAY_POLICY.md): the exact condition, genuine-product claims
   // (only what clinics wrote — the app does not verify devices or drugs), who treats (not collected), side effects, cautions
@@ -2539,7 +2543,7 @@
   const concernVisible = (c) => !!c && ((c.review || {}).status === "approved" || FLAGS.showDraftKnowledge);
   const kbById = (id) => { const e = KB.entries.find((x) => x.id === id); return kbVisible(e) ? e : null; };
   const famsOfEntry = (e) => FAM.filter((f) => kbOf(f) === e).sort((a, b) => b.n - a.n);
-  const draftTag = (o) => { const r = o.review || {}; return h("span", { class: `k ${r.status === "approved" ? "k1" : "kx"}` }, r.status === "approved" ? `의료진 검수 ${r.reviewed_at}` : (KB.statuses || {}).draft || "초안 · 전문가 검수 전"); };
+  const draftTag = (o) => { const r = o.review || {}; return r.status === "approved" ? h("span", { class: "k k1" }, `의료진 검수 ${r.reviewed_at}`) : null; };
   function concernCard(c, m) {
     const es = c.treatments.map(kbById).filter(Boolean);
     const sec = (n, t, ...kids) => h("section", { class: "csec" }, h("h4", {}, `${n}. ${t}`), ...kids);
