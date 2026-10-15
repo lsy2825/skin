@@ -37,7 +37,7 @@ GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저
 |---|---|---|
 | 수집 | Python 3.12, requests, BeautifulSoup | `scrape/` (블리비·쁨·톡스앤필·리엔장, 포에버는 일시 중지) |
 | 정리·정규화 | Python | `build2/clean.py`, `xkeys.py`, `groups.py` |
-| 배포·스케줄 | `tools/factory.sh`를 비공개 GitHub Actions가 돌림(Cloudflare Containers 버전은 보류). 앱은 Cloudflare Workers 정적 파일(무료) **공개 주소 배포는 2026-10-15부터 멈춤**(저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만), 관리자 주소(`cf/admin`, Access 뒤)는 빌드마다 배포 | `tools/factory.sh`, `cf/factory/`, `wrangler.jsonc`, `.github/workflows/weekly.yml` |
+| 배포·스케줄 | `tools/factory.sh`를 비공개 GitHub Actions가 돌림(Cloudflare Containers 버전은 보류). 앱은 Cloudflare Workers 정적 파일(무료) **공개 주소 배포는 2026-10-15부터 멈춤**(저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만), 관리자 주소(`cf/admin`, Access 뒤)는 빌드마다 배포(Access 설정 전에는 관리자 주소도 403이라 새 판은 로컬에서만 보여요) | `tools/factory.sh`, `cf/factory/`, `wrangler.jsonc`, `.github/workflows/weekly.yml` |
 | 프런트 | 바닐라 JS(`app.js` 약 3,300줄 + `domain/` 약 570줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
 | 사용자 데이터 | 기기 localStorage(`pc:` 접두사). Supabase(Postgres+Auth)는 준비만 | `app/auth.js`, `supabase/schema.sql` |
 | 익명 이용 단계 집계 (A4) | Cloudflare Worker `yoonsiljang-metrics` + D1(무료). `POST /v1/m {"s":단계}` 8개만, (KST 날짜, 단계) → 횟수만 저장, IP·브라우저·쿠키는 읽지도 않고 요청 로그·추적 모두 끔, 단계당 하루 5,000 상한. `GET /v1/m/daily`는 Cloudflare Access JWT 검증(설정 전엔 항상 403), `GET /health` | `cf/metrics/`, `.github/workflows/cf-workers.yml`(main의 `cf/metrics/**` 변경 시 배포 — 합치기 전 사용자 확인) 합계(날짜·단계별 횟수)는 기간 없이 계속 보관하고 정리(삭제) 작업을 두지 않아요(사용자 결정 2026-10-15) |

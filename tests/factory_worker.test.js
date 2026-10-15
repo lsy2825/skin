@@ -63,7 +63,7 @@ test("factory deploy: a failed public deploy still fails the run, before the adm
   assert.ok(!r.out.includes("after-deploy"));
 });
 
-test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but 'on') → admin host only, run succeeds", () => {
+test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but 'on') → admin host only; an admin failure then fails the run", () => {
   for (const pub of [null, "", "off", "ON", "yes", "on "]) {
     const r = runDeploy({ pub });
     assert.equal(r.status, 0, r.out);
@@ -75,8 +75,10 @@ test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but
   const gh = runDeploy({ pub: null, github: true });
   assert.match(gh.out, /^::notice title=Cloudflare::public app not deployed \(PUBLIC_DEPLOY off\)/m);
   const bad = runDeploy({ pub: null, fail: "admin", github: true });
-  assert.equal(bad.status, 0, "a failed admin deploy stays non-fatal while public hosting is paused");
+  assert.notEqual(bad.status, 0, "public hosting paused: the admin host is the only fresh copy, so its failed deploy fails the run (→ Telegram)");
   assert.match(bad.out, /^::warning title=Cloudflare::yoonsiljang-admin/m);
+  assert.match(bad.out, /public hosting is paused, so this fails the run/);
+  assert.ok(!bad.out.includes("after-deploy"));
 });
 
 test("weekly.yml hands PUBLIC_DEPLOY to the factory step (a repository variable, no secret)", () => {

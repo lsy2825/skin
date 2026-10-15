@@ -274,14 +274,15 @@ test("the entry module has only a default export (workerd rejects named exports 
   assert.deepEqual(exports, ["export default createHandler();"]);
 });
 
-test("tools/factory.sh deploys the admin Worker right after the public one, with the same token, and only that one may fail", () => {
+test("tools/factory.sh deploys the admin Worker after the public one (public only when PUBLIC_DEPLOY=on), with the same token", () => {
   const sh = readFileSync(root + "../../tools/factory.sh", "utf8");
   const body = sh.slice(sh.indexOf("deploy() {"), sh.indexOf("\n}", sh.indexOf("deploy() {")));
   const deploys = body.split("\n").filter((l) => /\$WRANGLER deploy/.test(l));
   assert.deepEqual(deploys.map((l) => l.trim()), [
-    "CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy", // public app: a failure stops the run (set -e)
-    "if ! CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy --config cf/admin/wrangler.jsonc; then", // admin host: reported, not fatal
+    "CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy", // public app, only when PUBLIC_DEPLOY=on: a failure stops the run (set -e)
+    "if ! CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy --config cf/admin/wrangler.jsonc; then", // admin host: a warning, fatal while public hosting is paused
   ]);
+  assert.match(body, /if \[ "\$\{PUBLIC_DEPLOY:-\}" = on \]; then/, "the public deploy is behind the PUBLIC_DEPLOY switch");
   assert.ok(/::warning title=Cloudflare::yoonsiljang-admin/.test(body), "GitHub Actions warning when the admin deploy fails");
   // the behaviour itself (exit code, order, token, warning) runs with a fake wrangler in tests/factory_worker.test.js
 });

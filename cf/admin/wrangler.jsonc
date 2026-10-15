@@ -1,6 +1,6 @@
 // 관리자 주소 (A6) — the same app/ folder as the public Worker "yoonsiljang", behind a fail-closed Cloudflare Access gate
 // (src/handler.js). The ops screen (#ops) only shows its data on this host (app/screens/ops.js ADMIN_HOSTS).
-// Deployed by tools/factory.sh deploy() right after the public Worker, or by hand:
+// Deployed by tools/factory.sh deploy() on every build (the public Worker only when PUBLIC_DEPLOY=on), or by hand:
 //   npx --yes wrangler@4.145.0 deploy --config cf/admin/wrangler.jsonc
 // Local check (no account needed): bash cf/admin/test/local_dev.sh
 // Nothing here is a secret: the Access AUD tag and team domain are identifiers. Fill them in this file (not in the dashboard:

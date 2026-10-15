@@ -9,7 +9,7 @@
 |---|---|---|
 | 코드·가격 기록 | GitHub `lsy2825/skin` **비공개**(2026-10-15 전환) | 그 전까지 공개였고, 복사본 `leebackcoding/skin`(2026-10-14)이 있어요. **2026-10-15 이전 커밋은 영원히 공개된 것으로 봐요** |
 | 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
-| 앱 주소 | Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
+| 앱 주소 | 공개: Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev — **2026-10-15 판으로 고정**(공개 배포 멈춤, 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만 배포). 관리자: `yoonsiljang-admin`(Cloudflare Access 뒤)이 빌드마다 갱신 | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
 | 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
 | 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
 | 로그인·DB(Supabase) | 꺼져 있음(`app/config.js` 비어 있음) | §7은 켠 뒤에만 해당 |
@@ -51,8 +51,9 @@
 ## 3. 잘못되거나 변조된 가격·화면이 배포됐을 때
 
 **가장 빠른 길: Cloudflare에서 이전 버전으로 되돌리기 (1분)**
-- 대시보드: **Workers & Pages** → `yoonsiljang` → **Deployments** → 정상이던 버전의 ⋯ → **Rollback**.
-- 명령: `npx wrangler@4.145.0 rollback --name yoonsiljang`(바로 전 버전) 또는 `rollback <버전ID>`.
+- 공개 배포가 멈춘 동안(2026-10-15~) 새 빌드는 **관리자 Worker `yoonsiljang-admin`에만** 올라가요. 그래서 잘못된 빌드의 되돌리기 대상은 `yoonsiljang-admin`이고, 공개 `yoonsiljang`은 고정된 판이에요(공개 쪽이 변조됐을 때만 `yoonsiljang`을 되돌려요).
+- 대시보드: **Workers & Pages** → `yoonsiljang-admin`(또는 공개 쪽이면 `yoonsiljang`) → **Deployments** → 정상이던 버전의 ⋯ → **Rollback**.
+- 명령: `npx wrangler@4.145.0 rollback --name yoonsiljang-admin`(바로 전 버전) 또는 `rollback --name <이름> <버전ID>`.
 - 최근 **100개 버전**까지 되돌릴 수 있어요(Cloudflare 문서: Workers Rollbacks).
 - 되돌려도 저장소는 그대로예요. 그래서 다음 공장 실행이 같은 내용을 다시 배포할 수 있어요. 아래 단계까지 해야 끝나요.
 
@@ -61,7 +62,7 @@
 2. **원인 커밋 찾기:** `git log --oneline -- app/data.json data2/accepted`(데이터), `git log --oneline -- app/`(화면). 봇 커밋은 `Weekly prices`, `Rebuild app data`, `Price check`예요.
 3. **되돌림:** `git revert <커밋>`을 PR로 올려요. 운영자가 승인해서 main에 합치면 공장이 수집 없이 다시 만들어 배포해요(약 5분).
    - 합친 PR 때문에 화면이 깨진 경우도 같아요. **그 PR을 올린 채팅**이 revert PR을 올려요(지시서 '충돌·사고').
-4. **확인:** 실제 주소에서 해당 시술·화면을 보고, `data2/report.md`와 검토 대기(`data2/review.csv`)를 확인해요.
+4. **확인:** 관리자 주소(공개 배포를 켠 뒤라면 공개 주소)에서 해당 시술·화면을 보고, `data2/report.md`와 검토 대기(`data2/review.csv`)를 확인해요. Access 설정 전이면 내 PC에서 `python -m http.server 8766 --directory app`으로 봐요.
 5. 원인이 수집 쪽(사이트 구조 변경 등)이면 C가 수집기·정리 규칙을 고쳐요. 데이터를 손으로 고치지 않아요(공통 규칙 9). 그 뒤 워크플로를 다시 켜고 수동 실행해요.
 
 ## 4. 가격 공장이 실패하거나 수집이 막혔을 때
@@ -89,7 +90,7 @@
 
 1. 비밀번호를 바꾸고 2단계 인증을 켜요. 모든 세션을 로그아웃해요.
 2. **API Tokens**에서 모르는 토큰을 지우고, 쓰는 토큰은 Roll해요(§2 표).
-3. **Workers & Pages**에서 Worker 목록·배포 기록·Secrets를 확인해요. 모르는 Worker는 지우고, 우리 Worker는 저장소에서 다시 배포해요(Actions → weekly-prices → Run workflow, `skip_scrape`).
+3. **Workers & Pages**에서 Worker 목록·배포 기록·Secrets를 확인해요. 모르는 Worker는 지우고, 우리 Worker는 저장소에서 다시 배포해요(Actions → weekly-prices → Run workflow, `skip_scrape`). **공개 배포가 멈춘 동안 이 실행은 관리자 Worker만 다시 배포해요.** 공개 `yoonsiljang`은 ① `npx wrangler@4.145.0 rollback --name yoonsiljang <정상 버전ID>`로 되돌리거나 ② 그 한 번만 저장소 변수 `PUBLIC_DEPLOY`=`on`으로 두고 실행한 뒤 다시 지우거나 ③ 대시보드에서 그 Worker의 workers.dev 주소를 꺼요.
 4. Members(계정 구성원)와 Access 설정(관리자 이메일 목록)을 확인해요.
 
 ## 7. 데이터베이스 사고

@@ -4,7 +4,7 @@ failure never fails the step, and the checks find what they should. No network: 
 or a fake urlopen; GitHub, the app and Workers are a fake fetch. Prints PASS/FAIL lines; exit 1 on any failure.
 Run: python3 tests/security/monitor_test.py
 Kept in tests/security/ because the main property is a secret-handling one, next to scan_secrets.py (same suite)."""
-import contextlib, datetime, http.server, io, json, os, socket, subprocess, sys, tempfile, threading, urllib.error
+import contextlib, datetime, http.server, io, json, os, re, socket, subprocess, sys, tempfile, threading, urllib.error
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCRIPTS = os.path.join(ROOT, ".github", "scripts")
@@ -355,6 +355,19 @@ with tempfile.TemporaryDirectory() as tmp:
     f = fetcher({API: good[API]})
     probs, notes, msg = hc.run(hc.parse_args(["--today", "2026-10-16", "--root", tmp]), {k: v for k, v in gh_env.items() if k != "PUBLIC_DEPLOY"}, fetch=f, now=NOW, send=lambda *a, **k: None)
     check("paused public: stale data in the repository is still reported (the factory keeps building it)", any("블리비" in p for p in probs), str(probs))
+
+wf_mon = open(os.path.join(os.path.dirname(SCRIPTS), "workflows", "monitor.yml"), encoding="utf-8").read()
+check("monitor.yml hands PUBLIC_DEPLOY to the check step (paused/on must agree with weekly.yml)",
+      re.search(r"^ {10}PUBLIC_DEPLOY: \$\{\{ vars\.PUBLIC_DEPLOY \}\}", wf_mon, re.M) is not None)
+check("heartbeat says public hosting is paused when it is", "공개 주소 배포 멈춤" in hc.heartbeat_text(fresh, ok_runs, paused=True)
+      and "공개 주소 배포 멈춤" not in hc.heartbeat_text(fresh, ok_runs))
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "app"))
+    json.dump(fresh, open(os.path.join(tmp, "app", "data-meta.json"), "w", encoding="utf-8"))
+    sent = []
+    args = hc.parse_args(["--send", "--weekly-heartbeat", "--today", "2026-10-19", "--root", tmp])
+    hc.run(args, {k: v for k, v in gh_env.items() if k != "PUBLIC_DEPLOY"}, fetch=fetcher({API: good[API]}), now=NOW, send=lambda text, env=None: sent.append(text))
+    check("paused public: the Monday heartbeat carries the paused line", len(sent) == 1 and "공개 주소 배포 멈춤" in sent[0], str(sent))
 
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "app"))

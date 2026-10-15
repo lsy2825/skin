@@ -44,6 +44,7 @@ tools/factory.sh   공장 한 번 (GitHub weekly.yml도 이 스크립트를 부�
 **보안 설계**
 - git 토큰: 실행마다 새로 발급한다(쓰기 권한, 2시간 후 저절로 만료). 상자 디스크는 실행이 끝나면 버려진다.
 - 배포 토큰(`CF_DEPLOY_TOKEN`): `factory.sh`가 환경에서 빼 두었다가 `wrangler deploy` 때만 넘긴다. 수집기·빌드는 이 토큰을 볼 수 없다.
+- 공개 배포 스위치(`PUBLIC_DEPLOY`, Worker 변수, 기본 빈 값): `on`일 때만 상자도 공개 Worker를 배포한다(2026-10-15부터 공개 배포 멈춤, GitHub 쪽은 저장소 변수). 그 밖에는 관리자 Worker만.
 - 보고 토큰: 실행마다 새로 만들고, 그 실행에만 쓸 수 있다. `/status`에는 토큰이 나오지 않는다(시험으로 확인).
 - 수동 실행 `/run`은 `RUN_SECRET`이 있어야 한다. 비교는 상수 시간으로 한다. 모드와 `max`는 정해진 값만 받는다.
 - 공장이 저장한 커밋(`factory@yoonsiljang.invalid`)은 push 이벤트로 다시 빌드를 일으키지 않는다(무한 반복 방지).

@@ -38,6 +38,7 @@ export class Factory extends DurableObject {
         CLOUDFLARE_API_TOKEN: this.env.DRY_RUN === "1" ? "" : this.env.CF_DEPLOY_TOKEN || "",
         CLOUDFLARE_ACCOUNT_ID: this.env.CF_ACCOUNT_ID || "",
         FACTORY_NO_PUSH: this.env.DRY_RUN === "1" ? "1" : "",
+        PUBLIC_DEPLOY: this.env.PUBLIC_DEPLOY === "on" ? "on" : "",   // same switch as weekly.yml: public hosting paused unless "on"
       },
     });
     this.ctx.waitUntil(box.monitor().then(

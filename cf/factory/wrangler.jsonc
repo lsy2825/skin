@@ -26,6 +26,7 @@
     "REPO_NAME": "skin",
     "INSTANCE": "basic",
     "FACTORY_URL": "https://yoonsiljang-factory.lsy2825.workers.dev",
-    "DRY_RUN": "1"
+    "DRY_RUN": "1",
+    "PUBLIC_DEPLOY": ""
   }
 }
