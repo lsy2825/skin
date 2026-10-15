@@ -29,6 +29,8 @@ data.json (compact, strings interned in `s`):
             purpose, areas, method, kinds, side effects, cautions, sources, review status; matched to families by name or base id
   keys      [id, cat, label] — hand-made X01..X36 (xkeys.py) first, then variant keys T… (taxonomy.py, data2/variants.json)
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
+  meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9): a chain collected for the first
+            time after the previous snapshot is new as a whole — its prices are not listed in achg.new ('새로 생김')
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
 the 'before'.
 """
@@ -171,6 +173,24 @@ def trend(hist, date, rows, since=None):
                 offs.setdefault(k, []).append(round((int(r["orig"]) - int(r["sale"])) / int(r["orig"]) * 100))
     disc = {k: sorted(v)[len(v) // 2] for k, v in offs.items() if len(v) >= 3}
     return {"dates": dates, "k": per, "disc": disc}
+
+
+def brand_first(hist, upto):
+    """brand → the date of the first snapshot in data2/history that has it (comparison and automatic-group snapshots)"""
+    import gzip
+    first = {}
+    for p in sorted(glob.glob(os.path.join(hist, "*.json")) + glob.glob(os.path.join(hist, "*.auto.json.gz"))):
+        d = os.path.basename(p)[:10]
+        if d > upto:
+            continue
+        if p.endswith(".auto.json.gz"):
+            with gzip.open(p, "rt", encoding="utf-8") as f:
+                brands = {bk.split("|")[0] for _, per in json.load(f).values() for bk in per}
+        else:
+            brands = {kk.split("|")[1] for kk in load_snapshot(p) if kk.count("|") >= 2}
+        for b in brands:
+            first[b] = min(first.get(b, d), d)
+    return first
 
 
 def part_keys(name):
@@ -561,6 +581,10 @@ def main():
     # the same for '새로 생김' / '없어짐': a row the rules moved into or out of a group is not a new or a gone price (검증 7차)
     anew = [c for c in anew if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved]
     agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved]
+    # a chain collected for the first time since the previous snapshot is new as a whole: its prices are not '새로 생김' one by
+    # one (2026-10-15, 개선 보고서 E9 — 밴스·유앤아이·데이뷰·닥터에버스·셀린 filled the list on 10-14)
+    first = brand_first(hist, collected)
+    anew = [c for c in anew if not aprev or first.get(bkeys[c[1]].split("|")[0], collected) <= aprev]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
@@ -568,7 +592,8 @@ def main():
         # snapshot are counted from it)
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "labelRules": labels.RULES},
+                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "labelRules": labels.RULES,
+                 "brandFirst": {b: first.get(b, collected) for b, *_ in BRANDS}},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,

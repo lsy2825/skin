@@ -16,7 +16,9 @@ data-meta.json:
              no saved copy) — the app takes home.json only when its checksum is this one, i.e. from the same build
   changes    price rows that differ from the previous data.json (resolved names, not indexes):
              {from: previous version, price: [[brand, branch, name, before, after]], added: [[brand, branch, name, price]],
-              removed: [[brand, branch, name, price]], counts: {price, added, removed}} — lists capped at CAP each
+              removed: [[brand, branch, name, price]], counts: {price, added, removed, new_chain}, new_chains: [[brand, rows]]}
+             — lists capped at CAP each. A brand the previous data.json did not have at all is a new chain: its rows are counted in
+             new_chains, not listed as added (개선 보고서 E9; the alert Worker and the 가격 변동 screen read 'added')
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
 import argparse, datetime, hashlib, json, os, re, sys
@@ -107,8 +109,12 @@ def changes(prev, cur, prev_version):
     da, db = fetched(prev), fetched(cur)
     fresh = lambda r: not (da.get((r[0], r[1])) and da.get((r[0], r[1])) == db.get((r[0], r[1])))
     price, added, removed = [r for r in price if fresh(r)], [r for r in added if fresh(r)], [r for r in removed if fresh(r)]
+    old_brands = {k[0] for k in a}
+    new_chain = Counter(r[0] for r in added if r[0] not in old_brands)
+    added = [r for r in added if r[0] in old_brands]
     return {"from": prev_version, "price": price[:CAP], "added": added[:CAP], "removed": removed[:CAP],
-            "counts": {"price": len(price), "added": len(added), "removed": len(removed)}}
+            "counts": {"price": len(price), "added": len(added), "removed": len(removed), "new_chain": sum(new_chain.values())},
+            "new_chains": [[b, n] for b, n in sorted(new_chain.items())]}
 
 
 def build(txt, prev_txt=None, home_txt=None):
@@ -145,7 +151,7 @@ def write_meta(data_path, txt, prev_txt=None, home_txt=None):
     open(out, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
     c = meta.get("changes", {}).get("counts")
     print(f"wrote {out}: version {meta['version']} | {meta['bytes'] / 1e6:.2f} MB | branches {meta['branches']} (stale {meta['stale']})"
-          + (f" | changes price {c['price']} added {c['added']} removed {c['removed']}" if c else " | no previous data"))
+          + (f" | changes price {c['price']} added {c['added']} removed {c['removed']} new-chain rows {c.get('new_chain', 0)}" if c else " | no previous data"))
     return meta
 
 
