@@ -42,7 +42,7 @@
   const prodCache = new WeakMap();
   const groupProducts = (cat) => { let s = prodCache.get(cat); if (!s) { s = new Set(cat.flatMap((k) => k.products)); prodCache.set(cat, s); } return s; };
 
-  // offer: { raw_offer_name, unit, volume, shots, energy_kj, sessions, products } (offerparse output) → { status, key, candidates, reasons }
+  // offer: { raw_offer_name, unit, volume, shots, energy_kj, sessions, products } (the shape the 5.0 offer parser made; that parser went with the credits in 6.0) → { status, key, candidates, reasons }
   function match(offer, cat) {
     const name = offer.raw_offer_name || "";
     const nn = Search.norm(name);
