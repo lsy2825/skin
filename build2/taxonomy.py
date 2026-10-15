@@ -295,7 +295,7 @@ def _area(raw):
 # 겨드랑이·다리 전체·브라질리언 under the area '젠틀맥스프로플러스')
 DEVICE = re.compile(r"젠틀맥스|프로\s*플러스|아포지|엘리트|클라리티|소프라노|프라임\s*레이즈|포토나|아발란체|듀얼|프로(?![가-힣])|플러스(?![가-힣])|최신|기기")
 AREA_NOISE = re.compile(r"\d+\s*\+\s*\d+(?:\s*회)?|\d+\s*회|1년|구독권|이용권|무제한|패스권|이벤트|특가|체험가|한정가|할인|여성|남성|여자|남자|男|女|솜털|레이저|"
-                        r"부위|[♥★☆]")
+                        r"부위|첫방문고객|첫시술고객|신규고객|첫방문|첫시술|중\s*택\s*1|택\s*1|[♥★☆]")
 # body-area words of a 제모 option, and the words that only qualify one ('윗', '전체', '라인'): a '+' between these lists areas of one
 # option; anything else after '+' is another product ('얼굴전체 제모 + 빙하팩', '겨드랑이제모+겨드랑이 미백레이저', '네오빔 + 스케일링' —
 # 2026-10-15, they went into the plain one-area key)
@@ -342,7 +342,8 @@ def _area_of(seg):
 def _area_parts(seg):
     """'/' choices, each a '+' list sorted: '인중+앞턱' → '앞턱+인중', '손등+손가락 or 발등+발가락' → '발가락+발등/손가락+손등'"""
     seg = AREA_NOISE.sub(" ", DEVICE.sub(" ", seg))
-    sep = r"[/,·&]|(?<![A-Za-z])or(?![A-Za-z])" if "+" in seg else r"[/,·&]"
+    # 'or' / '또는' choose like '/': '겨드랑이 or 인중', '인중 or 겨드랑이' and '겨드랑이 / 인중' (same 밴스 price) were three keys (검증 6차)
+    sep = r"[/,·&]|(?<![A-Za-z])or(?![A-Za-z])|또는"
     out = []
     for choice in re.split(sep, seg):
         parts = sorted(x for x in (re.sub(r"[^\w가-힣]", "", p) for p in choice.split("+")) if x)
@@ -398,8 +399,11 @@ def variant(name, addon=False, kind="", cat="", display=None):
     v = None
     if fam and not bundle:
         v, why = _family_variant(raw, fam, sess, display)
-    elif not fam and not bundle and cat == "제모":
-        # '얼굴 제모 · [여성] 이마 1회': the area is the option, '제모' only in the group name
+        if v and v.get("area") and v["area"] != "부위 미표기" and not re.search(HAIR_PART, v["area"]):
+            v = None                       # '여성제모 · 소노케어 1회': not a body area, so not a 제모 spec — read as its own name
+    elif not fam and not bundle and cat == "제모" and re.search(HAIR_PART, re.split(r"\s+·\s+", display or raw)[-1]):
+        # '얼굴 제모 · [여성] 이마 1회': the area is the option, '제모' only in the group name. Only a body area: 소노케어·크라이오 listed
+        # on a 제모 page are skin care, not '소노케어 제모' (검증 6차)
         seg = re.split(r"\s+·\s+", display or raw)[-1]
         sex = " ".join(re.findall(r"\[(?:여성|남성)\]", raw))
         v, why = _family_variant(f"{sex} {seg} 제모", FAM_BY_ID["hair"], sess)
@@ -730,7 +734,7 @@ def build(rows, min_branches=3):
                 # the product word goes in front once: not into a family name that already has it ('티타늄 리프팅 포함 패키지' became
                 # '티타늄리프팅 티타늄 리프팅 포함 패키지'), and a package family keeps its name (2026-10-15)
                 has = lambda t: loose_text(head) in loose_text(t)
-                fname = v["famname"] if v["fam"] == "package" or has(v["famname"]) else f"{head} {v['famname']}"
+                fname = v["famname"] if v["fam"] == "package" or has(v["famname"]) else fam_tidy(f"{head} {v['famname']}")
                 v = dict(v, famname=fname, label=v["label"] if has(v["label"]) else f"{head} {v['label']}")
                 bad = labels.problems(v["label"], names + [head])
                 if not bad:

@@ -192,12 +192,13 @@ def main():
             name = (f"{head} · {name}" if head else name) if name != "(대표가)" else f"{grp} (최저가부터)"
         mname = name.replace(" · ", " ")
         g = re.search(r"(남성|남자|여성|여자)", grp)
-        if not g and re.search(r"제모", f"{grp} {opt}"):
+        if not g and (re.search(r"제모", f"{grp} {opt}") or taxonomy.hair_area(opt)):
             # a 제모 item whose sex is only in the page name (쁨 범계 '여성제모' / '남성제모' › '이마(헤어+삼자) 제모 1회'): the same option at
             # the same price on both pages is two products, and one key held both (2026-10-15). Only for 제모 items — 유앤아이 lists every
             # procedure under its '남성제모' / '여성제모' pages.
             g = re.search(r"(남성|남자|여성|여자)", r["category"] or "")
-        if g and not re.search(r"남성|남자|여성|여자", mname):
+        # the option's own sex mark wins ('女&男) 겨드랑이', '男) 인중'): the page's sex is not added on top (검증 6차: '여성 남성 브라질리언')
+        if g and not re.search(r"남성|남자|여성|여자|男|女|\((?:남|여)\)|(?<![가-힣])(?:남|여)\)", unicodedata.normalize("NFKC", mname)):
             mname = f"[{g.group(1)}] {mname}"
         text = f"{r['category']} {grp} {opt}"
         if r["brand"] == "리엔장":

@@ -35,7 +35,16 @@ ok("남은 말은 띄어 씀 ('비타민 수분 크라이오셀')", taxonomy._sp
 ok("띄어 써도 키(서명)는 붙인 그대로 — 묶음 id가 바뀌지 않음",
    taxonomy.variant("아쿠아필 비타민 수분 크라이오셀 5회", cat="피부·레이저")[0]["sig"] == taxonomy.variant("아쿠아필 비타민수분크라이오셀 5회", cat="피부·레이저")[0]["sig"])
 hv, _ = taxonomy.variant("[여성] 손가락 or 발가락 제모 1회", cat="제모")
-ok("제모 부위는 병원 표기대로 띄어 씀", hv and hv["famname"] == "손가락 or 발가락 제모", hv and hv["famname"])
+ok("제모 부위 고르기('or')는 '/'와 같은 묶음으로, 가나다순 '·'로 보임", hv and hv["famname"] == "발가락·손가락 제모", hv and hv["famname"])
+hv2, _ = taxonomy.variant("[여성] 발가락/손가락 제모 1회", cat="제모")
+ok("... '손가락 or 발가락'과 '발가락/손가락'은 같은 서명", hv and hv2 and hv["sig"] == hv2["sig"], (hv and hv["sig"], hv2 and hv2["sig"]))
+hv3, _ = taxonomy.variant("겨드랑이 제모 중 택1 5회", cat="제모")
+ok("'중 택1'은 부위가 아님", hv3 and hv3["area"] == "겨드랑이", hv3 and hv3["area"])
+hv4, _ = taxonomy.variant("첫방문고객 겨드랑이 제모 1회", cat="제모")
+ok("'첫방문고객'은 부위가 아님", hv4 and hv4["area"] == "겨드랑이", hv4 and hv4["area"])
+for raw, disp in [("여성제모 소노케어 1회", "여성제모 · 소노케어 1회"), ("크라이오 제모 진정 1회", "여성제모 · 크라이오 진정 1회")]:
+    nv, _ = taxonomy.variant(raw, cat="제모", display=disp)
+    ok(f"제모 칸의 부위 없는 관리('{disp}')는 제모 부위 키가 아님", nv and not nv["sig"].startswith("hair|"), nv and nv["sig"])
 
 for raw, want in [("피코토닝 10+10회 ()", "피코토닝 10+10회"), ("피코토닝 1+1회 (1회 )", "피코토닝 1+1회 (1회)"), (") 비타민관리", "비타민관리"),
                   ("男) 인중 + 앞턱 1회", "남성 인중 + 앞턱 1회"), ("\uf981) 종아리 + 무릎 1회", "여성 종아리 + 무릎 1회"), ("스킨보톡스 (국산) 1회", "스킨보톡스 (국산) 1회")]:
@@ -199,7 +208,10 @@ raw = [  # category, group, option, sale, orig
     ("남성 바디 제모", "남성 바디 제모", "[겨드랑이] 5회", 100000, 0),
     ("남성 바디 제모", "남성 바디 제모", "[종아리] 5회", 100000, 0),                         # area only in the label, same price
     ("여성제모", "", "이마(헤어+삼자) 제모 1회", 50000, 0),
-    ("남성제모", "", "이마(헤어+삼자) 제모1회", 50000, 0)]                                    # sex only in the page name
+    ("남성제모", "", "이마(헤어+삼자) 제모1회", 50000, 0),                                    # sex only in the page name
+    ("여성제모", "", "인중 1회", 9000, 0),
+    ("남성제모", "", "인중 1회", 25000, 0),                                                   # 쁨 서울대입구: no '제모' in the option, an area only
+    ("남성제모", "", "女) 겨드랑이 1회", 30000, 0)]                                           # the option's own sex wins over the page's
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -241,6 +253,11 @@ ok("제모 페이지의 부위 대괄호('[겨드랑이] 5회')는 이름에 남
 im = [r for r in out if r["option"].replace(" ", "") == "이마(헤어+삼자)제모1회"]
 ok("성별이 페이지 이름에만 있는 제모 줄(쁨 '여성제모'/'남성제모')은 합치지 않고 이름(mname)에 성별", len(im) == 2 and
    sorted(r["mname"][:4] for r in im) == ["[남성]", "[여성]"], [r["mname"] for r in im])
+iz = one("인중 1회")
+ok("'제모' 글자 없이 부위만 있는 제모 페이지 줄(쁨 서울대입구 '인중 1회')도 이름에 페이지 성별", len(iz) == 2 and
+   sorted(r["mname"][:4] for r in iz) == ["[남성]", "[여성]"], [r["mname"] for r in iz])
+fx = one("女) 겨드랑이 1회")
+ok("옵션에 성별('女)')이 있으면 페이지 성별을 덧붙이지 않음", len(fx) == 1 and "[남성]" not in fx[0]["mname"], [r["mname"] for r in fx])
 b = one("바디울쎄라 100샷")
 ok("E4 행사 페이지가 먼저 와도 가격표 페이지의 정가·분류를 남김(블리비 '기획전'만이 아님)", len(b) == 1 and b[0]["orig"] == "950000" and b[0]["src_cat"] == "레이저리프팅",
    [(r["src_cat"], r["orig"]) for r in b])
