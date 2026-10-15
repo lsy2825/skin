@@ -88,8 +88,9 @@ async function firstVisit(b, { prefs = {}, breakHome = false } = {}) {
     await p.fill('.hsearch input', '리쥬란 2cc'); await p.keyboard.press('Enter'); await p.waitForTimeout(300);
     ok('검색은 전체 가격을 기다림', /전체 가격을 받는 중/.test(await p.locator('#main').innerText()));
     release();
-    const went = await p.waitForFunction(() => /^#search\//.test(location.hash), null, { timeout: 60000 }).then(() => true).catch(() => false);
-    ok('전체 가격이 오면 검색 결과로 이동', went, await p.evaluate(() => location.hash));
+    // 2026-10-15: a treatment the home box recognizes opens its price comparison in the spec asked (리쥬란 2cc → compare)
+    const went = await p.waitForFunction(() => /^#(search\/|compare\?k=)/.test(location.hash), null, { timeout: 60000 }).then(() => true).catch(() => false);
+    ok('전체 가격이 오면 결과(그 시술 가격 비교)로 이동', went, await p.evaluate(() => location.hash));
     ok('페이지 오류 없음(검색)', !errs.length, errs.join(' | '));
     await ctx.close(); }
 

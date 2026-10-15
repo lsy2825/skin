@@ -36,9 +36,10 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('비밀번호 키보드 입력', await p.locator('.pc').count() > 0);
     let found = false; for (let k = 0; k < 15 && !found; k++) { await p.keyboard.press('Tab'); found = await p.evaluate(() => document.activeElement && document.activeElement.matches('.search input')); }
     ok('Tab으로 검색창 도달', found);
-    await p.keyboard.type('리쥬란 2cc'); await p.keyboard.press('Enter'); await p.waitForTimeout(1000);
-    ok('Enter로 검색', /search\//.test(p.url()));
-    let onAdd = false; for (let k = 0; k < 80 && !onAdd; k++) { await p.keyboard.press('Tab'); onAdd = await p.evaluate(() => document.activeElement && document.activeElement.textContent.trim() === '담기'); }
+    // a broad name keeps the search page with its rows' 담기 buttons ('리쥬란 2cc' now opens its comparison — checked below)
+    await p.keyboard.type('보톡스'); await p.keyboard.press('Enter'); await p.waitForTimeout(1000);
+    ok('Enter로 검색', /search\//.test(p.url()), p.url().split('#')[1]);
+    let onAdd = false; for (let k = 0; k < 220 && !onAdd; k++) { await p.keyboard.press('Tab'); onAdd = await p.evaluate(() => document.activeElement && document.activeElement.textContent.trim() === '담기'); }
     ok('Tab으로 담기 버튼 도달', onAdd);
     await p.keyboard.press('Enter'); await p.waitForTimeout(300);
     const inSheet = await p.evaluate(() => !!document.activeElement.closest('.sheet'));
@@ -46,6 +47,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     let onPut = false; for (let k = 0; k < 15 && !onPut; k++) { await p.keyboard.press('Tab'); onPut = await p.evaluate(() => /회 담기$/.test(document.activeElement.textContent.trim())); }
     if (onPut) { await p.keyboard.press('Enter'); await p.waitForTimeout(300); }
     ok('키보드만으로 장바구니 담기', (await p.locator('#cart-n').textContent()) === '1', `cart-n=${await p.locator('#cart-n').textContent()}`);
+    await p.goto(BASE + '#home'); await p.waitForTimeout(400); await p.focus('.search input'); await p.keyboard.type('리쥬란 2cc 얼마'); await p.keyboard.press('Enter'); await p.waitForTimeout(800);
+    ok('시술을 알아들으면 Enter로 그 규격의 가격 비교', /#compare\?k=/.test(p.url()) && /리쥬란/.test(await p.locator('select[aria-label="시술 고르기"] option:checked').textContent()), p.url().split('#')[1]);
     const fv = await p.evaluate(() => [...document.styleSheets].some((s) => { try { return [...s.cssRules].some((r) => r.selectorText && r.selectorText.includes(':focus-visible')); } catch (e) { return false; } }));
     ok('포커스 표시(:focus-visible) 스타일', fv);
     // filter change by keyboard keeps focus on that control after the redraw

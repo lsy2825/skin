@@ -3792,7 +3792,8 @@
     if (nq.length < 2) return null;
     const hit = (t) => { const x = plain(t); return x.length >= 2 && (nq.includes(x) || x.includes(nq)); };
     const qw = String(qs || "").toLowerCase().split(/[\s,·]+/).filter(Boolean);
-    const word = (t) => { const x = plain(t); return x.length >= 2 && qw.some((w) => w === x || (w.startsWith(x) && /^(역|점|구|동|시|에서|근처|주변|은|는|이|가)?$/.test(w.slice(x.length)))); };
+    const word = (t) => { const x = plain(t); return x.length >= 2 && qw.some((w) => w === x || (w.startsWith(x) && /^(역|점|구|동|시|에서|근처|주변|은|는|이|가)?$/.test(w.slice(x.length)))
+      || (w.length >= 2 && x.startsWith(w) && /^(역|점|구|동|시|본점|역점)$/.test(x.slice(w.length)))); };   // '강남' → 강남역점 · 강남구
     const prods = prodNames().filter(([p]) => hit(p)).map(([p, rx]) => [p, prodBranches(p, rx)]).filter(([, bs]) => bs.size).sort((a, b) => b[1].size - a[1].size).slice(0, 6);
     const clinics = BR.filter((b) => word(`${brandOf(b.i)[0]}${b.name}`) || word(b.name.replace(/(본점|점)$/, "")) || plain(qs) === plain(`${brandOf(b.i)[0]}${b.name}`)).slice(0, 6);
     const areas = areaFind(qs).filter((a) => a.name.length >= 2 && word(a.name)).slice(0, 5);
