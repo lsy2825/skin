@@ -50,7 +50,7 @@
         break;
       case "cartdrop":
         if (alert.target ? v <= alert.target && better(v) : alert.base != null && v < alert.base) {
-          out.fire = true; out.text = `장바구니 한 곳 합계 ${won(v)}${alert.target ? ` (목표 ${won(alert.target)})` : ` (전 ${won(alert.base)})`}`; out.patch = { last: v, base: v };
+          out.fire = true; out.text = `내 견적 한 곳 합계 ${won(v)}${alert.target ? ` (목표 ${won(alert.target)})` : ` (전 ${won(alert.base)})`}`; out.patch = { last: v, base: v };
         } else if (alert.base == null) out.patch = { base: v };
         break;
       case "expiring": {

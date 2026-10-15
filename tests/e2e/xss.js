@@ -43,7 +43,7 @@ const enc = (o) => Buffer.from(JSON.stringify(o)).toString('base64').replace(/\+
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     // save the shared cart and read what was stored
     await p.goto(BASE + `#import/${shared}`); await p.waitForTimeout(400);
-    const saveBtn = p.locator('#main .btn', { hasText: '내 장바구니로 저장' }); if (await saveBtn.count()) { await saveBtn.click(); await p.waitForTimeout(300); }
+    const saveBtn = p.locator('#main .btn', { hasText: '내 견적으로 저장' }); if (await saveBtn.count()) { await saveBtn.click(); await p.waitForTimeout(300); }
     const stored = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts') || '[]').pop());
     const xss = await p.evaluate(() => window.__xss || 0);
     const shownAsText = await p.evaluate(() => document.body.innerText.includes('<img src=x') || document.body.innerText.includes('<script>'));

@@ -38,7 +38,7 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '');
     ok('A/B: 링크 공유 = 이 두 지점 주소', /#versus\/3\/5$/.test(clip), clip);
     // cart-only
-    await p.locator('label.switch', { hasText: '장바구니 시술만' }).click(); await p.waitForTimeout(500);
+    await p.locator('label.switch', { hasText: '내 견적 시술만' }).click(); await p.waitForTimeout(500);
     const txt = await p.locator('#main').innerText();
     ok('장바구니 A/B: 담은 시술 수로 비교', /'내 장바구니' 3개 시술로 비교/.test(txt));
     const totals = await p.$$eval('#main dl.kv dd', (d) => d.map((x) => +x.textContent.replace(/[^\d]/g, '')));
@@ -52,8 +52,10 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
   // ---- viewing history controls, home explanations, cart sticky summary
   { const { ctx, p } = await page();
     const home = await p.locator('#main').innerText();
-    // round 2 UX01: the explanation is folded under '순서 기준' (closed <details> text is not in innerText)
-    ok('홈: "인기" 기준 설명(파는 지점 수, 검색량 아님)', /파는 지점이 많은 순이에요\. 검색량·예약 수가 아니에요/.test(await p.locator('#main').textContent()));
+    // 6.0 B4: the order explanation is behind the ⓘ next to the last section title (the home's first screen shows prices)
+    await p.locator('#main .sec-h .infob[aria-label="순서 기준"]').click(); await p.waitForTimeout(300);
+    ok('홈: "인기" 기준 설명(파는 지점 수, 검색량 아님) — ⓘ 순서 기준', /파는 지점이 많은 순이에요\. 검색량·예약 수가 아니에요/.test(await p.locator('.sheet').last().textContent().catch(() => '')));
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     ok('홈: 죠미의 발견 고르는 기준 설명', /고르는 기준: 조건 없는 가격이 5곳 이상/.test(home) && /사람이 고르거나 광고로 정하지 않아요/.test(home));
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);   // → 최근 본 것
     await p.goto(BASE + '#branch/3'); await p.waitForTimeout(400);         // → 이어서 보기

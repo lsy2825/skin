@@ -5,7 +5,7 @@
 // 찾았어요(평가 세트 215문장 중 17.7%만 알아들음: 시술 14% · 가격 0% · 도움말 0% · 이어 묻기 0%). 이 엔진은 한 문장에서 다음을
 // 차례로 읽어요.
 //   안전     응급 신호 → 의료진 안내만(다른 답 없음). 개인 판단(나한테 맞는지·용량) → 안내 + 일반 정보만
-//   도움말   부가세·장바구니·체험가·중간값·데이터 날짜·신고·지도·알림·예약 … (앱 사용법, 의학 문장 아님)
+//   도움말   부가세·내 견적·체험가·중간값·데이터 날짜·신고·지도·알림·예약 … (앱 사용법, 의학 문장 아님)
 //   인사     안녕·고마워·누구야
 //   시술     묶음 이름(data.json meta.fam)과 별칭(search.js ALIASES + 아래 CHAT_ALIASES), 오타는 자모 거리로 '혹시 ○○?'
 //   가격     얼마·가격·최저·싼 곳 → 그 시술의 묶음 하나를 규격(2cc·300샷·50U·3회·1부위)대로 골라 모은 가격(최저·중간·최고·지점 수)
@@ -44,7 +44,7 @@
   // app help — how the app works (never medical); `go` is a route the answer offers as a button
   const HELP = [
     { id: "vat", rx: /부가세|부가가치세|vat/i, say: "병원마다 가격에 부가세(10%)를 넣기도 하고 빼기도 해요. 설정의 '가격 표시'에서 '부가세 포함 예상가'를 고르면 별도로 적은 곳에 10%를 더해서 같이 견줘요. 확인 못 한 곳은 그대로 둬요.", go: ["me", "설정 열기"] },
-    { id: "cart", rx: /장바구니|담기|담으면|담아/, say: "시술을 장바구니에 담으면 그 시술들을 한 곳에서 다 받을 때 어느 지점이 합계가 얼마인지, 섞어서 받으면 얼마인지 계산해 줘요. 예산 상한도 정할 수 있어요.", go: ["cart", "장바구니 열기"] },
+    { id: "cart", rx: /장바구니|견적|담기|담으면|담아/, say: "시술을 내 견적에 담으면 그 시술들을 한 곳에서 다 받을 때 어느 지점이 합계가 얼마인지, 섞어서 받으면 얼마인지 계산해 줘요. 예산 상한도 정할 수 있어요.", go: ["cart", "내 견적 열기"] },
     { id: "event", rx: /체험가|첫방문|첫\s*방문|한정가|이벤트가|선착순/, say: "체험가·첫 방문가·한정가는 조건이 붙은 가격이에요(처음 한 번만, 수량 한정 등). 가격 옆에 조건 표시가 붙고, 비교 화면에서 '조건 없는 가격만' 보기를 고를 수 있어요." },
     { id: "median", rx: /중간값|중앙값|평균값|중간가격/, say: "중간값은 지점별 가격을 싼 것부터 줄 세웠을 때 가운데 가격이에요. 아주 싸거나 비싼 몇 곳에 덜 흔들려서 '보통 이 정도'를 볼 때 써요." },
     { id: "data", rx: /언제\s*(업데이트|갱신|모은|수집|바뀌)|업데이트|갱신|최신|데이터\s*(날짜|언제)|언제\s*가격|수집\s*날짜|언제\s*모|(며칠|몇\s*일|얼마)\s*마다|가격\s*(은|이)?\s*(자주\s*)?바뀌/, say: "가격은 병원 공식 홈페이지에서 매주 모아요. 화면 위 날짜가 가장 많은 지점을 모은 날이에요. 실제 가격은 병원에 꼭 확인하세요.", go: ["about", "데이터 안내"] },
@@ -189,7 +189,7 @@
     const strong = found.filter((r) => r.distinct);
     const help = HELP.find((h) => h.rx.test(raw));
     const helpWords = help ? Search.norm((raw.match(help.rx) || [""])[0]) : "";
-    const viaHelp = (r) => [...r.hit].every((w) => helpWords.includes(w) || w.includes(helpWords) || /장바구니|포함|별도|알림|지도|예약/.test(w));
+    const viaHelp = (r) => [...r.hit].every((w) => helpWords.includes(w) || w.includes(helpWords) || /장바구니|견적|포함|별도|알림|지도|예약/.test(w));
     if (help && !found.some((r) => r.exact) && (!strong.length || strong.every(viaHelp)) && !(wantsPrice && strong.some((r) => !viaHelp(r)))) { res.kind = "help"; res.help = help.id; res.say = help.say; res.go = help.go || null; return res; }
     const chit = CHIT.find((h) => h.rx.test(raw.trim()));
     if (chit && (!strong.length || strong.every((r) => r.guess))) { res.kind = "chit"; res.chit = chit.id; res.say = chit.say; return res; }

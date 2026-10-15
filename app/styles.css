@@ -973,3 +973,6 @@ html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-of
 html.cmp-on { scroll-padding-top: calc(var(--top-h) + var(--cmph, 190px) + 8px); }
 /* landscape phones / big text: a sticky header would leave almost nothing to read — it scrolls with the page */
 @media (max-height: 500px) { .cmphead { position: static; } html.cmp-on { scroll-padding-top: var(--top-h); } }
+/* 6.0 홈: two price cards in the first screen — the section head carries the 'order' ⓘ, and short phones get a smaller headline */
+.sec-h .infob { align-self: center; width: 40px; height: 40px; margin: -10px -8px -10px 0; }
+@media (max-height: 700px) { .hero-home .display { font-size: 23px; } .hero-home { gap: 8px; } .pc .pico { width: 28px; height: 28px; margin-bottom: 4px; } }
