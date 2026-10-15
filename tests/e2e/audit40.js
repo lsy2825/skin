@@ -85,7 +85,11 @@ ok('A14 다시 묶은 시술은 "가격 변동"에 안 나옴', !(D.changes || [
   if (mapped) ok('B6 옮긴 항목은 새 묶음 이름·옵션으로 보임', fam ? cartTxt.includes(fam[0]) && cartTxt.includes(fam[2].find(([id]) => id === mapped[1][0])[1]) : cartTxt.includes(KL[mapped[1][0]]), fam ? fam[0] : KL[mapped[1][0]]);
   await p.goto(BASE + '#compare?k=' + encodeURIComponent(reK)); await p.waitForTimeout(1200);
   const hist = p.locator('#main .note.recl');
-  ok('B7 가격 이력에 "같은 시술로 묶는 기준을 고쳤어요" 안내', await hist.count() === 1 && /기준을 고쳤어요/.test(await hist.innerText()), reK);
+  // the history card (and this note with it) shows only after 8 distinct weeks of snapshots (Stats.historyReady); before
+  // that neither the card nor the note may appear
+  const weeks = new Set((D.trend && D.trend.dates || []).map((d) => { const t = new Date(d + 'T00:00:00Z'), w = (t.getUTCDay() + 6) % 7; t.setUTCDate(t.getUTCDate() - w); return t.toISOString().slice(0, 10); })).size;
+  if (weeks >= 8) ok('B7 가격 이력에 "같은 시술로 묶는 기준을 고쳤어요" 안내', await hist.count() === 1 && /기준을 고쳤어요/.test(await hist.innerText()), reK);
+  else ok(`B7 기록 ${weeks}주(8주 전): 가격 이력·기준 변경 안내를 그리지 않음`, await hist.count() === 0 && !/가격 이력/.test(await p.locator('#main').innerText()), reK);
   ok('B8 페이지 오류 0개', !errs.length, errs.slice(0, 3).join(' / '));
   await b.close();
   const pass = R.filter(Boolean).length;
