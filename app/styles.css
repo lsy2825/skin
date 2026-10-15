@@ -763,7 +763,9 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 .chk-b ul.plain { margin: 2px 0 0; font-size: 13px; gap: 3px; }
 .pc .pk { font-size: 13px; font-weight: 650; color: var(--muted); margin-top: 6px; }
 .pc .pk + .p { margin-top: 0; }
-.hp.range { font-size: 28px !important; }
+/* a price range is text that wraps between its two numbers, never the 3-column '.range' grid of the min~max inputs above
+   (same class name): in that grid each number got a third of the width and ran over the '~' and the card edge */
+.hp.range { font-size: 28px !important; display: block; }
 .hp.range .nw { white-space: nowrap; display: inline-block; }
 .cartsum .hp.range { white-space: normal; letter-spacing: -0.04em; }
 .cartsum .hp.range .to { color: var(--muted); font-weight: 600; }
