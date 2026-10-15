@@ -8,7 +8,7 @@ count / unit checks pass. 블리비 can instead use the hand-checked benchmark i
 Every regex runs on `comp(name)`: spaces removed, 보톡스/보튤리눔 톡신 → 톡신, unit spellings unified
 (50유닛/50unit/50 U → 50U, CC → cc, 100 샷 → 100샷, 10,000J / 10KJ / 1만줄 → 10KJ).
 """
-import re
+import functools, re
 
 # id, category, label (shown), need (all), bad (any), opts
 #   bench: 블리비 benchmark ids (analyze.B) whose prices stand for this key
@@ -95,6 +95,7 @@ X = [
 ADDON = re.compile(r"\s*\+\s*(진정관리|크라이오셀|크라이오|촉촉팩|LED\(5분\)|LED|모델링팩|모델링|재생관리|수분팩|수분관리|진정팩|미백관리|비타민관리|(?:LDM|ldm)\s*\d*분?|맞춤관리)(\s*\d+회)?", re.I)
 
 
+@functools.lru_cache(maxsize=1 << 19)     # match() asks for the same name once per hand-made key (36x per row)
 def comp(s):
     s = s or ""
     s = ADDON.sub("", s)
@@ -130,6 +131,7 @@ ADDON_ONLY = re.compile(r"\[추가\]|^추가|추가$|추가\)|추가\d|\d(샷|cc
 ADDON_PER = re.compile(r"추가당|추가\*|추가시(?!술)")
 
 
+@functools.lru_cache(maxsize=1 << 19)
 def addon_only(name):
     """True when a name is only sold on top of another procedure (comp() of the whole name, and the per-unit add-on words
     outside brackets)"""
@@ -169,16 +171,25 @@ def sessions(name):
     return s
 
 
+@functools.lru_cache(maxsize=1 << 19)
+def _single(name):
+    """the compared text of a name that can stand for some key's unit, or None — the checks every key shares, done once per name"""
+    c = comp(name)
+    if COND.search(c):
+        return None    # '(*300샷 이상 시)': the price needs a bigger purchase than the key's unit
+    if addon_only(name):
+        return None    # '(목필러 옵션) 슈링크 100샷 추가': only sold on top of another procedure
+    if sum(1 for f in FAMS if re.search(f, c)) >= 2:
+        return None    # a bundle of two procedures ('볼뉴머300샷X슈링크300샷', '포텐자 + 쥬베룩') is not the key's unit
+    return c
+
+
 def match(key, name):
     """name: raw display name. returns True when the row stands for the key's unit."""
     kid, cat, label, need, bad, opt = key
-    c = comp(name)
-    if COND.search(c):
-        return False   # '(*300샷 이상 시)': the price needs a bigger purchase than the key's unit
-    if addon_only(name):
-        return False   # '(목필러 옵션) 슈링크 100샷 추가': only sold on top of another procedure
-    if sum(1 for f in FAMS if re.search(f, c)) >= 2:
-        return False   # a bundle of two procedures ('볼뉴머300샷X슈링크300샷', '포텐자 + 쥬베룩') is not the key's unit
+    c = _single(name)
+    if c is None:
+        return False
     if any(not re.search(p, c) for p in need):
         return False
     if any(re.search(p, c) for p in bad):
