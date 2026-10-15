@@ -1510,7 +1510,7 @@
         h("span", {}, jline("home")), h("span", { class: "sr" }, " — 죠미 소개 보기")) : null,
       // round-2 UX01: the promise the data can keep — same product, amount and sessions — and the collection range right under it
       h("h2", { class: "display" }, "같은 용량·횟수끼리,", h("br"), "피부과 가격을 비교해요."),
-      h("p", { class: "lede" }, coverageLine()),
+      h("p", { class: "lede", title: coverageBrands() }, coverageLine()),
       h("div", { class: "search hsearch" }, icon("search"), withSuggest(q, routeQuery), h("button", { type: "button", onclick: () => routeQuery(q.value) }, "찾기"))));
     // two ways in
     const ent = (cls, ic, t, sub, go) => h("button", { class: `entry ${cls}`, type: "button", onclick: go }, h("span", { class: "ei" }, icon(ic)),
@@ -1536,7 +1536,8 @@
     box.append(h("div", { class: "chips" }, h("button", { class: "chip", type: "button", "aria-pressed": !st.hcat ? "true" : "false", onclick: () => { st.hcat = null; render(); } }, "인기"),
       cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": st.hcat === c ? "true" : "false", onclick: () => { st.hcat = c; render(); } }, catIcon(c, "sm"), c))));
     // what '인기' means here: the most widely sold, not searches or bookings (the app has no such numbers)
-    box.append(h("details", { class: "tiny fold small", style: "margin:-2px 2px 8px" }, h("summary", {}, "순서 기준"), st.hcat ? `${st.hcat}에서 파는 지점이 많은 시술 순이에요.` : "‘인기’는 파는 지점이 많은 순이에요. 검색량·예약 수가 아니에요(앱은 그런 숫자를 모으지 않아요)."));
+    // what '인기' means here (the most widely sold, not searches or bookings): behind an ⓘ in the section head (6.0 홈)
+    { const sh = [...box.querySelectorAll(".sec-h")].pop(); if (sh) sh.append(h("button", { class: "infob", type: "button", "aria-label": "순서 기준", onclick: () => sheet("순서 기준", () => h("p", { class: "sub" }, st.hcat ? `${st.hcat}에서 파는 지점이 많은 시술 순이에요.` : "‘인기’는 파는 지점이 많은 순이에요. 검색량·예약 수가 아니에요(앱은 그런 숫자를 모으지 않아요).")) }, icon("info"))); }
     const grid = h("div", { class: "grid" });
     for (const k of keys) {
       let rk = cmpRk(ranking(k.i, "price")), pl = plainRanking(k.i);
@@ -1553,9 +1554,9 @@
         HL ? null : h("span", { class: "pk" }, "중간값"), h("span", { class: "p num" }, won(HL ? top.p : med)),
         HL && FLAGS.discountEmphasis ? h("span", { class: below > 0 ? "save" : "save flat" }, below > 0 ? `중간보다 ${below}% 싸요` : `${base.length}곳 비교`)
           : h("span", { class: "save flat" }, nlo === nhi ? `${base.length}곳 같은 가격` : `${man(nlo)}~${man(nhi)}원 · ${base.length}곳`),
-        HL ? h("span", { class: "basis" }, `${pl.length ? "조건 없는 가격" : "조건부 가격"} ${base.length}곳 · 중간 ${won(med)}`) : h("span", { class: "basis" }, pl.length ? "조건 없는 가격 기준" : "조건이 붙은 가격만 있어요"),
-        cond ? h("span", { class: "basis" }, `조건부 ${won(cond.p)}~ (${priceConds(cond.i)[0] || "조건 있음"})`) : null,
-        lowp.length ? h("span", { class: "basis" }, `확인 필요 초저가 ${won(lowp[0].p)} (중간값의 ${Math.round(lowp[0].p / med * 100)}%)`) : null,
+        HL ? h("span", { class: "basis" }, `${pl.length ? "조건 없는 가격" : "조건부 가격"} ${base.length}곳 · 중간 ${won(med)}`) : pl.length ? null : h("span", { class: "basis" }, "조건이 붙은 가격만 있어요"),
+        HL && cond ? h("span", { class: "basis" }, `조건부 ${won(cond.p)}~ (${priceConds(cond.i)[0] || "조건 있음"})`) : null,
+        HL && lowp.length ? h("span", { class: "basis" }, `확인 필요 초저가 ${won(lowp[0].p)} (중간값의 ${Math.round(lowp[0].p / med * 100)}%)`) : null,
         HL && kindBadge(r).length ? h("span", { class: "row", style: "gap:4px;margin-top:4px" }, kindBadge(r).slice(0, 2)) : null,
         HL ? h("span", { class: "w" }, `${bname(top.b)}${top.d != null ? " · " + km(top.d) : ""}`) : null), addBtn(k.i)));
     }
@@ -2290,9 +2291,10 @@
     return box;
   }
   // what the data covers, in one line (round-2 UX01/DATA): chains, branches, the collection date — so nobody reads '전국 최저가'
+  const coverageBrands = () => (D.meta.brands || []).filter((b, i) => BR.some((x) => x.brand === i)).map((b) => b[0]).join("·");
   function coverageLine() {
     const br = (D.meta.brands || []).map((b, i) => [b[0], BR.filter((x) => x.brand === i).length]).filter((x) => x[1] > 0);
-    return `지금은 ${br.map((x) => x[0]).join("·")} ${br.length}개 체인 ${BR.length}곳의 공개 가격 · ${md(D.meta.updated)} 수집`;
+    return `${br.length}개 체인 ${BR.length}곳의 공개 가격 · ${md(D.meta.updated)} 수집`;
   }
   // 운영 원칙 (round-2 FINAL §4, docs/PRODUCT_DECISIONS.md): what the app promises and what it does not. The wording promises
   // no paid ranking and disclosed interests — not 'we never take any money from clinics' (the owner has not decided on B2B)
