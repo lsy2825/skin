@@ -53,9 +53,13 @@ test("R14: a one-time special with no regular price is never multiplied into a f
 
 test("R11: the CSP allows exactly the origins the config calls (a metrics address missing from connect-src is caught)", () => {
   const { check } = require("../tools/check_csp.js");
-  const html = fs.readFileSync(path.join(__dirname, "../app/index.html"), "utf8"), cfg = fs.readFileSync(path.join(__dirname, "../app/config.js"), "utf8");
+  const shippedHtml = fs.readFileSync(path.join(__dirname, "../app/index.html"), "utf8"), shippedCfg = fs.readFileSync(path.join(__dirname, "../app/config.js"), "utf8");
+  assert.equal(check(shippedHtml, shippedCfg).ok, true, JSON.stringify(check(shippedHtml, shippedCfg).problems));
+  assert.match(shippedCfg, /metrics: false,/, "anonymous metrics ship off (6.0 약속 2: on only after C's privacy text and the user's approval)");
+  // the cases below start from no metrics address at all (the shipped one taken out of both files)
+  const M = /metricsApi: "([^"]*)"/.exec(shippedCfg)[1];
+  const cfg = shippedCfg.replace(/metricsApi: "[^"]*"/, 'metricsApi: ""'), html = M ? shippedHtml.replace(` ${new URL(M).origin}`, "") : shippedHtml;
   assert.equal(check(html, cfg).ok, true, JSON.stringify(check(html, cfg).problems));
-  assert.match(cfg, /metrics: false,/, "anonymous metrics ship off (6.0 약속 2: on only after C's privacy text and the user's approval)");
   const withApi = cfg.replace('metricsApi: ""', 'metricsApi: "https://m.yoonsiljang.example/"');
   const r = check(html, withApi);
   assert.equal(r.ok, false); assert.match(r.problems.join(" "), /connect-src is missing the metricsApi origin https:\/\/m\.yoonsiljang\.example/);
