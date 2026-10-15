@@ -373,7 +373,7 @@ def key_map(prev, prow, rows, allk):
         nk = newk.get((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set())
         for k in old:
             size[k] += 1
-            for n in nk:
+            for n in sorted(nk):          # a tie goes to the smaller id, not to set order (changed with PYTHONHASHSEED)
                 votes[k][n] += 1
     out = {}
     for k, n in size.items():

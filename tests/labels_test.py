@@ -344,6 +344,11 @@ prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "b
         "keys": [["X14", 0, "울쎄라 300샷"]]}
 prow = [[0, 0, 2, 590000, 0, 0, 3, 4]]
 now = [dict(brand="A", branch="강남점", name="울쎄라 300샷", sale="590000", kind="일반", tags="", keys="X14")]
+prev_km = {"s": ["A", "강남점", "울쎄라 300샷", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+           "keys": [["T0AAAAAA", 0, "옛 이름"]]}
+rows_km = [dict(brand="A", branch="강남점", name="울쎄라 300샷", keys="TZZZZZZ TBBBBBB")]
+ok("key_map: 새 id 둘이 같은 표를 받으면 작은 id (집합 순서·PYTHONHASHSEED와 무관)",
+   all(appdata.key_map(prev_km, [[0, 0, 2, 590000, 0, 0, 3, 4]], rows_km, [["TZZZZZZ"], ["TBBBBBB"]])["T0AAAAAA"][0] == "TBBBBBB" for _ in range(3)))
 ok("같은 줄·같은 가격인데 조건(tags)만 바뀌면 규칙 변경(recl)으로 봄 — 가짜 가격 변동 없음", appdata.reclassified(prev, prow, now) == {"X14"}
    and appdata.reclassified(prev, prow, [dict(now[0], tags="평일 낮")]) == set())
 
