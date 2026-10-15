@@ -278,6 +278,15 @@
   // cheapest row for key k at branch b under the current settings (special: override st.special)
   // r[17] visit-condition state for the chosen visit date/time (Pricing.condState): 0 ok · 1 not valid then · 2 time unclear
   const live = (i) => !ROWS[i][15] && ROWS[i][17] !== 1;
+  // a price that can set a group's range, middle and lowest: VAT basis known (r[12] 0 = the site's VAT note was not found,
+  // so +10% may or may not apply — audit U6, E6) and not an add-on sold only with another treatment (audit U10, E5).
+  // Such rows stay in every list with a badge; a branch whose only prices are such rows is still listed.
+  const addonMemo = new Map();
+  const isAddonRow = (i) => { const n = ROWS[i][2]; if (!addonMemo.has(n)) addonMemo.set(n, Classify.isAddon(S[n])); return addonMemo.get(n); };
+  const vatUnknown = (i) => ROWS[i][12] === 0;
+  const cmpOk = (i) => !vatUnknown(i) && !isAddonRow(i);
+  // the part of a branch list that the summary numbers are taken from (all of it when no branch has a comparable price)
+  const cmpRk = (rk) => { const c = rk.filter((x) => cmpOk(x.i)); return c.length ? c : rk; };
   // price basis: "incl" = VAT 포함 예상가 (listed + 10% where the clinic says VAT 별도), "listed" = as shown on the site
   function applyVat() {
     for (const r of ROWS) {
@@ -297,6 +306,7 @@
     for (const i of byKB[k].get(b) || []) {
       const r = ROWS[i];
       if (!live(i) || (!special && isSpecial(r))) continue;
+      if (best >= 0 && cmpOk(best) !== cmpOk(i)) { if (cmpOk(i)) best = i; continue; }   // a comparable price wins over a cheaper add-on / VAT-unknown one
       if (best < 0 || r[3] < ROWS[best][3] || (r[3] === ROWS[best][3] && isSpecial(ROWS[best]) && !isSpecial(r))) best = i;
     }
     return best;
@@ -393,6 +403,8 @@
   const md2 = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const kindBadge = (r) => {
     const out = [];
+    if (r[12] === 0) out.push(h("span", { class: "k k4", title: "병원 사이트에서 부가세 포함·별도 표기를 찾지 못했어요. 범위·중간값 계산에서 빼요" }, "부가세 미확인"));
+    if (Classify.isAddon(S[r[2]])) out.push(h("span", { class: "k k4", title: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 범위·중간값 계산에서 빼요" }, "추가 옵션"));
     if (r[15] === 1) out.push(h("span", { class: "k kx" }, "기간 끝남"));
     if (r[17] === 1) out.push(h("span", { class: "k kx" }, "방문일엔 안 됨"));
     if (r[17] === 2) out.push(h("span", { class: "k kx", title: "병원 사이트에 시간대가 적혀 있지 않아요" }, "시간 확인 필요"));
@@ -646,11 +658,11 @@
     sheet(fam ? fam.f.name : KEYS[k0].label, (close) => {
       const box = h("div", {});
       const paint = () => {
-        const rk = ranking(s.k, "price"), top = FLAGS.lowestHighlight ? rk[0] : null, rp = rk.map((x) => x.p);   // ② off: range, no clinic named
+        const rk = cmpRk(ranking(s.k, "price")), top = FLAGS.lowestHighlight ? rk[0] : null, rp = rk.map((x) => x.p);   // ② off: range, no clinic named
         const have = st.carts[s.ci].items.find((c) => c.t === "k" && c.k === KEYS[s.k].id);
         fill(box,
           fam && fam.f.vs.length > 1 ? h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "옵션"),
-            h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = ranking(v.k, "price");   // lowestHighlight off: the middle price, not '최저'
+            h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = cmpRk(ranking(v.k, "price"));   // lowestHighlight off: the middle price, not '최저'
               return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
                 h("b", {}, v.label), h("span", { class: "num" }, !vr.length ? "가격 없음" : FLAGS.lowestHighlight ? `최저 ${won(vr[0].p)}` : `중간 ${won(median(vr.map((x) => x.p)))}`)); }))) : null,
           h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:12px" }, "2회째부터는 지점의 일반가로 계산")),
@@ -694,7 +706,7 @@
     return [...out];
   }
   // a price is 'normal' (shown as the plain lowest) only with no condition, at a branch read this week, valid on the chosen visit
-  const plainOk = (i) => !isSpecial(ROWS[i]) && !ROWS[i][15] && !ROWS[i][17] && !fresh(ROWS[i][0]).stale && !priceConds(i).length;
+  const plainOk = (i) => !isSpecial(ROWS[i]) && !ROWS[i][15] && !ROWS[i][17] && !fresh(ROWS[i][0]).stale && !priceConds(i).length && cmpOk(i);
   // same as ranking(k) but only plain prices (one per branch)
   function plainRanking(k) {
     const out = [];
@@ -710,7 +722,7 @@
   // how a price sits among the same procedure's prices (each branch's lowest), for '중간보다 N%' texts
   function priceStats(i) {
     const r = ROWS[i], kid = (S[r[7]] || "").split(" ").map((x) => KI[x]).find((x) => x != null);
-    if (kid != null) { const rk = ranking(kid, "price"), ps = rk.map((x) => x.p), med = median(ps);
+    if (kid != null) { const rk = cmpRk(ranking(kid, "price")), ps = rk.map((x) => x.p), med = median(ps);
       return { by: `같은 시술(${KEYS[kid].label})`, n: ps.length, med, rank: ps.filter((p) => p < r[3]).length + 1, special: st.special, k: kid }; }
     const pos = rowPos(i);
     if (pos) { const g = gstat(r[9], true); return { by: "이름이 같은 옵션", n: pos.n, med: g.med, rank: pos.rank, special: true }; }
@@ -1509,7 +1521,7 @@
     box.append(h("details", { class: "tiny fold small", style: "margin:-2px 2px 8px" }, h("summary", {}, "순서 기준"), st.hcat ? `${st.hcat}에서 파는 지점이 많은 시술 순이에요.` : "‘인기’는 파는 지점이 많은 순이에요. 검색량·예약 수가 아니에요(앱은 그런 숫자를 모으지 않아요)."));
     const grid = h("div", { class: "grid" });
     for (const k of keys) {
-      let rk = ranking(k.i, "price"), pl = plainRanking(k.i);
+      let rk = cmpRk(ranking(k.i, "price")), pl = plainRanking(k.i);
       if (st.loc) { rk = rk.filter((x) => x.d != null && x.d <= 10); pl = pl.filter((x) => x.d != null && x.d <= 10); }
       if (!rk.length) continue;
       // headline: lowest plain price (no 첫 방문·체험가 condition, not far below the median); the median is over the plain set
@@ -2490,7 +2502,7 @@
   }
   function variantRows(groups, cur, scroll) {
     return h("div", { class: "vrows" }, groups.map(([g, xs]) => h("div", { class: "vrow" }, h("span", { class: "vg" }, g),
-      h("div", { class: scroll ? "vchips scroll" : "vchips" }, xs.map(({ v, amt }) => { const rr = ranking(v.k, "price");
+      h("div", { class: scroll ? "vchips scroll" : "vchips" }, xs.map(({ v, amt }) => { const rr = cmpRk(ranking(v.k, "price"));
         return h("button", { class: "vchip", type: "button", "aria-pressed": v.k === cur ? "true" : "false", "aria-label": `${g} ${amt}${rr.length ? ` 최저 ${won(rr[0].p)}` : ""}`,
           onclick: () => pickKey(v.k) }, h("b", {}, amt), h("span", { class: "num" }, rr.length ? won(rr[0].p) : "없음")); })))));
   }
@@ -2845,11 +2857,12 @@
       // prices — no clinic is named on top as 'the lowest'; each clinic's price is in the list and the distribution below.
       // With it on: the lowest plain price and its clinic (the earlier headline). Conditional prices are shown apart either way.
       const plain = plainRanking(k.i), { normal, lowp } = splitLow(plain), ptop = normal[0], lowI = new Set(lowp.map((x) => x.i));
-      const ctop = [...rk].filter((x) => !lowI.has(x.i)).sort((x, y) => x.p - y.p)[0];
+      const rkc = cmpRk(rk);   // add-ons and VAT-unknown prices stay in the list below, not in these numbers
+      const ctop = [...rkc].filter((x) => !lowI.has(x.i)).sort((x, y) => x.p - y.p)[0];
       const top = ptop || ctop || lowp[0];
       // the median is taken over the same set as the headline (plain prices when there are any), so the two never disagree
-      const prices = (ptop ? plain : rk).map((x) => x.p).sort((a, b) => a - b), med = median(prices);
-      const shown = (ptop ? normal : rk.filter((x) => !lowI.has(x.i))).map((x) => x.p), lo = Math.min(...shown), hi = Math.max(...shown);
+      const prices = (ptop ? plain : rkc).map((x) => x.p).sort((a, b) => a - b), med = median(prices);
+      const shown = (ptop ? normal : rkc.filter((x) => !lowI.has(x.i))).map((x) => x.p), lo = Math.min(...shown), hi = Math.max(...shown);
       const r0 = ROWS[top.i], HL = FLAGS.lowestHighlight;
       const key = HL ? top.p : `${lo}-${hi}`, tick = lastHero && lastHero.k === k.i && lastHero.p !== key;
       lastHero = { k: k.i, p: key };
@@ -3875,7 +3888,7 @@
       h("p", { class: "tiny" }, "종류 이름을 누르면 부작용·주의사항·근거까지 볼 수 있어요. " + KB_STATE())));
     if (fams.length) box.append(h("div", { class: "card" }, h("h3", {}, `‘${qs}’ 종류 ${fams.length}가지`),
       h("div", { class: "sub" }, "이름이 비슷해도 놓는 곳과 목적이 달라요. 누르면 지점별 가격을 비교해요."),
-      h("ul", { class: "list", style: "margin-top:4px" }, fams.slice(0, 12).map((f) => { const e = kbOf(f), top = ranking(f.main, "price")[0];
+      h("ul", { class: "list", style: "margin-top:4px" }, fams.slice(0, 12).map((f) => { const e = kbOf(f), top = cmpRk(ranking(f.main, "price"))[0];
         return h("li", { class: "rk" }, h("button", { class: "item", type: "button", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, h("span", { class: "t" }, f.name),
           h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, e ? e.purpose : `${f.cat} · ${f.n}곳`),
           e && e.areas ? h("span", { class: "m" }, `부위: ${e.areas}`) : null),
@@ -3884,7 +3897,7 @@
     const keys = KEYS.filter((k) => tokens.length && qc.test(Search.norm(`${k.label} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`)))
       .sort((a, b) => byKB[b.i].size - byKB[a.i].size).slice(0, 8);
     if (keys.length) box.append(h("div", { class: "card" }, h("h3", {}, "같은 조건 가격 비교 바로가기"),
-      h("ul", { class: "list", style: "margin-top:4px" }, keys.map((k) => { const top = ranking(k.i, "price")[0];
+      h("ul", { class: "list", style: "margin-top:4px" }, keys.map((k) => { const top = cmpRk(ranking(k.i, "price"))[0];
         return h("li", {}, h("button", { class: "item", type: "button", onclick: () => { st.key = k.i; nav("compare"); } }, h("span", { class: "t" }, k.label),
           h("span", { class: "p num" }, top ? won(top.p) + "~" : "-"), h("span", { class: "m" }, k.cat, FLAGS.lowestHighlight && top ? `최저 ${bname(top.b)}` : `${byKB[k.i].size}곳`))); }))));
     // typed results (docs/SEARCH_ENGINE_QA.md): what else the words name — a product / device, a clinic, a place, a concern —

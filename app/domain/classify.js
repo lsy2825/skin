@@ -77,5 +77,9 @@
     return out("A");
   }
 
-  return { CLASSES, DEVICES, products, mixOf, isBundle, row };
+  // an add-on sold only with another treatment ('옵션) 히알라제 추가', class H): never a stand-alone price, so it stays out of a
+  // group's range, middle and lowest (audit U10, E5)
+  const isAddon = (name) => ADDON.test(name || "");
+
+  return { CLASSES, DEVICES, products, mixOf, isBundle, isAddon, row };
 });
