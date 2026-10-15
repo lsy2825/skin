@@ -8,7 +8,7 @@ service_role keys and any JWT, password/secret assignments with a literal value,
 code (tests must read APP_PIN), and a non-empty Supabase key in app/config.js. app/data.json (scraped prices) is skipped
 for the generic patterns because its strings are clinic text, not code.
 """
-import base64, json, re, subprocess, sys
+import base64, json, os, re, subprocess, sys
 
 PATTERNS = [
     ("private key", re.compile(r"-----BEGIN (RSA |EC |OPENSSH |DSA |PGP )?PRIVATE KEY")),
@@ -55,12 +55,20 @@ def scan_text(name, text, out):
 
 def main():
     out = []
-    files = subprocess.run(["git", "ls-files"], capture_output=True, text=True, check=True).stdout.split("\n")
-    for f in filter(None, files):
+    # -z + core.quotepath=off: real names, also Korean ones. Plain `git ls-files` prints "docs/\353\241..." for a non-ASCII name,
+    # open() then fails and the file used to be skipped without a word (docs/로그인_설정.md was never scanned until 2026-10-15).
+    # Decoded as UTF-8 on purpose: git writes names in UTF-8, and Windows would otherwise read them as cp949.
+    raw = subprocess.run(["git", "-c", "core.quotepath=off", "ls-files", "-z"], capture_output=True, check=True).stdout
+    files = [f for f in raw.decode("utf-8").split("\0") if f]
+    for f in files:
         try:
             text = open(f, encoding="utf-8").read()
-        except (UnicodeDecodeError, FileNotFoundError, IsADirectoryError):
-            continue
+        except UnicodeDecodeError:
+            continue                                     # binary (images, fonts, .gz): not text, nothing to read
+        except (FileNotFoundError, IsADirectoryError):
+            if os.path.lexists(f) and not os.path.isdir(f):
+                out.append(f"{f}: could not be read (tracked, but open() failed)")
+            continue                                     # deleted from disk but still tracked, or a submodule folder
         scan_text(f, text, out)
     # the browser bundle: no Supabase key with a non-public role may ever be in app/config.js
     cfg = open("app/config.js", encoding="utf-8").read()
