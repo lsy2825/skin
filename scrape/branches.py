@@ -43,6 +43,8 @@ def addr_candidates(text):
 def velyb(f):
     r = f.get("https://www.velyb.kr/community/community02.php")
     out = []
+    if r is None:                      # robots.txt says no, or the page did not load: stop here, the old branches.csv stays as it is
+        raise SystemExit(f"블리비 주소 페이지를 읽지 못함 ({f.last_error}) — data2/branches.csv는 그대로 둠")
     for tr in BeautifulSoup(r.text, "html.parser").select("table#address tr")[1:]:
         c = [clean(x.get_text(" ")) for x in tr.find_all(["td", "th"])]
         if len(c) >= 2:
@@ -160,7 +162,7 @@ def geocode(addr, cache, s):
 
 
 def main():
-    f = Fetcher(gap=0.7)
+    f = Fetcher(gap=0.7, robots=True)      # 2026-10-15: these pages used to be read without looking at robots.txt
     rows = velyb(f) + others(f)
     cache = json.load(open(CACHE, encoding="utf-8")) if os.path.exists(CACHE) else {}
     s = requests.Session()
@@ -173,6 +175,16 @@ def main():
         out.append({"brand": r["brand"], "branch": r["branch"], "address": r["address"], "address_full": r["address_full"],
                     "lat": g["lat"] if g else "", "lng": g["lng"] if g else "", "geo_level": g["level"] if g else "none"})
         json.dump(cache, open(CACHE, "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=0)
+    # a page that could not be read this time (robots.txt unreadable, a server error) must not wipe a branch's known address
+    # and point: the last file's values stay until a page answers again
+    last = {}
+    if os.path.exists(OUT):
+        last = {(r["brand"], r["branch"]): r for r in csv.DictReader(open(OUT, encoding="utf-8"))}
+    for r in out:
+        o = last.get((r["brand"], r["branch"]))
+        if not r["address"] and o and o.get("address"):
+            r.update({k: o.get(k, "") for k in ("address", "address_full", "lat", "lng", "geo_level")})
+            print("  kept last address:", r["brand"], r["branch"])
     out = drop_shared(out)
     with open(OUT, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=list(out[0].keys()))

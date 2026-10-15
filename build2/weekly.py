@@ -35,6 +35,17 @@ def run(args):
     return ok
 
 
+def gate(policy, key):
+    """why a brand is not scraped this run, or '': 'blocked' = robots.txt of its sites disallows the paths (or could not be read),
+    'no_record' = the source check (data2/sources.json) has no entry for it, so nobody has looked at its robots.txt (2026-10-15:
+    five brands were scraped on a sources.json that did not list them). Only that brand is skipped — its last accepted file
+    stays and the report says why; the run goes on."""
+    entry = policy.get(key)
+    if entry is None:
+        return "no_record"
+    return "blocked" if entry.get("allowed") is False else ""
+
+
 def stats(path):
     if not os.path.exists(path):
         return 0, 0
@@ -99,10 +110,12 @@ def main():
     for key, brand in SCRAPERS:
         new = os.path.join(RAW, f"{key}.csv")
         old = os.path.join(ACC, f"{key}.csv")
-        blocked = policy.get(key, {}).get("allowed") is False
-        if blocked:
+        skip = "" if a.skip_scrape else gate(policy, key)
+        if skip == "blocked":
             report.append(f"- **{brand}: robots.txt가 수집 경로를 막아서 이번 주 수집 안 함** (data2/sources.json)")
-        ok = True if a.skip_scrape else (False if blocked else run([f"scrape/{key}.py"]))
+        elif skip == "no_record":
+            report.append(f"- **{brand}: 출처 점검 기록(data2/sources.json)에 없어서 이번 주 수집 안 함** — scrape/sources.py REGISTRY에 있는지, source-check를 돌렸는지 확인")
+        ok = True if a.skip_scrape else (False if skip else run([f"scrape/{key}.py"]))
         n_new, b_new = stats(new) if ok else (0, 0)
         n_old, b_old = stats(old)
         why = malformed(new, old) if ok and n_new else ""

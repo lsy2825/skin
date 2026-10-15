@@ -14,7 +14,7 @@ import csv, json, os, re, urllib.robotparser
 from collections import OrderedDict
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-from common import Fetcher, ROOT, clean, now_iso
+from common import BOT_NAME, Fetcher, ROOT, clean, now_iso, robots_put, set_delay, stamp
 
 OUT = os.path.join(ROOT, "data2", "sources.json")
 ACC = os.path.join(ROOT, "data2", "accepted")
@@ -71,12 +71,19 @@ def robots(f, host, paths):
     r = f.get(f"https://{host}/robots.txt")
     if r is None:
         err = f.fails[-1]["error"] if f.fails and f.fails[-1]["url"].endswith("/robots.txt") else "응답 없음"
+        robots_put(host, int(err.split()[1]) if str(err).startswith("HTTP ") else 0, "")     # later steps reuse this answer
         return robots_unread(host, str(err), paths)
+    robots_put(host, 200, r.text)
     rp = urllib.robotparser.RobotFileParser()
     rp.parse(r.text.splitlines())
-    blocked = [p for p in paths if not rp.can_fetch("*", f"https://{host}{p}")]
+    # asked as our own name: a rule written for YoonSiljangBot wins over '*' (RobotFileParser falls back to '*' when there is none)
+    blocked = [p for p in paths if not rp.can_fetch(BOT_NAME, f"https://{host}{p}")]
+    delay = rp.crawl_delay(BOT_NAME)
+    if delay:                                  # this read is the first request of the run to the host: later steps wait from here
+        set_delay(host, delay)
+        stamp(host)
     return {"host": host, "robots": "있음", "allowed": not blocked, "blocked_paths": blocked, "checked_paths": paths,
-            "crawl_delay": rp.crawl_delay("*")}
+            "crawl_delay": delay}
 
 
 def evidence(f, urls):

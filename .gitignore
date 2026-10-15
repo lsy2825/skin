@@ -7,3 +7,5 @@ data2/variants.json
 data2/variants_report.txt
 node_modules/
 .wrangler/
+data2/.host_clock.json
+data2/.robots_cache.json
