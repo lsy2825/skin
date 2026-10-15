@@ -95,6 +95,7 @@
 | Supabase anon 키 | (켜면) `app/config.js` | 공개해도 되는 키예요. 모든 권한은 RLS가 판단해요. 비밀 검사가 이 키의 역할이 `anon`인지 확인해요 |
 | Supabase service_role 키 | GitHub Actions secret에만 | 브라우저·저장소에 절대 두지 않아요. CI 비밀 검사로 막아요 |
 | GitHub 토큰 | Actions가 실행마다 발급(`github.token`) | 작업별 최소 권한 |
+| 텔레그램 봇 토큰·대화 번호 | GitHub Actions repository secret(`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)에만 | 알림 스크립트가 토큰을 출력하지 않아요(§9) |
 | 비밀번호 화면 PIN | 해시만 `gate.js`에 | 비밀이 아니라 가림막이에요. 숫자는 저장소에 쓰지 않아요(테스트는 `APP_PIN` 환경 변수) |
 
 - **자동 비밀 검사:** `tests/security/scan_secrets.py`를 배포 전 테스트에서 매번 돌려요(**검증됨**).
@@ -121,7 +122,7 @@
 | 보안 HTTP 헤더 | GitHub Pages는 헤더를 직접 정할 수 없어요. 그래서 meta 태그로 CSP와 Referrer-Policy를 넣었어요. `frame-ancestors`/`X-Frame-Options`(클릭재킹)와 HSTS 설정은 **미해결**: 전용 도메인 + 프록시가 필요해요. 대신 클릭재킹은 스크립트로 일부 막아요: 다른 사이트 프레임 안이면 화면을 숨기고 새 창 링크만 보여줘요(`app/gate.js`, 시험 `tests/e2e/frame.js`) |
 | Content Security Policy | 스크립트는 같은 사이트만, 지도 타일은 OSM만, `object-src 'none'`, `base-uri 'none'`, `form-action 'none'`. 14개 화면에서 위반 0건으로 **검증됨** |
 | 의존성 검사 | 버전 고정(requirements.txt, 액션 SHA). `.github/dependabot.yml`(주간 업데이트 PR). 로그인 라이브러리는 저장소 안에 복사해 둠(MIT). Dependabot alerts·CodeQL은 **사용자가 켜야 해요** |
-| 오류 모니터링 | **미해결.** 앱 오류를 모으는 곳이 없어요. 도입한다면 개인정보를 지우는 설정으로 해야 해요 |
+| 오류 모니터링 | **미해결.** 앱 오류를 모으는 곳이 없어요. 도입한다면 개인정보를 지우는 설정으로 해야 해요. 가격 공장·앱 주소 감시는 §9 |
 | 트래픽 모니터링 | **미해결.** GitHub Pages는 방문 통계를 주지 않아요 |
 | 자원 한도 | GitHub Pages(사이트 1 GB, 월 대역폭 약 100 GB 권장), Actions 실행 시간, Supabase 플랜 한도. 데이터 파일은 5 MB 정도예요 |
 | 백업 검증 | `db-security` 워크플로가 실제 데이터로 백업→복구를 확인해요 |
@@ -151,3 +152,26 @@
 - GitHub 보안 기능 켜기
 - 수집기 User-Agent
 - dev/prod 분리
+
+## 9. 운영 감시 (텔레그램 알림)
+기준일: 2026-10-15. 알림 채널은 사용자가 고른 텔레그램이에요. 문제가 있을 때만 메시지 1건을 보내요(알림 피로 방지).
+
+| 무엇을 | 어디서 | 언제 |
+|---|---|---|
+| 가격 공장 실패·중단 | `weekly.yml` 마지막 단계(`failure() \|\| cancelled()`) | 그 실행 직후 |
+| 데이터 가드 발동(`data2/report.md`의 "지난 자료 유지", "수집 실패, 이전 자료도 없음", robots.txt 차단, 출처 정책 확인 실패, "지난 자료로 배포", 급변 가격 검토 대기) | `weekly.yml`(`health_check.py --report-only`) | 자료를 새로 만든 실행 직후 |
+| 브랜드 수집일이 오늘(KST)보다 8일 넘게 지남, 지난 자료를 쓰는 지점 | 두 곳 모두(`app/data-meta.json`, 감시 작업은 배포된 파일 우선) | 실행 직후 + 매일 |
+| 공장이 26시간 넘게 성공 못함, 예약 실행이 없음, 3시간 넘게 멈춤, 마지막 실행 실패(다시 알림) | `monitor.yml`(GitHub API, `actions: read`) | 매일 09:30 KST |
+| 앱 주소 200, 배포된 `data-meta.json` 읽힘 | `monitor.yml` | 매일 |
+| Worker 살아 있음(HTTP 500 미만이면 정상) | `monitor.yml`, 저장소 변수 `MONITOR_WORKER_URLS`에 적힌 주소만(비면 건너뜀) | 매일 |
+| 감시 자체가 살아 있음 | `monitor.yml`: 월요일에 문제가 없으면 "[주간 생존 신호]" 1건 | 매주 월요일 |
+
+- **비밀:** 봇 토큰과 대화 번호는 Actions repository secret에만 둬요. 저장소·로그·메시지에 쓰지 않아요.
+  텔레그램 API는 토큰을 주소에 넣기 때문에, `.github/scripts/telegram.py`는 주소·예외 문구를 출력하지 않고
+  HTTP 상태와 텔레그램 설명만 남겨요(이마저 토큰 모양 글자는 가려요). `set -x`·`curl -v`는 쓰지 않아요(**검증됨**:
+  `tests/security/monitor_test.py`가 401/400/429/5xx/연결 실패와 주소가 든 예외에서 출력에 토큰이 없는지 확인).
+- **실패해도 공장을 멈추지 않아요:** 알림 스크립트는 언제나 종료 코드 0이고, secret이 없으면 notice 한 줄만 남겨요.
+  알림 단계에는 `continue-on-error`를 걸었어요. 그래서 GitHub의 실패 표시·메일은 그대로 남아요.
+- **개인정보 없음:** 메시지에는 브랜드 이름, 날짜, 개수, 실행 기록 링크만 들어가요. 방문자 정보는 모으지도 보내지도 않아요.
+- **한계(미검증):** 이 환경에서는 api.telegram.org와 workers.dev에 닿지 못해 실제 전송은 시험하지 못했어요.
+  사용자가 `monitor` 워크플로를 수동 실행(시험 메시지 켬)해서 확인해요.

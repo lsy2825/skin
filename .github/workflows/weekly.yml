@@ -55,3 +55,43 @@ jobs:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         run: |
           if [ "$HAS_TOKEN" != "true" ]; then echo "::error title=Cloudflare::CLOUDFLARE_API_TOKEN secret missing — the app was not deployed anywhere"; exit 1; fi
+  # Monitoring → Telegram (docs/SECURITY_ARCHITECTURE.md §9). A separate job, so the bot token never sits in the job where
+  # the scrapers and the build ran (they could have written to GITHUB_ENV); read-only, no git credentials left on disk.
+  # Without the TELEGRAM_* secrets the scripts print a notice and do nothing; they always exit 0.
+  alert:
+    needs: update
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read     # private repo: checkout of the alert scripts and of the run's saved report
+    steps:
+      # the latest main: a successful run has pushed its data2/report.md and app/data-meta.json there
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      # cancelled too: a run stopped by timeout-minutes is "cancelled", not "failure"
+      - name: Alert on factory failure (Telegram)
+        if: needs.update.result == 'failure' || needs.update.result == 'cancelled'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+          RESULT: ${{ needs.update.result }}
+        run: |
+          case "$RESULT" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+          case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
+          python3 .github/scripts/telegram.py "윤실장 가격 공장 $WHY ($WHEN). 앱은 마지막으로 배포된 자료를 그대로 보여 줘요. 실행 기록: $RUN_URL"
+      # Data guard hits and old data — only after a COLLECTION run (schedule, or manual without skip_scrape), not after every
+      # code-push rebuild, so the same unchanged problem is not re-sent each time someone merges a PR.
+      - name: Alert on data guard or old data (Telegram)
+        if: >-
+          needs.update.result == 'success' && needs.update.outputs.run == 'true' &&
+          (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.skip_scrape))
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python3 .github/scripts/health_check.py --report-only --send
