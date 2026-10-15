@@ -2,7 +2,6 @@
   "name": "yoonsiljang-server",
   "private": true,
   "type": "module",
-  "description": "윤실장 commerce API (credits, payments, premium jobs). Runs as a Cloudflare Worker; tests run on Node against a local PostgreSQL.",
-  "scripts": { "test": "node --test test/*.test.mjs" },
-  "devDependencies": { "pg": "8.13.1" }
+  "description": "Shared Web Push pieces (VAPID signing, push-service allowlist, quiet hours, rule evaluation) for the login-less alerts Worker. Credits, payments and premium jobs were removed in 6.0.",
+  "scripts": { "test": "node --test test/*.test.mjs" }
 }

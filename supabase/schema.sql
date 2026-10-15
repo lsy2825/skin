@@ -28,7 +28,10 @@ create index if not exists records_user_idx on public.records (user_id, done_on 
 alter table public.profiles enable row level security;
 alter table public.records enable row level security;
 
--- 회원 탈퇴: 본인 로그인 계정 삭제(프로필·기록은 on delete cascade로 같이 지워짐)
+-- 회원 탈퇴: 본인 로그인 계정 삭제(프로필·기록은 on delete cascade로 같이 지워짐).
+-- 6.0에서 크레딧 장부(monetization.sql)가 빠지면서 그쪽 delete_me(jsonb 반환)도 없어졌다. 옛 DB에 그 함수가 남아 있으면
+-- 반환 형식이 달라 바꿔 쓰기가 실패하므로 먼저 지운다. app/auth.js는 빈 응답을 '삭제됨'으로 받는다.
+drop function if exists public.delete_me();
 create or replace function public.delete_me() returns void
 language sql security definer set search_path = '' as $$
   delete from auth.users where id = auth.uid();

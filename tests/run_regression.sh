@@ -14,9 +14,7 @@ run() { local name="$1"; shift; local out; out=$("$@" 2>&1); local rc=$?
   local sum; sum=$(printf '%s\n' "$out" | grep -E '^[0-9]+/[0-9]+ passed|^# (pass|fail) [0-9]+|violations|passed|PASS:|FAIL:' | tail -3 | tr '\n' ' ')
   if [ $rc -eq 0 ]; then echo "OK   | $name | $sum"; else echo "FAIL | $name | $sum"; printf '%s\n' "$out" | grep -E '^FAIL|not ok|Error' | head -8; fail=1; fi; }
 run "unit (tests/*.test.js)" bash -c "node --test tests/*.test.js"
-run "server ledger (PostgreSQL)" bash -c "cd server && node --test test/ledger.test.mjs"
-run "server API (PostgreSQL + mocked providers)" bash -c "cd server && node --test test/api.test.mjs"
-run "server round 2 (PostgreSQL: accounts, idempotency, refunds, deadlines, AI budget)" bash -c "cd server && node --test test/round2.test.mjs"
+run "server push pieces (allowlist, VAPID, quiet hours, rules)" bash -c "cd server && node --test test/push.test.mjs"
 run "CSP vs config origins" node tools/check_csp.js
 run "DB security policies" bash tests/db/run_security_tests.sh
 run "secret scan" python3 tests/security/scan_secrets.py
@@ -25,8 +23,8 @@ run "weekly value guard" python3 tests/weekly_guard_test.py
 run "brand collectors (parsers on saved public pages)" python3 tests/brand_parsers_test.py
 run "spec labels (no price/date/promo words, nothing we glued)" python3 tests/labels_test.py
 run "branch addresses (own address, loose forms, on saved public pages)" python3 tests/branch_addr_test.py
-run "backup / restore (incl. ledger)" bash tests/db/backup_restore_test.sh
-for t in accounts_r2 commerce50 admin51 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus; do
+run "backup / restore" bash tests/db/backup_restore_test.sh
+for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus; do
   run "e2e $t" node tests/e2e/$t.js
 done
 exit $fail

@@ -1,3 +1,4 @@
+-- 6.0: 크레딧이 없어져 이 파일은 쓰지 않는다. tests/commerce.test.js(B 소유)가 아직 읽고 있어서 B2에서 그 시험이 빠지면 A가 지운다.
 -- 윤실장 5.0 catalog, version 1 (docs/PRICING_AND_UNIT_ECONOMICS.md). These are EXPERIMENTAL prices from the 5.0 directive,
 -- not approved production prices: only the DEMO channel is active. WEB_PG / APPLE_IAP / GOOGLE_PLAY rows are inactive until
 -- the owner approves them (credit_products refuses an active real-channel row without approved_by).

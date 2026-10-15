@@ -1,7 +1,7 @@
-// Price watch + Web Push (docs/PRICE_WATCH_AND_PUSH.md). Prices are collected once a week, so a notice is sent after a new
-// data file is published — never described as real-time. One notice per rule per change (commerce_watch_event dedupes),
-// one push per user per run (a digest), nothing during the user's quiet hours (left for the next run), and the push itself
-// carries no content: the service worker shows a generic line and the app reads the notices after sign-in.
+// Web Push pieces with no credits and no accounts (6.0: the credit-locked 'price watch pass' is gone; the login-less alerts
+// Worker cf/alerts reuses these — development brief A5, promise 1). Prices are collected once a week, so a notice follows a
+// new data file and is never called real-time; the push itself carries no content (the service worker shows a fixed line and
+// opens the saved tab); nothing is sent inside quiet hours.
 import { HttpError, fetchT } from "./http.mjs";
 import Stats from "../../app/domain/stats.js";
 
@@ -33,7 +33,6 @@ export async function sendPush(endpoint, vapid, { fetch: f = fetch, now } = {}) 
 
 // KST hour inside [start, end) (wraps midnight: 22→8)
 export const quiet = (hour, s, e) => s == null || e == null || s === e ? false : s < e ? hour >= s && hour < e : hour >= s || hour < e;
-const kstHour = (ms) => new Date(ms + 9 * 3600000).getUTCHours();
 
 // one rule against the current data → a notice or null. Only collected numbers; 'watch' needs a ≥5% move or a new low.
 export function evaluate(rule, ctx) {
@@ -49,35 +48,4 @@ export function evaluate(rule, ctx) {
   else if (rule.kind === "newmatch" && base.n && n > base.n) msg = `${label}: 가격이 있는 지점이 ${base.n} → ${n}곳으로 늘었어요 (${at})`;
   else if (rule.kind === "watch" && base.median && (Math.abs(med - base.median) / base.median >= 0.05 || min < base.min)) msg = `${label}: 중간값 ${base.median.toLocaleString()} → ${med.toLocaleString()}원 (${at})`;
   return { baseline: now, notice: msg && { title: label, text: msg, key: rule.key_id, data_updated: ctx.updated } };
-}
-
-export async function runWatch({ rpc, ctx, vapid, fetch: f = fetch, now = Date.now() }) {
-  let after = 0, rules = 0, events = 0;
-  for (;;) {
-    const batch = await rpc("commerce_watch_due", { after });
-    if (!batch.length) break;
-    for (const r of batch) {
-      rules++; after = r.id;
-      const ev = evaluate(r, ctx);
-      if (!ev) continue;
-      if (!ev.notice) { if (!r.baseline) await rpc("commerce_watch_event", { rule_id: r.id, baseline: ev.baseline }); continue; }
-      const res = await rpc("commerce_watch_event", { rule_id: r.id, event_key: `${r.kind}|${r.key_id}|${ctx.updated}`, payload: ev.notice, baseline: ev.baseline });
-      if (res.new) events++;
-    }
-  }
-  // the digest push: one per user, skipped inside quiet hours (the first rule's window; a user sets one window in the app)
-  let pushed = 0, held = 0;
-  const pending = vapid && vapid.privateJwk ? await rpc("commerce_push_pending", {}) : [];
-  for (const u of pending) {
-    const qs = u.quiet_start ?? null, qe = u.quiet_end ?? null;        // carried by commerce_push_pending (5.1 audit: no second full scan)
-    if (quiet(kstHour(now), qs, qe)) { held++; continue; }
-    let any = false;
-    for (const s of u.subs) {
-      const r = await sendPush(s.endpoint, vapid, { fetch: f, now }).catch(() => ({ ok: false }));
-      await rpc("commerce_push_done", { endpoint: s.endpoint, ok: r.ok, gone: r.gone });
-      any = any || r.ok;
-    }
-    if (any || !u.subs.length) { await rpc("commerce_push_done", { user_id: u.user_id }); if (any) pushed++; }
-  }
-  return { rules, events, pushed, held };
 }

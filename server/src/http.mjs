@@ -3,26 +3,6 @@
 export class HttpError extends Error {
   constructor(status, code, message, detail) { super(message || code); this.status = status; this.code = code; this.detail = detail; }
 }
-// database / provider error codes → HTTP status and a user-safe Korean message (no stack traces, no SQL)
-const KNOWN = {
-  INSUFFICIENT_CREDITS: [402, "크레딧이 부족해요"], AMOUNT_MISMATCH: [409, "결제 금액이 주문과 달라요"], CURRENCY_MISMATCH: [409, "통화가 주문과 달라요"],
-  ORDER_ALREADY_PAID: [409, "이미 결제된 주문이에요"], ORDER_NOT_FOUND: [404, "주문을 찾지 못했어요"], PRODUCT_NOT_FOR_SALE: [400, "판매 중인 상품이 아니에요"],
-  IDEMPOTENCY_CONFLICT: [409, "같은 요청 키로 다른 주문을 만들 수 없어요"], PAYMENT_NOT_DONE: [409, "결제가 끝나지 않았어요"], CHANNEL_MISMATCH: [409, "결제 수단이 주문과 달라요"],
-  ORDER_NOT_PAYABLE: [409, "결제할 수 없는 주문 상태예요"], FEATURE_NOT_AVAILABLE: [400, "지금 쓸 수 없는 기능이에요"], JOB_RELEASED: [409, "작업이 취소돼 크레딧을 돌려드렸어요"],
-  NO_DELIVERABLE: [422, "결과를 만들지 못했어요"], CREDITS_ALREADY_SPENT: [409, "이미 쓴 크레딧이 있어 자동 환불할 수 없어요(고객센터 확인)"],
-  REFUND_AMOUNT_INVALID: [400, "환불 금액이 올바르지 않아요"], NO_WATCH_ENTITLEMENT: [402, "가격 지켜보기 이용권이 필요해요"], TOO_MANY_RULES: [429, "지켜보기 규칙은 50개까지예요"],
-  BAD_REQUEST: [400, "요청 형식이 올바르지 않아요"], WOULD_GO_NEGATIVE: [409, "잔액이 0보다 작아질 수 없어요"], PAYMENT_NOT_FOUND: [404, "결제를 찾지 못했어요"],
-  REPORT_NOT_FOUND: [404, "보고서를 찾지 못했어요"], SESSION_FULL: [409, "이 세션의 질문 5개를 다 썼어요"],
-  TOO_MANY_SUBSCRIPTIONS: [429, "알림 기기는 10개까지예요"], JOB_NOT_FOUND: [404, "작업을 찾지 못했어요"],
-  TURN_IN_PROGRESS: [409, "같은 질문을 처리하고 있어요"], VERSION_CONFLICT: [409, "다른 곳에서 먼저 바뀌었어요. 새로 불러와 다시 고쳐 주세요"], FEATURE_NOT_SOLD: [403, "지금은 판매하지 않는 기능이에요"],
-};
-export const fromDb = (e) => {
-  if (e instanceof HttpError) return e;
-  const code = Object.keys(KNOWN).find((k) => String(e && e.message).includes(k));
-  if (code) return new HttpError(KNOWN[code][0], code, KNOWN[code][1], e.detail);
-  return new HttpError(500, "INTERNAL", "잠시 후 다시 시도해 주세요");
-};
-
 // every outbound call has ONE deadline that covers the headers AND the whole body (round-2 R10: the old timer stopped at the
 // headers, so a body that stalled kept the request open), and a byte cap on the body. Returns a small response object:
 // { ok, status, headers, json(), text() } — reading it after the deadline aborts the request and throws UPSTREAM_TIMEOUT.
@@ -104,5 +84,3 @@ export function rateLimiter(store, limit, windowMs) {
     if (store.size > 10000) for (const [k, v] of store) if (!v.length || now - v[v.length - 1] >= windowMs) store.delete(k);
   };
 }
-// the database-backed store (fixed windows, one row per key and window)
-export const dbRateStore = (rpc) => ({ hit: (key, limit, windowMs) => rpc("commerce_rate_hit", { key, limit, window_seconds: Math.ceil(windowMs / 1000) }).catch(() => ({ ok: true })) });
