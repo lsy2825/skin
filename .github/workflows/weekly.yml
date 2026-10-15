@@ -81,10 +81,13 @@ jobs:
         if: steps.decide.outputs.run == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          # only whether a same-named Variable exists (never its value) — the usual mistake is saving under the Variables tab
+          VAR_TOKEN_SET: ${{ vars.CLOUDFLARE_API_TOKEN != '' }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "::notice title=Cloudflare::secrets not set — skipped (GitHub Pages still serves)"; exit 0
+            s() { [ -n "$1" ] && echo set || echo missing; }
+            echo "::notice title=Cloudflare::skipped (GitHub Pages still serves) — repository secret CLOUDFLARE_API_TOKEN: $(s "$CLOUDFLARE_API_TOKEN"), CLOUDFLARE_ACCOUNT_ID: $(s "$CLOUDFLARE_ACCOUNT_ID"), Variable CLOUDFLARE_API_TOKEN exists: $VAR_TOKEN_SET"; exit 0
           fi
           npx --yes wrangler@4.145.0 deploy
   deploy:
