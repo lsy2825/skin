@@ -1,0 +1,40 @@
+// 관리자 주소 (A6) — the same app/ folder as the public Worker "yoonsiljang", behind a fail-closed Cloudflare Access gate
+// (src/handler.js). The ops screen (#ops) only shows its data on this host (app/screens/ops.js ADMIN_HOSTS).
+// Deployed by tools/factory.sh deploy() right after the public Worker, or by hand:
+//   npx --yes wrangler@4.145.0 deploy --config cf/admin/wrangler.jsonc
+// Local check (no account needed): bash cf/admin/test/local_dev.sh
+// Nothing here is a secret: the Access AUD tag and team domain are identifiers. Fill them in this file (not in the dashboard:
+// every wrangler deploy replaces dashboard vars with the ones below). While both are "", every request gets 403.
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang-admin",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  // Preview hosts (<version>-yoonsiljang-admin.…) would serve the admin pages on a host the Access app may not cover.
+  "preview_urls": false,
+  // No request log anywhere (same reasoning as cf/metrics): Workers Logs is on by default for a new Worker and its invocation
+  // logs keep request metadata and headers (client IP included). Spelled out, every deploy turns it off again.
+  "logpush": false,
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 0,
+    "logs": { "enabled": false, "invocation_logs": false, "head_sampling_rate": 0, "persist": false },
+    "traces": { "enabled": false, "head_sampling_rate": 0, "persist": false },
+    "issues": { "enabled": false }
+  },
+  "assets": {
+    // the public app folder, unchanged: one build, two hosts
+    "directory": "../../app",
+    "binding": "ASSETS",
+    "not_found_handling": "none",
+    // every request runs src/index.js first; without this the asset router would answer before the Access check
+    "run_worker_first": true
+  },
+  "vars": {
+    // Cloudflare Access for this whole host. Empty = not configured = everything answers 403 (fail closed).
+    // ACCESS_TEAM_DOMAIN: "<team>.cloudflareaccess.com"; ACCESS_AUD: the Access application's AUD tag.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  }
+}

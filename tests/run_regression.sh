@@ -15,6 +15,9 @@ run() { local name="$1"; shift; local out; out=$("$@" 2>&1); local rc=$?
   if [ $rc -eq 0 ]; then echo "OK   | $name | $sum"; else echo "FAIL | $name | $sum"; printf '%s\n' "$out" | grep -E '^FAIL|not ok|Error' | head -8; fail=1; fi; }
 run "unit (tests/*.test.js)" bash -c "node --test tests/*.test.js"
 run "server push pieces (allowlist, VAPID, quiet hours, rules)" bash -c "cd server && node --test test/push.test.mjs"
+run "admin worker (cf/admin: fail-closed Access gate, headers, no sw.js)" bash -c "node --test cf/admin/test/*.test.mjs"
+run "ops screen only on the admin host (browser)" node tests/security/admin_ops_browser.js
+run "admin ops: regression list + browser check need APP_PIN" bash -c "node --test tests/security/*.test.js"
 run "CSP vs config origins" node tools/check_csp.js
 run "DB security policies" bash tests/db/run_security_tests.sh
 run "secret scan" python3 tests/security/scan_secrets.py

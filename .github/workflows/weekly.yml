@@ -12,7 +12,7 @@ on:
         default: false
   push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
     branches: [main]
-    paths: ["app/**", "build2/**", "tests/**", "knowledge/**", ".github/workflows/weekly.yml"]   # knowledge/ = 시술 설명
+    paths: ["app/**", "build2/**", "tests/**", "knowledge/**", "tools/factory.sh", "cf/admin/**", ".github/workflows/weekly.yml"]   # knowledge/ = 시술 설명; cf/admin = 관리자 주소 Worker(factory.sh deploy가 같이 배포)
 
 permissions: {}       # nothing by default; each job asks only for what it needs (least privilege)
 

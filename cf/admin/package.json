@@ -1,0 +1,6 @@
+{
+  "name": "yoonsiljang-admin",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that serves the same app/ files as the public Worker, but only to requests Cloudflare Access signed for it (fail closed: 403 until ACCESS_AUD and ACCESS_TEAM_DOMAIN are set). No dependencies; tests: node --test cf/admin/test/*.test.mjs"
+}

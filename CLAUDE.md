@@ -43,7 +43,9 @@
   미뤄 준다. `change`·`blur`·`focusout`에서 `#main`을 직접 `replaceChildren`/`innerHTML`로 갈지 않는다. 필터를 바꾸는
   `go()`류는 그려질 때의 `params`가 아니라 지금 주소(`location.hash`)에 덧붙인다. 화면·입력칸을 바꾸면
   `tests/e2e/clickable.js`(회귀에 포함)를 돌린다.
-- `app/`이나 `build2/`가 main에 합쳐지면 앱이 다시 배포된다(Cloudflare). main에는 직접 push하지 않고 PR로만 합친다(아래 '분업').
+- `app/`·`build2/`·`tests/`·`knowledge/`·`tools/factory.sh`·`cf/admin/`(그리고 `weekly.yml` 자체)이 main에 합쳐지면 `weekly.yml`이
+  `tools/factory.sh`를 돌려 앱이 다시 배포된다(Cloudflare: 공개 `yoonsiljang` + 관리자 `yoonsiljang-admin`. 관리자 쪽 배포 실패는
+  경고만 — 공장 실행을 실패시키지 않는다). main에는 직접 push하지 않고 PR로만 합친다(아래 '분업').
 - 규격 이름이 깨지지 않게(2026-10-14 사고): 수집기는 상품명을 사이트 그대로 저장하고, 칸·묶음 제목을 앞에 붙이는 일은
   `build2/clean.py`(`title_words`)만 한다. 비교 규격 이름 규칙은 `build2/labels.py`(빌드 가드) — 수집기·정리·분류 규칙을
   바꾸면 `python3 tests/labels_test.py`를 돌린다.

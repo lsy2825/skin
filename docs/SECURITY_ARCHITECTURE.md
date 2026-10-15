@@ -128,6 +128,24 @@
 | 백업 검증 | `db-security` 워크플로가 실제 데이터로 백업→복구를 확인해요 |
 | 재해 복구 | `INCIDENT_RESPONSE_PLAN.md` |
 
+## 7-1. 관리자 주소 — 운영 현황을 Cloudflare Access 뒤로 (6.0 보안 3, A6)
+지금까지 운영 현황(`#ops`: 수집 보고·신선도·수집 실행 상태·분류 검토 센터·재수집 순서·검토 큐·출처 정책·시술 설명 검수·기능 플래그)은
+비밀번호 화면 뒤에 있었지만, 그 화면은 잠금일 뿐이라 일반 사용자도 볼 수 있었어요. 2026-10-15부터:
+
+| 항목 | 설계 | 상태 |
+|---|---|---|
+| 관리자 주소 | Cloudflare Worker `yoonsiljang-admin`(`cf/admin/`, 무료 플랜). 공개 Worker와 **같은 `app/` 폴더**를 내주고(`assets.directory ../../app`, 빌드 하나·주소 둘), `tools/factory.sh deploy()`가 공개 Worker 바로 다음에 배포해요. 관리자 Worker 배포가 실패해도 공장 실행은 실패하지 않아요(로그 한 줄 + GitHub 경고만 — 가격 데이터와 공개 앱은 이미 저장·배포된 뒤라서요); 공개 Worker 배포 실패는 그대로 실패예요 | 코드·단위 시험 **검증됨**(`tests/factory_worker.test.js`: 가짜 wrangler로 순서·토큰·실패 처리), 배포는 **미검증**(이 환경은 Cloudflare에 닿지 않아요) |
+| 실패 시 닫힘(fail closed) | 모든 요청이 `src/index.js`를 먼저 지나요(`run_worker_first`). `Cf-Access-Jwt-Assertion` 헤더를 RS256으로 검증(kid·aud·iss·exp·nbf, 인증서는 `https://<팀>.cloudflareaccess.com/cdn-cgi/access/certs`에서 1시간 캐시·분당 1회 재조회)하거나 `ctx.access.aud`가 `ACCESS_AUD`와 같을 때만 파일을 내줘요. **`ACCESS_AUD`·`ACCESS_TEAM_DOMAIN`이 비어 있으면(기본값) 전부 403** — Access를 켜기 전에 배포돼도 아무것도 안 보여요 | **검증됨**(`cf/admin/test/`: 설정 없음·헤더 없음·위조·만료·다른 aud/iss·alg none·모르는 kid → 403, 올바른 토큰·`ctx.access` → 200; `local_dev.sh`: 실제 런타임에서 403/404) |
+| 보안 헤더 | Worker가 만든 응답에는 `app/_headers`가 적용되지 않아 같은 값 4개(`frame-ancestors 'none'`, HSTS 1년, `nosniff`, `strict-origin-when-cross-origin`)를 직접 붙이고, HTML은 `cache-control: no-store`(로그인이 끝난 뒤 화면이 남지 않게) | **검증됨**(단위) |
+| 오프라인 사본 없음 | `/sw.js`는 404 — 관리자 주소에서는 서비스 워커가 설치되지 않아 관리자 화면이 휴대폰에 남지 않아요 | **검증됨**(단위) |
+| 개인정보 | 읽는 요청 헤더는 `cf-access-jwt-assertion` 하나. IP·브라우저·쿠키·`cf` 객체는 읽지 않고, 로그 코드가 없고(`console` 금지 시험), Workers Logs·추적·preview 주소는 설정에서 꺼요 | **검증됨**(단위: 소스 금지 패턴, 설정 검사) |
+| 앱 쪽 | `app/screens/ops.js`는 `location.hostname`이 `ADMIN_HOSTS`(관리자 주소, 그리고 로컬 개발·시험용 `localhost`/`127.0.0.1`)일 때만 내용을 그려요. 다른 주소에서는 "운영 현황은 관리자 주소에서만 볼 수 있어요." 한 줄만 보여주고 아무것도 가져오지 않아요(공장 `/status`·GitHub API·`review.json` 요청 0). 이건 보호가 아니라 정리예요 — 보호는 Access가 해요 | **검증됨**(`tests/security/admin_ops_browser.js`) |
+| AUD·팀 도메인이 사는 곳 | `cf/admin/wrangler.jsonc`의 `vars`(비밀이 아닌 식별자). 대시보드에 넣으면 다음 `wrangler deploy`가 지우므로 파일에만 적어요 | 사용자 설정 대기 |
+| 켜는 순서 | ① Zero Trust 설정(무료, 50명). 무료 플랜이어도 결제 수단 입력 화면이 나와요(청구되지 않아요) ② Workers & Pages → `yoonsiljang-admin` → **Access 탭** → "Protect this Worker behind Access" → **All traffic** → 정책은 **Cloudflare account**(이 계정의 구성원만 — 혼자 쓰는 계정이면 본인만 통과; 이메일 주소를 직접 적는 항목이 보이면 본인 주소 하나만 적어도 돼요). **Email domain에 gmail.com을 넣으면 안 돼요 — 모든 Gmail 사용자가 들어와요** → Apply Access(예전 대시보드라면 Domains 탭 / Settings → Domains & Routes → workers.dev → Enable Cloudflare Access) ③ Zero Trust → Access controls → Applications → `yoonsiljang-admin - Production` → Overview의 Application Audience (AUD) Tag와 팀 도메인을 `cf/admin/wrangler.jsonc` `vars`에 적고 다시 배포 ④ 본인 계정으로 열리면, 다른 구글 계정으로도 한 번 들어가 보세요 — 막혀야 정상이고, 열리면 정책이 Email domain으로 잡힌 거라 Zero Trust → Access controls → Applications에서 고쳐요. 로그인 뒤에도 빈 403이 나오면 Worker가 `Cf-Access-Jwt-Assertion` 헤더를 못 받는 경우 — 코드 쪽(A)에서 봐야 해요. **공개 Worker `yoonsiljang`에는 Access를 켜지 않고, Workers & Pages 첫 화면(개요)의 "Protect all Workers" 카드도 켜지 않아요**(공개 앱과 공장 관리자까지 로그인 벽 뒤로 들어가요; Access 탭에는 정책 목록만 보여요) | 사용자 작업(대시보드 경로는 2026-10-12자 Cloudflare 문서 기준) |
+
+참고: Cloudflare 문서는 정적 파일 Worker에는 `ctx.access`가 전달되지 않는다고 적고 있어요. 그래서 실제로 동작하는 길은 헤더 JWT 검증이고,
+`ctx.access`는 `wrangler dev`의 `access.dev` 시험과 나중을 위해 받아 둔 거예요. 둘 다 `ACCESS_AUD`가 비어 있으면 통하지 않아요.
+
 ## 8. 요약
 **검증된 통제(테스트 통과)**
 - DB 접근 정책: 익명, 다른 사용자, 가격 변경, 권한 상승, 관리자 MFA, 감사 기록, 추가만 가능, 요청 한도, 크기 제한

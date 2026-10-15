@@ -1,10 +1,72 @@
 // node --test tests/*.test.js — the Cloudflare price-factory manager's rules (cf/factory/src/runs.js): which manual runs are
 // allowed, secrets compared safely, the run log keeps no tokens, the factory's own saves never re-trigger a build.
 // The container side (entry.sh + tools/factory.sh) is checked by running the image: docs/CLOUDFLARE_MIGRATION.md §4.
+// tools/factory.sh deploy() is run here with a fake wrangler (public Worker must deploy, the admin Worker may fail loudly).
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
+const { spawnSync } = require("child_process");
 const load = () => import(path.join(__dirname, "../cf/factory/src/runs.js"));
+
+// run only deploy() from tools/factory.sh, under the script's own `set -euo pipefail`, with a fake wrangler that records its
+// arguments and fails on the config named in FAKE_FAIL ("public" = the root config, "admin" = cf/admin)
+function runDeploy({ fail = "", token = "tok", github = false } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "factory-deploy-"));
+  const calls = path.join(dir, "calls");
+  fs.writeFileSync(path.join(dir, "wrangler"), [
+    "#!/usr/bin/env bash",
+    'echo "token=${CLOUDFLARE_API_TOKEN:-} args=$*" >> "$CALLS"',
+    'case "$*" in *cf/admin/*) [ "$FAKE_FAIL" = admin ] && { echo "fake: admin deploy FAILS"; exit 1; } ;; *) [ "$FAKE_FAIL" = public ] && { echo "fake: public deploy FAILS"; exit 1; } ;; esac',
+    "exit 0",
+  ].join("\n") + "\n", { mode: 0o755 });
+  const sh = fs.readFileSync(path.join(__dirname, "../tools/factory.sh"), "utf8");
+  const fn = sh.slice(sh.indexOf("deploy() {"), sh.indexOf("\n}", sh.indexOf("deploy() {")) + 2);
+  const script = `set -euo pipefail\nMODE=test\nDEPLOY_TOKEN=${JSON.stringify(token)}\nWRANGLER=${JSON.stringify(path.join(dir, "wrangler"))}\n` +
+    `log() { echo "== factory[$MODE]: $*"; }\n${fn}\ndeploy\necho after-deploy\n`;
+  const env = { ...process.env, CALLS: calls, FAKE_FAIL: fail };
+  delete env.GITHUB_ACTIONS;
+  if (github) env.GITHUB_ACTIONS = "true";
+  const r = spawnSync("bash", ["-c", script], { cwd: path.join(__dirname, ".."), env, encoding: "utf8" });
+  const lines = fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n") : [];
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, out: r.stdout + r.stderr, calls: lines };
+}
+
+test("factory deploy: public Worker then admin Worker, same token; both deploys succeed → no warning", () => {
+  const r = runDeploy();
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(r.calls, ["token=tok args=deploy", "token=tok args=deploy --config cf/admin/wrangler.jsonc"]);
+  assert.match(r.out, /after-deploy/);
+  assert.ok(!/NOT deployed|::warning/.test(r.out), r.out);
+});
+
+test("factory deploy: a failed admin deploy is reported but does not fail the run (GitHub warning only on Actions)", () => {
+  const r = runDeploy({ fail: "admin" });
+  assert.equal(r.status, 0, r.out);
+  assert.equal(r.calls.length, 2, "both deploys attempted");
+  assert.match(r.out, /admin host NOT deployed/);
+  assert.match(r.out, /after-deploy/, "the script goes on to `result ok` / `log done`");
+  assert.ok(!r.out.includes("::warning"), "no GitHub annotation outside Actions");
+  const gh = runDeploy({ fail: "admin", github: true });
+  assert.equal(gh.status, 0, gh.out);
+  assert.match(gh.out, /^::warning title=Cloudflare::yoonsiljang-admin/m);
+});
+
+test("factory deploy: a failed public deploy still fails the run, before the admin deploy", () => {
+  const r = runDeploy({ fail: "public" });
+  assert.notEqual(r.status, 0, r.out);
+  assert.deepEqual(r.calls, ["token=tok args=deploy"], "admin deploy not attempted");
+  assert.ok(!r.out.includes("after-deploy"));
+});
+
+test("factory deploy: without a token nothing is deployed", () => {
+  const r = runDeploy({ token: "" });
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(r.calls, []);
+  assert.match(r.out, /no CLOUDFLARE_API_TOKEN/);
+});
 
 test("manual run: only the five factory modes; price-check takes a whole number 1-200 (default 40)", async () => {
   const R = await load();

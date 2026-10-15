@@ -11,7 +11,10 @@
 # Needs: python deps from requirements.txt (FACTORY_INSTALL=1 installs them after the decision), node, git with an "origin"
 # remote it may push to. Saves by committing to main and pushing (FACTORY_NO_PUSH=1: commit only — dry runs and tests).
 # Deploys app/ with wrangler only when CLOUDFLARE_API_TOKEN is set; the token is taken out of the environment first so the
-# scrapers and build steps never see it.
+# scrapers and build steps never see it. Two Workers get the same app/ folder: the public "yoonsiljang" (root wrangler.jsonc)
+# and the admin "yoonsiljang-admin" (cf/admin/wrangler.jsonc, behind Cloudflare Access — the ops screen lives there).
+# The public deploy must succeed; a failed admin deploy is reported (log line, GitHub warning) but does not fail the run —
+# the price data and the public app are already saved and up by then, and the admin host is not part of the product.
 # Writes run=true|false to $GITHUB_OUTPUT when set, and ok|skipped to $FACTORY_RESULT_FILE when set.
 set -euo pipefail
 MODE=${1:-weekly}
@@ -67,6 +70,13 @@ deploy() {
   if [ -z "$DEPLOY_TOKEN" ]; then log "no CLOUDFLARE_API_TOKEN — not deployed"; return 0; fi
   log "deploy app/ to Cloudflare"
   CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy
+  log "deploy app/ to Cloudflare (admin host, cf/admin)"
+  # not fatal: one bad Access/Worker setting must not turn every daily run red and hide the real factory result
+  if ! CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy --config cf/admin/wrangler.jsonc; then
+    log "admin host NOT deployed — public app is up; fix cf/admin and run 'rebuild'"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::yoonsiljang-admin (cf/admin) not deployed — public app is up"; fi
+  fi
+  return 0
 }
 
 case "$MODE" in
