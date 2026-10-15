@@ -288,7 +288,8 @@ def _area(raw):
 
 # group-title words that can change what an option is (sex, body area): with these the group title stays in the signature
 GROUP_MEANS = re.compile(r"남성|여성|남자|여자|바디|얼굴|전신|부위|팔|다리|겨드랑|가슴|등|복부|허벅지|종아리|목|이마|눈|코|입|턱|볼|두피|헤어|손|발|어깨|엉덩|브라질|비키니")
-KINDWORDS = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|첫방문|첫시술|1인1회|선착순|NEW|BEST|HOT|웰컴|신규|[♥★☆※♡]|\d+회")
+# 첫방문고객 / 첫시술고객 as one word: taking off only 첫방문 left '고객 비타민관리' (2026-10-15)
+KINDWORDS = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|첫방문(?:고객)?|첫시술(?:고객)?|1인1회|선착순|NEW|BEST|HOT|웰컴|신규|[♥★☆※♡]|\d+회")
 KINDONLY = re.compile(r"체험가|한정가|이벤트|EVENT|특가|선착순|NEW|BEST|HOT|[♥★☆※♡]")
 # compare category for rows no family covers, from the clinic's own category (clean.py cat)
 ROWCAT = {"리프팅": "리프팅", "스킨부스터": "부스터", "피부·레이저": "피부", "제모": "제모·바디", "바디": "제모·바디", "기타": "기타"}
@@ -360,6 +361,9 @@ def _tidy(s):
 def _exact(raw, sess, rowcat, bundle):
     """names no family rule covers (or that a rule can't read): same product only when the whole name is the same
     (labels and explanations included, price-kind words and session counts aside). Bundles go to '패키지'."""
+    # a section title written 'name:' ('고주파 리프팅 텐텐듀얼리프팅: 1회', '내맘대로 스킨케어:'): the colon ends the title, it is not
+    # part of the product — kept, it made a second key next to '고주파 리프팅 텐텐듀얼 리프팅' (2026-10-15)
+    raw = re.sub(r"\s*[:：]\s*(?=(?:\d+\s*회)?\s*(?:\([^()]*\))?\s*$)", " ", raw).rstrip()
     nm = re.sub(r"\[[^\]]*\]", " ", raw)
     nm = nm if bundle else ADDON.sub("", nm)
     seg = [x for x in re.split(r"\s+·\s+", nm) if x.strip()]
@@ -379,6 +383,9 @@ def _exact(raw, sess, rowcat, bundle):
             # Titles that say who or where ('남성 · …', '바디 · …') can change the product, so those keep the full name.
             src = seg[-1]
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
+    # a list marker left by a price-kind word ('첫방문고객) 비타민관리' → ')비타민관리'): not part of the product (as _tidy does for labels)
+    while sigtext.startswith(")") and sigtext.count(")") > sigtext.count("("):
+        sigtext = sigtext[1:]
     if not sigtext:
         return None, "이름 없음"
     amounts = " ".join(dict.fromkeys(f"{v}{unit(u)}" for v, u in AMOUNT.findall(amounts_text(disp))))
@@ -498,6 +505,18 @@ def _family_variant(raw, fam, sess, display=None):
                 rx=fam["rx"] + ("|보톡스|보툴" if fam["id"] == "toxin" else "")), ""
 
 
+ORDER_UNIT = r"\d+(?:\.\d+)?(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)(?![A-Za-z가-힣])"
+
+
+def word_order(label):
+    """a shown label with what taking the amount out of '1cc당' / '10mm 이내' left behind put back after the amount:
+    '턱끝 필러 리쥬비엘 당 1cc' → '… 1cc당', '리팟 레이저 이내 10mm 1개' → '… 10mm 이내 1개' (2026-10-15). Display only — the
+    signature and the id don't change."""
+    s = re.sub(rf"(?<!\S)당\s+({ORDER_UNIT})", r"\1당", label or "")
+    s = re.sub(rf"(?<!\S)(이내|이하)\s+({ORDER_UNIT})", r"\2 \1", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def loose_text(s):
     """a name with letter case and word breaks taken out ('HB Plus 2cc' → 'hbplus2cc')"""
     return re.sub(r"\s+", "", s or "").casefold()
@@ -528,13 +547,18 @@ def build(rows, min_branches=3):
         if not v:
             why[reason] += 1
     # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families
-    # (2026-10-15, 개선 보고서 E10). The spelling with the most word breaks wins (it never reads as words we glued), then the
-    # most rows. Labels follow; signatures don't change.
+    # (2026-10-15, 개선 보고서 E10). The spelling most rows use wins ('뒷목' 1,166 rows over one '뒷 목'), then the one with more
+    # word breaks. Labels follow; signatures don't change. The glued-word check (labels.py) is given every name of the
+    # spelling group, so a key whose own rows are spaced may carry the family's usual glued spelling.
     spell = defaultdict(Counter)
     for v in vs:
         if v:
             spell[(loose_text(v["famname"]), v["cat"], v["fam"])][v["famname"]] += 1
-    canon = {g: sorted(c.items(), key=lambda x: (-x[0].count(" "), -x[1], x[0]))[0][0] for g, c in spell.items()}
+    canon = {g: sorted(c.items(), key=lambda x: (-x[1], -x[0].count(" "), x[0]))[0][0] for g, c in spell.items()}
+    group_names = defaultdict(set)
+    for i, v in enumerate(vs):
+        if v:
+            group_names[(loose_text(v["famname"]), v["cat"], v["fam"])].add(rows[i]["name"])
     for v in vs:
         if v:
             best = canon[(loose_text(v["famname"]), v["cat"], v["fam"])]
@@ -572,7 +596,7 @@ def build(rows, min_branches=3):
             owned[sig] = top[0][0]          # this spec is one of the hand-made keys: keep using that key
             continue
         v = vs[idx[0]]
-        bad = labels.problems(v["label"], [rows[i]["name"] for i in idx])
+        bad = labels.problems(v["label"], [rows[i]["name"] for i in idx] + sorted(group_names[(loose_text(v["famname"]), v["cat"], v["fam"])]))
         if bad:
             # a label that would show price / date / promotion words or words we glued (build2/labels.py): no compare key —
             # its prices stay in the app as single prices, and the label is listed for a person to fix the rule that made it
@@ -607,12 +631,14 @@ def build(rows, min_branches=3):
             # the explanation that tells them apart: '(요정귀) (벨로테로)' / '(요정귀) (레스틸렌)' → 벨로테로 / 레스틸렌, not 요정귀 for all
             # three (2026-10-15); when none does, '표기 1', '표기 2'
             common = set.intersection(*(set(details.get(k["sig"], [])) for k in ks))
-            ks = sorted(ks, key=lambda x: (-x["n"], x["id"]))
+            ks = sorted(ks, key=lambda x: -x["n"])     # stable: ties keep build order, as before (the 표기 numbers don't move)
             extras = [next((d for d in details.get(k["sig"], []) if d not in common), "") for k in ks]
             for n, (k, extra) in enumerate(zip(ks, extras)):
                 if not extra or extras.count(extra) > 1:
                     extra = f"표기 {n + 1}"
                 k["label"], k["sub"] = f"{k['label']} ({extra})", f"{k['sub']} ({extra})"
+    for k in keys.values():
+        k["label"], k["sub"] = word_order(k["label"]), word_order(k["sub"])
     fams = {}
     new_fam = lambda name, cat, fid, rx: dict(name=name, cat=cat, fam=fid, keys=[], curated=[], desc=[], rx=rx)
     for k in keys.values():
