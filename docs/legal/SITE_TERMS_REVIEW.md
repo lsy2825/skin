@@ -9,8 +9,66 @@
 - 체인마다 호출을 8번 안팎으로 제한해서 **전체 지점이 아니라 대표 지점 몇 곳만** 읽었어요(아래 표의 '읽은 범위'). 지점마다 약관이 다를 수 있어요.
 - 읽은 것: ① 각 호스트의 `robots.txt`(수집기 경로와 겹치는 `Disallow`가 있는지 포함) ② 이용약관 페이지 ③ 약관에서 **자동 수집·크롤링·무단 복제·전재·배포·저작권·가격 이용 제한**에 가장 가까운 조항. 어느 약관에도 '크롤링·스크래핑·로봇·자동화된 수단'이라는 말은 **읽은 범위에서는 나오지 않았어요**(안 읽은 곳은 모름).
 - 이 표가 `data2/sources.json`의 `terms_reviewed`를 채우는 건 아니에요. 그 칸은 사람이 이 기록을 읽은 뒤 날짜로 적어요(C 담당, 데이터).
-- 수집 현황(코드): 수집 전에 `robots.txt`를 확인하고(`build2/weekly.py`, `scrape/sources.py`), 막히면 그 주는 건너뛰어요. `Crawl-delay`가 있는 호스트는 주 1회·호스트당 한 페이지만 읽어요(`docs/ARCHITECTURE.md` D8). 등록부에는 호스트마다 수집 속도 `1 req/s`가 적혀 있고, 리엔장은 `Crawl-delay: 180`을 따로 지켜요.
-- 등록부(`data2/sources.json`)에는 블리비·쁨·톡스앤필·리엔장·포에버 5곳만 있고, 유앤아이·밴스·데이뷰·닥터에버스·셀린은 수집기 코드(`scrape/*.py`)에만 있어요. 이 5곳의 호스트는 코드에서 가져왔어요.
+- 우리 수집기가 병원 사이트에 실제로 무엇을 하는지는 아래 §0-1에 **코드 기준**으로 적었어요. 처음 판(2026-10-15 오전)에 틀린 문장이 있어 C의 정정 요청을 코드와 하나씩 대조해 고쳤어요(고친 곳은 §5).
+
+## 0-1. 수집기가 병원 사이트에 하는 일 (코드 기준, 2026-10-15 main)
+
+코드에서 읽은 사실만 적어요. 실제 요청 기록(`data2/raw/*.log.json`)은 저장소에 올라가지 않아서(`.gitignore`), **요청 횟수는 코드 구조와 마지막 저장 자료로 센 값**이고 재시도는 빼고 셌어요.
+
+**언제**
+- 매일 06:00 KST(21:00 UTC)에 정기 실행이 깨어나지만 **수집할지 판단만** 해요(`.github/workflows/weekly.yml`, `build2/needs_refresh.py`). 수집은 ① 월요일이거나 ② 어느 한 체인이라도 저장된 가격의 **20% 이상**이 이벤트 종료일을 지났을 때(종료일 다음 날 06:00부터)만 해요. 정기 실행이 수집하지 않기로 한 날에는 그 실행이 병원 사이트(`robots.txt` 포함)에 접속하지 않아요.
+- 수집하는 날에는 가격 수집기 9개가 모두 돌고, `sources.py`는 멈춘 포에버까지 등록부 10개 체인의 `robots.txt`와 표본 페이지를 읽어요. 끝난 가격이 20% 이상 남아 있는 동안에는(새 자료가 검사에 걸려 지난 자료를 유지할 때 등) 다음 날도 같은 조건이 돼서 **매일 수집할 수 있어요(횟수 상한 없음)**. 지금 저장 자료로 이 조건을 만들 수 있는 체인은 종료일이 적힌 블리비·유앤아이·쁨이에요(나머지는 종료일 칸이 없거나 1% 미만). 그래서 수집은 주 1회로 고정돼 있지 않아요.
+- 사람이 누르는 수동 실행도 수집해요('수집 안 함'(`skip_scrape`)을 켜거나 가격 재확인 뒤 자동으로 도는 실행은 수집 없이 다시 만들기만 해요). 코드가 main에 합쳐질 때도 수집 없이 다시 만들기만 해요.
+- 예: 리엔장 저장 자료의 수집 시각은 2026-10-13(화) 13:18~13:19 KST예요(`data2/accepted/lienjang.csv`의 `fetched_at`). 어떤 실행이었는지는 이 저장소로는 모름.
+- 정기 일정이 없는 수동 작업도 병원 사이트를 읽어요: 가격 재확인(`price-check`, 낮은 가격 N개(1~200)의 원본 주소를 1.5초 간격으로 다시 읽음, 저장된 `data2/sources.json`에서 허용이고 Crawl-delay가 없는 호스트만), 출처 재확인(`source-check`, `robots.txt`와 표본 페이지), 시험 수집(`probe/**` 브랜치에 올릴 때만, 지점 조각을 여러 작업이 동시에 읽음).
+
+**한 번의 수집 순서** (`build2/weekly.py`)
+1. `scrape/sources.py` — 확인할 호스트마다 `robots.txt`를 1번 읽고, 체인마다 부가세 표본 페이지를 최대 6쪽 읽어요(하나씩 1초 간격, 한 번씩만 시도). 표본은 `robots.txt` 결과와 상관없이 읽어요(`Disallow`에 걸려도 읽고, Crawl-delay가 10초 이상인 호스트만 빼요). 가격 수집기를 건너뛸지는 그 뒤에 `weekly.py`가 정해요.
+2. 가격 수집기 9개를 하나씩 차례로(블리비·쁨·톡스앤필·리엔장·밴스·유앤아이·데이뷰·닥터에버스·셀린, 포에버는 중지).
+3. `scrape/branches.py` — 지점 주소 페이지를 읽고, 주소의 좌표는 OpenStreetMap Nominatim에 물어요(같은 UA, 1.1초 간격, 한 번 찾은 주소는 저장해 둠).
+
+**`robots.txt` 확인이 하는 것과 안 하는 것** (`scrape/sources.py`)
+- 등록부(코드의 `REGISTRY`)에는 **10개 체인이 모두** 있어요. 저장소에 올라 있는 `data2/sources.json`만 2026-10-13 14:54 저장본이라 5개 체인(블리비·쁨·톡스앤필·리엔장·포에버)뿐이에요. 다음 수집 때 다시 써져요.
+- 확인하는 호스트는 저장된 가격 자료(`data2/accepted/<체인>.csv`)에 나오는 호스트와 등록부 시작 주소(`seeds`)의 호스트예요(마지막 저장 기준 223곳). 경로는 호스트마다 **저장된 첫 가격 주소 1개**와 그 호스트의 시작 주소 경로를 글자순으로 정렬한 앞 3개라서, **223곳 중 217곳은 경로 1개만** 확인해요(2~3개를 확인하는 곳은 `www.velyb.kr`·`daybeauclinic08.com` 3개, `event.ppeum.com`·`www.toxnfill1.com`·`yeongdeungpo.vandsclinics.com`·`bucheon.drevers.com` 2개). `User-agent: *` 규칙만 봐요.
+- `sources.py`가 끝까지 돌면: `robots.txt`가 4xx면 '없음'으로 보고 수집하고, 5xx·무응답이면 그 체인은 **그 회차**에 수집하지 않아요(수집하는 회차마다 다시 확인). 막히면 **가격 수집기만** 건너뛰어요.
+- `sources.py`가 오류로 멈추면 저장된 지난 확인 결과(`data2/sources.json`)로 판단해요. 거기에 없는 체인(지금 저장본 기준 밴스·유앤아이·데이뷰·닥터에버스·셀린)은 **확인 결과 없이** 수집해요. 파일이 아예 없으면 모든 체인을 수집하지 않아요.
+- **규칙 판정은 파이썬 버전에 따라 달라요.** 공장은 파이썬 3.12(`weekly.yml`)의 `urllib.robotparser`로 판정하는데, 3.12.3·3.11.17에서 직접 돌려 보니 **파일에서 처음 맞는 규칙**을 따라요. 그래서 `User-agent: *` 아래 첫 규칙이 `Allow: /`인 호스트(§1 표에서 200으로 읽은 호스트 중 닥터에버스 3곳을 뺀 전부: 블리비·쁨 sinnonhyeon·톡스앤필·리엔장·포에버·유앤아이·밴스·데이뷰 08·11·셀린)에서는 그 뒤에 어떤 `Disallow`가 있어도 코드는 '막히지 않음'으로 봐요 — 나중에 우리 경로에 `Disallow`가 생겨도 수집이 멈추지 않아요. 3.13.16은 가장 긴 규칙을 따라요. 공장이 설치하는 3.12 최신 패치판의 동작은 확인하지 못했어요.
+- 확인 밖에 있는 요청:
+  - `scrape/branches.py`는 `robots.txt`도 확인 결과도 보지 않아요. 블리비 주소 표 `/community/community02.php` 1번(58곳이 한 쪽에 있음) · 톡스앤필 지점 목록 1번 + 지점마다 `/map.php` · 쁨 이번에 가격을 읽은 지점 홈 · 리엔장 이번에 가격을 읽은 지점 홈 `/` · 밴스 `/web/sub/location`(주소가 없으면 `/web/product` 1번 더) · 유앤아이 `/direction/` · 데이뷰 `/branch/event.php` · 닥터에버스 `/event/` · 셀린 목록 페이지. 하나씩 0.7초 간격, 한 쪽에 최대 3번 시도. 마지막 자료 기준 **약 230~300번**(블리비 1, 톡스앤필 35, 쁨 23, 리엔장 5, 밴스 67~134, 유앤아이 44, 데이뷰 14, 닥터에버스 34, 셀린 9). 블리비·톡스앤필 말고는 이번 회차 수집기 기록에 있는 지점만 읽어서, 가격 수집기가 막힌 체인은 (기록이 없는 공장 환경에서는) 읽지 않아요.
+  - 톡스앤필 수집기의 지점 목록·분류 쪽(`/serviceInfo.php?c=`, `?c=N`)은 확인 경로에 들어가지 않아요(확인하는 건 호스트마다 `/detail.php` 1개, `www.toxnfill1.com`은 `/`도).
+  - 쁨 수집기는 지점을 찾으려고 매번 `www.ppeum1.com`~`www.ppeum40.com`과 `chuncheon`·`changwon.ppeum.com`의 홈을 42번 요청해요(0.5초 간격). 응답이 다른 주소로 넘기면 그 주소(`<지점>.ppeum.com/`, `www.ppeumN.com/new/…`)까지 따라가서 실제 요청은 42번보다 많아요. `www.ppeum2`~`40.com`의 `robots.txt`는 어떤 코드도 읽지 않아요.
+  - 셀린 수집기는 이벤트마다 `/clinicPriceSide/_contentDetail.php`에 POST를 보내요(가격이 저장된 이벤트만 685개라서 실제 횟수는 그 이상). 이 경로는 확인 경로에 들어가지 않아요. 새 플랫폼으로 옮긴 3개 지점은 목록 요청이 `<지점>.cellinclinic.com/ko`로 넘겨져 그 호스트를 읽는데, 그 호스트의 `robots.txt`는 어떤 코드도 읽지 않아요.
+  - 리엔장 강남·잠실 호스트는 저장된 가격이 없어서 `sources.py` 확인 대상이 아니고, 수집기 자체 확인만 받아요(아래).
+- 이 문서 §1의 `robots.txt` 본문을 위 경로 전부와 맞춰 봤어요(파이썬 3.13.16 `urllib.robotparser`, 가장 긴 규칙 우선, `*` 규칙): **읽은 호스트에서는 막히는 경로가 없었어요.** 읽지 않은 호스트(쁨 `www.ppeum1~40.com` — §1의 `www.ppeum.com`은 코드가 요청하지 않는 호스트예요 —, 셀린 `*.cellinclinic.com`, 리엔장 강남·잠실, 각 체인의 나머지 지점)는 모름.
+
+**속도·동시 요청·시도 횟수** (각 수집기와 `scrape/common.py`)
+- 등록부의 `rate`(예: '1 req/s, 동시 4')는 **체인마다 한 줄씩 적힌 설명 글자**이고, 수집기는 이 값을 읽지 않아요(앱 '정보' 화면(`app/app.js`)이 보여 주고 DB 내보내기(`build2/export_db.py`의 `rate_limit`)에 실릴 뿐, 관리 화면에는 나오지 않아요). 실제 값은 수집기 코드에 있어요. 코드의 간격은 '요청 사이 최소 초'라서 0.8초 간격은 초당 약 1.25번이에요.
+
+| 체인 | 요청 간격 | 동시에 읽는 지점 | 시도 횟수 | 등록부 `rate` 글자 |
+|---|---|---|---|---|
+| 블리비 | 1.0초 | 1(하나씩, 호스트 1개) | 3 | 1 req/s, 동시 4 — **동시 수 다름** |
+| 쁨 | 1.0초로 적혀 있지만 지점마다 요청이 1번뿐이라 **실제로는 간격 없음**(지점 찾기 0.5초) | 4 | 3(지점 찾기 1) | 1 req/s, 동시 4 — **다름**(지점 찾기는 초당 2번, 옛 사이트 `event.ppeum.com` 12쪽은 최대 4개 동시·간격 없이) |
+| 톡스앤필 | 0.7초 | 6 | 3 | 1 req/s, 동시 4 — **다름** |
+| 리엔장 | **0초(간격 없음)** | 1(하나씩) | 2 | 1 req/s — **다름** |
+| 포에버(중지) | 0.8초 | 4 | 3 | 0.8 req/s, 동시 4 — **다름**(0.8초 간격은 초당 약 1.25번) |
+| 밴스 | 1.0초 | 6 | 3 | 1 req/s, 동시 6 |
+| 유앤아이 | 1.0초 | 6 | 3 | 1 req/s, 동시 6 |
+| 데이뷰 | 1.0초 | 6 | 3 | 1 req/s, 동시 6 |
+| 닥터에버스 | 1.0초 | 6 | 1(지점 목록은 3) | 1 req/s, 동시 6 |
+| 셀린 | 1.0초 | 4 | 1(지점 목록은 3) | 1 req/s, 동시 4 |
+
+- 간격은 읽기 도구 하나 안에서만 지켜져요. 블리비는 도구 하나로 지점을 차례로 읽어서 한 호스트(`www.velyb.kr`)에 1초 간격이 유지돼요. 다른 체인은 지점마다 도구를 새로 만들어서 지점 사이에는 간격이 공유되지 않아요. 그래서 쁨 옛 사이트 12지점(호스트 `event.ppeum.com` 하나)에는 요청이 최대 4개 동시에, 간격 없이 이어서 가요(쁨은 지점마다 도구를 새로 만들고 요청을 1번만 해서, 새 도구의 첫 요청은 기다리지 않아요). 블리비와 쁨 옛 사이트를 빼면 지점마다 호스트가 따로예요. 넘겨주기(redirect)를 따라간 요청에는 간격이 없어요.
+- 시도: 기본 읽기 도구는 **최대 3번 시도**해요(처음 1번 + 다시 2번). 200이 아니면 403·429를 포함해 모두 같은 UA로 다시 시도하고, 2초·4초 기다려요. `Retry-After` 헤더는 보지 않아요. 시간 제한은 25초예요.
+
+**Crawl-delay (리엔장 `Crawl-delay: 180`)**
+- 수집기(`scrape/lienjang.py`)는 이 값을 읽어 **로그에만 적고, 기다리지 않아요**(요청 간격 0초, 7개 호스트를 이어서 읽음). 코드 머리말에 'Crawl-delay is respected'라고 적혀 있지만 그렇게 동작하지 않아요.
+- 한 번의 수집에서 리엔장 호스트에 나가는 요청: 저장된 가격이 있는 5곳(인천·명동·목동·홍대·하남)은 호스트마다 `robots.txt` 2번(`sources.py`, `lienjang.py`) + `/agree/info` 1번(실패하면 2초 뒤 1번 더) + 홈 `/` 1번(`branches.py`). 강남·잠실은 `robots.txt` 1번(`lienjang.py`) + `/agree/info`(최대 2번 시도). 합계 약 24~26번이에요.
+- 코드의 리엔장 지점은 **7곳**이고, 등록부 robots 기록은 저장된 가격이 있는 5곳이에요.
+- `lienjang.py`의 `robots.txt` 읽기는 파이썬 표준 라이브러리 기본값으로 나가요: UA가 `YoonSiljangBot`이 아니라 파이썬 기본 이름(`Python-urllib/3.x`)이고, 시간 제한과 재시도가 없어요. 401·403·5xx 응답이면 그 지점을 건너뛰고, 그 밖의 4xx면 '막히지 않음'으로 봐요. **응답을 아예 받지 못하면(연결·이름 찾기·TLS 오류 등) '막히지 않음'으로 보고 `/agree/info`를 읽어요.** 앞서 `sources.py`가 같은 호스트를 읽다 실패하면 그 회차의 리엔장은 빠지지만, 강남·잠실은 `sources.py` 확인 대상이 아니라 이 확인만 받아요.
+- Crawl-delay 값이 실제로 바꾸는 동작은 둘뿐이에요: 10초 이상이면 `sources.py`가 그 호스트의 표본 페이지를 읽지 않고, 0이 아니면 가격 재확인(`verify_prices.py`)이 그 호스트를 빼요(리엔장 180초는 둘 다 해당).
+
+**User-Agent**
+- `YoonSiljangBot/1.0 (+https://lsy2825.github.io/skin/; weekly public price comparison; robots.txt respected)`(`scrape/common.py`). 안내 주소는 이 앱의 예전 GitHub Pages 주소인데, 저장소 문서에는 GitHub Pages를 쓰지 않는다고 적혀 있어요(2026-10-15 저장소 비공개 전환). 그 주소가 지금 무엇을 보여 주는지는 이 환경에서 접속되지 않아 **확인하지 못했어요.** 'weekly'는 위 '언제'와 달라요(주 1회로 고정돼 있지 않음). 'robots.txt respected'도 코드 동작과 달라요 — Crawl-delay를 기다리지 않고, 위 '확인 밖에 있는 요청'은 `robots.txt` 확인을 거치지 않아요.
 
 ## 1. 한눈에 보는 표
 
@@ -32,23 +90,27 @@
 **표를 보고 눈에 띄는 것 (판단 아님)**
 - 쁨·톡스앤필·밴스·데이뷰·닥터에버스·셀린의 약관에 **"얻은 정보를 사전승낙 없이 복제·전송·출판·배포·방송 기타 방법에 의하여 영리목적으로 이용하거나 제3자에게 이용하게 하여서는 안됩니다"와 거의 같은 문장**이 있어요(톡스앤필은 표현이 조금 달라요). 같은 약관 틀을 쓴 것으로 보여요(추측).
 - 이 약관들은 **'회원'(가입·로그인·예약하기 버튼을 누른 사람)을 대상**으로 쓰여 있어요. 수집기는 로그인하지 않아요. 이 차이가 의미가 있는지는 법률 검토 질문이에요.
-- **읽은 호스트에는 수집 경로와 겹치는 `robots.txt` `Disallow`가 없었어요.** 리엔장의 `Crawl-delay: 180`만 있고, 수집기가 따라요.
+- **읽은 호스트에는 우리 코드가 요청하는 경로(가격 페이지와 §0-1의 주소·표본 페이지)와 겹치는 `robots.txt` `Disallow`가 없었어요**(파이썬 3.13 가장 긴 규칙 기준. 공장의 3.12 판정은 다를 수 있어요 — §0-1). 읽지 않은 호스트는 모름. 리엔장에는 `Crawl-delay: 180`이 있는데, **수집기는 이 값을 기록만 하고 기다리지 않아요**(§0-1).
 - 약관 페이지가 **없거나 못 읽은** 곳: 블리비(500), 리엔장(없음), 유앤아이(없음). 이건 "조항이 없다"는 뜻이 아니에요.
 
 ## 2. 체인별 기록
+
+'가격 수집 경로'는 가격 페이지만이에요. 같은 실행에서 더 읽는 곳(지점 목록·주소 페이지)은 체인마다 '같은 수집 실행에서 읽는 곳' 줄에 적었어요. 모든 체인에 공통인 `sources.py`의 `robots.txt`·표본 읽기(호스트마다 `robots.txt` 1번, 체인마다 표본 최대 6쪽)는 §0-1에 적었어요.
 
 
 ### 블리비
 
 - robots: `https://www.velyb.kr/robots.txt` → 200. 내용 전체: `User-agent: *` / `Allow: /`. Crawl-delay 없음.
-- 수집 경로: `/community/community01.php?tb=event_multi&etc5=<지점명>&sField=<1..7>`(지점마다 7쪽, 요청 1번씩).
+- 같은 수집 실행에서 읽는 곳(코드): 가격 쪽은 지점 목록용 1쪽 + 지점마다 7쪽(마지막 기준 58곳 × 7 = 406번), 1초 간격 하나씩. `sources.py`가 표본으로 `/`·`community01` 1쪽·`community02`·날짜 표본 1쪽을, `branches.py`가 `/community/community02.php`를 1번 더 읽어요.
+- 가격 수집 경로: `/community/community01.php?tb=event_multi&etc5=<지점명>&sField=<1..7>`(지점마다 7쪽, 요청 1번씩).
 - 이용약관: 메인 페이지 푸터에 `이용약관`(`https://www.velyb.kr/member/provision.php`)과 `개인정보취급방침`(`/member/privacy.php`) 링크가 있어요. **약관 페이지는 3번 요청했으나 모두 HTTP 500에 본문이 빈 응답이었어요**(서버 오류인지 읽기 서비스 차단인지 모름). 모바일 주소(`/m/member/provision.php`)는 404.
 - **할 일(사람):** 브라우저로 위 주소를 열어 본문을 확인하고 조항을 이 표에 채워 주세요.
 
 ### 쁨
 
 - robots: `www.ppeum.com` 404(규칙이 아니라 없는 페이지) · `sinnonhyeon.ppeum.com` 200(`User-agent: *` / `Allow: /` / `Sitemap: …/sitemap.xml`) · `event.ppeum.com` 404. Crawl-delay 없음. 나머지 지점 호스트(`bupyeong`·`konkukuniv` 등 10곳)는 이번에 읽지 않았어요.
-- 수집 경로: 새 지점 `/selectSurgery`, 옛 지점 `https://event.ppeum.com/v1/event/reserve?branch=ppeum{n}&type=homepage&directLink=onlineReserve`.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 찾기로 매번 `www.ppeum1.com`~`www.ppeum40.com`·`chuncheon`·`changwon.ppeum.com` 홈 42번(0.5초 간격, 넘겨주는 주소까지 따라가서 실제로는 더 많음). `branches.py`가 이번에 가격을 읽은 지점 홈(마지막 기준 23곳)을 읽어요. 옛 사이트 12지점은 호스트 `event.ppeum.com` 하나라 동시 4개까지 갈 수 있어요.
+- 가격 수집 경로: 새 지점 `/selectSurgery`, 옛 지점 `https://event.ppeum.com/v1/event/reserve?branch=ppeum{n}&type=homepage&directLink=onlineReserve`.
 - 이용약관: `https://www.ppeum.com/m/member/provision.php`("쁨클리닉 온라인 회원 약관", 강남본점 사이트). **새 지점(`*.ppeum.com`)과 `event.ppeum.com`에도 같은 약관이 적용되는지는 모름** — 새 지점 푸터의 `이용약관` 글자에는 링크가 없었고 `/terms`는 404였어요.
 - **제13조(저작권의 귀속 및 이용제한) ①**: “본원이 작성한 저작물에 대한 저작권 기타 지적재산권은 본원에 귀속합니다.”
 - **제13조 ②**: “회원은 본원을 이용함으로써 얻은 정보를 본원의 사전승낙 없이 복제, 전송, 출판, 배포, 방송 기타 방법에 의하여 영리목적으로 이용하거나 제3자에게 이용하게 하여서는 안됩니다.”
@@ -59,7 +121,8 @@
 
 ### 톡스앤필
 
-- robots: 4개 호스트가 글자까지 같아요: `User-agent: *` / `Allow: /` / `Disallow: /common/` `/saveLog/` `/_backUp/` `/movies/` / `Sitemap: https://www.toxnfill.com/sitemap.xml`. 수집기 경로(`/serviceInfo.php`, `/detail.php`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- robots: 4개 호스트가 글자까지 같아요: `User-agent: *` / `Allow: /` / `Disallow: /common/` `/saveLog/` `/_backUp/` `/movies/` / `Sitemap: https://www.toxnfill.com/sitemap.xml`. 가격 수집 경로(`/serviceInfo.php`, `/detail.php`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 `www.toxnfill1.com/serviceInfo.php?c=`과 지점마다 분류 목록·분류 쪽·상세 쪽을 읽어요(상세 쪽만 마지막 저장 기준 고유 주소 2,386개 — 행이 남은 쪽만 센 값이라 실제 요청은 그 이상, 분류 쪽은 저장 자료에 없어 셀 수 없음). 지점 6곳 동시·0.7초 간격. 목록·분류 쪽은 `robots.txt` 확인 경로가 아니에요. `branches.py`가 목록을 1번 더, 지점마다 `/map.php`를 읽어요.
 - 이용약관: `https://www.toxnfill1.com/acceptSite.php`(톡스앤필 웹사이트 약관). 부칙: “이 약관은 2023년 9월 1일부터 시행합니다.” 이전 판 2013-07-11(`acceptSite-130711.php`)은 읽지 않았어요. 한 지점 호스트의 약관만 읽었어요. 읽은 본문에는 제1조 번호·제목이 변환본에 나오지 않고, 내부 메모로 보이는 문구(광고성 정보 수신 동의 부분)가 섞여 있어요.
 - **제1장 총칙 (제1조 번호·제목은 읽은 본문에 표시되지 않음)**: “이 약관은 톡스앤필의원(이하 '회사')가 제공하는 www.toxnfill.com 서비스(이하 '서비스')의 이용조건 및 절차, 기타 필요한 사항을 규정함을 목적으로 합니다.”
 - **제2조 (용어의 정의) 1항**: “'회원'이라 함은 서비스를 제공받기 위하여 개인정보를 제공하여 이용자 번호(ID)를 부여 받은 자로 정 회원, 무료 회원으로 구분합니다.”
@@ -70,12 +133,14 @@
 
 ### 리엔장
 
-- robots: `incheon.lienjang.net`·`myeongdong.lienjang.net` 모두 200, 내용이 같아요: `User-agent: *` / `Allow: /` / `Disallow: /uploads/` `/admin/` `/*?testpage=*` / **`Crawl-delay: 180`**. 수집기 경로(`/agree/info`)와 겹치는 `Disallow` 없음. 나머지 지점(mokdong·hongdae·hanam)은 읽지 않았어요. 등록부에는 5개 지점 모두 `crawl_delay: 180`으로 기록돼 있고, 수집기는 호스트당 한 페이지만 읽어요(`scrape/lienjang.py`).
+- robots: `incheon.lienjang.net`·`myeongdong.lienjang.net` 모두 200, 내용이 같아요: `User-agent: *` / `Allow: /` / `Disallow: /uploads/` `/admin/` `/*?testpage=*` / **`Crawl-delay: 180`**. 가격 수집 경로(`/agree/info`)와 겹치는 `Disallow` 없음. 나머지 지점(mokdong·hongdae·hanam, 그리고 코드가 읽는 gangnam·jamsil)은 읽지 않았어요. gangnam·jamsil은 `sources.py` 확인 대상도 아니에요. 등록부(2026-10-13 저장본)에는 robots를 읽은 5개 지점 모두 `crawl_delay: 180`으로 기록돼 있어요. **수집기는 이 값만큼 기다리지 않아요** — 코드의 7개 지점 호스트를 간격 없이 이어서 읽어요. 한 번의 수집에서 저장된 가격이 있는 5곳은 `robots.txt` 2번·`/agree/info`·홈을, 강남·잠실은 `robots.txt` 1번·`/agree/info`를 읽어요(§0-1).
+- 같은 수집 실행에서 읽는 곳(코드): `branches.py`가 이번에 가격을 읽은 지점의 홈 `/`를 1번씩 읽어요. 저장된 가격이 있는 호스트는 `robots.txt`가 한 번의 수집에서 2번 읽혀요(`sources.py`, `lienjang.py`). 강남·잠실은 `lienjang.py`에서 1번.
 - 이용약관: **찾지 못했어요.** `/agree/terms`·`/agree/use`·`/agree/service`는 HTTP 500("Unable to load the requested file: pc/agree/<name>_v.php"), 홈에도 링크가 안 보였어요. 개인정보 처리방침(`/agree/privacy`, “시행일 : 2024년 02월 20일”)을 전부 읽었으나 자동 수집·크롤링·무단 복제 관련 조항은 없었어요. **약관이 없다는 뜻이 아니에요** — 못 찾은 거예요.
 
 ### 포에버 (일시 중지)
 
-- robots: `www.4-ever.co.kr` 200(`User-Agent: *` `Allow: /`, 그리고 `GPTBot`·`OAI-SearchBot`·`ChatGPT-User`·`ClaudeBot` 등 이름별로 `Allow: /` 줄이 있어요) · `gn.4-ever.co.kr` 200(`Allow: /` / `Disallow: /api/` `/auth/` `/estimate`) · `bd.4-ever.co.kr` 200(`User-agent: *` / `Allow:/`). 수집 경로(`/ko/treatments/…`)와 겹치는 `Disallow` 없음. 나머지 지점(gs·gr·mp·sd·sw·sh)과 별도 도메인 `foreverclinic.co.kr`은 읽지 않았어요.
+- robots: `www.4-ever.co.kr` 200(`User-Agent: *` `Allow: /`, 그리고 `GPTBot`·`OAI-SearchBot`·`ChatGPT-User`·`ClaudeBot` 등 이름별로 `Allow: /` 줄이 있어요) · `gn.4-ever.co.kr` 200(`Allow: /` / `Disallow: /api/` `/auth/` `/estimate`) · `bd.4-ever.co.kr` 200(`User-agent: *` / `Allow:/`). 가격 수집 경로(`/ko/treatments/…`)와 겹치는 `Disallow` 없음. 나머지 지점(gs·gr·mp·sd·sw·sh)과 별도 도메인 `foreverclinic.co.kr`은 읽지 않았어요.
+- 같은 수집 실행에서 읽는 곳(코드): 가격 수집기는 돌지 않아요. 그래도 `sources.py`가 수집 때마다 `www`·`gn` 호스트의 `robots.txt`와 표본 2쪽(`https://www.4-ever.co.kr/`, `https://gn.4-ever.co.kr/ko/treatments`)을 읽어요.
 - 이용약관: `https://www.4-ever.co.kr/ko/policy/terms`(한국어·영어판 전문). 부칙(2021. 03. 24). 18개 조. 읽은 본문에는 자동화·크롤링·로봇·무단 복제·전재·가격 이용 제한에 관한 조항이 **없어요**. 저작권이 나오는 곳은 제13조 ① 4호(회원이 게시한 내용을 삭제하는 사유) 한 곳뿐이에요. 제10조는 수술 후기를 뺀 모든 서비스를 회원가입 없이 볼 수 있다고 적고 있어요.
 - **제10조 (서비스 제공의 목적 및 활용범위)**: “병원이 이 서비스를 제공하는 목적은 본원이 제공하는 의료 서비스 정보 제공을 위해 무상으로 운영하며 수술 후기를 제외한 모든 서비스는 회원가입 없이도 열람이 가능합니다.”
 - **제2조 (약관의 효력 및 변경) ①**: “이 약관은 서비스를 이용하고자 하는 모든 회원에 대하여 그 효력을 발생합니다.”
@@ -86,13 +151,15 @@
 
 ### 유앤아이
 
-- robots: 3개 호스트(`www.uni114.co.kr`·`www.yuduni114.co.kr`·`www.jsuni114.co.kr`) 모두 200, 같아요: `User-agent: *` / `Allow: /` / `Disallow: /attach/` `/common/` `/images/` `/pc/` `/admin/` / `Sitemap: …`. 수집 경로(각 지점 홈 `/`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- robots: 3개 호스트(`www.uni114.co.kr`·`www.yuduni114.co.kr`·`www.jsuni114.co.kr`) 모두 200, 같아요: `User-agent: *` / `Allow: /` / `Disallow: /attach/` `/common/` `/images/` `/pc/` `/admin/` / `Sitemap: …`. 가격 수집 경로(각 지점 홈 `/`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 `https://www.uni114.co.kr/` 1번 + 지점 홈 1번씩(마지막 기준 44곳), 동시 6. `branches.py`가 지점마다 `/direction/`을 읽어요.
 - 이용약관: **찾지 못했어요.** 푸터에는 개인정보 취급방침(`/info/`)·가맹점문의·제휴안내·고객소리함·비급여공지만 있고 `/terms/`는 404. 방침 페이지(시행일자 2011-04-08)는 자동 수집·크롤링·무단 복제 관련 조항이 없고, 보존 근거로 “본원 홈페이지 이용 약관”을 한 번 언급해요. 그 약관 자체는 못 찾았어요.
 - 관련 글: 홈 푸터 “Copyright ⓒ YOU&I all rights reserved.”
 
 ### 밴스
 
-- robots: 3개 호스트(`www`·`yeongdeungpo`·`yongsan`.vandsclinics.com) 모두 200, 같아요: `User-agent: *` / `Allow: /` / `Disallow`는 `/manager/*` `/conf/*` `/migration/*` `/log/*` 등 관리·설정 경로. 수집 경로(`/web/product`, `/web/product?categoryId=N`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- robots: 3개 호스트(`www`·`yeongdeungpo`·`yongsan`.vandsclinics.com) 모두 200, 같아요: `User-agent: *` / `Allow: /` / `Disallow`는 `/manager/*` `/conf/*` `/migration/*` `/log/*` 등 관리·설정 경로. 가격 수집 경로(`/web/product`, `/web/product?categoryId=N`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 `https://www.vandsclinics.com/` + 지점마다 `/web/product` + 분류마다 `?categoryId=N`(마지막 기준 고유 주소 1,027개, 67곳 — 행이 남은 쪽만 센 값이라 실제 요청은 그 이상), 동시 6. `branches.py`가 지점마다 `/web/sub/location`(주소가 없으면 `/web/product` 1번 더)을 읽어요.
 - 이용약관: `https://yeongdeungpo.vandsclinics.com/web/terms?id=terms`(영등포점, 제1장 총칙 ~ 제6장 기타). 부칙: “이 약관은 2020년 08월 17일부터 적용됩니다.” **메인 호스트(`www`)에는 약관 링크가 없고** 지점 푸터에서만 찾았어요. 약 67개 지점 중 영등포점만 전문을 읽었고, 용산점은 질의(키워드 확인)만 했어요. 읽은 본문에는 크롤링·스크래핑·로봇·자동화된 수단이라는 말도, 가격에 관한 조항도 없었어요.
 - **제12조 (1) d (이용자의 의무)**: “서비스를 이용하여 얻은 정보를 회원의 개인적인 이용 외에 복사, 가공, 번역, 2차적 저작 등을 통하여 복제, 공연, 방송, 전시, 배포, 출판 등에 사용하거나 제3자에게 제공하는 행위”
 - **제12조 (1) 머리말 (이용자의 의무)**: “이용자는 서비스를 이용할 때 다음 각호의 행위를 하지 않아야 합니다.”
@@ -103,7 +170,8 @@
 
 ### 데이뷰
 
-- robots: `daybeauclinic08.com` 200(`User-agent: *` / `Allow: /` / `Sitemap`) · `daybeauclinic11.com` 200(같음) · `daybeauclinic00.com` 404(수집기 설명에는 이 호스트가 TLS 응답을 못 한다고 적혀 있는데, 이번에는 404로 읽혔어요). 수집 경로(`/branch/event.php`)와 겹치는 `Disallow` 없음. 약 14개 지점 중 2곳만 읽었어요.
+- robots: `daybeauclinic08.com` 200(`User-agent: *` / `Allow: /` / `Sitemap`) · `daybeauclinic11.com` 200(같음) · `daybeauclinic00.com` 404(수집기 설명에는 이 호스트가 TLS 응답을 못 한다고 적혀 있는데, 이번에는 404로 읽혔어요). 가격 수집 경로(`/branch/event.php`)와 겹치는 `Disallow` 없음. 약 14개 지점 중 2곳만 읽었어요.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 `/branch/index.php` + 지점마다 `/branch/event.php` + 이벤트마다 `?uid=N`(마지막 기준 고유 주소 301개, 14곳 — 행이 남은 쪽만 센 값이라 실제 요청은 그 이상), 동시 6. `branches.py`가 `/branch/event.php`를 1번 더 읽어요.
 - 이용약관: `https://daybeauclinic08.com/branch/terms.php`("데이뷰의원 온라인 회원 약관", 16개 조 + 부칙). 부칙: “이 약관은 2017년 6월 27일을 시작으로 새로운 약관이 나오기 전까지 사용한다.” 약관 제1조가 가리키는 사이트(`https://www.daybeauclinic.com`)와 제13조 1)의 저작권 귀속 주체(**“에이탑성형외과의원”**)가 데이뷰의원과 다른 이름이에요(글에 쓰인 대로 기록, 이유는 모름).
 - **제13조(저작권의 귀속 및 이용제한) 2)**: “회원은 데이뷰의원을 이용함으로써 얻은 정보를 데이뷰의원의 사전승낙 없이 복제, 전송, 출판, 배포, 방송 기타 방법에 의하여 영리목적으로 이용하거나 제3자에게 이용하게 하여서는 안됩니다.”
 - **제13조(저작권의 귀속 및 이용제한) 1)**: “데이뷰의원이 작성한 저작물에 대한 저작권 기타 지적재산권은 에이탑성형외과의원에 귀속합니다.”
@@ -114,7 +182,8 @@
 
 ### 닥터에버스
 
-- robots: 3개 호스트(`drevers.com`·`dongtan`·`bucheon`)가 같아요: `User-agent: *` / `Disallow: /wp-admin/` `/wp-json/` `/backpg/` `/shop/` / `Allow: /wp-admin/admin-ajax.php` / `Sitemap`. 수집 경로(`/event/`, `/event/<slug>/`, `/event-month-<slug>/`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- robots: 3개 호스트(`drevers.com`·`dongtan`·`bucheon`)가 같아요: `User-agent: *` / `Disallow: /wp-admin/` `/wp-json/` `/backpg/` `/shop/` / `Allow: /wp-admin/admin-ajax.php` / `Sitemap`. 가격 수집 경로(`/event/`, `/event/<slug>/`, `/event-month-<slug>/`)와 겹치는 `Disallow` 없음. Crawl-delay 없음.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 `https://drevers.com/` + 지점마다 `/event/` + 이벤트 쪽(마지막 기준 고유 주소 632개, 34곳 — 행이 남은 쪽만 센 값이라 실제 요청은 그 이상), 동시 6, 지점 페이지는 재시도 없음. 다른 지점 링크는 404로 끝나도 요청은 가요. `branches.py`가 `/event/`를 1번 더 읽어요.
 - 이용약관: `https://drevers.com/terms/`(닥터에버스의원 이용약관, 13개 조 + 부칙). 부칙: “이 약관은 오픈일부터 적용합니다.”(오픈일은 적혀 있지 않음). 본점·부천점 글은 제1조의 의원 이름(본점 / 부천점)만 달라요. 다른 지점은 읽지 않았어요. 읽은 본문에는 크롤링·스크래핑·로봇·자동화된 수단이라는 말도, 가격 재사용에 관한 조항도 없었어요.
 - **제10조 (저작권의 귀속 및 이용제한) ①**: “본 사이트에 게시되거나 사이트를 통하여 제공되는 문서, 이미지, 영상, 디자인,UI, 텍스트 등 일체의 저작물에 대한 저작권 및 기타 지적재산권은 본 의원에 귀속합니다.”
 - **제10조 (저작권의 귀속 및 이용제한) ②**: “이용자는 사이트를 이용하면서 얻은 정보 중 본 의원에 지적재산권이 귀속된 정보를 본 의원의 사전 승낙 없이 복제, 송신, 출판, 배포, 방송 또는 기타 방법으로 영리 목적으로 이용하거나 제3자에게 이용하게 해서는 안됩니다.”
@@ -125,7 +194,8 @@
 
 ### 셀린
 
-- robots: 3개 호스트(`cellinclinic10`·`13`·`1`.com)가 같아요: `User-agent: *` / `Allow: /` / `Disallow: /_manager/` `/admin/` `/dev/` `/payment/` `/robots/` `/shellScript/` … Crawl-delay는 다른 봇 이름(Bytespider 5, AhrefsBot 10, SemrushBot 10)의 묶음에만 있고 `*`에는 없어요. 수집 경로(`/clinicPriceSide/…`)와 겹치는 `Disallow` 없음.
+- robots: 3개 호스트(`cellinclinic10`·`13`·`1`.com)가 같아요: `User-agent: *` / `Allow: /` / `Disallow: /_manager/` `/admin/` `/dev/` `/payment/` `/robots/` `/shellScript/` `/shellProc/` `/saveLog/` `/sitemap/` `/contact/*Proc.php`. Crawl-delay는 다른 봇 이름(Bytespider 5, AhrefsBot 10, SemrushBot 10)의 묶음에만 있고 `*`에는 없어요. 가격 수집 경로(`/clinicPriceSide/…`)와 겹치는 `Disallow` 없음.
+- 같은 수집 실행에서 읽는 곳(코드): 지점 목록 + 지점마다 목록 GET + 이벤트마다 `/clinicPriceSide/_contentDetail.php`에 POST(가격이 저장된 이벤트만 685개라 실제 횟수는 그 이상, 9곳), 동시 4, 지점 쪽은 재시도 없음(지점 목록은 최대 3번 시도). POST 경로는 `robots.txt` 확인 경로가 아니에요. 새 플랫폼 3개 지점은 `<지점>.cellinclinic.com/ko`로 넘겨져 읽혀요. `branches.py`가 지점마다 목록 쪽을 1번씩 더 읽어요(마지막 기준 9번).
 - 이용약관: `https://www.cellinclinic10.com/member/agreeInfo.php`(셀린의원 이용약관, 분당정자점 사이트가 제1조에 적혀 있음, 16개 조 + 부칙). 부칙: “이 약관은 을 시작으로 새로운 약관이 나오기 전까지 사용한다.”(날짜 칸이 비어 있음). 읽은 본문에는 크롤링·스크래핑·로봇·자동화된 수단·가격 이용에 관한 말이 없어요. **다른 지점 사이트의 약관이 같은지는 읽지 않았고**, 신플랫폼으로 옮긴 3개 지점(연신내·다산·홍대)과 외국어 지점 사이트도 안 읽었어요.
 - **제13조(저작권의 귀속 및 이용제한) ①**: “셀린의원가 작성한 저작물에 대한 저작권 기타 지적재산권은 셀린의원에 귀속합니다.”
 - **제13조(저작권의 귀속 및 이용제한) ②**: “회원은 셀린의원을 이용함으로써 얻은 정보를 셀린의원의 사전승낙 없이 복제, 전송, 출판, 배포, 방송 기타 방법에 의하여 영리목적으로 이용하거나 제3자에게 이용하게 하여서는 안됩니다.”
@@ -149,4 +219,21 @@
 ## 4. 다음 단계 (제안, 결정 아님)
 1. C가 이 표를 읽고 위 '비어 있는 것'을 채운 뒤, `data2/sources.json`의 `terms_reviewed`에 날짜를 적기(C 담당, 데이터).
 2. 이 표를 변호사 질문 목록(`docs/legal/PRIVACY_POLICY_DRAFT.md` 쪽, C6)에 'C5 — 약관과 수집' 질문으로 더하기. 특히 위 '눈에 띄는 것'의 두 번째(회원 대상 약관 ↔ 로그인하지 않는 수집기).
-3. 사이트 약관이 바뀌거나 `robots.txt`에 규칙이 생기면 다시 읽을 주기를 정하기(수집은 매일 06:00 KST, 이 확인은 한 번만 했어요).
+3. 사이트 약관이 바뀌거나 `robots.txt`에 규칙이 생기면 다시 읽을 주기를 정하기. 정기 수집은 월요일과, 어느 체인이든 저장된 가격의 20% 이상이 종료일을 지난 날 아침에 해요(조건이 남으면 매일, 수동 실행도 있음 — §0-1). 이 문서의 약관·`robots.txt` 읽기는 2026-10-15에 한 번만 했어요.
+4. §0-1에서 코드와 설명이 어긋난 곳: 리엔장 Crawl-delay를 기다리지 않음 · `lienjang.py`의 `robots.txt` 읽기가 파이썬 기본 UA·시간 제한 없음·응답이 없으면 허용 · 공장의 파이썬 3.12 판정이 '처음 맞는 규칙'이라 `Allow: /`가 먼저인 호스트에서는 `Disallow`를 못 봄 · 확인 경로가 호스트당 대부분 1개 · `sources.py`가 멈추면 저장본에 없는 체인을 확인 없이 수집 · 등록부 `rate` 글자와 실제 값이 다른 다섯 체인(블리비·쁨·톡스앤필·리엔장·포에버) · `robots.txt` 확인 밖 요청(`branches.py`, 톡스앤필 목록·분류 쪽, 쁨 지점 찾기와 넘겨준 주소, 셀린 POST와 `cellinclinic.com`, 리엔장 강남·잠실) · UA의 안내 주소·'weekly'·'robots.txt respected' · 코드 주석(`scrape/lienjang.py` 머리말, `scrape/sources.py`의 'that week'·'one weekly page per host') · 앱 '정보' 화면 문구(`app/app.js`: '지점마다 주 1회 한 페이지만 읽어요'는 main에 아직 있음 — 빼는 B의 PR #44가 열려 있음. '수집 전에 robots.txt를 확인해요'·'robots.txt 허용'·`rate` 글자 표시도 남아 있음). 어떻게 할지는 C(수집기)·B(앱 문구)와 사용자가 정해요. 이 문서는 사실만 적어요.
+
+## 5. 고친 곳 (2026-10-15, C의 정정 요청을 코드와 대조)
+
+| 처음 판의 문장 | 코드와 대조한 결과 | 고친 곳 |
+|---|---|---|
+| 등록부에 호스트마다 `1 req/s` | 틀림. `rate`는 체인마다 적힌 설명 글자이고 값이 체인마다 달라요. 수집기는 읽지 않아요. 블리비·쁨·톡스앤필·리엔장·포에버(중지)는 실제 코드 값과도 달라요 | §0-1 속도 표 |
+| 리엔장 `Crawl-delay: 180`을 수집기가 지켜요/따라요 | 틀림. 값을 로그에만 적고 기다리지 않아요(`scrape/lienjang.py`) | §0-1, §1, 리엔장 절 |
+| `Crawl-delay` 호스트는 주 1회·호스트당 한 페이지만(`docs/ARCHITECTURE.md` D8) | 틀림. 수집이 도는 날마다 읽고, 한 번에 가격이 있는 호스트마다 `robots.txt` 2번·가격 페이지·홈을 읽어요(강남·잠실은 `robots.txt` 1번·가격 페이지) | §0-1 |
+| 유앤아이·밴스·데이뷰·닥터에버스·셀린은 수집기 코드에만 있음 | 틀림. 코드의 등록부(`scrape/sources.py` `REGISTRY`)에 10개 모두 있어요. 저장소의 `data2/sources.json`만 2026-10-13 저장본이라 5개뿐이에요 | §0-1 |
+| 체인별 '수집 경로' | 가격 페이지만이었어요. 지점 목록·주소 페이지(`branches.py`)·쁨 지점 찾기·셀린 POST는 §2 각 절에, 모든 체인 공통인 표본·`robots.txt` 읽기(`sources.py`)는 §0-1에 더했어요. 이 중 여럿은 `robots.txt` 확인 밖이에요 | §0-1, §2 각 절 |
+| 수집은 매일 06:00 | 틀림. 매일은 판단만 해요. 수집은 월요일이거나, 어느 체인의 저장 가격 20% 이상이 종료일을 지났을 때(그날은 가격 수집기 9개 모두, 조건이 남으면 매일) | §0-1, §4 |
+| 막히면 그 주는 건너뜀 | 반만 맞음. 건너뛰는 단위는 그 회차이고, 건너뛰는 건 그 체인의 가격 수집기예요. `sources.py`는 판단 전에 표본을 이미 읽고, `branches.py`는 블리비·톡스앤필 주소 페이지를 그대로 읽어요(다른 체인은 수집기 기록이 없어 안 읽음). `sources.py`가 멈추면 저장본에 없는 체인은 확인 없이 수집해요 | §0-1 |
+| (빠졌던 것) 시도 횟수·동시 요청·robots 확인 범위·리엔장 지점 수·UA 주소 | 더함. C는 '재시도 3번', '리엔장 재시도 2번'이라고 했는데 코드 값은 **총 시도 횟수**(3번 = 처음 + 다시 2번)예요. UA 주소는 접속을 확인하지 못했어요 | §0-1 |
+| (C가 따로 말하지 않은 것) `lienjang.py`의 `robots.txt` 읽기는 우리 UA가 아니라 파이썬 기본 이름으로 나가고, 응답을 받지 못하면 '허용'으로 처리(401·403·5xx는 건너뜀) | 더함 | §0-1 |
+| (C가 따로 말하지 않은 것) 공장의 파이썬 3.12 `robotparser`는 처음 맞는 규칙을 따라, `Allow: /`가 먼저인 호스트에서는 뒤의 `Disallow`를 못 봐요(3.12.3·3.11.17에서 직접 확인, 3.13.16은 가장 긴 규칙) | 더함 | §0-1 |
+| (첫 고친 판, 반박 검토 두 번으로 다시 고침) `branches.py` 약 290~360번, 확인 경로 '앞의 3개', 리엔장 '호스트마다' 같은 요청 수, 포에버·쁨 `rate` 같음, 관리 화면이 `rate`를 보여 줌, 앱 문구를 '#44에서 뺌' | 틀림. 약 230~300번(블리비는 1번), 223곳 중 217곳은 경로 1개, 강남·잠실은 요청이 적음, 포에버·쁨도 다름(쁨 가격 쪽은 간격 없음), 관리 화면엔 없음, #44는 아직 열려 있음 | §0-1, §4 |
