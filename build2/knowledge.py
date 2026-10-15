@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Treatment Knowledge Base (knowledge/treatments.json) and concern taxonomy (knowledge/concerns.json): check them and
-hand the app a resolved copy (data.json meta.kb, meta.concerns).
+"""Treatment Knowledge Base (knowledge/treatments.json), concern taxonomy (knowledge/concerns.json) and spec notes
+(knowledge/specs.json): check them and hand the app a resolved copy (data.json meta.kb with meta.kb.specs, meta.concerns).
 
 usage: python build2/knowledge.py            # check, print review status counts (exit 1 on errors)
        python build2/knowledge.py --families # also list compare families that have no entry yet
@@ -13,13 +13,18 @@ sources are added to the base's. Rules checked here:
   - after inheritance every entry has title, one_liner, purpose
   - an 'approved' entry needs review.reviewer, review.reviewed_at and at least one source
 Entries without sources are allowed (shown as '근거 자료 미정리' with their evidence_note) but counted.
+Spec notes (2026-10-15, 지시서 C7): one plain line per spec word inside a compare family ('리쥬란' › 'HB 플러스', '보톡스' ›
+'사각턱'): what the word means, no effect / safety / recommendation words (checked by SPEC_BAN), always a review status.
 """
 import json, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PATH = os.path.join(ROOT, "knowledge", "treatments.json")
 CONCERNS = os.path.join(ROOT, "knowledge", "concerns.json")
+SPECS = os.path.join(ROOT, "knowledge", "specs.json")
 FIELDS = ["one_liner", "purpose", "areas", "method", "kinds", "evidence_note"]
+# a spec note says what a word means; these turn it into a promise, a safety claim or advice (지시서 C7: 효과·안전 판단 없이)
+SPEC_BAN = re.compile(r"효과|개선|안전|부작용|통증|좋아|좋은|확실|추천|권해|강력|더\s*오래|오래\s*가|탄력|동안|젊어|최고|최신|우수|뛰어")
 
 
 def load(path=PATH):
@@ -103,6 +108,8 @@ def export():
     entries, errors = resolve(kb)
     cs = load_concerns()
     errors += check_concerns(cs, {e["id"] for e in entries}, kb)
+    sp = load_specs()
+    errors += check_specs(sp, kb["statuses"], kb["sources"], family_ids())
     if errors:
         raise SystemExit("knowledge/ 오류:\n  " + "\n  ".join(errors))
     rel = {}
@@ -113,8 +120,53 @@ def export():
         e["related_concerns"] = rel.get(e["id"], [])
     concerns = [dict(c, sources=[dict(kb["sources"][s], id=s) for s in c.get("sources", [])],
                      review={k: c.get("review", {}).get(k, "") for k in ("status", "reviewer", "reviewed_at", "notes")}) for c in cs["concerns"]]
-    return ({"updated": kb.get("updated", ""), "statuses": kb["statuses"], "evidence_levels": kb.get("evidence_levels", {}), "entries": entries},
+    # the app gets the line and its review status; refs, confidence and the reviewers' notes stay in the file
+    specs = [{"fid": e["fid"], "spec": e["spec"], "one_liner": e["one_liner"], "sources": [dict(kb["sources"][s], id=s) for s in e.get("sources", [])],
+              "review": {k: e.get("review", {}).get(k, "") for k in ("status", "reviewer", "reviewed_at")}} for e in sp.get("entries", [])]
+    return ({"updated": kb.get("updated", ""), "statuses": kb["statuses"], "evidence_levels": kb.get("evidence_levels", {}), "entries": entries,
+             "specs": specs},
             {"updated": cs.get("updated", ""), "statuses": cs["statuses"], "safety": cs["safety"], "concerns": concerns})
+
+
+def load_specs(path=SPECS):
+    return json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {"entries": []}
+
+
+def check_specs(sp, statuses, sources, fids=None):
+    """spec notes: known family id (when given), a word, a one-line note without effect / safety words, a review status,
+    known source ids; one note per (family, word)"""
+    errors, seen = [], set()
+    for i, e in enumerate(sp.get("entries", [])):
+        tag = f"specs[{i}] {e.get('fid')}/{e.get('spec')}"
+        if not e.get("fid") or not e.get("spec") or not e.get("one_liner"):
+            errors.append(f"{tag}: fid·spec·one_liner가 필요해요")
+            continue
+        if fids is not None and e["fid"] not in fids:
+            errors.append(f"{tag}: 없는 제품군 id")
+        if (e["fid"], e["spec"]) in seen:
+            errors.append(f"{tag}: 같은 낱말 설명이 두 번")
+        seen.add((e["fid"], e["spec"]))
+        bad = SPEC_BAN.search(e["one_liner"])
+        if bad:
+            errors.append(f"{tag}: 효과·안전·권유 낱말 '{bad.group()}'")
+        if len(e["one_liner"]) > 80:
+            errors.append(f"{tag}: 한 줄이 너무 길어요({len(e['one_liner'])}자)")
+        if e.get("review", {}).get("status") not in statuses:
+            errors.append(f"{tag}: 검수 상태가 없어요")
+        for s in e.get("sources", []):
+            if s not in sources:
+                errors.append(f"{tag}: 없는 출처 {s}")
+        for u in e.get("refs", []):
+            if not re.match(r"https?://[^\s]+$", u):
+                errors.append(f"{tag}: 참고 주소가 이상해요 {u!r}")
+    return errors
+
+
+def family_ids():
+    """compare family ids from build2/taxonomy.py (the spec notes hang on them)"""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import taxonomy
+    return {f["id"] for f in taxonomy.FAMILIES}
 
 
 def schema_records():
@@ -139,6 +191,17 @@ if __name__ == "__main__":
     cs = load_concerns()
     errors += check_concerns(cs, {e["id"] for e in entries}, kb)
     print(f"고민 분류 {len(cs['concerns'])}개 · 위험 신호 규칙 {len(cs['safety']['rules'])}개 · 한계가 적힌 시술 {sum(1 for e in entries if e['limitations'])}/{len(entries)}")
+    sp = load_specs()
+    errors += check_specs(sp, kb["statuses"], kb["sources"], family_ids())
+    se = sp.get("entries", [])
+    print(f"규격 낱말 설명 {len(se)}개 · 참고 주소 있음 {sum(1 for e in se if e.get('sources') or e.get('refs'))} · "
+          f"검수 상태 {dict(sorted(Counter(e.get('review', {}).get('status', '') for e in se).items()))}")
+    # the ban list itself: a note that promises or advises is refused, a plain one passes
+    bad = check_specs({"entries": [{"fid": "x", "spec": "a", "one_liner": "효과가 더 오래가요", "review": {"status": "draft"}},
+                                   {"fid": "x", "spec": "b", "one_liner": "턱 옆 씹는 근육 부위에 놓아요", "review": {"status": "draft"}}]},
+                      kb["statuses"], kb["sources"])
+    if len(bad) != 1:
+        errors.append(f"규격 설명 검사 자체가 이상해요: {bad}")
     if "--schema" in sys.argv and not errors:
         print(json.dumps(schema_records()[1], ensure_ascii=False, indent=1))
     if "--families" in sys.argv:

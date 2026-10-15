@@ -56,6 +56,14 @@
 
 **검사:** `python build2/knowledge.py`가 고민 id, 시술 id 존재, 출처, 검수 상태, 정규식 오류를 확인해요.
 
+## 규격 낱말 설명 (`specs.json`, 2026-10-15, 지시서 C7)
+- 비교 화면의 규격 낱말(보톡스 › '사각턱'·'독일산', 리쥬란 › 'HB 플러스' 등)마다 **그 낱말이 무엇을 가리키는지** 쉬운 말 한 줄이에요. 46개 제품군, 낱말 177개.
+- 효과·안전·권유는 적지 않아요. `build2/knowledge.py`의 `SPEC_BAN`(효과·개선·안전·부작용·통증·추천·강력·탄력·최신 등)이 들어가면 빌드가 멈춰요. 한 줄은 80자 이하.
+- 항목: `fid`(제품군 id, `build2/taxonomy.py`), `spec`(낱말), `one_liner`, `refs`(확인한 주소 — 검수용), `confidence`(초안 쓴 쪽의 확신), `review`(`status`·`notes`).
+  앱(`data.json` `meta.kb.specs`)에는 `fid`·`spec`·`one_liner`·검수 상태만 실려요.
+- 공개된 정의를 못 찾은 낱말(대부분 병원이 붙인 '파워' 같은 이름)은 '병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.'로 적었어요(6개).
+- 모두 `draft`(의료진 검수 전)예요. 검수 방법은 아래 '전문가 검수 방법'과 같아요.
+
 ## 검수 전 초안 노출 (`app/config.js` `showDraftKnowledge`)
 - true(지금, 비공개 베타): 초안도 '초안 · 전문가 검수 전' 표시와 함께 보여요.
 - false: `approved` 항목만 보여요. 공개 출시 전에는 의료진 검수를 마치거나 false로 바꿔야 해요(`docs/LEGAL_REVIEW_CHECKLIST.md`).

@@ -1,0 +1,2028 @@
+{
+ "updated": "2026-10-15",
+ "about": "비교 규격 낱말(예: 보톡스 › '사각턱', 리쥬란 › 'HB 플러스')의 쉬운 한 줄 설명(지시서 C7). 낱말이 무엇을 가리키는지만 적고 효과·안전·권유는 적지 않아요(build2/knowledge.py SPEC_BAN이 막음). 모두 의료진 검수 전(review.status = draft)이에요. refs·confidence·review.notes는 검수하는 사람용이고 앱에는 실리지 않아요.",
+ "entries": [
+  {
+   "fid": "toxin",
+   "spec": "국산",
+   "one_liner": "국내 회사가 만든 톡신이에요(나보타·보툴렉스·리즈톡스 등).",
+   "refs": [
+    "https://dailypharm.com/user/news/59421"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 기사 제목('휴온스·파마리서치 가세...국산 보툴리눔 점유율 93%')과 데일리팜 52514(보툴렉스·나보타 내수)로 국산 제품명 확인. 메디톡신을 예시에서 뺀 것은 유지(지식베이스 base-toxin kinds에는 있음)."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "프리미엄",
+   "one_liner": "병원이 일반형과 나눠 붙이는 이름으로, 주로 '고순도'라고 파는 톡신(코어톡스 등)을 가리켜요.",
+   "refs": [
+    "https://dailypharm.com/user/news/78527"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '등급 이름'을 '일반형과 나눠 붙이는 이름'으로 바꿈('등급'은 더 낫다는 비교로 읽힐 수 있음). 수집 자료 확인: 한 체인은 '국산/독일/영국 고순도', 다른 체인들은 '국산 프리미엄', '코어톡스', '내성적은 국산'을 씀. 코어톡스가 메디톡스의 150kDa 정제 톡신인 것은 기사로 확인. 공개 정의는 없고 병원마다 다름. 내성 문구는 효과 주장이라 넣지 않음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "주름",
+   "one_liner": "이마·미간·눈가처럼 표정 주름이 생기는 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-wrinkle과 같음. taxonomy는 '한부위'도 '주름'으로 묶음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "독일산",
+   "one_liner": "주로 독일 회사 멀츠의 톡신 '제오민'을 병원들이 이렇게 불러요.",
+   "refs": [
+    "https://dailypharm.com/user/news/31491"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 앞에 '주로'를 붙임. 같은 제제의 다른 허가명('보타루마 주', 아시아경제 2025-06 기사 제목)이 있고, 한 체인은 '독일 고순도'라고만 적어서 제품명을 다 확인하지는 못함. 멀츠 제오민은 데일리팜 31491·52741 기사 제목으로 확인. taxonomy: 독일산?|제오민."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "스킨",
+   "one_liner": "근육이 아니라 피부 얕은 층에 나눠 놓는 보톡스예요(더모톡신이라고도 해요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-skin과 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "다한증",
+   "one_liner": "땀이 많이 나는 겨드랑이·손·발 피부에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-sweat(겨드랑이·손바닥·발바닥)와 같음. 효과 주장 없음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "바디",
+   "one_liner": "승모근·종아리처럼 얼굴이 아닌 몸의 큰 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-body와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "미국산",
+   "one_liner": "미국 회사 엘러간의 '보톡스' 제품을 병원들이 이렇게 불러요.",
+   "refs": [
+    "https://dailypharm.com/user/news/59421"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 상품명에 '엘러간 주름보톡스', '미국산'이 함께 있음(taxonomy: 미국산?|엘러간|앨러간). 엘러간은 지금 애브비 소속이고, 생산은 아일랜드라고 보도됨. 그래서 '미국에서 만든'이라고 쓰지 않은 표현을 그대로 둠."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "사각턱",
+   "one_liner": "턱 양옆 씹는 근육(교근) 부위에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-jaw와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "겨드랑이",
+   "one_liner": "겨드랑이 피부에 놓는 보톡스예요(주로 다한증 상품이에요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 자료로 확인: 상품명 거의 전부가 '다한증보톡스 - 겨드랑이/손/발'."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "수입",
+   "one_liner": "외국에서 들여온 톡신을 묶어 부르는 말이에요(미국·독일 제품 등).",
+   "refs": [
+    "https://dailypharm.com/user/news/59421"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 상품명은 '수입 독일산', '수입 미국산', '수입(50U)', '수입 프리미엄'(taxonomy: 수입산?|외국산|외산)."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "손·발",
+   "one_liner": "손바닥·발바닥 피부에 놓는 보톡스예요(주로 다한증 상품이에요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 자료로 확인: 다한증 상품 '겨드랑이/손/발'에서 나옴."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "승모근",
+   "one_liner": "목과 어깨 사이 근육(승모근)에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 바디 보톡스 안의 부위를 가리키는 말이고, 일반 해부학 지식."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "종아리",
+   "one_liner": "종아리 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "특수부위",
+   "one_liner": "병원이 쓰는 묶음 이름으로, 침샘·입꼬리·광대·측두근 같은 부위를 말해요(병원마다 달라요).",
+   "refs": [
+    "https://mokdong.vandsclinics.com/web/product?categoryId=7055"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 병원마다 들어가는 부위가 달라서 '(병원마다 달라요)'를 넣고, 길이 때문에 '콧볼'을 뺌. 수집 자료로 확인: '침샘/입꼬리/광대/측두근', '입꼬리/콧볼', '광경근', '침샘/관자/목세로주름/입술위/팔자주름/입꼬리', '턱관절/잇몸노출/측두근'. 공개 정의는 없음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "침샘",
+   "one_liner": "턱 아래·귀밑의 침샘에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-gland와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "얼굴전체",
+   "one_liner": "부위를 나누지 않고 얼굴 전체에 놓는 상품이에요(주로 스킨보톡스).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 자료로 확인: 거의 다 '스킨보톡스 얼굴전체'."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "측두근",
+   "one_liner": "관자놀이 쪽 씹는 근육(측두근)에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-temporal과 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "모공",
+   "one_liner": "코·볼 주변(나비존) 피부 얕은 층에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-pore와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "입꼬리",
+   "one_liner": "입꼬리를 아래로 당기는 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-mouth와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "파워",
+   "one_liner": "병원이 붙이는 이름으로, 보통 양(U)을 늘린 사각턱 보톡스를 가리켜요.",
+   "refs": [
+    "https://daybeauclinic15.com/branch/event.php?uid=903"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '(예: 사각턱 100U)'를 빼고 '사각턱 보톡스'로 좁힘. 비교 화면의 '파워'는 사각턱에만 있음(변형 3개). U 숫자는 한 체인('파워 사각턱 보톡스 (두배용량)' 100유닛, 이 주소에서 수집한 줄)에서만 확인됨. 가장 많이 쓰는 체인은 U를 안 적고 가격만 일반형의 약 1.7~2배(같은 체인 중앙값 22,000원 대 13,000원). 다른 체인은 '파워턱보톡스(#용량UP …)'라고 적음. 공개 정의는 없음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "목주름",
+   "one_liner": "목 주름 부위에 놓는 보톡스예요(주로 피부 얕은 층에 놓는 스킨보톡스).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 괄호 안 문장을 자연스럽게 다듬음. 수집 자료로 확인: 거의 다 '목주름 스킨보톡스'. 지식베이스 toxin-neck과 어긋나지 않음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "두피",
+   "one_liner": "머리 피부(두피)에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 괄호의 \"병원 상품명은 '두피탈모 보톡스'\"를 뺌. '탈모'는 시술 목적이나 효과를 말하는 것으로 읽힐 수 있음. 수집 상품명은 대부분 '두피탈모보톡스'이고, taxonomy도 두피|탈모를 묶음. 필요하면 앱의 다른 곳(purpose)에서 다룸."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "광대",
+   "one_liner": "광대뼈 주변에 놓는 보톡스예요(어느 근육에 놓는지는 병원마다 달라요).",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 문구만 조금 다듬음. 수집 상품명은 '광대축소/측두근', '침샘/입꼬리/광대/측두근', '광대 보톡스'. 어느 근육에 놓는지 공개 정의를 찾지 못함. '축소'는 효과 표현이라 쓰지 않음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "콧볼",
+   "one_liner": "콧볼 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-nose와 같음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "이중턱",
+   "one_liner": "이중턱 자리(턱 아래)의 침샘인 턱밑샘에 놓는 보톡스예요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B1%B4%EB%8C%80%EC%A0%90&sField=2"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "사실 오류를 고침. 비교 화면의 '이중턱' 변형 8개는 모두 한 체인의 '특수부위 보톡스 - 귀밑/이중턱침샘'(70줄)뿐이라, 초안의 '또는 피부 얕은 층'은 맞지 않음. '더모톡신 이중턱'·'이중턱 스킨보톡스'는 패키지나 소수 줄로 비교 칸에 들어오지 않음. '이중턱침샘'이 턱밑샘이라는 것은 귀밑샘과 나란히 적힌 데서 추론함."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "턱라인",
+   "one_liner": "턱선을 따라 턱 아래·목 위쪽에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-jawline 부위와 같음. 수집 자료는 '턱라인 스킨보톡스', '턱라인 더모톡신', '턱라인 탄력보톡스'. '탄력'은 상품명일 뿐이라 한 줄에 넣지 않음."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "이마",
+   "one_liner": "이마 부위에 놓는 보톡스예요(주름 보톡스·스킨보톡스 둘 다 있어요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "사실 오류를 고침. 변형에 '국산 스킨보톡스 이마'가 있고, 수집 상품명에도 '이마 더모톡신', '스킨보톡스 이마/턱라인/나비존'이 있음. 그래서 '주름 보톡스'로만 쓴 초안을 고침."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "광경근",
+   "one_liner": "목 앞·옆을 덮는 얇고 넓은 근육(광경근)에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-neck(광경근)과 같고, 일반 해부학 지식."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "잇몸",
+   "one_liner": "윗입술을 들어 올리는 근육에 놓는 보톡스로, 거미스마일 보톡스라고도 해요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-gum과 같음(taxonomy: 잇몸|거미스마일)."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "눈가",
+   "one_liner": "눈 둘레(바깥·안쪽 눈가) 주름 부위에 놓는 주름 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 '눈꼬리 옆'은 너무 좁음. 수집 상품명은 '눈가전체', '바깥눈가/안쪽눈가'(한 체인, 13줄)."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "자갈턱",
+   "one_liner": "입을 다물 때 오돌토돌해지는 턱끝 근육에 놓는 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 지식베이스 toxin-chin(턱끝 근육)과 같음. '오돌토돌'은 낱말 뜻을 풀어 쓴 것이라 효과 주장이 아님."
+   }
+  },
+  {
+   "fid": "toxin",
+   "spec": "미간",
+   "one_liner": "눈썹 사이(미간) 근육에 놓는 주름 보톡스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 자료는 '미간/바깥눈가/안쪽눈가/콧등/자갈턱 부위당'(한 체인, 3줄)."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "국산",
+   "one_liner": "국내 회사가 만든 히알루론산 필러예요(아띠에르·뉴라미스 등).",
+   "refs": [
+    "https://biz.sbs.co.kr/amp/article/20000332256"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 아띠에르(클래식·인텐시브·볼륨)와 뉴라미스가 메디톡스 필러인 것을 SBS Biz·더구루 기사로 확인. 지식베이스 base-filler kinds와 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "독일산",
+   "one_liner": "독일 회사 필러를 병원들이 이렇게 불러요(벨로테로·아말리안 등).",
+   "refs": [
+    "https://www.merz.com/?p=2854"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 수집 자료로 확인: 한 체인의 '독일 벨로테로'·'독일 아말리안'이 거의 전부(641줄). 벨로테로는 멀츠(본사 독일 프랑크푸르트) 브랜드임을 멀츠 페이지로 확인. 아말리안은 S&V Technologies가 독일에서 만든다고 4tmedical.com 브랜드 페이지에 나옴."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "벨로테로",
+   "one_liner": "독일 회사 멀츠의 히알루론산 필러 브랜드예요.",
+   "refs": [
+    "https://www.merz.com/?p=2854"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "검수: 그대로 둠. 멀츠 페이지로 확인. 라인은 Hydro·Soft·Balance·Intense·Volume·Lips·Revive이고, Revive는 taxonomy에서 따로 '벨로테로 리바이브'로 나뉨."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "레스틸렌",
+   "one_liner": "스위스 회사 갈더마의 히알루론산 필러로, 스웨덴에서 만들어요.",
+   "refs": [
+    "https://www.galderma.com/manufacturing"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '수입 제품이에요'를 빼고 회사가 어느 나라 회사인지를 넣어, 벨로테로 줄('독일 회사 멀츠의…')과 같은 꼴로 맞춤. 갈더마 공식 manufacturing 페이지에서 웁살라(스웨덴) 센터가 레스틸렌을 연구·생산·유통한다고 직접 확인함. 본사가 스위스라는 건 일반 지식(위키백과: Zug)."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "수입",
+   "one_liner": "외국에서 들여온 필러를 묶어 부르는 말이에요(레스틸렌·쥬비덤·벨로테로 등).",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 톡신 '수입' 줄과 같은 꼴로 바꿈. 앱 원자료의 '수입' 필러 상품명에서 레스틸렌·쥬비덤·벨로테로·아말리안을 확인함."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "턱끝",
+   "one_liner": "턱끝에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: knowledge filler-chin 문장과 똑같이 맞춤('턱 끝'→'턱끝')."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "뉴라미스",
+   "one_liner": "메디톡스가 만든 국산 히알루론산 필러예요.",
+   "refs": [
+    "https://www.dailian.co.kr/news/view/1695202"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. 데일리안 2026-09-28 원문에서 '뉴라미스는 메디톡스가 독자 기술로 개발한 필러'이고 HA 필러임을 직접 확인함."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "쥬비덤",
+   "one_liner": "미국 회사 엘러간(애브비 계열)의 히알루론산 필러로, 프랑스에서 만들어요.",
+   "refs": [
+    "https://news.abbvie.com/2022-09-07-Allergan-Aesthetics-Celebrates-100-Million-Syringes-of-JUVEDERM-R"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 회사 이름을 톡신 '미국산' 줄과 같은 '엘러간'으로 통일하고, '프랑스 공장에서'를 '프랑스에서'로 줄임. 애브비 보도자료 원문에서 Allergan Aesthetics(애브비 계열)의 프랑스 생산시설이 쥬비덤을 만든다고 직접 확인함."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "아띠에르",
+   "one_liner": "메디톡스가 만든 국산 히알루론산 필러예요(뉴라미스와 다른 제품).",
+   "refs": [
+    "https://biz.sbs.co.kr/amp/article/20000332256"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. SBS Biz 2026-09-02 원문 확인: 메디톡스의 HA 필러 아띠에르 3종이고, '아띠에르를 뉴라미스와 함께' 키우겠다고 해 별도 브랜드임. 국내 식약처 허가 시점은 확인하지 못함(앱 원자료에는 국내에서 파는 상품이 있음)."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "코",
+   "one_liner": "콧대·코끝에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-nose와 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "애교",
+   "one_liner": "눈 바로 아래 애교살 자리에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-aegyo와 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "리쥬비엘",
+   "one_liner": "리쥬란을 만든 파마리서치의 국산 히알루론산 필러예요.",
+   "refs": [
+    "https://kormedi.com/1399784/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. 코메디닷컴 2022-05-24 원문 확인: 파마리서치가 리쥬비엘V·W·C를 출시함. 원료는 프랑스 HTL사의 HA이고 완제품은 파마리서치가 만듦. 앱 원자료도 '국산'으로 적음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "미국산",
+   "one_liner": "미국 회사 엘러간의 필러 '쥬비덤'을 병원들이 이렇게 불러요(만드는 곳은 프랑스).",
+   "refs": [
+    "https://news.abbvie.com/2022-09-07-Allergan-Aesthetics-Celebrates-100-Million-Syringes-of-JUVEDERM-R"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 톡신 '미국산' 줄과 같은 꼴로 바꿈. '미국산'이라는 말과 실제로 만드는 나라(프랑스)가 달라서 괄호에 넣음. 앱 원자료에서 '미국산' 필러 규격 12개가 모두 쥬비덤('필러(미국 쥬비덤)')임을 직접 확인함. 생산지는 애브비 보도자료에서 확인."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "주름",
+   "one_liner": "얼굴 주름 자리에 넣는 필러로, 어느 주름인지는 상품마다 달라요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-general('상품마다 달라요')과 맞음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "이마",
+   "one_liner": "이마에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-forehead와 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "입술",
+   "one_liner": "입술에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-lip과 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "팔자",
+   "one_liner": "코 옆에서 입가로 이어지는 팔자 주름 부위에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-nasolabial과 같음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "앞볼",
+   "one_liner": "눈 아래 앞볼(앞광대 쪽)에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-cheek(areas '눈 아래 앞볼')와 맞음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "관자",
+   "one_liner": "관자놀이에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '눈꼬리 옆 오목한'을 뺌. 관자놀이는 눈꼬리 옆이 아니라 눈썹 꼬리 바깥, 머리 옆쪽이라 위치 설명이 정확하지 않았음. '오목한'은 상태를 묘사하는 말이라 뺌. knowledge filler-temple 문장과 같게 맞춤."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "귀",
+   "one_liner": "귓바퀴·귓불 등 귀에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 맞춤법 '귓볼'→'귓불'. 앱 원자료 '귀필러 1cc(귓바퀴,귓볼)'."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "프리미엄",
+   "one_liner": "병원이 붙이는 등급 이름으로, 주로 국산 필러 일부(리쥬비엘·뉴라미스 등)를 가리켜요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 앱 원자료를 다시 보니 이 규격 12개가 모두 '국산 프리미엄'임(리쥬비엘·뉴라미스·채움 등, 8개 체인). 초안 메모의 '레스틸렌·쥬비덤·벨로테로를 프리미엄이라 부른다'는 이 규격에서는 확인되지 않음. 공개된 정의가 없는 병원 이름이라 실제로 쓰이는 모습만 적음(톡신 '프리미엄' 줄과 같은 꼴). '채움'은 제조사를 확인하지 못해 예시에서 뺌."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "눈밑",
+   "one_liner": "눈 아래 꺼진 곳(애교살 아래)에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. knowledge filler-under(one_liner와 areas)와 맞음."
+   }
+  },
+  {
+   "fid": "filler",
+   "spec": "목주름",
+   "one_liner": "목 가로주름에 넣는 필러예요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: knowledge filler-neck 문장과 똑같이 맞춤."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "힐러",
+   "one_liner": "2014년에 처음 나온 리쥬란의 기본 제품 '리쥬란 힐러'예요.",
+   "refs": [
+    "https://m.dailypharm.com/user/news/108623"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 괄호 안의 비교를 빼고 확인된 사실로 바꿈. 데일리팜 2016-09-20 원문: '2014년 국내 첫 출시된 리쥬란® 힐러', 그 뒤에 아이·에스가 신제품으로 나옴. 병원들은 '아이 리쥬란 힐러'처럼 이름을 섞어 쓰기도 함."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "HB 플러스",
+   "one_liner": "PN에 히알루론산과 마취 성분 리도카인을 더한 리쥬란 제품이에요.",
+   "refs": [
+    "https://dailypharm.com/user/news/338663"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. 데일리팜 2026-05-20 원문에서 'PN에 HA와 국소마취 성분 리도카인을 결합'을 직접 확인함. 참고: knowledge booster-pn method의 'HB 플러스(통증을 줄인 제품)'는 효과 주장에 가까워서 성분으로 설명하도록 바꾸는 걸 검토할 만함."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "아이",
+   "one_liner": "눈가에 놓는 리쥬란으로, 힐러보다 묽은 제품 '리쥬란 아이'가 따로 있어요.",
+   "refs": [
+    "https://m.dailypharm.com/user/news/108623"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 근거를 2016년 출시 기사로 바꾸고 제품 설명을 구체적으로 씀. 데일리팜 원문: 리쥬란 아이는 '힐러 대비 낮은 점도와 높은 퍼짐성, 얇은 피부에 적합'. 병원 상품이 실제로 그 제품을 쓰는지는 상품명만으로는 알 수 없음."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "스킨부스터",
+   "one_liner": "'스킨부스터'는 피부 주사를 두루 부르는 말이라, 어떤 리쥬란 제품인지는 병원마다 달라요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "거의 그대로(주어만 분명히 함). 앱 원자료: 한 체인은 힐러('PN 프리미엄')와 구분해 'PN 베이직 스킨부스터'라고 쓰고, 다른 체인은 묶음 제목 '스킨부스터' 뒤에 리쥬란아이·에스·HB플러스·힐러를 붙임. 파마리서치의 정식 제품명 '리쥬란 스킨부스터'는 찾지 못함."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "입술",
+   "one_liner": "입술에 놓는 리쥬란이에요.",
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "그대로. 부위 단어."
+   }
+  },
+  {
+   "fid": "rejuran",
+   "spec": "톤업",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "비워 둠(모름). 메모 고침: 앱 원자료에서 이 규격은 닥터에버스가 아니라 쁨(13줄)·데이뷰(1줄)의 '리쥬란 톤업부스터 2cc'임. 쁨은 이 상품을 '앰플 도포'·'스킨부스트(앰플)' 묶음에 둠. 그래서 주사가 아니라 바르는 앰플일 수도 있음(추측). 같은 이름의 파마리서치 제품이나 공개된 정의는 검색으로 찾지 못함."
+   }
+  },
+  {
+   "fid": "juvelook",
+   "spec": "볼륨",
+   "one_liner": "바임의 볼륨용 제품 '쥬베룩 볼륨'으로, 해외 이름은 레니스나예요.",
+   "refs": [
+    "https://www.medifonews.com/news/article.html?no=214534"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '쥬베룩보다 입자가 큰'을 뺌. 이 말은 의사 인터뷰(메디칼타임즈 2023)에만 나오고 제조사 사양으로는 확인하지 못함. 메디포뉴스 2026-06-23 원문: '쥬베룩 볼륨은… 유럽 등 일부 글로벌 시장에서는 레니스나(Lenisna)라는 브랜드명'."
+   }
+  },
+  {
+   "fid": "juvelook",
+   "spec": "스킨",
+   "one_liner": "기본 쥬베룩이나 2026년 새로 나온 '쥬베룩스킨'을 부르는 말로, 병원마다 달라요.",
+   "refs": [
+    "https://medifonews.com/news/article.html?no=213990"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침(사실 보완): 바임이 2026-06-01에 별도 제품 '쥬베룩스킨(JUVELOOK Skin, PDLLA+HA, 30mg)'을 냄(메디포뉴스 원문). 앱 원자료에는 볼륨과 구분하려고 기본 쥬베룩을 '쥬베룩 스킨(PDLLA 콜라겐부스터)'·'쥬베룩 스킨부스터'라 부르는 곳과 '쥬베룩스킨 1CC'를 파는 곳이 섞여 있음. 어느 쪽인지 상품명으로는 구분되지 않음."
+   }
+  },
+  {
+   "fid": "juvelook",
+   "spec": "아이",
+   "one_liner": "눈가·눈밑에 놓는 쥬베룩 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "거의 그대로. 메모 고침: 바임에 '쥬베룩 i'라는 제품이 실제로 있음(메디포뉴스 2026-03-09 no=211785: 폴리락타이드와 HA를 피하에 주입해 성인 얼굴 주름에 쓰는 의료기기. 눈가 전용이라는 말은 없음). 앱 원자료에 '쥬베룩 아이(i/2cc)'·'쥬베룩아이 2cc(눈밑)' 표기가 있어 일부 병원은 그 제품을 쓰는 듯하지만, 확인하지 못해 부위만 적음."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "울트라 부스터",
+   "one_liner": "초음파를 원 모양으로 쏘는 '울트라 부스터' 카트리지로 하는 슈링크예요.",
+   "refs": [
+    "https://classys.com/product/ultraformer-mpt/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '에너지'를 쉬운 말 '초음파'로 바꿈. 클래시스 영문 페이지 원문 'Booster-type cartridges deliver energy in a circular pattern'과 한글 페이지(classys.co.kr/product/shurink-universe/)의 '울트라 부스터 카트리지', Booster 1.5·3.0·4.5mm를 직접 확인함."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "울트라F",
+   "one_liner": "초음파를 선 모양으로 쏘는 '울트라 F' 카트리지로 하는 슈링크예요.",
+   "refs": [
+    "https://classys.com/product/ultraformer-mpt/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '에너지'→'초음파'. 클래시스 원문 'F-type cartridges deliver energy in a linear pattern'과 한글 페이지의 '울트라 F 카트리지'를 직접 확인함."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "아이",
+   "one_liner": "눈가에 하는 슈링크 유니버스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "거의 그대로. 앱 원자료 '아이 슈링크 유니버스 리프팅(눈가 전용 집속 초음파)'. 공식 카트리지 I Shurink 2.0·K Shurink 2.0(눈가 주름 등)이 있지만(shurinkuniverse.co.kr), 병원이 어느 것을 쓰는지는 모름."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "바디",
+   "one_liner": "복부·허벅지처럼 몸에 하는 슈링크예요(유니버스에는 몸용 6·9mm 카트리지가 있어요).",
+   "refs": [
+    "https://shurinkuniverse.co.kr/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 괄호를 '유니버스에는'으로 분명히 함. 슈링크유니버스 공식 사이트 원문 '복부 및 허벅지…(카트리지 모델: Y Shurink 6.0, Y Shurink 9.0)'를 직접 확인함. 병원 상품이 그 카트리지를 쓰는지는 상품명으로는 모름."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "파워",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "비워 둠(모름). 메모 고침: 앱 원자료에서 '파워' 규격은 블리비 한 체인(88줄)뿐이고 밴스에는 없음('파워 울트라 부스터'·'파워 울트라F'). 클래시스 공식 자료(카트리지 F/Booster, Normal·MP 모드)에 '파워'라는 이름은 없음."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "V",
+   "one_liner": "턱 아래 이중턱·턱선(V라인) 부위에 하는 슈링크예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '병원들이 부르는 이름' 대신 부위로 설명하고(톡신 부위 단어와 같은 꼴), 턱선(V라인)을 더함. 근거는 앱 원자료 '브이 슈링크 리프팅(이중턱 전용 집속 초음파)'와 'V라인/아이/목주름 슈링크'. 병원 홈페이지 링크는 출처에서 뺌. 공식 'V' 카트리지는 없음."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "더마",
+   "one_liner": "피부 얕은 층(1.5mm)용 'DERMA' 카트리지로 하는 슈링크예요.",
+   "refs": [
+    "https://shurinkuniverse.co.kr/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "거의 그대로. 공식 카트리지 'DERMA Shurink 1.5'·'DERMA Booster 1.5'를 확인함(shurinkuniverse.co.kr). 클래시스 IR 자료에서는 1.5mm가 진피 위층임. 앱 원자료에는 '슈링크 유니버스 더마리프팅'(쁨)과 '더마 슈링크 리프팅'(블리비) 두 체인만 있음. 이 상품이 DERMA 카트리지를 쓴다는 건 이름이 같아서 미루어 본 추측이니, 더 엄격히 하려면 비워도 됨."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "울트라",
+   "one_liner": "슈링크 유니버스 '울트라' 카트리지 상품으로, 상품명에 F·부스터 구분이 없어요.",
+   "refs": [
+    "https://shurinkuniverse.co.kr/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 문장을 다듬었어요('제조사 카트리지 이름 …만 적은' 대신 '상품명에 F·부스터 구분이 없어요'). 출처는 공식 제품 사이트로 바꿨어요(curl로 확인: 카트리지는 '울트라 F 카트리지'와 '울트라 부스터 카트리지' 두 가지뿐이고, Normal·MP 모드가 따로 있어요). 이 규격에는 '울트라 (선타입)/(원타입)', '울트라 MP 모드' 같은 상품도 묶여 있어요(clean.csv). 그래서 F인지 부스터인지 단정하지 않았어요."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "이중턱",
+   "one_liner": "턱 밑 이중턱 부위에만 하는 슈링크 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 부위를 뜻하는 낱말이에요. raw에서 '슈링크 유니버스 이중턱 리미티드 100샷(이중턱 전용)'을 확인했어요."
+   }
+  },
+  {
+   "fid": "shrink",
+   "spec": "리미티드",
+   "one_liner": "병원이 붙인 상품 이름으로, 지금은 이중턱 전용 슈링크 상품에만 붙어 있어요.",
+   "refs": [
+    "https://sinnonhyeon.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '…에만 쓰여요'를 '지금은 … 붙어 있어요'로 바꿨어요. 모은 자료 기준의 관찰이라는 점을 밝히려는 거예요. raw에서 한 체인의 24줄을 확인했는데 모두 '이중턱 리미티드'였어요. 제조사 이름에는 '리미티드'가 없어요. 일반 슈링크와 무엇이 다른지는 확인하지 못했어요. 출처는 병원 상품 페이지예요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "인라이튼 피코",
+   "one_liner": "미국 큐테라사의 피코초 레이저 '인라이튼'으로 하는 문신제거예요.",
+   "refs": [
+    "https://cutera.com/uk-en/products/enlighten/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 큐테라는 미국 회사이고, 인라이튼은 피코초·나노초 펄스로 문신을 지우는 데 쓰는 장비예요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "눈썹",
+   "one_liner": "반영구 눈썹 문신을 지우는 문신제거 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 부위를 뜻하는 낱말이에요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "500원 동전 크기",
+   "one_liner": "문신 크기 기준으로, 500원 동전(지름 약 2.7cm)만 한 넓이예요.",
+   "refs": [
+    "https://en.wikipedia.org/wiki/500_won_coin"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 500원 주화의 지름은 26.5mm예요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "레터링 10×1cm",
+   "one_liner": "가로 10cm·세로 1cm쯤 되는 글자(레터링) 문신 크기 기준이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 상품명에 적힌 크기를 그대로 풀어 쓴 문장이에요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "명함 1장 크기",
+   "one_liner": "문신 크기 기준으로, 명함 1장(약 9×5cm)만 한 넓이예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 국내 명함은 보통 90×50mm예요(일반 지식)."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "레블라이트SI",
+   "one_liner": "미국 사이노슈어사의 Q스위치 엔디야그 레이저 '레블라이트 SI'로 하는 문신제거예요.",
+   "refs": [
+    "https://www.cynosure.com/product/revlite-si/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 47자예요. 사이노슈어는 미국 회사이고, 레블라이트 SI는 Q스위치 Nd:YAG(1064·532nm) 장비예요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "아이라인",
+   "one_liner": "반영구 아이라인 문신을 지우는 문신제거 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 부위를 뜻하는 낱말이에요."
+   }
+  },
+  {
+   "fid": "tattoo",
+   "spec": "명함 2장 크기",
+   "one_liner": "문신 크기 기준으로, 명함 2장(약 9×10cm)을 합친 넓이예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 명함 1장을 약 9×5cm로 잡고 계산했어요."
+   }
+  },
+  {
+   "fid": "inmode",
+   "spec": "FX",
+   "one_liner": "피부를 진공으로 빨아들여 잡은 채 고주파를 넣는 인모드 핸드피스(모드)예요.",
+   "refs": [
+    "https://www.accessdata.fda.gov/scripts/cdrh/cfdocs/cfPMN/pmn.cfm?ID=K160329"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '진공으로'를 더했고, 출처를 FDA 510(k) K160329로 바꿨어요. 이 기록에서 MiniFX 핸드피스는 RF와 기계식 진공(흡입)을 함께 쓰고 양극 전극이 있다고 나와요. 국내 'FX'가 MiniFX를 가리킨다는 연결은 일반 지식이라 medium으로 뒀어요."
+   }
+  },
+  {
+   "fid": "inmode",
+   "spec": "FORMA",
+   "one_liner": "양극(바이폴라) 고주파로 피부를 데우는 인모드 핸드피스(모드)로, 피부 위를 움직이며 써요.",
+   "refs": [
+    "https://accessgudid.nlm.nih.gov/devices/07290016633658"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '온도 센서가 있어요'를 뺐어요. 안전 기능처럼 읽힐 수 있어서예요. 대신 GUDID에서 확인한 '양극(bipolar) 전극으로 RF 전달'을 넣었어요. '움직이며'는 국내에서 널리 쓰는 설명이에요."
+   }
+  },
+  {
+   "fid": "inmode",
+   "spec": "얼굴전체",
+   "one_liner": "부위를 나누지 않고 얼굴 전체에 하는 인모드 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요."
+   }
+  },
+  {
+   "fid": "inmode",
+   "spec": "바디",
+   "one_liner": "팔뚝·허벅지·배·옆구리처럼 얼굴이 아닌 몸 부위에 하는 인모드예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. raw에 '바디 인모드 … 팔뚝/허벅지/상복부/하복부/옆구리/부유방'이 있어요."
+   }
+  },
+  {
+   "fid": "inmode",
+   "spec": "파워",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 빈칸으로 바꿨어요. 공개된 정의가 없고, 세 체인(블리비·밴스·데이뷰)이 설명 없이 이 이름을 써요. 시간 근거는 한 지점뿐이에요. 같은 체인 평택점 한 곳만 같은 페이지에 시간을 적었어요: 일반 FX+FORMA 얼굴전체 #14분과 파워 #22분, 일반 1부위 #3분과 파워 #4분(data2/raw/velyb.csv). 초안 note의 '경주점 대 평택점' 비교는 지점이 섞여 있었는데, 같은 평택점 안에서도 차이가 있었어요. 넣는다면 '병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.' 정도를 권해요."
+   }
+  },
+  {
+   "fid": "density",
+   "spec": "하이",
+   "one_liner": "2023년 나온 '덴서티 하이' 전용 팁으로, 단극·양극 고주파를 한 샷에 차례로 넣어요.",
+   "refs": [
+    "https://medigatenews.com/news/3040991993"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '번갈아 써요'를 '차례로 넣어요'로 바꿨어요. 기사 원문이 '한 샷에서 순차적으로 조사'예요. 기사는 curl로 확인했어요(2023-09-20 제이시스메디칼 덴서티 하이 출시, 하이 전용 팁 3종)."
+   }
+  },
+  {
+   "fid": "density",
+   "spec": "클래식",
+   "one_liner": "처음 나온 덴서티의 기본 팁으로, 단극(모노폴라) 고주파만 쓰는 팁이에요.",
+   "refs": [
+    "https://medigatenews.com/news/3040991993"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 같은 기사에서 '기존 모노폴라 조사가 가능한 클래식 팁 3종'을 확인했어요."
+   }
+  },
+  {
+   "fid": "density",
+   "spec": "알파",
+   "one_liner": "2026년 1월 나온 덴서티 3세대 팁으로, 단극·양극 고주파를 모두 쓸 수 있어요.",
+   "refs": [
+    "https://www.hankyung.com/article/202607243309i"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '함께 쓰는'을 '모두 쓸 수 있어요'로 바꿨어요. 기사 원문이 '두 가지 방식을 모두 지원'이에요. '1월'도 더했어요. 기사(2026-07-24)는 curl로 확인했어요: '지난 1월에 출시한 3세대 신규 팁 알파팁'."
+   }
+  },
+  {
+   "fid": "density",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 하는 덴서티 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '(눈가용 팁을 써요)'를 뺐어요. GUDID의 'Density I-Tip II' 기록에는 눈가용이라는 설명이 없어서 확인할 수 없었어요. 부위 낱말로만 설명했고, 출처는 비웠어요. raw에는 '아이 덴서티 리프팅(눈가 전용 …) 하이/클래식'이 있어요."
+   }
+  },
+  {
+   "fid": "fraxel",
+   "spec": "CO2",
+   "one_liner": "탄산가스(CO2) 레이저로 하는 프락셀로, 피부 겉을 점처럼 작게 벗겨내는 박피성 방식이에요.",
+   "refs": [
+    "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12155576/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '겉층을 미세하게 깎아내는'을 '점처럼 작게 벗겨내는'으로 바꿨어요. 지식베이스의 '작은 구멍(점)' 표현과 맞춘 거예요. 논문은 E-utilities로 확인했어요: J Clin Med 2025 리뷰, 'Ablative fractional CO2', '1540/1570nm non-ablative'."
+   }
+  },
+  {
+   "fid": "fraxel",
+   "spec": "나비존",
+   "one_liner": "양 볼과 코를 잇는 나비 모양 부위에 하는 프락셀이에요(코 포함 여부는 상품마다 달라요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '상품이에요'를 '프락셀이에요'로, '병원마다'를 '상품마다'로 바꿨어요. raw에서 '나비존(코 포함)'과 '나비존프락셀(코제외)', '나비존 (코 제외)'를 모두 확인했어요."
+   }
+  },
+  {
+   "fid": "fraxel",
+   "spec": "어븀글라스",
+   "one_liner": "어븀글라스 레이저로 하는 프락셀로, 피부 겉을 벗기지 않는 비박피성 방식이에요.",
+   "refs": [
+    "https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12155576/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 1540nm(어븀글라스)는 비박피성이에요. 같은 리뷰에 적혀 있어요. 어븀야그(2940nm, 박피성)와는 다른 장비예요."
+   }
+  },
+  {
+   "fid": "fraxel",
+   "spec": "얼굴전체",
+   "one_liner": "부위를 나누지 않고 얼굴 전체에 하는 프락셀 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요."
+   }
+  },
+  {
+   "fid": "fraxel",
+   "spec": "코 모공",
+   "one_liner": "코 부위에만 하는 프락셀 상품이에요(주로 코 모공 때문에 받아요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 목적은 지식베이스의 '주로 무엇 때문에 받아요' 형식으로 썼고, 효과는 약속하지 않아요."
+   }
+  },
+  {
+   "fid": "ulthera",
+   "spec": "프라임",
+   "one_liner": "멀츠사가 기존 울쎄라의 다음 세대로 내놓은 장비 '울쎄라피 프라임'이에요.",
+   "refs": [
+    "https://www.businesswire.com/news/home/20240923911140/en/Merz-Aesthetics-Announces-the-Launch-of-Ultherapy-PRIME-Platform-as-the-Next-Generation-of-Nonsurgical-Skin-Lifting-Treatments"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 출처를 바꿨어요. 초안 출처(smarttoday 87669)는 한 의원의 장비 도입 홍보 기사였어요. 대신 제조사 멀츠 에스테틱스의 2024-09 출시 보도자료를 달았어요('next generation' of Ultherapy). 문장은 조금 다듬었어요."
+   }
+  },
+  {
+   "fid": "ulthera",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 하는 울쎄라 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. raw에 '아이 울쎄라피 프라임 리프팅 100·200샷'이 있어요."
+   }
+  },
+  {
+   "fid": "ulthera",
+   "spec": "파워",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요(빈칸 유지). 한 체인에서만 90줄을 확인했어요('파워 울쎄라(피 프라임) 리프팅 100~1,000샷'). 웹 검색으로도 정의를 찾지 못했어요. 넣는다면 '병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.' 정도를 권해요."
+   }
+  },
+  {
+   "fid": "ulthera",
+   "spec": "바디",
+   "one_liner": "팔뚝·배·허벅지처럼 얼굴이 아닌 몸 부위에 하는 울쎄라예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. raw에 '바디울쎄라피프라임 100샷', '바디 울쎄라 리프팅 100~600샷'이 있어요."
+   }
+  },
+  {
+   "fid": "pigment",
+   "spec": "바디",
+   "one_liner": "겨드랑이·팔꿈치·무릎처럼 몸에 생긴 착색 부위에 하는 토닝이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 지식베이스 착색토닝 설명('겨드랑이·비키니라인 등 착색 부위')과 맞아요."
+   }
+  },
+  {
+   "fid": "pigment",
+   "spec": "겨드랑이",
+   "one_liner": "겨드랑이 피부의 착색 부위에 하는 토닝이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 부위를 뜻하는 낱말이에요."
+   }
+  },
+  {
+   "fid": "pigment",
+   "spec": "비키니라인",
+   "one_liner": "속옷 선 주변(비키니라인) 피부의 착색 부위에 하는 토닝이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 부위를 뜻하는 낱말이에요."
+   }
+  },
+  {
+   "fid": "onda",
+   "spec": "바디",
+   "one_liner": "얼굴이 아닌 배·엉덩이 같은 몸 부위에 하는 온다예요.",
+   "refs": [
+    "https://www.dekalaser.com/onda/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 제조사(DEKA) 페이지는 curl로 확인했어요: 부위는 abdomen·knees·hips·buttocks·underarms이고, 2.45GHz 마이크로파예요."
+   }
+  },
+  {
+   "fid": "thread",
+   "spec": "민트",
+   "one_liner": "한스바이오메드가 만든 PDO 녹는 실 '민트(MINT)'로 하는 실리프팅이에요.",
+   "refs": [
+    "https://economist.co.kr/article/view/ecn202404020028"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않았어요. 기사는 curl로 확인했어요: 'Mint Lift는 PDO(폴리디옥사논) 안면 조직 고정용 실'. FDA 510(k) K130191·K220549에도 HansBiomed의 MINT(PDO)가 나와요."
+   }
+  },
+  {
+   "fid": "thread",
+   "spec": "실루엣소프트",
+   "one_liner": "영국 싱클레어사의 녹는 실로, 실에 달린 작은 원뿔(콘) 수로 8콘·12콘 등을 나눠요.",
+   "refs": [
+    "https://accessgudid.nlm.nih.gov/devices/05060033040133"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 출처를 바꿨어요. 초안 출처(sinclair.com 블로그)가 404였어요. 대신 FDA GUDID의 Silhouette Instalift(미국판 이름) 기록을 달았어요: 회사는 Sinclair Pharma, 실 하나에 콘이 달렸고 실·콘 모두 L-lactide/glycolide 소재예요. 문장은 '콘 수로 8콘·12콘 등을 나눠요'로 다듬었어요. raw에는 8cone·12cone만 있어요. 콘 수가 실 전체인지 한쪽인지는 단정하지 않았어요."
+   }
+  },
+  {
+   "fid": "thread",
+   "spec": "하이코",
+   "one_liner": "콧대·코끝에 녹는 실(주로 PDO)을 넣는 코 실 시술을 부르는 이름이에요.",
+   "refs": [
+    "https://www.smarttoday.co.kr/ko-kr/articles/62166"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 출처를 더했어요. 기사(2024-10-18)는 curl로 확인했어요: '코실리프팅, 하이코 미스코 등은 대부분 PDO 실을 사용'. 업계에서 쓰는 이름이고 제조사의 정의는 없어요. 일부 상품('슈퍼 하이코')은 실과 코필러를 묶은 구성이에요."
+   }
+  },
+  {
+   "fid": "toning",
+   "spec": "듀얼",
+   "one_liner": "두 가지 레이저(예: 레이저토닝+제네시스)를 한 번에 함께 받는 토닝이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '한 번에 이어서'를 '함께'로 바꿈. 두 레이저를 받는 순서는 확인하지 못했고, 지식베이스 skin-toning method의 '레이저 두 가지를 함께 하는 상품'과 맞춤. 수집 상품명은 '듀얼토닝(제네시스 토닝 + 레이저토닝)', '듀얼토닝 1회'. 짝이 되는 레이저는 병원마다 다름."
+   }
+  },
+  {
+   "fid": "toning",
+   "spec": "메가",
+   "one_liner": "병원이 붙인 이름으로, 레이저토닝 20회를 한 번에 묶은 상품에 쓰여요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "문장만 다듬음. data2/raw를 확인하니 '메가 레이저토닝(화이트닝 레이저) 20회 (+진정관리 20회) 한정가'로 한 체인에서만 나오고 모두 20회 묶음. 원자료에는 행사 이름 '♥️메가세일♥️레이저토닝 5회'도 있지만 app/data.json 라벨에는 '메가 레이저토닝 20회'만 보임. 정리 단계에서 행사 이름이 빠지는 것으로 보이나 추측임. 공개 정의는 없음."
+   }
+  },
+  {
+   "fid": "toning",
+   "spec": "제네시스",
+   "one_liner": "1064nm 레이저로 피부 속(진피)을 데우는 '레이저 제네시스' 방식의 토닝이에요.",
+   "refs": [
+    "https://www.cutera.com/treatments/laser-genesis/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 어려운 말 '엔디야그'를 빼고, '고르게 데우는'을 원문 'controlled dermal heating'에 맞춰 '피부 속(진피)을 데우는'으로 바꿈. Cutera 페이지를 직접 읽음: 'non-ablative 1064 nm Nd:YAG'. 수집 상품명은 '롱펄스 콜라겐토닝 : 제네시스레이저 5회'. 병원이 실제로 Cutera 장비를 쓰는지는 모름. 그래서 확신도는 medium."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "펌핑 모드",
+   "one_liner": "약물(스킨부스터 등)을 함께 넣도록 만든 포텐자 '펌핑 팁'으로 하는 시술이에요.",
+   "refs": [
+    "https://jeisys.com/product/potenza"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 제이시스 제품 페이지(dl108/j.html)를 다시 확인함: Pumping 팁(CP-16·21·25)의 용도가 'Drug Delivery, Scar'로 나옴."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "아크네",
+   "one_liner": "여드름(아크네)용으로 파는 포텐자로, 제조사에 여드름·한관종용 팁이 따로 있어요.",
+   "refs": [
+    "https://jeisys.com/product/potenza"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 제조사 팁 표를 근거로 덧붙임. 1-Pin 팁(P1-08·A1-12·A1-15)의 용도가 'Active Acne, Syringoma'(dl108/j.html 직접 읽음). 지식베이스 kinds '포텐자(일반·펌핑·아크네 팁)'와도 맞음. 병원이 실제로 어떤 팁을 쓰는지는 상품명에 없음."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "얼굴전체",
+   "one_liner": "얼굴 전체에 하는 포텐자예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 범위를 나타내는 낱말이고 지식베이스 skin-mnrf method(범위별로 값이 다름)와 맞음."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "팁 별도",
+   "one_liner": "바늘 팁(소모품) 값이 빠진 가격이라 팁 값을 따로 내야 하는 상품이에요.",
+   "refs": [
+    "https://jeisys.com/product/potenza"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 뜻은 수집 상품명 '팁값별도·팁 미포함'에서 나옴. 제조사 페이지에 팁이 소모품(consumable)으로 나온 것을 확인함. 금액은 넣지 않음."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "부분",
+   "one_liner": "이마·코 주변·턱처럼 얼굴 일부에만 하는 포텐자예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 범위를 나타내는 낱말이고 수집 상품명 '(이마/나비존/턱)'과 맞음. 부분의 범위는 병원마다 다름."
+   }
+  },
+  {
+   "fid": "potenza",
+   "spec": "개당",
+   "one_liner": "여드름 같은 병변 한 개마다 값을 매기는 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 단위를 나타내는 낱말임. 지식베이스대로 개당 가격은 1회 가격과 비교할 수 없음."
+   }
+  },
+  {
+   "fid": "everkl",
+   "spec": "V",
+   "one_liner": "한 병에 PLLA 100mg이 든 '에버클 V'예요(기본형 에버클은 50mg).",
+   "refs": [
+    "https://everwrinkle.com/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 '볼륨용으로 나온'은 의원 인터뷰 기사(목적·효과 표현)에 기댄 말이라 뺌. 제조사 공식 사이트를 직접 읽음: 에버클 M13-001은 PLLA 50mg(121.7mg/Box), 에버클 V M13-002는 PLLA 100mg(243.4mg/Box). mediafine 92483 기사도 같은 수치(직접 읽음)."
+   }
+  },
+  {
+   "fid": "everkl",
+   "spec": "S",
+   "one_liner": "제조사 이름엔 없는 표기로, 기본형 '에버클'(한 병 PLLA 50mg)을 가리키는 걸로 보여요.",
+   "refs": [
+    "https://everwrinkle.com/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 공식 사이트에서 제조사 제품은 에버클·에버클 V 두 가지뿐임을 확인함. 'S'는 공식 이름이 아님. 원자료 '에버클S(PLLA 콜라겐부스터)'는 세 체인(drevers·vands·velyb)에 나오고, 같은 체인이 '에버클 스킨부스터'로도 적음. 'V가 아니니 기본형'이라는 연결은 추측이 섞여 '보여요'로 씀. 초안의 '스킨부스터형'(의원 인터뷰 표현)은 뺌."
+   }
+  },
+  {
+   "fid": "olidia",
+   "spec": "볼륨",
+   "one_liner": "가장 큰 용량(365mg)인 기본형 '올리디아'를 병원들이 흔히 '볼륨'이라고 불러요.",
+   "refs": [
+    "https://www.olidia.co.kr/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 'PLLA 양이 가장 많은'은 틀린 말임. 제조사 페이지의 365·243.4·121.7mg은 PLLA+CMC+Mannitol을 합친 '용량'임(dl108/o.html 직접 읽음). 제조사 이름은 '올리디아'(365mg, 피하층)·'240'·'120'이고 '볼륨'은 공식 이름이 아님. 원자료 '올리디아 365(볼륨)'과 웹 검색의 여러 의원 글이 '볼륨=365'로 씀. 블리비의 '올리디아 볼륨'이 365인지는 직접 확인하지 못함."
+   }
+  },
+  {
+   "fid": "olidia",
+   "spec": "스킨",
+   "one_liner": "주로 가장 작은 용량(121.7mg)인 '올리디아 120'을 병원들이 '스킨'이라고 불러요.",
+   "refs": [
+    "https://www.olidia.co.kr/"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 용량 표기를 제조사 수치(121.7mg)로 바꾸고 '등'을 '주로'로 바꿈. 웹 검색으로 본 의원·블로그 글들이 120=스킨(부스터), 240=멀티, 365=볼륨으로 씀. 원자료 '올리디아 120(스킨부스터)'. 공식 이름에 '스킨'은 없음."
+   }
+  },
+  {
+   "fid": "aladdin",
+   "spec": "바디",
+   "one_liner": "등·가슴·팔뚝처럼 얼굴이 아닌 몸에 하는 알라딘필이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 부위를 나타내는 낱말이고 수집 상품명 '윗등/아랫등/가슴/팔뚝'과 맞음."
+   }
+  },
+  {
+   "fid": "aladdin",
+   "spec": "뉴",
+   "one_liner": "기존 알라딘필을 바꿔 새로 나온 'NEW 알라딘필'로 하는 필링이에요.",
+   "refs": [
+    "https://zerolabclinic.com/pages/new-aladdin-peel"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "채움: 초안은 빈칸이었음. DuckDuckGo 검색에서 여러 의원이 'NEW 알라딘필/뉴알라딘필'을 기존 알라딘필의 새 버전으로 소개함. 출처 페이지(의원)를 직접 읽음: '기존 알라딘필 대비 각질 탈락 7→5일, 시술 1시간→30분이 「뉴」가 붙은 이유'. 이 차이는 효과·통증 표현이라 문장에 넣지 않음. 제조사 공식 자료는 찾지 못함. 원자료에서는 같은 지점이 '뉴알라딘 필링' 칸 안에 '알라딘필링'으로도 적어 두 이름이 섞여 쓰임."
+   }
+  },
+  {
+   "fid": "primeraise",
+   "spec": "바디",
+   "one_liner": "배·허벅지·팔뚝처럼 얼굴이 아닌 몸에 하는 프라임 레이즈예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 원자료 '바디 프라임 레이즈 1부위 - 복부/허벅지/팔뚝/엉밑살'에 맞춰 부위 예를 덧붙임. 장비의 제조사·허가 정보는 확인하지 못함."
+   }
+  },
+  {
+   "fid": "primeraise",
+   "spec": "포커스",
+   "one_liner": "병원이 붙인 이름으로, 이중턱·턱선·목에만 하는 상품에 쓰여요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 공개 정의가 없어서 '병원이 붙인 이름'이라고 밝힘. 원자료에서는 블리비에서만 나옴: '프라임 레이즈 포커스 45KJ - 이중턱/턱라인/목주름'과 '프라임 레이즈 90KJ - 얼굴전체'. 일부 웹 글은 장비 이름처럼 쓰지만 근거가 약함."
+   }
+  },
+  {
+   "fid": "oligio",
+   "spec": "아이",
+   "one_liner": "눈가처럼 좁은 부위에 쓰는 작은 전용 팁으로 하는 올리지오예요.",
+   "refs": [
+    "https://www.oligio.com/oligiox"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 원텍 페이지(dl108/w.html)를 다시 확인함: '얼굴, 눈가 등 부위에 따라 적합한 팁으로 교체', '소형 팁…미간 같은 부위'. 이 페이지는 올리지오X 페이지라 기존 올리지오의 팁 크기는 따로 확인하지 못함."
+   }
+  },
+  {
+   "fid": "oligio",
+   "spec": "X",
+   "one_liner": "원텍의 고주파 장비 '올리지오X'(G·X 두 모드를 쓰는 모델)로 하는 시술이에요.",
+   "refs": [
+    "https://www.oligio.com/oligiox"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 '기존 올리지오 다음에 내놓은'은 출시 순서를 공식 자료로 확인하지 못해 뺌. 제조사 페이지에 나온 사실로 바꿈: Monopolar RF, G모드·X모드 듀얼 모드. 원텍은 제조사이지 병원 이름이 아님."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "돌출점·사마귀·비립종·쥐젖",
+   "one_liner": "튀어나온 점·사마귀·비립종(흰 좁쌀)·쥐젖(작은 살 돌기)을 빼는 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. taxonomy가 네 낱말을 하나로 묶음. 낱말 뜻은 일반 지식이고 지식베이스 skin-mole과 맞음."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "얼굴전체",
+   "one_liner": "얼굴 전체의 점을 정해진 개수 안에서 한꺼번에 빼는 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 원자료 '얼굴 전체 점제거 (40개 이하)' 등에서 개수 한도를 확인함. 지식베이스 skin-mole method와 맞음."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "목전체",
+   "one_liner": "목 전체의 점·돌기를 정해진 개수 안에서 한꺼번에 빼는 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 원자료 '목 전체 점제거 (40개 이하)'와 맞음."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "中",
+   "one_liner": "크기가 중간인 점이에요(예: 지름 2~5mm, 기준은 병원마다 달라요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 '보통 2mm 넘는'에서 '보통'은 근거가 한 체인뿐이라 '예:'로 바꿈. 쁨은 小 2mm 이하, 中 2mm 이상, 大 5mm 이상이라 中은 2~5mm임. 톡스앤필은 '점 제거(中)'로만 적고 mm 기준이 없음."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "大",
+   "one_liner": "크기가 큰 점이에요(예: 지름 5mm 이상, 기준은 병원마다 달라요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '보통'을 '예:'로 바꿈. mm 기준은 쁨의 '大 (5mm이상)' 하나뿐임."
+   }
+  },
+  {
+   "fid": "mole",
+   "spec": "小",
+   "one_liner": "크기가 작은 점이에요(예: 지름 2mm 이하, 기준은 병원마다 달라요).",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '보통'을 '예:'로 바꿈. 근거는 쁨의 '小 (2mm이하)'. taxonomy의 小 규칙은 괄호 밖의 '2mm'도 잡음."
+   }
+  },
+  {
+   "fid": "sculpt",
+   "spec": "코",
+   "one_liner": "코 부위에 놓는 조각주사예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 부위를 나타내는 낱말임. 성분은 병원마다 다름(지식베이스 base-fatinj)."
+   }
+  },
+  {
+   "fid": "sculpt",
+   "spec": "민소매",
+   "one_liner": "팔뚝처럼 민소매 옷을 입으면 드러나는 부위에 놓는 조각주사예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 병원이 쓰는 부위 표기이고 원자료에서 팔뚝 상품과 함께 나옴. 겨드랑이 주변을 포함하는지는 확인하지 못함."
+   }
+  },
+  {
+   "fid": "sculpt",
+   "spec": "종아리",
+   "one_liner": "종아리에 놓는 조각주사예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음."
+   }
+  },
+  {
+   "fid": "sculpt",
+   "spec": "바디",
+   "one_liner": "얼굴이 아닌 몸 부위에 놓는 조각주사예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 어느 부위인지는 상품명에 없음."
+   }
+  },
+  {
+   "fid": "agnes",
+   "spec": "얼굴전체",
+   "one_liner": "얼굴 전체에 하는 아그네스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 원자료 '아그네스 얼굴전체 1회'와 맞음."
+   }
+  },
+  {
+   "fid": "agnes",
+   "spec": "개당",
+   "one_liner": "여드름·한관종 같은 병변 한 개마다 값을 매기는 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 단위를 나타내는 낱말임. 개당 가격은 1회 가격과 비교할 수 없음(지식베이스 skin-mnrf)."
+   }
+  },
+  {
+   "fid": "agnes",
+   "spec": "부분",
+   "one_liner": "턱선·코 주변처럼 얼굴 일부에만 하는 아그네스예요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 범위를 나타내는 낱말임. 개수 한도를 함께 두는 병원도 있음."
+   }
+  },
+  {
+   "fid": "ptt",
+   "spec": "에토좀",
+   "one_liner": "금 나노입자를 작은 지질 주머니(에토좀)에 담은 앰플을 바르고 레이저를 쏘는 PTT예요.",
+   "refs": [
+    "https://pmc.ncbi.nlm.nih.gov/articles/PMC12257271/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고침: '지질 입자'를 쉬운 말 '작은 지질 주머니'로 바꿈. 논문(dl108/pmc.html)을 다시 확인함: 에토좀은 인지질·에탄올·물로 된 지질 소포이고, 금 나노입자 앰플(ETHOSOME PTT)을 바른 뒤 롱펄스 1064nm Nd:YAG를 쏨. 모든 병원이 이 제품을 쓰는지는 모름."
+   }
+  },
+  {
+   "fid": "ptt",
+   "spec": "골드",
+   "one_liner": "빛을 흡수하는 금 입자를 모공에 넣고 레이저를 쏘는 PTT예요.",
+   "refs": [
+    "https://www.dermatologytimes.com/view/gold-microparticles-zap-sebaceous-follicles"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. 출처 기사를 이번에 직접 읽음: 'topically-delivered light-absorbing gold microparticles'로 피지 모낭을 가열함. PMC12257271 논문 서론도 같은 원리. 국내 상품에 실제로 쓰는 제품·레이저는 병원마다 다를 수 있음."
+   }
+  },
+  {
+   "fid": "thermage",
+   "spec": "아이",
+   "one_liner": "눈꺼풀·눈가용 작은 팁(0.25cm²)으로 하는 써마지예요.",
+   "refs": [
+    "https://thermage.com/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 것 없음. Solta 페이지(dl108/t.html)를 다시 확인함: 'EYE TIP 0.25 CM2 — eyelids and skin around the eyes'."
+   }
+  },
+  {
+   "fid": "velys",
+   "spec": "라이트",
+   "one_liner": "병원이 붙인 이름으로, 기본형과 따로 파는 상품인데 무엇이 다른지는 공개 자료가 없어요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고침: 초안의 '블리비S'는 병원 이름이 든 상품명이라 문장에서 뺌. '바디 컨투어링'은 상품명 속 홍보 문구(효과 뉘앙스)라 옮기지 않음. 그 병원 블로그(blog.naver.com/velyb1)에도 효과 표현만 있고 성분·농도 차이는 공개 자료가 없음. 원자료에서 라이트는 10·20·50·100cc, 기본형은 30·60·120·180cc 단위로 팜. 빈칸이 낫다고 보면 ''로 바꿔도 됨."
+   }
+  },
+  {
+   "fid": "volnewmer",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 하는 볼뉴머예요(0.25㎠ 크기 '아이 팁'이 따로 있어요).",
+   "refs": [
+    "https://classys.co.kr/product/volnewmer/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "제조사 페이지를 직접 열어 확인함: 팁 4종 '아이 팁(I Tip) 0.25㎠, 에프 3.0, 브이 4.0, 에스 16.0㎠'. 바꾼 점: '제조사에 … 눈가용'을 줄임. 페이지가 아이 팁을 '눈가용'이라고 적지는 않아서 이름만 씀."
+   }
+  },
+  {
+   "fid": "ldm",
+   "spec": "트리플 소닉",
+   "one_liner": "'트리플 소닉'이라는 물방울 초음파 장비로 하는 상품이에요(일부 병원은 '국산 LDM'이라 적어요).",
+   "refs": [
+    "https://gwanggyo.vandsclinics.com/web/product?categoryId=6645"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 초안의 '병원들이 국산 LDM이라고 적는'을 '일부 병원은'으로 고침. '국산 LDM (트리플 소닉)'은 밴스 판교·광교 두 곳에서만 나옴(data2/raw/vands.csv). 이 칸의 변형 9개는 모두 블리비 원문 118행이고, '고출력 RF 모드' 상품도 같은 칸에 들어 있음. WebSearch 두 번으로도 제조사는 찾지 못함. 독일 Wellcomet의 LDM(1·3·10MHz)과 같은 장비인지 확인 못 해서 섞어 쓰지 않음."
+   }
+  },
+  {
+   "fid": "accu",
+   "spec": "파워",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "빈칸 유지에 동의함. 블리비가 '파워 아큐주사(페이스 컨투어링)'를 6cc·1cc로 팔고, 유앤아이 2행도 있음. 블리비 강남역점 페이지(sField=2)를 직접 열었지만 '파워'에 대한 설명이 없어서, '대용량'과 무엇이 다른지 모름."
+   }
+  },
+  {
+   "fid": "accu",
+   "spec": "대용량",
+   "one_liner": "병원이 붙인 이름으로, 기본(3cc)보다 많은 6cc 단위로 파는 아큐주사예요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=2"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "블리비 강남역점 페이지를 직접 열어 확인함: '아큐주사(페이스 컨투어링) 3cc'와 '대용량 아큐주사(페이스 컨투어링) 6cc'를 나눠 팖. 바꾼 점: 같은 뜻을 한 문장으로 줄이고 괄호를 정리함. '파워'도 6cc라서 둘의 차이는 모름."
+   }
+  },
+  {
+   "fid": "rejevan",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 놓는 리제반PN 상품이에요(병원은 '눈가 전용'이라고 적어요).",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=5"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 수집 원문은 블리비 '아이 리제반PN(눈가 전용 PN 프리미엄 스킨부스터) 1cc'. 이번에 WebSearch로 다시 찾았지만 리제반PN 제조사나 눈가용 제품은 나오지 않음(검색 요약이 리쥬란과 헷갈렸음). 그래서 제품 사실은 쓰지 않고 병원 표기만 적음."
+   }
+  },
+  {
+   "fid": "radiesse",
+   "spec": "미세주름",
+   "one_liner": "병원이 붙인 이름으로, 손등·목·팔꿈치·무릎 같은 부위에 넣는 레디어스 상품이에요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B2%BD%EC%A3%BC%EC%A0%90&sField=5"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: '잔주름 부위'를 빼고 원문에 나온 부위(손등/목주름/팔꿈치/무릎)만 적음. 팔꿈치·무릎을 '잔주름 부위'라고 부르는 것은 해석이기 때문. 공개된 정의가 없는 병원 표기임(블리비, 밴스 '레디어스 미세주름 특수부위'). 희석해서 쓰는지는 상품명에 없어서 적지 않음."
+   }
+  },
+  {
+   "fid": "radiesse",
+   "spec": "손등·목주름",
+   "one_liner": "손등이나 목 주름 부위에 넣는 레디어스 상품이에요.",
+   "refs": [
+    "https://newstomato.com/ReadNews.aspx?no=738066"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 부위 표기임. 레디어스는 2017년 식약처에서 손등 볼륨 적응증을 받음(뉴스토마토). 목주름 허가는 확인 못 해서 '허가'라는 말은 쓰지 않음."
+   }
+  },
+  {
+   "fid": "jamber",
+   "spec": "실",
+   "one_liner": "'잼버실'이라고 적힌 상품으로, 다른 잼버 상품과 같은 녹는 PDO 볼륨실이에요.",
+   "refs": [
+    "https://pubmed.ncbi.nlm.nih.gov/39034977/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 출처를 붙이고 실 성분을 PDO로 확정함. Europe PMC에서 초록을 직접 받아 확인함: Arch Plast Surg 2024 'Volumizing Threads (Jamber) in the Midface'에 PDO(polydioxanone) 볼륨실이라고 나옴(PMID 39034977). '녹는 실'은 지식베이스 lift-thread 표현과 맞춤. 초안 메모의 'NEO Dr. 제조' 내용은 확인이 안 돼서 뺌. 이 칸은 표기만 다른 것이라 분류에서 없애는 쪽을 검토해 볼 만함."
+   }
+  },
+  {
+   "fid": "drip",
+   "spec": "베이직",
+   "one_liner": "병원이 붙인 기본 등급 이름으로, 들어가는 성분은 지점마다 달라 상품명 괄호에 적혀 있어요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 성분 예시 '(글루타치온·비타민 등)'을 뺌. 블리비 강남역점을 직접 열어 보니 베이직은 글루타치온/신데렐라/비타민C/태반 등이었음. 지점마다 성분이 달라서 예시가 틀릴 수 있음. 공개된 정의가 없는 병원 등급임(블리비만)."
+   }
+  },
+  {
+   "fid": "drip",
+   "spec": "프리미엄",
+   "one_liner": "병원이 '베이직'과 나눠 붙인 등급 이름으로, 성분은 지점마다 달라 상품명 괄호에 적혀 있어요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 초안의 예시 '(마늘·감초·태반 등)'이 틀려서 뺌. 블리비 강남역점의 프리미엄은 '마늘/감초/비타민D'와 'NAD+'였고 태반은 없었음. 지점마다 성분이 달라 예시를 쓰지 않음. 베이직과 같은 문장이 되지 않도록 '베이직과 나눠 붙인'으로 구분함. 등급이 위라는 뜻이나 비교하는 말은 쓰지 않음."
+   }
+  },
+  {
+   "fid": "liftera",
+   "spec": "펜타입",
+   "one_liner": "펜 모양 손잡이로 쏘는 리프테라2예요(눈 주변·코 옆처럼 좁은 곳에도 써요).",
+   "refs": [
+    "https://www.medicalsearch.com.au/introducing-asterasys-the-future-of-hifu-rf-fractional-technology-is-here/f/25600"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 초안의 '이마·눈가'에서 이마는 출처에 없어서 뺌. '카트리지'는 출처 표현대로 '펜 어플리케이터(손잡이)'로 고침. 유통사 페이지를 직접 열어 확인함: 'Pen-type applicator … orbital ridge, tear trough, perinasal region'. 이 장비는 1000~5000샷으로 얼굴 전체에도 팔기 때문에 '좁은 부위 전용'처럼 읽히지 않게 '에도'를 씀."
+   }
+  },
+  {
+   "fid": "liftera",
+   "spec": "라인타입",
+   "one_liner": "점을 한 줄로 이어 왕복으로 쏘는 '라인 카트리지'를 쓰는 리프테라2예요.",
+   "refs": [
+    "https://www.medicalsearch.com.au/introducing-asterasys-the-future-of-hifu-rf-fractional-technology-is-here/f/25600"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 제조사 쪽 근거를 찾아 문장을 바꿈. 같은 유통사 페이지에 'New Line Cartridge: bidirectional and continuous dot-type shot profile'이라고 나옴. 초안의 '볼·턱선 같은 넓은 부위'는 쁨의 설명일 뿐이라 뺌. 병원의 '라인타입'이 이 라인 카트리지라는 것은 이름이 같아서 내린 추정이라 medium. 판매 단위도 100·300샷으로 펜타입(1000샷~)과 다름."
+   }
+  },
+  {
+   "fid": "filod",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 놓는 필로드(PN) 상품이에요(병원은 '눈가 전용'이라고 적어요).",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 초안의 '점도를 맞춰 나온'을 뺌. 쁨 페이지를 확인해 보니 필로드 아이 설명이 같은 페이지의 아이리쥬란힐러 설명('얇고 민감한 눈 주변 부위에 시술할 수 있도록 제품의 점도를 조절한 눈가 전용')을 거의 그대로 옮긴 문장이었음. 필로드 제조사 자료는 WebSearch로 찾지 못해 제품 사실로 볼 수 없음. 리제반PN 아이 문장과 맞춤."
+   }
+  },
+  {
+   "fid": "acneinj",
+   "spec": "얼굴전체",
+   "one_liner": "개수로 세지 않고 얼굴 전체 여드름에 놓는 염증주사 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 지식베이스 skin-acneinj의 '개당 가격과 얼굴전체 가격이 따로 있어요'와 같은 뜻임."
+   }
+  },
+  {
+   "fid": "tensurma",
+   "spec": "아이",
+   "one_liner": "눈가 부위에 하는 텐써마예요(0.25㎠ 크기 '아이 팁'이 따로 있어요).",
+   "refs": [
+    "https://www.smarttoday.co.kr/ko-kr/articles/93692"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "기사를 직접 열어 확인함: 페이스 팁 5.0㎠, '아이 팁(0.25㎠)은 눈가, 팔자주름 등 섬세한 부위', 바디 팁 20.0㎠. 바꾼 점: 볼뉴머 문장과 같은 형식으로 맞추려고 '눈가용'을 줄임. 제조사 페이지는 못 찾음(병원 도입 기사)."
+   }
+  },
+  {
+   "fid": "excelv",
+   "spec": "플러스",
+   "one_liner": "미국 큐테라사가 엑셀V 다음으로 내놓은 장비 '엑셀V+'로 하는 상품이에요.",
+   "refs": [
+    "https://cutera.com/us-en/products/excel-v-plus/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. WebSearch로 다시 확인함: 큐테라가 2019년 AAD에서 엑셀V의 다음 세대로 엑셀V+를 공개함(532·1064nm, 최대 16mm). 출처를 제조사 미국 제품 페이지로 바꿈."
+   }
+  },
+  {
+   "fid": "contour",
+   "spec": "풀페이스",
+   "one_liner": "침샘·턱라인 톡신과 광대주사·PS주사 9cc를 묶어 얼굴 전체에 하는 상품이에요.",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 쁨 페이지에서 확인함: '국산/수입 풀페이스 컨투어링 주사 *침샘톡신 + 턱라인 스킨톡신 + 광대주사 + 대용량 PS주사 9cc'(쁨만 있음, 22행). 묶음 상품이라 다른 병원의 단일 윤곽주사와 다름."
+   }
+  },
+  {
+   "fid": "contour",
+   "spec": "국산",
+   "one_liner": "묶음 안의 톡신(침샘·턱라인)을 국산 톡신으로 하는 풀페이스 윤곽주사예요.",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 국산·수입은 짝을 이룬 상품이고 수입 쪽에 '독일 멀츠사' 설명이 있어서 톡신의 원산지로 판단함. 국산 쪽 페이지는 원산지를 직접 적지 않음."
+   }
+  },
+  {
+   "fid": "contour",
+   "spec": "수입",
+   "one_liner": "묶음 안의 톡신을 수입 톡신(독일 멀츠사 제품)으로 하는 풀페이스 윤곽주사예요.",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 쁨 시술정보에서 확인함: '수입 톡신은 독일 멀츠사의 톡신으로 …'. '내성·순수' 같은 효과 문구는 뺀 상태를 유지함."
+   }
+  },
+  {
+   "fid": "genesis",
+   "spec": "듀얼",
+   "one_liner": "병원이 붙이는 이름으로, 무엇이 다른지 공개된 설명은 없어요.",
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 빈칸으로 바꿈. 초안은 '파장 1가지 또는 2가지로 골라 받는 상품'이라고 했지만, 블리비 상품 56행 중 대부분은 '듀얼 제네시스 레이저(저자극 콜라겐 재생)'이고 '(1가지 파장)/(2가지 파장)'은 몇 행뿐임. 블리비 강남역점 페이지(sField=3)를 직접 열어 봐도 '듀얼'의 정의가 없음. 엑셀V+의 532nm(Green Genesis)+1064nm 조합이라는 추측은 가능하지만 확인하지 못함. 공개된 정의가 없는 병원 표기라 규칙대로 빈칸으로 둠."
+   }
+  },
+  {
+   "fid": "eyefat",
+   "spec": "지방재배치",
+   "one_liner": "수술 이름 '눈밑지방재배치'를 따서 병원이 붙인 주사 이름으로, 수술이 아니에요.",
+   "refs": [
+    "https://sinnonhyeon.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 어색한 '병원 주사 상품 이름'을 고쳐 쉬운 문장으로 바꿈. 뜻은 같음. 쁨은 '독자적인 … 주사시술'로, 톡스앤필·유앤아이는 '눈밑 지방재배치주사'로 적음. 성분은 공개되지 않음."
+   }
+  },
+  {
+   "fid": "eyefat",
+   "spec": "동안",
+   "one_liner": "병원이 붙인 눈밑 주사 이름으로, 필러가 아닌 약물을 넣는다고 설명해요.",
+   "refs": [
+    "https://sinnonhyeon.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 쁨 설명: '단순히 채워주는 필러 시술이 아닌 … 약물 주입'. '동안'은 효과를 뜻하는 말이라 문장에 쓰지 않음. 성분은 공개되지 않음."
+   }
+  },
+  {
+   "fid": "reedle",
+   "spec": "EX",
+   "one_liner": "VT사의 바르는 '시카리들' 부스터 중 줄기세포 관련 성분이 든 종류예요(병원 설명).",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "low",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: VT가 회사 이름이라는 것이 보이게 'VT사의'로 고치고, 출처가 병원뿐이라 '(병원 설명)'을 붙이고 confidence를 low로 낮춤. 쁨 원문은 '줄기 세포 핵심 성분의 결정체'인데 무슨 성분인지가 모호함. VT 공식 자료는 WebSearch로 찾지 못함. VT 화장품에 'EX=엑소좀' 이름 짓기가 있다는 것은 추측이라 쓰지 않음. 쁨 분류는 '앰플 도포'이고 LDM 초음파로 넣음."
+   }
+  },
+  {
+   "fid": "reedle",
+   "spec": "PN",
+   "one_liner": "VT사의 바르는 '시카리들' 부스터 중 식물성 PN을 넣은 종류예요(연어 PN 주사와 달라요).",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 'VT사의'만 고침. 쁨 원문 '식물성 PN을 배합'을 확인함. 원문의 '부작용이 적은'과 효과 문구는 뺀 상태를 유지함."
+   }
+  },
+  {
+   "fid": "reedle",
+   "spec": "BH",
+   "one_liner": "VT사의 바르는 '시카리들' 부스터 중 히알루론산·베타글루칸을 넣은 종류예요.",
+   "refs": [
+    "https://konkukuniv.ppeum.com/selectSurgery"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 'VT사의'만 고침. 쁨 원문 '저분자 히알루론산을 더해 … 베타글루칸 성분이 포함'을 확인함. BH가 무엇의 약자인지는 추측이라 쓰지 않음."
+   }
+  },
+  {
+   "fid": "neoface",
+   "spec": "얼굴전체",
+   "one_liner": "부위를 나누지 않고 얼굴 전체에 하는 네오페이스 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 부위 표기임(블리비 '네오페이스 리프팅(트리플 EMS 리프팅) - 얼굴전체')."
+   }
+  },
+  {
+   "fid": "carboxy",
+   "spec": "팔뚝",
+   "one_liner": "팔뚝(위팔) 부위에 놓는 지방분해주사 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 부위 표기임(쁨 '팔뚝 지방분해주사 50cc'). 쁨 시술정보는 SS주사 설명이라 카복시(가스) 주사와는 다를 수 있음. 제품군 묶음을 검토해야 한다는 초안 메모를 유지함."
+   }
+  },
+  {
+   "fid": "blackpeel",
+   "spec": "베이직",
+   "one_liner": "병원이 붙인 등급 이름으로, 압출·기기 관리 단계 없이 하는 기본 과정의 블랙필이에요.",
+   "refs": [
+    "https://www.toxnfill1.com/detail.php?c=3635&i=22759"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: 페이지를 직접 열어 실제 차이로 문장을 바꿈. 톡스앤필 페이지의 베이직은 '세안-필제 도포-중화-앰플+LED-모델링마스크'이고, 프리미엄은 여기에 '압출'과 '크라이오셀 기기관리'가 더해짐. 이 칸은 강남본점·신논현점·구리점 3곳이고, 확인한 것은 이 페이지 하나뿐이라 medium. 홍대점의 '베이직 블랙필'은 이 칸에 잡히지 않음(분류 확인 필요)."
+   }
+  },
+  {
+   "fid": "hair",
+   "spec": "아포지 플러스",
+   "one_liner": "미국 사이노슈어사의 알렉산드라이트(755nm) 제모 레이저 '아포지 플러스'예요.",
+   "refs": [
+    "https://healthmanagement.org/products/view/dermatological-laser-alexandrite-on-trolley-apogee-r-cynosure"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 출처를 755nm 알렉산드라이트가 적힌 제품 페이지로 바꿈(FDA GUDID 00841494100070에도 Cynosure Apogee+가 있음). 검색 요약에 따르면 Apogee+에 1064nm Nd:YAG를 더하면 Elite+가 됨. 주의할 점: taxonomy의 '아포지'가 '아포지엘리트플러스'에도 걸려서 그 상품이 두 칸에 함께 들어감."
+   }
+  },
+  {
+   "fid": "hair",
+   "spec": "젠틀맥스 프로 플러스",
+   "one_liner": "미국 캔델라사의 755·1064nm 두 파장 제모 레이저 '젠틀맥스 프로 플러스'예요.",
+   "refs": [
+    "https://practicaldermatology.com/news/ideal-image-expands-laser-hair-removal-capabilities-with-candelas-gentlemax-pro-plus-and-glx-delivery-system/2474466/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 캔델라 발표를 인용한 기사에서 755·1064nm 두 파장임을 확인함."
+   }
+  },
+  {
+   "fid": "hair",
+   "spec": "엘리트 플러스",
+   "one_liner": "미국 사이노슈어사의 755·1064nm 두 파장 레이저로, 병원은 '아포지엘리트플러스'라 적어요.",
+   "refs": [
+    "https://www.cynosure.com/product/elite-plus/"
+   ],
+   "confidence": "high",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 제조사 페이지 기준 Elite+는 755·1064nm 두 파장임. 수집 원문은 모두 '아포지엘리트플러스'(밴스·셀린)라는 장비 하나인데, taxonomy가 두 태그로 나눔(변형 80개 모두 두 태그를 함께 가짐). 한 장비로 합치는 것을 검토할 만함."
+   }
+  },
+  {
+   "fid": "hair",
+   "spec": "솜털",
+   "one_liner": "얼굴·이마처럼 가늘고 옅은 잔털(솜털) 부위를 하는 제모 상품이에요.",
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "고치지 않음. 원문은 '얼굴전체 솜털 제모', '이마솜털/헤어라인 제모'(블리비 등)이고, 장비가 아니라 털 종류를 나타내는 표기임."
+   }
+  },
+  {
+   "fid": "hair",
+   "spec": "프라임 레이즈",
+   "one_liner": "병원이 '3파장 레이저'라고 소개하는 장비 '프라임 레이즈'로 하는 제모예요.",
+   "refs": [
+    "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EB%B6%80%EC%82%B0%20%EC%84%9C%EB%A9%B4%EC%A0%90&sField=6"
+   ],
+   "confidence": "medium",
+   "review": {
+    "status": "draft",
+    "notes": "바꾼 점: '세 파장을 함께 쏘는'을 사실처럼 쓰지 않고 병원의 소개로 낮춤. '(리프팅에도 쓰는 장비)'도 뺌. WebSearch 두 번으로도 제조사와 파장 수치를 찾지 못함(Sinclair의 Primelase와는 다른 이름). 블리비 원문은 '프라임 레이즈(3파장 리프팅 레이저) 90KJ', 이 칸은 '(남자) 턱라인 제모(프라임 레이즈)' 6행."
+   }
+  }
+ ]
+}
