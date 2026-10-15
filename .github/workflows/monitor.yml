@@ -36,6 +36,11 @@ jobs:
           python-version: "3.12"
       # Worker probes run only for the URLs in the repository variable MONITOR_WORKER_URLS (empty = skipped), so Workers
       # that are not deployed yet never raise false alarms. Without the TELEGRAM_* secrets nothing is sent (a notice only).
+      # The live security headers, for the record (app/_headers): readable from the run's annotations without a browser.
+      - name: Live security headers (notice only)
+        run: |
+          H=$(curl -sSI --max-time 20 https://yoonsiljang.lsy2825.workers.dev/ | tr -d '\r' | grep -iE '^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy):' | tr '\n' ' ')
+          echo "::notice title=app security headers::${H:-none seen}"
       - name: Check and alert (Telegram)
         env:
           GITHUB_TOKEN: ${{ github.token }}
