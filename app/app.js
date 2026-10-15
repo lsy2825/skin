@@ -455,7 +455,7 @@
       date.addEventListener("input", paint); paint();
       return h("div", {}, h("div", { class: "sub" }, "평일 낮·일요일처럼 시간 조건이 붙은 가격을 방문일에 맞춰 걸러요. 시간대가 적혀 있지 않은 가격은 '시간 확인 필요'로 남겨요."),
         h("label", { class: "flabel" }, "날짜", date), h("label", { class: "flabel" }, "시간", time), info,
-        h("div", { class: "sub", style: "margin-top:6px;font-size:12px" }, "공휴일 표는 2026-10-13에 정리했어요(대체공휴일 포함). 정부 발표가 바뀌면 다를 수 있어요."),
+        h("div", { class: "sub", style: "margin-top:6px;font-size:13px" }, "공휴일 표는 2026-10-13에 정리했어요(대체공휴일 포함). 정부 발표가 바뀌면 다를 수 있어요."),
         h("div", { class: "row", style: "margin-top:14px" },
           st.when ? h("button", { class: "btn gray", type: "button", onclick: () => { setWhen(null); close(); } }, "지우기") : null,
           h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => { if (!date.value) return; setWhen({ date: date.value, time: time.value }); close(); } }, "적용")));
@@ -682,7 +682,7 @@
             h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = cmpRk(ranking(v.k, "price"));   // lowestHighlight off: the middle price, not '최저'
               return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
                 h("b", {}, v.label), h("span", { class: "num" }, !vr.length ? "가격 없음" : FLAGS.lowestHighlight ? `최저 ${won(vr[0].p)}` : `중간 ${won(median(vr.map((x) => x.p)))}`)); }))) : null,
-          h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:12px" }, "2회째부터는 지점의 일반가로 계산")),
+          h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:13px" }, "2회째부터는 지점의 일반가로 계산")),
             h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
           cartPicker(s.ci, (i) => { s.ci = i; paint(); }),
           top ? h("div", { class: "hero", style: "margin-top:14px" }, h("span", { class: "hl" }, `${KEYS[s.k].label} · 가장 싼 곳`), h("span", { class: "hb" }, bname(top.b)),
