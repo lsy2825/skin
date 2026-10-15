@@ -8,6 +8,9 @@ on:
   push:
     branches: [main]
     paths: ["supabase/**", "tests/db/**", "build2/export_db.py", ".github/workflows/db-security.yml"]
+  pull_request:          # the same checks before merging a PR that touches these files (no secrets: throwaway database)
+    branches: [main]
+    paths: ["supabase/**", "tests/db/**", "build2/export_db.py", ".github/workflows/db-security.yml"]
   workflow_dispatch: {}
 
 permissions:

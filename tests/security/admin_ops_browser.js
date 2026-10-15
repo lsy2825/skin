@@ -6,11 +6,12 @@
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/security/admin_ops_browser.js
 // The PIN comes from the environment only (CLAUDE.md) — like every e2e test this exits 2 without APP_PIN, it never unlocks
 // the gate another way. Checked by tests/security/admin_ops_static.test.js.
-const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
 const PIN = process.env.APP_PIN || '';
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 300)}`); };
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요'); process.exit(2); }
+// loaded only after the PIN check: without APP_PIN this exits 2 even where Playwright is not installed (the PR checks)
+const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const OUTSIDE = /yoonsiljang-factory\.|api\.github\.com|review\.json/;
 
 async function open(b, base) {

@@ -1,0 +1,42 @@
+name: pr-checks
+
+# Fast checks on every pull request to main: .github/scripts/pr_checks.sh = the price factory's own pre-deploy checks
+# (tools/factory.sh checks()) plus the quick suites of tests/run_regression.sh — about a minute, no browser, no PIN, no database.
+# The full regression (browser e2e with the PIN, PostgreSQL) still runs by hand or in batches (tests/run_regression.sh).
+# pull_request, never pull_request_target: the PR's code runs with a read-only token and without any secret.
+# Doc-only PRs are skipped (paths-ignore); if this check is ever made "required" in branch protection, drop paths-ignore first,
+# or doc-only PRs will wait for a check that never starts.
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore: ["docs/**", "**/*.md"]
+  workflow_dispatch:
+
+permissions: {}       # nothing by default; the job asks only for what it needs
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true    # a newer push to the same PR replaces the older run
+
+jobs:
+  quick:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - name: Python packages (exact versions in requirements.txt)
+        run: pip install -q -r requirements.txt
+      - name: PR checks (one line per suite; failed suites become error annotations)
+        env:
+          PYTHONUTF8: "1"
+        run: bash .github/scripts/pr_checks.sh
