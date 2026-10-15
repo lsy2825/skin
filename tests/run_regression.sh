@@ -38,11 +38,7 @@ run "branch addresses (own address, loose forms, on saved public pages)" python3
 if [ ! -f data2/db/offers.csv ] && [ -f data2/clean.csv ]; then python3 build2/export_db.py >/dev/null 2>&1; fi
 if [ -f data2/db/offers.csv ]; then run "backup / restore" bash tests/db/backup_restore_test.sh
 else echo "SKIP | backup / restore | no data2/db/offers.csv and no data2/clean.csv — run: python build2/weekly.py --skip-scrape && python build2/export_db.py"; fi
-# first_screens (B4 #12), metrics (B5 #16) and push (B6 #19) are B-owned e2e files still in open PRs: listed now so the suite
-# runs them the day they merge; until then their line says SKIP (never OK), so nobody reads a missing test as a pass.
-PLANNED=" first_screens metrics push "
 for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push; do
-  if [ ! -f "tests/e2e/$t.js" ] && [[ "$PLANNED" == *" $t "* ]]; then echo "SKIP | e2e $t | tests/e2e/$t.js is not on this branch yet (B PR #12/#16/#19)"; continue; fi
   run "e2e $t" node tests/e2e/$t.js
 done
 exit $fail
