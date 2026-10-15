@@ -89,7 +89,7 @@ def build(rows, bi, cats):
 def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_files):
     """write data2/history/<date>.auto.json.gz = {group key: [label, {"brand|branch": lowest regular price}]} and
     compare with the newest older one. returns (changes [[gid, branch, before, after]], new [[gid, branch, price]],
-    gone [[label, branch, before]] (options no longer listed), prev date)"""
+    gone [[label, branch, before, group key]] (options no longer listed), prev date)"""
     snap = {k: [groups[g][0], {bkeys[b]: p for b, p in low_reg[g].items()}] for g, k in enumerate(keep) if low_reg[g]}
     body = json.dumps(snap, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     with open(os.path.join(hist, f"{date}.auto.json.gz"), "wb") as raw:      # mtime=0: same data -> same bytes
@@ -114,5 +114,5 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
         now = snap.get(k, [None, {}])[1]
         for bk, p in before.items():
             if bk not in now and bk in bidx:
-                gone.append([label, bidx[bk], p])
+                gone.append([label, bidx[bk], p, k])
     return changes, new, gone[:500], os.path.basename(older[-1])[:10]

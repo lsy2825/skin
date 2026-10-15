@@ -337,6 +337,15 @@ ok("괄호가 바깥 부위를 풀어 쓰면 그 부위들('손 (손등 + 손가
    [hv(x)["area"] for x in ("[여성]손 5회 (손등 + 손가락)", "겨드랑이 (겨드랑이 + 인중) 1회")] == ["손가락+손등", "겨드랑이+인중"])
 ok("병원 표기 '구렛'·'윗못'도 부위('(턱+볼+구렛+인중+이중턱)'이 묶음이 아님)", hv("남자하관전체제모 (턱+볼+구렛+인중+이중턱) 1회")["sig"].startswith("hair|하관전체")
    and hv("남성 윗못or뒷목 제모 1회")["sig"].startswith("hair|"))
+ok("대문자 'OR'도 택1('앞목 OR 뒷목' = '뒷목·앞목')", hv("[여성] 앞목 OR 뒷목 제모 1회")["sig"] == hv("[여성] 뒷목/앞목 제모 1회")["sig"])
+ok("부위 철자 하나로(구렛나루=구레나룻, 배렛나루=배레나룻, 상완=팔상완)", hv("남성 구렛나루 제모 5회")["sig"] == hv("남성 구레나룻 제모 5회")["sig"]
+   and hv("남성 배렛나루 제모")["sig"] == hv("남성 배레나룻 제모")["sig"] and hv("여성 상완 제모 1회")["sig"] == hv("여성 팔상완 제모 1회")["sig"])
+ok("'(여자) 3자 제모'는 성별·장비가 있는 제모 키", hv("(여자) 3자 제모(아포지 플러스) 1회")["label"] == "여성 3자 제모 아포지 플러스")
+ok("'브라질리언 (항문 포함)'은 브라질리언+항문, '(항문 미포함)'은 브라질리언", hv("[여성] 브라질리언 (항문 포함) 1회")["sig"] == hv("여성 브라질리언 + 항문 제모 1회")["sig"]
+   and hv("[여성] 브라질리언(항문 미포함) 1회")["area"] == "브라질리언")
+ok("이름 붙은 부위 묶음은 괄호가 부위('수염라인(인중+앞턱)' → 앞턱+인중, '손 전체 (손가락 + 손등)' → 손가락+손등)",
+   hv("남성 수염라인(인중+앞턱) 제모 1회")["area"] == "앞턱+인중" and hv("[남성] 손 전체 (손가락 + 손등) 1회")["area"] == "손가락+손등")
+ok("'(진정관리+팩포함)'은 부위 메모가 아니라 묶음", hv("겨드랑이 제모 (진정관리+팩포함) 1회")["fam"] == "package")
 pt = [taxonomy.variant(x, cat="여드름")[0] for x in ("에토좀PTT(압출+염증주사 포함/필요 시 여드름약 처방 포함) 1회", "에토좀PTT 1회")]
 ok("제모 밖에서 괄호 속 '+'(띄어 쓰지 않음)는 묶음이 아님 — 에토좀 PTT 한 규격", pt[0] and pt[1] and pt[0]["sig"] == pt[1]["sig"], [v and v["sig"] for v in pt])
 ok("... ' + '로 띄어 쓴 괄호는 예전처럼 묶음", taxonomy.variant("환절기 스킨 리커버리(A + B)", cat="피부")[0]["fam"] == "package")
@@ -400,11 +409,23 @@ ok("key_map: 새 id 둘이 같은 표를 받으면 작은 id (집합 순서·PYT
    all(appdata.key_map(prev_km, [[0, 0, 2, 590000, 0, 0, 3, 4]], rows_km, [["TZZZZZZ"], ["TBBBBBB"]])["T0AAAAAA"][0] == "TBBBBBB" for _ in range(3)))
 ok("같은 줄·같은 가격인데 조건(tags)만 바뀌면 규칙 변경(recl)으로 봄 — 가짜 가격 변동 없음", appdata.reclassified(prev, prow, now) == {"X14"}
    and appdata.reclassified(prev, prow, [dict(now[0], tags="평일 낮")]) == set())
-prev_s = {"s": ["A", "강남점", "남성 목 제모 10회", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
-          "keys": [["T0AAAAAA", 0, "남성 목 제모 10회"]]}
-km = appdata.key_map(prev_s, [[0, 0, 2, 290000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="남성 목 제모 10회", keys="TBBBBBB")],
-                     [["TBBBBBB", 0, "남성 목 제모 5회"]])
-ok("key_map: 횟수가 다른 키로는 옮기지 않음('10회' → '5회' 아님, 옛 이름만 보여 줌)", km["T0AAAAAA"] == ["", "남성 목 제모 10회"], km)
+prev_t = {"s": ["A", "강남점", "울쎄라 300샷", "첫 방문", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["X14", 0, "울쎄라 300샷"]]}
+ok("... 체험가 줄이 조건만 잃으면(일반가가 되는 게 아님) 규칙 변경으로 보지 않음",
+   appdata.reclassified(prev_t, [[0, 0, 2, 590000, 0, 1, 3, 4]], [dict(now[0], kind="체험가", tags="")]) == set())
+prev_s = {"s": ["A", "강남점", "남성 목 제모 10회", "", "T0AAAAAA", "", "남성 목 제모 5회"], "branches": [[0, 1]],
+          "meta": {"brands": [["A"]], "kinds": appdata.KINDS}, "keys": [["T0AAAAAA", 0, "남성 목 제모 10회"]]}
+two = [[0, 0, 2, 396000, 0, 0, 3, 4], [0, 0, 6, 290000, 0, 0, 3, 4]]
+km = appdata.key_map(prev_s, two, [dict(brand="A", branch="강남점", name="남성 목 제모 10회", keys=""),
+                                   dict(brand="A", branch="강남점", name="남성 목 제모 5회", keys="TBBBBBB")], [["TBBBBBB", 0, "남성 목 제모 5회"]])
+ok("key_map: 반만 옮겨 간 키가 횟수가 다르면 옮기지 않음('10회' → '5회' 아님, 옛 이름만 보여 줌)", km["T0AAAAAA"] == ["", "남성 목 제모 10회"], km)
+km = appdata.key_map(prev_s, two[1:], [dict(brand="A", branch="강남점", name="남성 목 제모 5회", keys="TBBBBBB")], [["TBBBBBB", 0, "남성 목 제모 5회"]])
+ok("... 옛 줄이 모두 옮겨 갔으면 옮김(옛 이름의 횟수가 틀렸던 것)", km["T0AAAAAA"][0] == "TBBBBBB", km)
+prev_x = {"s": ["A", "강남점", "헤어라인 or 눈썹 제모", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["T0AAAAAA", 0, "남성 헤어라인 or 눈썹 제모"]]}
+km = appdata.key_map(prev_x, [[0, 0, 2, 50000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="헤어라인 or 눈썹 제모", keys="TAAAAAA TBBBBBB")],
+                     [["TAAAAAA", 0, "여성 눈썹·헤어라인 제모"], ["TBBBBBB", 0, "남성 눈썹·헤어라인 제모"]])
+ok("key_map: 같은 표면 옛 이름의 성별 쪽으로, 다른 성별 키로는 안 옮김", km["T0AAAAAA"][0] == "TBBBBBB", km)
 prev_g = {"s": ["A", "건대점", "[울써마지 옵션] 얼굴전체 더모톡신", "", "", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS}}
 mv = appdata.group_moved(prev_g, [[0, 0, 2, 190000, 0, 0, 3, 4, 1, 5]],
                          [dict(brand="A", branch="건대점", name="[울써마지 옵션] 얼굴전체 더모톡신", sale="190000", kind="일반", tags="", addon="1")], [-1])

@@ -344,8 +344,10 @@ def reclassified(prev, prow, rows):
         was[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].add((pkinds[r[5]], ps[r[6]] or ""))
     for r in rows:
         now[(r["brand"], r["branch"], r["name"], int(r["sale"]))].add((r["kind"], r["tags"] or ""))
+    # only when that changes whether the row counts as a plain price (a 체험가 row losing '첫 방문' moves nothing: 검증 7차)
+    plain = lambda st: any(k in ("일반", "고시가") and not t for k, t in st)
     for ident, x in now.items():
-        if ident in was and was[ident] != x:
+        if ident in was and plain(was[ident]) != plain(x):
             out |= new.get(ident[:3], set()) | old.get(ident[:3], set())
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
@@ -373,6 +375,12 @@ def group_moved(prev, prow, rows, gid):
     return {(f"{i[0]}|{i[1]}", G.comp(i[2]), i[3]) for i, c in now.items() if i in was and was[i] != c}
 
 
+def sex_word(label):
+    """여성 / 남성 / '' from a label in any of the clinics' forms"""
+    m = re.search(r"여성|여자|\(여\)|女|남성|남자|\(남\)|男", label or "")
+    return "" if not m else "여성" if m.group() in ("여성", "여자", "(여)", "女") else "남성"
+
+
 def key_map(prev, prow, rows, allk):
     """old comparison id → [new id or "", old label] for ids the previous data.json had and this one doesn't (a taxonomy fix
     or renamed options change an auto key's signature). The app moves saved carts, favourites and alerts with it, and shows
@@ -394,16 +402,23 @@ def key_map(prev, prow, rows, allk):
         nk = newk.get((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set())
         for k in old:
             size[k] += 1
-            for n in sorted(nk):          # a tie goes to the smaller id, not to set order (changed with PYTHONHASHSEED)
+            for n in sorted(nk):          # same order on every run (set order changed with PYTHONHASHSEED)
                 votes[k][n] += 1
     nlabel = {k[0]: k[2] for k in allk if len(k) > 2}
     out = {}
     for k, n in size.items():
-        best = votes[k].most_common(1)
-        to = best[0][0] if best and best[0][1] * 2 >= n else ""
+        c = votes[k]
+        top = max(c.values()) if c else 0
+        # a tie goes to the key of the old label's sex, then to the smaller id (not to the order rows came in)
+        tied = sorted((i for i, x in c.items() if x == top), key=lambda i: (sex_word(nlabel.get(i, "")) != sex_word(plabel.get(k, "")), i))
+        to = tied[0] if tied and top * 2 >= n else ""
         # never to another session count: '남성 목 제모 10회' is not '남성 목 제모 5회' even when half its old rows (5회 rows the
-        # old build keyed wrong) went there (검증 6차)
-        if to and xsessions(plabel.get(k, "")) != xsessions(nlabel.get(to, "")):
+        # old build keyed wrong) went there (검증 6차) — unless every old row went there (then the old label's count was the bug);
+        # never to the other sex ('남성 헤어라인 or 눈썹 제모' → a 여성 key on a tie, 검증 7차)
+        old_l, new_l = plabel.get(k, ""), nlabel.get(to, "")
+        if to and top < n and xsessions(old_l) != xsessions(new_l):
+            to = ""
+        if to and {"여성", "남성"} == {sex_word(old_l), sex_word(new_l)}:
             to = ""
         out[k] = [to, plabel.get(k, k)]
     for k, (to, label) in (prev["meta"].get("keymap") or {}).items():
@@ -517,6 +532,9 @@ def main():
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     moved = group_moved(prev_data, prev_rows, rows, gid)
     achg = [c for c in achg if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved and (bkeys[c[1]], gkeys[c[0]], c[3]) not in moved]
+    # the same for '새로 생김' / '없어짐': a row the rules moved into or out of a group is not a new or a gone price (검증 7차)
+    anew = [c for c in anew if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved]
+    agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
