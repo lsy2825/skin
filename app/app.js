@@ -588,7 +588,8 @@
   }
   // target: the spec named on the button ('담기 · 2cc') where the button alone must say what it adds (6.0: '+담기가 뭘 담는지')
   const addBtn = (k, target) => {
-    const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false", "aria-label": `${KEYS[k].label} ${inCart(k) ? "담김 · 횟수 바꾸기" : "장바구니에 담기"}` },
+    const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false",
+      "aria-label": target ? `${inCart(k) ? "담김" : "담기"} · ${target} — ${KEYS[k].label} ${inCart(k) ? "횟수 바꾸기" : "장바구니에 담기"}` : `${KEYS[k].label} ${inCart(k) ? "담김 · 횟수 바꾸기" : "장바구니에 담기"}` },
       icon(inCart(k) ? "check" : "plus", "sm"), target ? h("span", {}, `${inCart(k) ? "담김" : "담기"} · ${target}`) : inCart(k) ? "담김" : "담기");
     b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => addKeySheet(k), "전체 가격을 받는 대로 담기 화면을 열게요"); });
     return b;
@@ -1112,6 +1113,7 @@
     const W = 340, R = 4.5, PL = 14, PR = 14, TOP = 24, AX = 24;
     const ps = list.map((x) => x.p);
     let lo = Math.min(...ps), hi = Math.max(...ps);
+    if (med != null && med > 0) { lo = Math.min(lo, med); hi = Math.max(hi, med); }   // the middle line is always on the axis
     if (hi === lo) { lo = Math.max(0, lo * 0.9); hi = hi * 1.1 || 1; }
     const stepv = niceStep(hi - lo, 4), t0 = Math.floor(lo / stepv) * stepv, t1 = Math.ceil(hi / stepv) * stepv;
     const x = (v) => PL + (v - t0) / (t1 - t0) * (W - PL - PR);
@@ -2354,13 +2356,13 @@
   function pickKey(i) { st.key = i; history.replaceState(null, "", `#compare?k=${KEYS[i].id}`); render(); }
   // how the compare numbers are computed, with the real counts of this view
   function basisSheet(k, rk, plain) {
-    const ps = rk.map((x) => x.p), med = median(ps);
+    const rkc = cmpRk(rk), ps = rkc.map((x) => x.p), med = median(ps);   // same set as the header when no plain price exists
     sheet("가격 계산 기준", () => h("div", {}, h("dl", { class: "facts" },
       h("div", { class: "fact" }, h("dt", {}, "같은 시술"), h("dd", {}, `'${k.label}' — 용량·샷 수·회차·세부 구분(원산지·부위 등)이 같은 가격만 묶었어요. 다른 시술과 묶인 패키지와 추가 옵션은 빠져요.`)),
       h("div", { class: "fact" }, h("dt", {}, "비교한 지점"), h("dd", {}, `${regionName()} ${rk.length}곳 · 지점마다 가장 싼 가격 하나씩${st.special ? " (체험가·한정가 등 특가 포함)" : " (일반가만)"}`)),
       h("div", { class: "fact" }, h("dt", {}, "중간값"), h("dd", {}, plain.length
         ? `${won(median(plain.map((x) => x.p)))} — 조건 없는 가격 ${plain.length}곳의 지점별 최저가를 줄 세웠을 때 가운데 값이에요(위에 보이는 값). 특가까지 넣으면 ${rk.length}곳 중간값 ${won(med)}이에요.`
-        : `${won(med)} — ${rk.length}곳의 지점별 최저가(조건부 가격 포함)를 줄 세웠을 때 가운데 값이에요.`, " '중간보다 N% 싸요'는 (중간값 − 가격) ÷ 중간값이에요.")),
+        : `${won(med)} — ${rkc.length}곳의 지점별 최저가(조건부 가격 포함, 추가 옵션·부가세 미확인 제외)를 줄 세웠을 때 가운데 값이에요.`, " '중간보다 N% 싸요'는 (중간값 − 가격) ÷ 중간값이에요.")),
       h("div", { class: "fact" }, h("dt", {}, "조건 없는 최저가"), h("dd", {}, `${plain.length}곳 — 특가·첫 방문·시간 조건이 없고, 이번 주 확인된 지점의 가격만이에요.`)),
       h("div", { class: "fact" }, h("dt", {}, "빼는 가격"), h("dd", {}, "기간이 끝난 이벤트, 지난 수집보다 급변해 확인 중인 가격, 고른 방문일에 안 되는 가격은 모든 계산에서 빼요. 수집에 실패한 지점은 '조건 없는 최저가'에서 빼요.")),
       h("div", { class: "fact" }, h("dt", {}, "초저가 표시"), h("dd", {}, `중간값의 ${Math.round(LOW_SHARE * 100)}% 이하인 가격에 '초저가·조건 확인'을 붙여요. 조건 문구가 없어도 이런 가격을 1~2곳만 내고 있으면 원본을 확인하기 전까지 '조건 없는 최저가'로 쓰지 않고 '확인 필요'로 따로 보여줘요(여러 지점이 같은 값이면 그 체인의 보통 가격으로 봐요). ⓘ를 누르면 조건·부가세·원본을 볼 수 있어요.`)))));
@@ -2827,35 +2829,55 @@
   // 6.0 design ①: the sticky header — where am I (분야 › 시술 › 규격), the procedure in big type, ONE basis line that every
   // number below follows, the middle price, '담기' naming what it adds, and '⋯' for the tools the bottom bar used to hold
   function cmpHead(k, fam, rk, N) {
-    const jump = () => { const el = $("#cmppick"); if (!el) return; el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
-      const d = el.querySelector("details"); if (d && !d.open) d.open = true; };
-    const seg = (t) => h("button", { type: "button", onclick: jump, "aria-label": `${t} — 시술·규격 바꾸기로 가기` }, t);
+    // 분야·시술 open '다른 시술 고르기'; 규격 goes to the spec steps. Focus follows (the button's name promises the move)
+    const jump = (other) => { const el = $("#cmppick"); if (!el) return; const d = other ? el.querySelector("details.cmpother") : null; if (d && !d.open) d.open = true;
+      el.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      const t = d ? d.querySelector("summary") : el.querySelector(".vchip[aria-checked=true], .vchip[aria-pressed=true], h3"); if (t) { if (!t.matches("button, summary")) t.tabIndex = -1; t.focus({ preventScroll: true }); } };
+    const seg = (t, other) => h("button", { type: "button", onclick: () => jump(other), "aria-label": `${t} — ${other ? "다른 시술 고르기" : "규격 바꾸기"}로 가기` }, t);
     const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, "›");
     const basis = N ? `${regionName()} · ${N.ptop ? "일반가" : "조건부 가격"} · ${N.prices.length}곳 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`
       : `${regionName()} · 이 조건의 가격이 없어요`;
     return h("section", { class: "cmphead", "aria-label": "지금 비교하는 시술" },
-      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat), sep(), seg(fam ? fam.f.name : k.label), fam ? [sep(), seg(fam.label)] : null),
+      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, true), sep(), seg(fam ? fam.f.name : k.label, true),
+        fam && fam.label !== k.label && fam.label !== fam.f.name ? [sep(), seg(fam.label, false)] : null),
       h("div", { class: "tline" }, h("h1", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
       h("div", { class: "basis" }, basis),
       h("div", { class: "hrow" }, h("div", { class: "hmed num" }, N ? [h("span", {}, "중간값"), won(N.med)] : null),
         rk.length ? addBtn(k.i, fam ? fam.label : k.label) : null,
-        h("button", { class: "morebtn", type: "button", "aria-label": "더 보기: 알림·지도·복사·공유·체크리스트·저장·빠른 비교", onclick: () => cmpMoreSheet(k, rk) }, icon("ellipsis", "sm"))));
+        h("button", { class: "morebtn", type: "button", "aria-label": "더 보기: 알림·지도·복사·공유·체크리스트·저장·빠른 비교", onclick: () => cmpMoreSheet(k, rk, N) }, icon("ellipsis", "sm"))));
+  }
+  // a fold of the compare screen that stays open across redraws of the same procedure (♡, 담기, settings all call render())
+  function cmpFold(name, k, title, ...kids) {
+    const key = `${name}:${k.id}`, d = h("details", { class: "fold cmpfold" }, h("summary", {}, title), ...kids.filter(Boolean));
+    if ((st.cmpOpen || (st.cmpOpen = new Set())).has(key)) d.open = true;
+    d.addEventListener("toggle", () => { if (d.open) st.cmpOpen.add(key); else st.cmpOpen.delete(key); });
+    return d;
+  }
+  // the sticky header's real height feeds scroll-padding (focus never lands under it) and the jump margins
+  let cmphRO = null;
+  function watchCmpHead() {
+    const el = $(".cmphead"); document.documentElement.classList.toggle("cmp-on", !!el);
+    if (cmphRO) cmphRO.disconnect();
+    if (!el || !window.ResizeObserver) return;
+    cmphRO = new ResizeObserver(() => document.documentElement.style.setProperty("--cmph", `${Math.round(el.getBoundingClientRect().height)}px`));
+    cmphRO.observe(el);
   }
   // what the compare screen's bottom bar and tools card held, in one list
-  function cmpMoreSheet(k, rk) {
-    sheet(k.label, (close) => { const act = (ic, label, fn, aria) => h("button", { type: "button", "aria-label": aria || label, onclick: () => { close(true); fn(); } }, icon(ic, "sm"), label);
+  function cmpMoreSheet(k, rk, N) {
+    sheet(k.label, (close) => { const act = (ic, label, fn, leaves) => h("button", { type: "button", onclick: () => { close(leaves ? true : undefined); fn(); } }, icon(ic, "sm"), label);
       return h("div", { class: "actsheet" },
         act("bell", "가격 알림", () => alertSheet({ k: k.id })),
-        rk.length ? act("map", "지도에서 보기", () => { st.mapKey = k.i; nav("map"); }) : null,
+        rk.length ? act("map", "지도에서 보기", () => { st.mapKey = k.i; nav("map"); }, true) : null,
         rk.length ? act("copy", "가격 요약 복사", () => { const ps = rk.map((x) => x.p).sort((a, c) => a - c);
           copyText(FLAGS.lowestHighlight ? [`[${k.label}] ${regionName()} 최저가 (${D.meta.updated} 기준, ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"})`,
             ...[...rk].sort((x, y) => x.p - y.p).slice(0, 3).map((x, n) => `${n + 1}. ${bname(x.b)} ${won(x.p)} — ${S[ROWS[x.i][2]]}${S[ROWS[x.i][11]] ? ` (${S[ROWS[x.i][11]]})` : ""}`)].join("\n")
             : [`[${k.label}] ${regionName()} 가격 요약 (${D.meta.updated} 수집, ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"})`,
-              `${ps.length}곳 · ${won(ps[0])} ~ ${won(ps[ps.length - 1])} · 중간값 ${won(median(ps))}`, "용량·조건·정품 여부·시술 의료진·부작용은 병원에 확인하세요. — 윤실장"].join("\n"), "가격 요약을 복사했어요"); }) : null,
+              N ? `${N.ptop ? "일반가" : "조건부 가격"} ${N.prices.length}곳 · ${won(N.lo)} ~ ${won(N.hi)} · 중간값 ${won(N.med)}` : `${ps.length}곳 · ${won(ps[0])} ~ ${won(ps[ps.length - 1])} · 중간값 ${won(median(ps))}`,
+              "용량·조건·정품 여부·시술 의료진·부작용은 병원에 확인하세요. — 윤실장"].join("\n"), "가격 요약을 복사했어요"); }) : null,
         act("share-2", "이 비교 링크 공유", () => shareLink(`윤실장 · ${k.label}`, `compare?k=${encodeURIComponent(k.id)}`)),
         rk.length ? act("list-checks", "방문 전 체크리스트", () => checklistSheet({ id: `k:${k.id}`, title: k.label, k: k.i })) : null,
         rk.length ? act("bookmark", "이 비교 저장", () => saveSnap(snapOfKey(k.i, null))) : null,
-        rk.length ? act("scale", shortKeys().length ? `빠른 비교 (${shortKeys().length}곳)` : "빠른 비교", () => { st.qk = k.i; nav(`quick?k=${encodeURIComponent(k.id)}`); }) : null);
+        rk.length ? act("scale", shortKeys().length ? `빠른 비교 (${shortKeys().length}곳)` : "빠른 비교", () => { st.qk = k.i; nav(`quick?k=${encodeURIComponent(k.id)}`); }, true) : null);
     });
   }
   views.compare = (arg, params) => {
@@ -2895,6 +2917,7 @@
     // 규격 바꾸기: the spec steps, other treatments and the settings that change the numbers. Below the list (the first screen
     // answers 'how much'); the header's path jumps here. With no price at all it comes right after the header.
     const card = h("div", { class: "card", id: "cmppick" });
+    card.addEventListener("click", (e) => { if (e.target.closest(".vchip, .chip, option, select, .famfind button")) st.cmpPickHold = true; }, true);
     card.append(h("div", { class: "row" }, h("h3", { style: "margin:0" }, "규격 바꾸기"), h("span", { class: "sp" }), h("span", { class: "sub" }, k.label)));
     if (fam && fam.f.vs.length > 1) {
       // 쉬운 보기 (default): 종류 → 용량·부위 → 횟수, one step at a time. 자세히: every variant, grouped by kind (the earlier view)
@@ -2912,7 +2935,7 @@
         if (rest.length) card.append(h("details", { class: "fold small" }, h("summary", {}, `다른 종류 ${rest.length}가지 · ${rest.slice(0, 3).map(([g]) => g).join(", ")}${rest.length > 3 ? " …" : ""}`), variantRows(rest, k.i)));
       }
     }
-    card.append(h("details", { class: "fold small" }, h("summary", {}, `다른 시술 고르기 · ${k.cat}`), catChips, h("div", { class: "keyhead", style: "margin-top:8px" }, sel),
+    card.append(h("details", { class: "fold small cmpother" }, h("summary", {}, `다른 시술 고르기 · ${k.cat}`), catChips, h("div", { class: "keyhead", style: "margin-top:8px" }, sel),
       h("div", { style: "margin-top:8px" }, famFinder())));
     card.append(h("div", { class: "row", style: "margin-top:16px;gap:10px" }, switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }), h("span", { class: "sp" }), whenChip()),
       h("div", { style: "margin-top:10px" }, brandChips()));
@@ -2964,11 +2987,12 @@
       // 4) folded for experts (6.0 design ④): the distribution, price kinds, regions, brands, history. The distribution's
       // middle line is the header's median (same basis), so no note explains two different middles.
       const dl = rk.map((x) => ({ b: x.b, i: x.i, p: x.p, cond: !plainOk(x.i) }));
-      fold1 = h("details", { class: "fold cmpfold", id: "cmpmore" }, h("summary", {}, "가격 종류별·브랜드별·지역별 보기"),
+      fold1 = cmpFold("more", k, "가격 종류별·브랜드별·지역별 보기",
         h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "병원별 가격 분포"), h("span", { class: "sp" }), h("span", { class: "sub" }, `조건부 포함 ${rk.length}곳`)),
           h("div", { class: "sub" }, `지점마다 가장 싼 가격 하나씩 · ${regionName()} · ${st.special ? "특가 포함" : "일반가만"} · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"} · 점선은 위 중간값`),
           rk.length >= 3 ? distChart(dl, med, HL ? top.i : null, `${k.label} 병원별 가격 분포`, (d) => nav(`branch/${d.b}`))
             : h("div", { class: "chartempty" }, "비교할 지점이 3곳 미만이라 분포를 그리지 않아요. 위 목록을 보세요.")));
+      fold1.id = "cmpmore";
       { const pcc = priceClassCard(k.i); if (pcc) fold1.append(pcc); }
       { const rc = regionalCard(k.i); if (rc) fold1.append(rc); }
       // per brand (docs/BRAND_PRICE_COMPARISON.md): branches, range, median, conditional prices, last check — in brand order;
@@ -2986,7 +3010,7 @@
             : h("span", {}, "이 지점은 이 시술 가격이 없어요"),
             x ? kindBadge(ROWS[x.i]) : null))); }))));
     // how the price moved (only recorded weeks; hidden until 8 weeks) — in the fold
-    { const kt = keyTrend(k); if (kt && fold1) fold1.append(kt); }
+    { const kt = keyTrend(k); if (kt) { if (fold1) fold1.append(kt); else box.append(cmpFold("hist", k, "가격 이력", kt)); } }
     // list-price discount: a different thing from the price history above (clinics' own 정가 this week, not past prices)
     const trd = TR().disc[k.id];
     if (trd != null && FLAGS.discountEmphasis && fold1) fold1.append(h("div", { class: "card" }, h("h3", {}, "정가 대비 할인율 (이번 주)"),
@@ -3010,8 +3034,11 @@
         if (at < items.length) requestAnimationFrame(() => setTimeout(more, 0));
       };
       // 6.0 ③: the first rows only ('결정에 필요한 만큼만'), then one '모두 보기' for this treatment
-      const first = st.sort === "near" ? 5 : 10, all = st.cmpAll === k.i || rk.length <= first + 2, rows = all ? rk.slice(0, 300) : rk.slice(0, first);
-      const moreBtn = all ? null : h("button", { class: "morelist", type: "button", onclick: () => { st.cmpAll = k.i; redrawClinics(); } }, `지점 ${rk.length}곳 모두 보기`);
+      const first = st.sort === "near" && st.loc ? 5 : 10, all = st.cmpAll === k.i || rk.length <= first + 2, rows = all ? rk.slice(0, 300) : rk.slice(0, first);
+      const moreBtn = all ? null : h("button", { class: "morelist", type: "button", onclick: () => {
+        const cc = $("#clinics .ccards"), left = cc ? cc.scrollLeft : 0; st.cmpAll = k.i; redrawClinics();
+        const nc = $("#clinics .ccards"); if (nc) nc.scrollLeft = left;
+        const next = $(`#clinics li.rk:nth-child(${first + 1}) .rank`) || $(`#clinics .ccard:nth-child(${first + 1}) button`); if (next) next.focus({ preventScroll: true }); } }, `지점 ${rk.length}곳 모두 보기`);
       // only the view on screen is built (list or cards)
       const buildList = () => { const list = h("ul", { class: "list" });
       inBatches(list, rows, (x, n) => {
@@ -3029,8 +3056,8 @@
       const buildCards = () => { const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
       inBatches(cards, rows, (x, n) => {
         const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
-        cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${Math.min(rk.length, 300)}: ${bname(x.b)}` },
-          h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${Math.min(rk.length, 300)}`)),
+        cards.append(h("li", { class: "ccard", "aria-label": `${n + 1} / ${rows.length}: ${bname(x.b)}` },
+          h("div", { class: "ccard-h" }, bdot(x.b), h("b", {}, bname(x.b)), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${n + 1}/${rows.length}`)),
           h("div", { class: "ccard-p num" }, won(x.p), listS(r)),
           h("div", { class: "ccard-n" }, S[r[2]]),
           h("div", { class: "m" }, prodTag(x.i), low ? h("span", { class: checkedOk(x.i) ? "k ok" : "k kx" }, checkedOk(x.i) ? `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}` : "초저가·조건 확인") : null,
@@ -3067,7 +3094,8 @@
     if (fold1) box.append(fold1);
     // 시술 설명·규격 확인: folded (the short 'what is it' line and the spec check), for those who want it
     { const gb = fam ? guideBox(fam.f) : null, sc = specCard(k.i);
-      if (gb || sc) box.append(h("details", { class: "fold cmpfold", id: "cmpabout" }, h("summary", {}, fam ? `${fam.f.name}, 뭐예요? · 규격 확인` : "규격 확인"), gb, sc)); }
+      if (gb || sc) { const f2 = cmpFold("about", k, fam ? `${fam.f.name}, 뭐예요? · 규격 확인` : "규격 확인", gb, sc); f2.id = "cmpabout"; box.append(f2); } }
+    if (st.cmpPickHold) { st.cmpPickHold = false; requestAnimationFrame(() => { const el = $("#cmppick"); if (el) el.scrollIntoView({ block: "start" }); }); }
     box.append(h("p", { class: "foot" }, `${vatNote()} 같은 시술로 묶는 기준: 용량·샷 수·회차·원산지가 같은 1회 가격. 다른 시술과 묶인 패키지, 추가 옵션, 구독권은 빠져요. 종료일이 지난 이벤트와 확인 중인 급변 가격도 빠져요.`));
     return box;
   };
@@ -4738,6 +4766,7 @@
     // the page itself so the next Tab starts in the new content instead of the header
     if (mark) { if (same) focusBack(main, mark); else main.focus({ preventScroll: true }); }
     paintFloatCart(view);
+    watchCmpHead();
     document.body.classList.toggle("has-bar", view === "concern" || view === "cart");
   }
   window.addEventListener("popstate", render);
