@@ -9,7 +9,7 @@ window.APP_CONFIG = {
   // 켜는 조건: A의 집계 주소(cf/metrics) + C의 개인정보 처리방침 + 사용자 승인. 주소(https)를 넣으면 index.html CSP connect-src에도
   // 넣고 node tools/check_csp.js 로 확인해요.
   metrics: false,
-  metricsApi: "",
+  metricsApi: "https://yoonsiljang-metrics.lsy2825.workers.dev",   // A4 cf/metrics (chat A, 2026-10-15). Sends nothing while metrics is false
   // 푸시 알림(6.0 약속 1, app/domain/push.js): 둘 다 있어야 관심 탭에 '가격 알림 받기'가 보여요. 비어 있으면 버튼도 요청도 없어요.
   // alertsApi = A의 알림 주소(cf/alerts, https), pushPublicKey = VAPID 공개키(공개돼도 되는 값). A가 부탁 메모로 알려 줘요.
   // 주소를 넣으면 index.html CSP connect-src에도 넣고 node tools/check_csp.js 로 확인해요.

@@ -24,7 +24,7 @@ async function start(b, on) {
   ctx.on('request', (r) => { const u = r.url(); if (/\/v1\/m(\?|$)/.test(u) || u.startsWith(API)) hits.push({ u, m: r.method(), body: r.postData(), type: (r.headers()['content-type'] || '') }); else if (!u.startsWith(BASE) && !u.startsWith('data:')) other.push(u); });
   if (on) {
     await ctx.route((u) => u.pathname.endsWith('/config.js'), async (route) => { const res = await route.fetch(); const t = await res.text();
-      await route.fulfill({ response: res, body: t.replace('metrics: false,', 'metrics: true,').replace('metricsApi: ""', `metricsApi: "${API}"`) }); });
+      await route.fulfill({ response: res, body: t.replace('metrics: false,', 'metrics: true,').replace(/metricsApi: "[^"]*"/, `metricsApi: "${API}"`) }); });
     await ctx.route((u) => u.href === BASE || u.pathname.endsWith('/index.html'), async (route) => { const res = await route.fetch(); const t = await res.text();
       await route.fulfill({ response: res, body: t.replace("connect-src 'self'", `connect-src 'self' ${API}`) }); });
     await ctx.route(`${API}/**`, (route) => route.fulfill({ status: 204, body: '' }));

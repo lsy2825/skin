@@ -13,7 +13,7 @@
 <!-- Content Security Policy: scripts, data and fonts only from this site; map tiles from OpenStreetMap; the sign-in API
      (Supabase) only when login is turned on. GitHub Pages cannot send HTTP headers, so this meta tag is the policy
      (frame-ancestors is ignored in a meta tag — see docs/SECURITY_ARCHITECTURE.md). -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com https://yoonsiljang-factory.lsy2825.workers.dev; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; font-src 'self'; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.github.com https://yoonsiljang-factory.lsy2825.workers.dev https://yoonsiljang-metrics.lsy2825.workers.dev; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; upgrade-insecure-requests">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <!-- start the price file download right away (the PIN screen shows meanwhile) instead of after every script has run -->
 <link rel="manifest" href="manifest.webmanifest">
