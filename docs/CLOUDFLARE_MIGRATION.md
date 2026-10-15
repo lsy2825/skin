@@ -1,8 +1,17 @@
 # Cloudflare 이사 계획 (2026-10-15)
 
-사용자 결정(2026-10-15): **코드 보관·가격 공장·앱 주소를 모두 Cloudflare로 옮기고, 끝나면 GitHub 저장소를 지운다.**
-이유는 보안이다. GitHub 저장소가 공개 상태였고, 다른 계정(`leebackcoding/skin`, 2026-10-14)이 이미 통째로 복사해 갔다.
-개발은 사용자 컴퓨터의 Claude Code로 한다. Claude Code 웹/앱 버전은 GitHub 저장소만 받아 올 수 있어서다.
+> **현재 결정 (2026-10-15, 최종): GitHub는 지우지 않는다. 이사는 0~1단계에서 멈춘다(보류).**
+> 지금 구성은 이렇다.
+> - 코드와 가격 공장: **비공개 GitHub**(`weekly.yml` → `tools/factory.sh`).
+> - 앱 주소: **Cloudflare 무료 플랜**(https://yoonsiljang.lsy2825.workers.dev).
+>
+> Cloudflare 공장(`cf/factory/`)은 만들고 시험까지 마쳤지만 배포하지 않았다. 아무것도 돌지 않고 비용도 들지 않는다.
+> 나중에 다시 옮기기로 하면 아래 2단계(유료 플랜 가입)부터 이어서 한다.
+> 그때까지 `tools/factory.sh`와 `tests/factory_worker.test.js`는 GitHub 공장에서도 쓰이므로 계속 유지한다.
+
+처음 결정(2026-10-15, 같은 날 철회): 코드 보관·가격 공장·앱 주소를 모두 Cloudflare로 옮기고, 끝나면 GitHub 저장소를 지운다.
+이유는 보안이었다. GitHub 저장소가 공개 상태였고, 다른 계정(`leebackcoding/skin`, 2026-10-14)이 이미 통째로 복사해 갔다.
+비공개 전환(0단계)으로 이 걱정이 해결됐다. 그래서 유료 플랜이 필요한 2단계 이후는 하지 않기로 했다.
 
 ## 1. 바뀌는 것
 
