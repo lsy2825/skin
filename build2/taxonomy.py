@@ -383,7 +383,10 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # (2026-10-15, 개선 보고서 E3). Only when every piece is an area: '얼굴전체 제모 + 빙하팩', '네오빔 + 스케일링' stay bundles, and '+'
     # between numbers ('1+1', '10+1회') is a deal, not two areas.
     areas_only = cat == "제모" and (not fam or fam["id"] == "hair")
-    listed = [x for x in re.findall(r"\(([^()]*\+[^()]*)\)", raw) if not re.search(r"\d\s*\+\s*\d", x)]
+    # a bracket holding only a device name ('(젠틀맥스프로+)', 유앤아이 section titles) lists nothing (2026-10-15: read as a bundle,
+    # 147 유앤아이 제모 rows lost their keys)
+    listed = [x for x in re.findall(r"\(([^()]*\+[^()]*)\)", raw)
+              if not re.search(r"\d\s*\+\s*\d", x) and re.sub(r"[^\w가-힣]", "", DEVICE.sub("", x))]
     listed_areas = areas_only and bool(listed) and all(_hair_list(x) or hair_area(x) for x in listed)
     last = re.split(r"\s+·\s+", display or raw)[-1]
     plus_only = areas_only and _hair_list(re.sub(r"\[[^\]]*\]|\([^()]*\)", " ", last))
