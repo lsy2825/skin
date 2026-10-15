@@ -31,7 +31,7 @@
       "database_name": "yoonsiljang-metrics",
       // Chat A fills this in when the database is created (npx --yes wrangler@4.145.0 d1 create yoonsiljang-metrics).
       // While it is the placeholder, the deploy workflow skips with a notice. Local dev works with the placeholder.
-      "database_id": "REPLACE_WITH_D1_ID",
+      "database_id": "a6b334ec-f61f-4c27-9416-093738067f3e",
       "migrations_dir": "migrations"
     }
   ],
