@@ -688,6 +688,8 @@ def word_order(label):
     '턱끝 필러 리쥬비엘 당 1cc' → '… 1cc당', '리팟 레이저 이내 10mm 1개' → '… 10mm 이내 1개' (2026-10-15). Display only — the
     signature and the id don't change."""
     s = re.sub(rf"(?<!\S)당\s+({ORDER_UNIT})", r"\1당", label or "")
+    # … also with a word or two between ('주름보톡스 당 독일산/영국산 1부위' from '1부위당 독일산/영국산', 검증 8차)
+    s = re.sub(rf"(?<!\S)당\s+((?:[^\s\d]\S*\s+){{1,2}})({ORDER_UNIT})", r"\1\2당", s)
     s = re.sub(rf"(?<!\S)(이내|이하)\s+({ORDER_UNIT})", r"\2 \1", s)
     return re.sub(r"\s+", " ", s).strip()
 
@@ -804,7 +806,12 @@ def build(rows, min_branches=3):
                 if v["famname"] in v["label"]:
                     v["label"] = v["label"].replace(v["famname"], best, 1)
                 v["famname"] = best
-            v["famname"] = fam_tidy(v["famname"])
+            tidy = fam_tidy(v["famname"])
+            # the family pattern follows the tidied name: '리팟이내' / '편평사마귀제거당' matched none of their own rows ('리팟 5mm 이내
+            # 1개'), so the app's '같은 시술군' list was empty (검증 8차)
+            if tidy != v["famname"] and v["fam"] == "generic":
+                v["rx"] = re.escape(comp(tidy)).replace("/", "(?:/|[oO][rR]|또는)")
+            v["famname"] = tidy
     by_sig = defaultdict(list)
     for i, v in enumerate(vs):
         if v:

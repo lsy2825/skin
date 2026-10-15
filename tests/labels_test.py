@@ -391,6 +391,14 @@ ok("'인중 택1'의 '중'은 지우지 않음('겨드랑이/인중 택1회' →
 _mv = taxonomy.variant("미희주사 이마 or 관자 3회", cat="윤곽·필러")[0]
 ok("'or'를 '/'로 바꾼 시술군도 rx는 원래 이름('… 이마 or 관자')에 맞음(같은 시술군 더 보기)",
    bool(re.search(_mv["rx"], taxonomy.comp("미희주사 이마 or 관자 3회"))) and bool(re.search(_mv["rx"], taxonomy.comp("미희주사 이마/관자 1회"))), _mv["rx"])
+ok("'1부위당 독일산'에서 홀로 남은 '당'은 단위 뒤로('주름보톡스 독일산/영국산 1부위당')",
+   taxonomy.word_order("주름보톡스 당 독일산/영국산 1부위") == "주름보톡스 독일산/영국산 1부위당")
+rp = fake_g([("밴스", f"{i}점", "리팟 5mm 이내 1개", "") for i in range(3)])
+for r in rp:
+    r.update(cat="피부·레이저", sale="30000")
+rk, ks, fs, st = taxonomy.build(rp)
+ok("'이내'를 뗀 시술군 이름의 rx도 자기 상품 이름에 맞음(같은 시술군 더 보기)",
+   bool(fs) and all(re.search(f["rx"], taxonomy.comp("리팟 5mm 이내 1개")) for f in fs), [(f["name"], f["rx"]) for f in fs])
 ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
