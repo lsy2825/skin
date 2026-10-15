@@ -35,6 +35,7 @@ LONG = 8
 AREA_ONLY = re.compile(r"(?:얼굴|페이스|바디|전신|전체|얼굴전체|부분|부위|\d*부위|특수부위|가운데부위|이마|미간|눈밑|눈가|눈썹|애교|팔자|관자|볼|앞볼|뒷볼|"
                        r"광대|앞광대|턱|턱끝|턱선|턱라인|이중턱|코|콧등|입술|입꼬리|인중|목|목주름|귀|귓볼|두피|헤어라인|구렛나루|가슴|등|배|복부|옆구리|"
                        r"허리|엉덩이|팔|팔뚝|겨드랑이|손|손등|발|발등|다리|허벅지|종아리|무릎|풀커버|하프커버|이내|이하|이상|미만|추가|추가시|추가당|당|개당|"
+                       r"마리오넷|옆볼|입주변|입가|풀페이스|앞턱|코끝|콧볼|눈꼬리|광대옆|눈|밑|"
                        r"추가\*|기본|1개|개)")
 UNIT = re.compile(r"\d+(?:\.\d+)?\s*(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm|회)(?![a-zA-Z])", re.I)
 # a bracketed explanation that is a sales condition or a pitch, not what the product is (desc_problems)
@@ -63,7 +64,8 @@ def problems(label, names=None):
         out.append("괄호")
     core = UNIT.sub(" ", re.sub(r"\([^()]*\)|\[[^\]]*\]", " ", label))
     words = [w for w in re.split(r"[\s·/,+]+", core) if w]
-    if not words or all(AREA_ONLY.fullmatch(w) for w in words):
+    # word breaks don't hide it: '눈 밑' is '눈밑' (2026-10-15)
+    if not words or all(AREA_ONLY.fullmatch(w) for w in words) or re.fullmatch(f"(?:{AREA_ONLY.pattern})+", "".join(words)):
         out.append("부위만")
     if names is not None:
         src = [_norm(n) for n in names]

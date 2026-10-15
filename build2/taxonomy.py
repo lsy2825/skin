@@ -418,6 +418,7 @@ def comp_spaces(s):
     """comp()-like unit spelling (50유닛 → 50U, 2 CC → 2cc) but spaces kept, for display names"""
     s = re.sub(r"(\d+)\s*(유닛|단위|unit|units|Unit|UNIT|u|U)(?![a-zA-Z])", r"\1U", s)
     s = re.sub(r"(\d)\s*(CC|cC|Cc|cc)", r"\1cc", s)
+    s = re.sub(r"(\d)\s+(mm|ml)(?![a-zA-Z])", r"\1\2", s)     # '10 mm 이내' is '10mm 이내' (the size was shown twice, 2026-10-15)
     return re.sub(r"(\d),(\d{3})", r"\1\2", s)
 
 
@@ -517,6 +518,24 @@ def word_order(label):
     return re.sub(r"\s+", " ", s).strip()
 
 
+HEAD_SKIP = re.compile(r"(?:THE|The|the|NEW|New|BEST|Best|HOT|Hot|단|더|신|NO\.?1)")
+
+
+def product_head(names):
+    """the product word every name shares in its section title ('리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 5mm 이내 1개' →
+    '리팟레이저', 'THE 미희주사 꺼진 눈밑 … · 팔자 1회' → '미희주사'), or '' when a name has none or they differ"""
+    heads = set()
+    for n in names:
+        if " · " not in n:
+            return ""
+        words = [re.sub(r"^[^\w가-힣]+|[^\w가-힣]+$", "", w) for w in n.split(" · ")[0].split()]
+        word = next((w for w in words if len(re.sub(r"[^가-힣A-Za-z]", "", w)) >= 2 and not HEAD_SKIP.fullmatch(w) and not KINDONLY.search(w)), "")
+        if not word:
+            return ""
+        heads.add(word)
+    return heads.pop() if len(heads) == 1 else ""
+
+
 def loose_text(s):
     """a name with letter case and word breaks taken out ('HB Plus 2cc' → 'hbplus2cc')"""
     return re.sub(r"\s+", "", s or "").casefold()
@@ -527,8 +546,9 @@ def loose_sig(sig):
     loose_sig are written differently but are the same product"""
     parts = sig.split("|")
     if parts[0] == "x" and len(parts) == 4:
-        # exact names: '줄기세포페이스(손주사)3cc' and '줄기세포페이스3cc(손주사)' — the bracket moved, nothing else
-        parts[2] = re.sub(r"\([^()]*\)", "", parts[2]) + "".join(sorted(re.findall(r"\([^()]*\)", parts[2])))
+        # exact names: '줄기세포페이스(손주사)3cc' and '줄기세포페이스3cc(손주사)' — the bracket moved, nothing else. In a bundle the
+        # brackets move only within their part: '이마필러5cc(국산)＋이마보톡스' ≠ '이마필러5cc＋이마보톡스(국산)' (2026-10-15)
+        parts[2] = "＋".join(re.sub(r"\([^()]*\)", "", p) + "".join(sorted(re.findall(r"\([^()]*\)", p))) for p in parts[2].split("＋"))
     return "|".join(loose_text(p) for p in parts)
 
 
@@ -585,7 +605,7 @@ def build(rows, min_branches=3):
             merged.append(dict(into=vs[by_sig[sigs[0]][0]]["label"], label=vs[by_sig[s][0]]["label"], rows=len(by_sig[s])))
             by_sig[sigs[0]].extend(by_sig.pop(s))
     keys, row_keys, owned, rejected = {}, [""] * len(rows), {}, []
-    details = {}
+    details, rescued = {}, []
     for sig, idx in by_sig.items():
         branches = {(rows[i]["brand"], rows[i]["branch"]) for i in idx}
         if len(branches) < min_branches:
@@ -596,7 +616,18 @@ def build(rows, min_branches=3):
             owned[sig] = top[0][0]          # this spec is one of the hand-made keys: keep using that key
             continue
         v = vs[idx[0]]
-        bad = labels.problems(v["label"], [rows[i]["name"] for i in idx] + sorted(group_names[(loose_text(v["famname"]), v["cat"], v["fam"])]))
+        names = [rows[i]["name"] for i in idx] + sorted(group_names[(loose_text(v["famname"]), v["cat"], v["fam"])])
+        bad = labels.problems(v["label"], names)
+        if bad == ["부위만"]:
+            # only the product word is missing from the label, and every row of the spec names the same product in its section
+            # title ('리팟레이저 … · 5mm 이내 1개', 'THE 미희주사 … · 팔자 1회'): put it back instead of dropping a spec that never mixed
+            # products. Rows with different or no product words ('풀커버' of 기본색소 / 프리미엄 반영구) still make no key.
+            head = product_head([rows[i]["name"] for i in idx])
+            if head:
+                v = dict(v, famname=f"{head} {v['famname']}", label=f"{head} {v['label']}")
+                bad = labels.problems(v["label"], names + [head])
+                if not bad:
+                    rescued.append(dict(label=v["label"], n=len(branches)))
         if bad:
             # a label that would show price / date / promotion words or words we glued (build2/labels.py): no compare key —
             # its prices stay in the app as single prices, and the label is listed for a person to fix the rule that made it
@@ -664,7 +695,8 @@ def build(rows, min_branches=3):
     few = sum(1 for i, v in enumerate(vs) if v and not row_keys[i] and not any(k.startswith("X") for k in (rows[i].get("keys") or "").split()))
     why["판매 지점 3곳 미만(비교 대상 없음)"] = few
     stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why),
-                 label_rejected=sorted(rejected, key=lambda x: -x["n"]), merged=sorted(merged, key=lambda x: -x["rows"]))
+                 label_rejected=sorted(rejected, key=lambda x: -x["n"]), merged=sorted(merged, key=lambda x: -x["rows"]),
+                 label_rescued=sorted(rescued, key=lambda x: -x["n"]))
     return row_keys, list(keys.values()), list(fams.values()), stats
 
 

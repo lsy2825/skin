@@ -118,6 +118,24 @@ pick = lambda i: re.search(r"표기 \d", lab.get(rk[i], "")) and re.search(r"표
 ok("'표기 n'으로 구분할 때 같은 상품은 1회·5회에서 같은 번호", pick(0) and pick(0) == pick(6) and pick(3) == pick(9) and pick(0) != pick(3),
    [lab.get(rk[i]) for i in (0, 3, 6, 9)])
 
+for label in ["눈 밑", "마리오넷", "옆볼/앞볼"]:
+    ok(f"E3 띄어 쓰거나 목록에 없던 부위도 '부위만': '{label}'", "부위만" in labels.problems(label), labels.problems(label))
+for label in ["눈밑 필러", "미희주사 팔자 3회", "리팟레이저 5mm 이내 1개"]:
+    ok(f"E3 상품 낱말이 있으면 괜찮음: '{label}'", labels.problems(label) == [], labels.problems(label))
+lip = "리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 5mm 이내 1개"
+rk, ks, _, st = taxonomy.build([dict(brand="밴스", branch=f"{i}점", name=lip, mname=lip.replace(" · ", " "), addon="0", kind="일반", cat="피부·레이저", keys="")
+                                for i in range(4)])
+ok("E3 상품명이 묶음 제목에만 있으면 버리지 않고 이름에 되살림('리팟레이저 5mm 이내 1개')", ks and ks[0]["label"] == "리팟레이저 5mm 이내 1개" and st["label_rescued"],
+   [k["label"] for k in ks])
+ok("E3 묶음 제목의 상품이 없거나 서로 다르면 되살리지 않음('풀커버')",
+   taxonomy.product_head(["풀커버", "기본색소 입술반영구 · 풀커버"]) == "" and
+   taxonomy.product_head(["기본색소 입술반영구 · 풀커버", "프리미엄 입술반영구 · 풀커버"]) == "" and
+   taxonomy.product_head(["THE 미희주사 꺼진 눈밑 볼륨 · 팔자 1회"] * 2) == "미희주사")
+ok("묶음 상품의 괄호는 제 부분 안에서만 정렬('이마필러(국산)+이마보톡스' ≠ '이마필러+이마보톡스(국산)')",
+   taxonomy.loose_sig("x|f|이마필러5cc(국산)＋이마보톡스|1") != taxonomy.loose_sig("x|f|이마필러5cc＋이마보톡스(국산)|1"))
+ok("'10 mm 이내'와 '10mm 이내'는 같은 규격",
+   taxonomy.variant("리팟레이저 10 mm 이내 1개")[0]["sig"] == taxonomy.variant("리팟레이저 10mm 이내 1개")[0]["sig"])
+
 # E4·E10: build2/clean.py on a made-up raw file (a temporary folder, the real data2/ is not touched)
 import clean, csv, tempfile  # noqa: E402
 raw = [  # category, group, option, sale, orig
