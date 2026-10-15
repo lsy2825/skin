@@ -37,7 +37,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     let found = false; for (let k = 0; k < 15 && !found; k++) { await p.keyboard.press('Tab'); found = await p.evaluate(() => document.activeElement && document.activeElement.matches('.search input')); }
     ok('Tab으로 검색창 도달', found);
     // a broad name keeps the search page with its rows' 담기 buttons ('리쥬란 2cc' now opens its comparison — checked below)
-    await p.keyboard.type('보톡스'); await p.keyboard.press('Enter'); await p.waitForTimeout(1000);
+    await p.keyboard.type('보톡스'); await p.keyboard.press('Enter'); await p.waitForFunction(() => /search\//.test(location.hash), null, { timeout: 8000 }).catch(() => {});   // wait for the move, not a fixed second (slow server)
     ok('Enter로 검색', /search\//.test(p.url()), p.url().split('#')[1]);
     let onAdd = false; for (let k = 0; k < 220 && !onAdd; k++) { await p.keyboard.press('Tab'); onAdd = await p.evaluate(() => document.activeElement && document.activeElement.textContent.trim() === '담기'); }
     ok('Tab으로 담기 버튼 도달', onAdd);
