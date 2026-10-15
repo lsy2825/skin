@@ -425,6 +425,9 @@ for r in rp:
 rk, ks, fs, st = taxonomy.build(rp)
 ok("'이내'를 뗀 시술군 이름의 rx도 자기 상품 이름에 맞음(같은 시술군 더 보기)",
    bool(fs) and all(re.search(f["rx"], taxonomy.comp("리팟 5mm 이내 1개")) for f in fs), [(f["name"], f["rx"]) for f in fs])
+ok("'(클라리티 기기로 변경 시 3만원 추가)'의 기기는 이 가격의 기기가 아님(C2 검토)",
+   hv("女) 브라질리언 (항문 제외) 1회 (클라리티 기기로 변경 시 3만원 추가)")["sig"] == hv("女) 브라질리언 (항문 제외) 1회")["sig"]
+   and "클라리티" not in hv("女) 브라질리언 (항문 제외) 1회 (클라리티 기기로 변경 시 3만원 추가)")["label"])
 ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
