@@ -6,13 +6,16 @@ data.json (compact, strings interned in `s`):
   cols      the price rows, stored one list per field (cols[f][row]); like values sit together, so gzip makes the file about
             a quarter smaller than row arrays. Fields in colDelta are stored as differences from the row before (the app and
             the tools add them back up). A row = [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s,
-            url s, vat, review, parts s]
+            url s, vat, review, parts s, addon]
             keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
             group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
             url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
             and nobody approved it yet (data2/review.csv, approvals in data2/review_ok.csv) — the app keeps it out of
             comparisons
             parts = for names with '+': comparison keys matched by each part, 'X12,X24;;X01' (package mode C)
+            addon = 1 when the price is only sold on top of another procedure ('옵션5) 에어녹스 추가', '[…옵션] …', '… 추가당',
+            '… 추가 시', or the site marks it so): not a procedure price — keep it out of ranges, medians and 'lowest'
+            (2026-10-15, 개선 보고서 E5; data.json files from before have 15 fields, read a missing one as 0)
   branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
             this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
@@ -275,7 +278,7 @@ def price_checks(rows, date):
     return out
 
 
-ROW_FIELDS = 15
+ROW_FIELDS = 16
 COL_DELTA = [2]   # product name string ids: a branch's rows list names in order, so the differences are small numbers
 
 
@@ -528,7 +531,7 @@ def main():
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
                          kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g, S(r["until"]), S(r["url"] if re.match(r"https?://", r["url"] or "") else ""),
-                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"]))])
+                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"])), int(r["addon"] == "1")])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"

@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match, ONCE, sessions  # noqa: E402
+from xkeys import X, match, ONCE, sessions, addon_only  # noqa: E402
 import taxonomy  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
@@ -85,6 +85,13 @@ KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|�
 # '[옵션] 제모 후 진정관리', '[리프팅 추가옵션] 수면마취': an add-on. The label is taken off the name like an event label (names and
 # price history stay as they were), and the row is marked addon=1 so it is never compared as a procedure (2026-10-15)
 OPTION_LABEL = re.compile(r"^(?:\s*\[[^\]]*\])*?\s*\[[^\]]*옵션[^\]]*\]")   # also behind an event label: '[EVENT] [옵션] …'
+
+
+def addon_name(mname):
+    """a price sold only on top of another procedure, read from the name the same way the compare keys read it
+    (taxonomy.variant): '옵션5) 에어녹스 추가', '… 추가당', '… 추가 시' (2026-10-15, 개선 보고서 E5: the app keeps these out of
+    ranges, medians and 'lowest', so the flag is stored, not guessed on screen)"""
+    return addon_only(mname)
 
 
 def strip_event_prefix(s, hair=False):
@@ -224,7 +231,7 @@ def main():
             tags.append("일요일")
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
                "name": name, "mname": mname, "cat": cat, "kind": kind, "sale": sale, "orig": orig or "",
-               "addon": "1" if OPTION_LABEL.match(opt) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
+               "addon": "1" if OPTION_LABEL.match(opt) or addon_name(mname) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
                "vat": "별도" if VAT_EX.search(f"{grp} {opt}") else "포함" if VAT_IN.search(f"{grp} {opt}") else
                       {"excl": "별도", "incl": "포함"}.get(vdef.get(r["brand"], ""), "")}

@@ -396,7 +396,7 @@ def variant(name, addon=False, kind="", cat="", display=None):
     raw = _spell(raw)
     display = _spell(display) if display else display
     full = comp(raw)
-    if re.search(r"옵션\s*\d*\)", raw) or addon_only(raw):
+    if addon_only(raw):
         return None, "추가 옵션"
     if COND.search(full):
         return None, "조건부 가격(○○ 이상 시)"

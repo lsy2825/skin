@@ -124,21 +124,47 @@ FAMS = [r"톡신", r"필러", r"슈링크", r"울쎄라", r"써마지", r"인모
         r"실리프팅|민트실", r"텐써마", r"엑셀브이|엑셀V", r"윤곽주사", r"제모"]
 COND = re.compile(r"\d+(샷|cc|U|회|부위|개)(이상|부터)")   # '(*300샷 이상 시)', '[4cc부터]', '(10개 이상부터 시술 가능)': a bigger purchase
 #                                                       than the unit (개: 2026-10-15, '아그네스 1개당 (10개 이상부터 …)')
-ADDON_ONLY = re.compile(r"\[추가\]|^추가|추가$|추가\)|추가\d|\d(샷|cc|U)추가시|^ㄴ|\]ㄴ|추가구매|추가결제|옵션\)|\(옵션|\[옵션|옵션\]|추가옵션|옵션할인|단독불가|단독사용불가|단독시술불가|동시시술|함께시술|진행고객|시술고객|구매고객|결제고객|이용고객|패키지진행시|패키지구매시|패키지결제시")
+# add-on wording, read on the name without its round brackets and footnotes (2026-10-15, 개선 보고서 E5: 790 rows checked one by one —
+# '(면적에 따라 비용추가)', '(클라리티 기기로 변경 시 3만원 추가)', '(※ 옵션) 리쥬란 … 추가 시 +14만원)', '(패키지 진행시 10% 추가할인)' are
+# notes on a whole procedure's price, not add-ons). Not add-ons any more: '처음 이용고객' (a first-visit price), a bare 'ㄴ' row mark,
+# '동시 시술 1회' (two procedures at one price), '패키지 진행시 회당 비용' (the per-session price), '추가 20%' (a discount)
+ADDON_ONLY = re.compile(r"\[추가\]|^추가(?!\d+%)|추가\)|\d(샷|cc|U)추가시|추가구매|추가결제|추가비용|옵션\)|\(옵션|\[옵션|옵션\]|추가옵션|옵션할인|"
+                        r"단독불가|단독사용불가|단독시술불가|동시시술(?:시|할)|함께시술|진행고객|시술고객|구매고객|결제고객|패키지진행시(?!회당)|패키지구매시|패키지결제시")
+# '… 비타민관리 추가', '무릎추가 5회' — unless a whole item comes first ('올리지오 300샷+추가 30샷', '신데렐라주사 1회 + 비타민C 앰플 추가':
+# one price for both)
+ADDON_TAIL = re.compile(r"추가$|(?<![+＋])추가\d")
+# meant even inside brackets or after '*': '(단독 사용 불가)', '(뉴비쥬 진행고객님 한정)', '(*단독 불가 / 추가상품)', '(옵션)'
+ADDON_STRONG = re.compile(r"단독(?:사용|시술)?불가|진행고객|추가상품|추가결제시|\((?:시술|추가)?옵션\)")
+ADDON_LEAD = re.compile(r"^\s*(?:\[[^\]]*\]\s*)*\((?:[^()]*옵션|추가[^()]*)\)")   # '(옵션) …', '(목필러 옵션) …', '(추가옵션) …' first
 # 추가당 · 추가시 · 추가* (2026-10-15, 개선 보고서 E3): '미희주사 1cc 추가당', '가운데부위 추가시', '울쎄라피 프라임 100샷 추가 당' are
 # prices on top of a base. Read outside brackets only: '염증주사 1부위 (1부위 추가 시 5000원)' is the base price, the bracket
 # explains the next area (addon_only)
 ADDON_PER = re.compile(r"추가당|추가\*|추가시(?!술)")
 
 
+def outside(name):
+    """a name without its footnote ('※ …', '* …' after the item) and round brackets (nested ones come off from the inside out)"""
+    out, prev = re.sub(r"(?<=\S)\s*[※*].*$", " ", name or ""), None
+    while out != prev:
+        out, prev = re.sub(r"\([^()]*\)", " ", out), out
+    return out
+
+
 @functools.lru_cache(maxsize=1 << 19)
 def addon_only(name):
-    """True when a name is only sold on top of another procedure (comp() of the whole name, and the per-unit add-on words
-    outside brackets)"""
-    out, prev = name or "", None
-    while out != prev:                       # nested brackets ('(… (부가세 별도) … 추가시 …)') come off from the inside out
-        out, prev = re.sub(r"\([^()]*\)", " ", out), out
-    return bool(ADDON_ONLY.search(comp(name)) or ADDON_PER.search(comp(out)))
+    """True when a name is only sold on top of another procedure: '옵션5) 에어녹스 추가', '(목필러 옵션) 슈링크 100샷 추가',
+    '… 추가당', '(단독 사용 불가)' — the compare keys skip it and the app keeps it out of ranges (data.json addon)"""
+    if ADDON_STRONG.search(comp(name)) and not re.search(r"택\s*1", name or ""):     # '…중 택 1 - 10회 ※압출단독불가' is the program
+        return True
+    out = outside(name)
+    if re.search(r"옵션\s*\d*\)", out) and not re.search(r"차감|택\s*1", out):     # '패키지 10회 옵션1) 1회 차감 : …' is the package
+        return True
+    if ADDON_LEAD.match(name or ""):
+        return True
+    c = re.sub(r"추가\d+%|추가할인", "", comp(out))
+    if ADDON_ONLY.search(c) or ADDON_PER.search(c):
+        return True
+    return bool(ADDON_TAIL.search(c)) and not re.search(r"\d+(?:회|샷|cc|ml|U|줄|KJ)[+＋]", c)
 
 
 ONCE = re.compile(r"체험가|체험|한정가|한정|첫방문|첫 방문|첫시술|첫 시술|1회한정|웰컴|첫구매|1인\s*1회|1인당\s*1회|신규고객|신규회원|신규방문|선착순")
