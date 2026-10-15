@@ -539,7 +539,7 @@
   function toggleFav(kind, id, label) {
     const f = favs(), on = f[kind].includes(id);
     f[kind] = on ? f[kind].filter((x) => x !== id) : [id, ...f[kind]].slice(0, 30);
-    if (!on) favPop = `${kind}:${id}`;
+    if (!on) { favPop = `${kind}:${id}`; metric("keep_fav"); }
     store.set("favs", f); render(); favPop = null;
     if (on) undoToast(`관심에서 뺐어요: ${label}`, () => { const g = favs(); g[kind] = [id, ...g[kind]]; store.set("favs", g); render(); });
     else jomiToast("happy", jline("saved") || "저장했어요", ["관심 보기", () => nav("saved")]);
@@ -598,7 +598,7 @@
   };
   function quickAdd(k) {
     const c = cur(), it = { t: "k", k: KEYS[k].id, q: 1 };
-    c.items.push(it); track("cart_add", { k: it.k }); saveCarts(); render();
+    c.items.push(it); track("cart_add", { k: it.k }); metric("keep_cart"); saveCarts(); render();
     jomiToast("happy", `${jline("added") || "내 견적에 담았어요"} (${c.items.length}개)`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
   }
   const rowAddBtn = (i) => h("button", { class: "addbtn", type: "button", onclick: (e) => { e.stopPropagation(); addRowSheet(i); } }, icon("plus", "sm"), "담기");
@@ -693,7 +693,7 @@
               undoToast(jline("removed") || "내 견적에서 뺐어요", () => { c.items.splice(pos, 0, have); saveCarts(); render(); }); } }, "빼기") : null,
             h("button", { class: "btn", type: "button", style: "flex:1", onclick: () => {
               const c = st.carts[s.ci], it = have || { t: "k", k: KEYS[s.k].id, q: s.q };
-              if (have) have.q = s.q; else { c.items.push(it); track("cart_add", { k: it.k }); }
+              if (have) have.q = s.q; else { c.items.push(it); track("cart_add", { k: it.k }); metric("keep_cart"); }
               saveCarts(); close(); render();
               if (have) toast("횟수를 바꿨어요");
               else jomiToast("happy", jline("added") || `'${c.name}'에 담았어요`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
@@ -866,6 +866,7 @@
             const id = KEYS[s.how].id, have = items.find((c) => c.t === "k" && c.k === id);
             if (have) have.q = s.q; else { added = { t: "k", k: id, q: s.q, ov: { [bkey(r[0])]: n } }; items.push(added); }
           }
+          if (added) metric("keep_cart");
           saveCarts(); close(); render();
           if (!added) toast("횟수를 바꿨어요");
           else jomiToast("happy", jline("added") || `'${cart.name}'에 담았어요`, ["되돌리기", () => { cart.items = cart.items.filter((x) => x !== added); saveCarts(); render(); toast("되돌렸어요"); }]);
@@ -1310,7 +1311,7 @@
     // the real changes already recorded for this treatment (last weekly snapshot) go into 알림 기록 as '지난 기록'
     if (al.k && KI[al.k] != null) for (const [k, b, before, after] of D.changes || []) if (KEYS[k].id === al.k && BR[b] && regOk(b, al.reg)) st.notes.unshift({ ...noteOf(al, "past", { b: bkey(b), before, after, text: `${D.meta.prev} → ${D.meta.updated} ${bname(b)} ${won(before)} → ${won(after)}` }), read: true, past: true });
     if (al.type === "target" || al.type === "cartdrop") delete al.last;
-    st.alerts.push(al); saveAlerts(); track("alert_set", { type: al.type });
+    st.alerts.push(al); saveAlerts(); track("alert_set", { type: al.type }); metric("keep_alert");
     // 죠미 winks only once the alert is really stored; the toast repeats the condition that was saved
     const kinds = al.type === "watch" ? Object.keys(Intel.WATCH_T).filter((t) => !al.on || al.on[t] !== false).length : 0;
     if (store.get("alerts", []).some((x) => x.id === al.id)) jomiToast("wink", `${jline("alertSet") || "알림을 만들었어요"} ${alertName(al)} · ${ALERT_TYPES[al.type]}${kinds ? ` (${kinds}가지 변화)` : ""}${al.target ? ` · 목표가 ${won(al.target)}` : ""}`, ["알림 관리", () => nav("saved")]);
@@ -1429,6 +1430,32 @@
     const L = store.get("events", []);
     L.push({ e: name, at: new Date().toISOString(), demo: true, ...(props || {}) });
     store.set("events", L.slice(-500));
+  }
+  // 단계별 익명 집계 (6.0 약속 2, app/domain/metrics.js) — separate from the on-phone 사용 통계 above. Off unless config.js
+  // turns it on (metrics + metricsApi); then only {"s":"<step>"} goes out, each step once a day. While off: nothing stored,
+  // nothing sent (tests/e2e/metrics.js counts zero requests).
+  // the body is a string (text/plain, no CORS preflight); without sendBeacon, the no-cors keepalive POST chat A gave
+  const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => Metrics.kstDay(),
+    beacon: (url, body) => navigator.sendBeacon ? navigator.sendBeacon(url, body)
+      : (fetch(url, { method: "POST", body, keepalive: true, mode: "no-cors", credentials: "omit" }).catch(() => {}), true) });
+  // behind the PIN screen (html.locked hides the page) nothing has been seen yet: steps wait; 'unlocked' draws the screen again
+  const unseen = () => document.documentElement.classList.contains("locked");
+  const metric = (name) => (unseen() ? false : metrics.hit(name));
+  // 'first_price': a price (…원) is on screen for the first time today — checked after each draw and while scrolling
+  let priceLook = 0, priceDay = "";   // priceDay: the day it went (or was found already sent) — scrolling then costs nothing
+  function seePrice() {
+    if (!metrics.on || priceLook || priceDay === Metrics.kstDay()) return;
+    if (!metrics.pending("first_price")) { priceDay = Metrics.kstDay(); return; }
+    priceLook = requestAnimationFrame(() => {
+      priceLook = 0;
+      const main = $("#main"), vh = window.innerHeight, walk = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
+      for (let t = walk.nextNode(), n = 0; t && n < 400; t = walk.nextNode()) {
+        if (!/\d만?원/.test(t.nodeValue)) continue;   // 250,000원 · 25만원
+        n++;
+        const r = t.parentElement && t.parentElement.getBoundingClientRect();
+        if (r && r.width && r.height && r.bottom > 0 && r.top < vh) { if (metric("first_price")) priceDay = Metrics.kstDay(); return; }
+      }
+    });
   }
   function eventsSheet() {
     sheet("사용 통계 (이 기기)", (close) => { const L = store.get("events", []), n = {};
@@ -2932,6 +2959,7 @@
       const basis = ptop ? plain : rkc, prices = basis.map((x) => x.p).sort((a, b) => a - b), med = median(prices);
       const shown = (ptop ? normal : rkc.filter((x) => !lowI.has(x.i))).map((x) => x.p), lo = Math.min(...shown), hi = Math.max(...shown);
       N = { plain, normal, lowp, ptop, lowI, rkc, ctop, top, prices, med, shown, lo, hi };
+      if (shown.length) metric("compare_open");
     }
     box.append(cmpHead(k, fam, rk, N));
     // 규격 바꾸기: the spec steps, other treatments and the settings that change the numbers. Below the list (the first screen
@@ -4050,6 +4078,7 @@
   views.cart = () => {
     const box = h("div", { class: "view" });
     const c = cur();
+    metric("cart_open");
     const newCart = () => nameSheet("새 견적", `견적 ${st.carts.length + 1}`, (name) => { st.carts.push({ id: newId(), name, items: [] }); st.ci = st.carts.length - 1; saveCarts(); render(); });
     box.append(h("div", { class: "row", style: "padding:4px 4px 0" }, h("h2", { class: "display", style: "font-size:24px" }, "내 견적"), h("span", { class: "sp" }),
       h("button", { class: "btn sm gray", type: "button", onclick: newCart }, icon("plus", "sm"), "새 견적")),
@@ -4411,7 +4440,7 @@
         !itemOk(it) ? h("span", { class: "m", style: "color:var(--pricey)" }, "이번 주 가격표에 없음") : null)))),
       h("button", { class: "btn", type: "button", style: "width:100%;margin-top:12px", onclick: () => {
         st.carts.push({ id: newId(), name: c.name || "공유받은 견적", items: c.items.map((it) => JSON.parse(JSON.stringify(it))) });
-        st.ci = st.carts.length - 1; saveCarts(); toast("내 견적으로 저장했어요"); nav("cart", true); } }, "내 견적으로 저장")));
+        st.ci = st.carts.length - 1; metric("keep_cart"); saveCarts(); toast("내 견적으로 저장했어요"); nav("cart", true); } }, "내 견적으로 저장")));
     return box;
   };
 
@@ -4787,6 +4816,7 @@
     if (mark) { if (same) focusBack(main, mark); else main.focus({ preventScroll: true }); }
     paintFloatCart(view);
     watchCmpHead();
+    seePrice();
     document.body.classList.toggle("has-bar", view === "concern" || view === "cart");
   }
   window.addEventListener("popstate", render);
@@ -4794,7 +4824,7 @@
   $("#locbtn").addEventListener("click", () => { if (D) locSheet(); });
   $("#notibtn").addEventListener("click", () => nav("saved"));
   // the top bar gets a hairline once the page scrolls under it
-  window.addEventListener("scroll", () => $("#top").classList.toggle("scrolled", window.scrollY > 4), { passive: true });
+  window.addEventListener("scroll", () => { $("#top").classList.toggle("scrolled", window.scrollY > 4); seePrice(); }, { passive: true });
 
   // the credit, premium, report and admin screens were removed (6.0: no credits, revenue from ads after launch). The ops
   // screen (app/screens/ops.js, chat A) still draws its credit economics card from these two files until A6 removes it;
@@ -4840,6 +4870,9 @@
           boot(); } }, icon("refresh-cw", "sm"), "다시 시도")))));
     });
   }
+  if (!unseen()) metrics.opened();
+  window.addEventListener("unlocked", () => { metrics.opened(); render(); });   // the view runs again: compare_open, cart_open, first_price
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !unseen()) { metrics.opened(); seePrice(); } });
   boot();
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then

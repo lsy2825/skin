@@ -133,16 +133,24 @@ test("R14: a one-time special with no regular price is never multiplied into a f
   assert.equal(r.total, 700); assert.equal(r.laterRegular, true);
 });
 
-test("R11: the CSP allows exactly the origins the config calls (an API origin missing from connect-src is caught)", () => {
+test("R11: the CSP allows exactly the origins the config calls (a metrics address missing from connect-src is caught)", () => {
   const { check } = require("../tools/check_csp.js");
   const html = fs.readFileSync(path.join(__dirname, "../app/index.html"), "utf8"), cfg = fs.readFileSync(path.join(__dirname, "../app/config.js"), "utf8");
   assert.equal(check(html, cfg).ok, true, JSON.stringify(check(html, cfg).problems));
-  const withApi = cfg.replace('apiBase: ""', 'apiBase: "https://api.yoonsiljang.example"');
+  assert.match(cfg, /metrics: false,/, "anonymous metrics ship off (6.0 약속 2: on only after C's privacy text and the user's approval)");
+  const withApi = cfg.replace('metricsApi: ""', 'metricsApi: "https://m.yoonsiljang.example/"');
   const r = check(html, withApi);
-  assert.equal(r.ok, false); assert.match(r.problems.join(" "), /connect-src is missing the API origin/);
-  const fixed = html.replace("connect-src 'self'", "connect-src 'self' https://api.yoonsiljang.example");
+  assert.equal(r.ok, false); assert.match(r.problems.join(" "), /connect-src is missing the metricsApi origin https:\/\/m\.yoonsiljang\.example/);
+  const fixed = html.replace("connect-src 'self'", "connect-src 'self' https://m.yoonsiljang.example");
   assert.equal(check(fixed, withApi).ok, true);
-  assert.equal(check(fixed, withApi.replace('mode: "DEMO"', 'mode: "WEB_PG"')).ok, false, "Toss origins required for web payments");
+  assert.match(check(fixed, cfg.replace('metricsApi: ""', 'metricsApi: "http://m.yoonsiljang.example"')).problems.join(" "), /must be https/);
+  // an opening nothing uses: the metrics origin left in the CSP after the address is taken out of config.js
+  assert.match(check(fixed, cfg).problems.join(" "), /allows https:\/\/m\.yoonsiljang\.example but no config\.js address uses it/);
+  // metrics on with an address the app refuses (it would send nothing): caught before deploy
+  const on = (api) => check(fixed, cfg.replace('metrics: false', 'metrics: true').replace('metricsApi: ""', `metricsApi: "${api}"`));
+  assert.equal(on("https://m.yoonsiljang.example").ok, true);
+  for (const bad of ["https://m.yoonsiljang.example/?k=1", "https://u:p@m.yoonsiljang.example", ""]) assert.match(on(bad).problems.join(" "), /not a plain https address/, bad);
+  assert.equal(/commerce|apiBase/.test(cfg), false, "the credit/commerce settings are gone (6.0: no credits)");
 });
 
 test("Jomi lines engine: conditions + priority, no immediate repeat, fixed safety lines never vary, copy rules hold", () => {
