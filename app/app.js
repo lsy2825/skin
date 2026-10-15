@@ -1493,7 +1493,7 @@
         const s = pushState(), { rules, local, cut } = pushRules();
         const note = [local ? `${local}개는 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
         if (s && Notification.permission === "granted") {
-          kids.push(h("div", { class: "sub" }, `켜짐 — 앱이 닫혀 있어도 관심 시술 가격이 바뀌면 알려요. 일주일에 한 번 묶어서(행사 마감 임박은 따로), 오전 8시~오후 9시에만 와요. 보낸 조건 ${rules.length}개.`),
+          kids.push(h("div", { class: "sub" }, `켜짐 — 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 보낸 조건 ${rules.length}개.`),
             note ? h("div", { class: "tiny" }, note) : null);
           const off = h("button", { class: "btn sm gray", type: "button", style: "margin-top:8px", onclick: async () => {
             off.disabled = true; await pushUnsubscribe(); toast("가격 알림을 껐어요"); paint(); } }, "가격 알림 끄기");
@@ -1503,7 +1503,7 @@
           kids.push(h("div", { class: "sub" }, "가격 알림을 하나 이상 만들면 켤 수 있어요. 비교 화면의 ⋯ → 가격 알림에서 만들어요."),
             note ? h("div", { class: "tiny" }, note) : null);
         } else {
-          kids.push(h("div", { class: "sub" }, "켜면 앱이 닫혀 있어도 관심 시술 가격이 바뀔 때 알려요(일주일에 한 번 묶어서). 누르기 전에는 권한을 묻지 않아요."),
+          kids.push(h("div", { class: "sub" }, "알림을 켜면 알림 주소와 지켜볼 조건만 서버에 저장돼요. 이름·연락처·위치는 저장하지 않아요. 끄거나 가격 알림을 모두 지우면 서버에서도 바로 지워요. 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 누르기 전에는 권한을 묻지 않아요."),
             note ? h("div", { class: "tiny" }, note) : null);
           const on = h("button", { class: "btn sm", type: "button", style: "margin-top:8px", onclick: async () => {
             on.disabled = true;
@@ -4842,7 +4842,7 @@
           const kept = store.get("metricsOff", null) === !v;   // false: storage blocked or full — memory only
           metricsOffMem = !v;
           render(); toast(v ? "익명 이용 집계를 보내요" : kept ? "이제 이 기기에서는 집계를 보내지 않아요" : "이 화면을 닫기 전까지 집계를 보내지 않아요(설정을 저장하지 못했어요)"); }),
-        h("div", { class: "sub" }, "앱을 쓴 단계 이름만 서버로 보내요(날짜·기기·위치·검색어 없음). 끄면 이 휴대폰에서는 보내지 않아요.")) : null,
+        h("div", { class: "sub" }, "앱을 쓴 단계 이름만 하루 한 번 서버로 보내요(기기·위치·검색어는 보내지 않아요). 끄면 이 휴대폰에서는 보내지 않아요.")) : null,
       h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => window.lockApp && window.lockApp() }, "지금 잠그기"),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { store.set("brands", null); store.set("special", true); location.reload(); } }, "설정 초기화"))));
     // ---- 데이터 안내 (information, not settings)
