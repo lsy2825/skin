@@ -19,7 +19,7 @@ data-meta.json:
               removed: [[brand, branch, name, price]], counts: {price, added, removed}} — lists capped at CAP each
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
-import argparse, datetime, hashlib, json, os, sys
+import argparse, datetime, hashlib, json, os, re, sys
 from collections import defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -68,6 +68,15 @@ def changes(prev, cur, prev_version):
             else:                                            # several prices under one name: what left / what came
                 added += [[k[0], k[1], k[2], p] for p in y if p not in x]
                 removed += [[k[0], k[1], k[2], p] for p in x if p not in y]
+    # a price still at the branch under the same name — its kind changed (일반 → 구독권), its word breaks or a leading label
+    # ('[옵션] …') changed, or a duplicate row was folded into one written slightly differently — did not come or go: left out of
+    # both lists (2026-10-15 — 300 닥터에버스 '1년 무제한' rows and the C1 folds would read as gone and new on the 가격 변동
+    # screen and in price alerts)
+    same = lambda b, br, name, p: (b, br, re.sub(r"\s+", "", re.sub(r"\[옵션\]|^\s*(?:\[[^\]]*\]\s*)+", "", name)).casefold(), p)
+    before = {same(k[0], k[1], k[2], p) for k, ps in a.items() for p in ps}
+    after = {same(k[0], k[1], k[2], p) for k, ps in b.items() for p in ps}
+    added = [r for r in added if same(*r) not in before]
+    removed = [r for r in removed if same(*r) not in after]
     return {"from": prev_version, "price": price[:CAP], "added": added[:CAP], "removed": removed[:CAP],
             "counts": {"price": len(price), "added": len(added), "removed": len(removed)}}
 

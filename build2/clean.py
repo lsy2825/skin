@@ -72,8 +72,10 @@ def norm_text(s):
     return s
 
 
-# 옵션 (2026-10-15): '[옵션] 제모 후 진정관리' is an add-on; taken off as an event label it passed the add-on check
-KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|여|PKG|패키지|옵션|\d")
+KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|여|PKG|패키지|\d")
+# '[옵션] 제모 후 진정관리', '[리프팅 추가옵션] 수면마취': an add-on. The label is taken off the name like an event label (names and
+# price history stay as they were), and the row is marked addon=1 so it is never compared as a procedure (2026-10-15)
+OPTION_LABEL = re.compile(r"^\s*\[[^\]]*옵션[^\]]*\]")
 
 
 def strip_event_prefix(s):
@@ -203,7 +205,7 @@ def main():
             tags.append("일요일")
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
                "name": name, "mname": mname, "cat": cat, "kind": kind, "sale": sale, "orig": orig or "",
-               "addon": r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
+               "addon": "1" if OPTION_LABEL.match(opt) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
                "vat": "별도" if VAT_EX.search(f"{grp} {opt}") else "포함" if VAT_IN.search(f"{grp} {opt}") else
                       {"excl": "별도", "incl": "포함"}.get(vdef.get(r["brand"], ""), "")}

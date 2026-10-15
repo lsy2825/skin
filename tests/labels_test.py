@@ -174,7 +174,7 @@ raw = [  # category, group, option, sale, orig
     ("제모", "아포지엘리트플러스 여성 제모", "[여성] 팔 하완 제모 5회", 340000, 400000),   # two price lists, other device → two rows
     ("제모", "남성 1년 무제한제모 이벤트", "남자얼굴제모", 690000, 1200000),               # a 1-year pass named in the group → 구독권
     ("제모", "젠틀맥스 여성 제모 1년 무제한으로 확실한 제모효과!", "발등+발가락 5회", 250000, 400000),   # sessions stated → not a pass
-    ("제모", "제모 옵션", "[옵션] 제모 후 진정관리 10회", 200000, 0)]                      # '[옵션]' stays in the name
+    ("제모", "제모 옵션", "[옵션] 제모 후 진정관리 10회", 200000, 0)]                      # '[옵션]' → an add-on (addon=1)
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -212,8 +212,28 @@ ok("E4 '여자'와 '여성'은 같은 성별 → 한 줄", len(one("브라질리
 ok("E4 가격표 두 곳(묶음 제목·정가 다름, 장비가 다른 상품)은 합치지 않음", len(one("[여성] 팔 하완 제모 5회")) == 2)
 ok("1년 무제한 묶음의 회차 없는 옵션은 구독권, 회차가 적힌 옵션은 아님",
    one("남자얼굴제모")[0]["kind"] == "구독권" and one("발등+발가락 5회")[0]["kind"] != "구독권", [one("남자얼굴제모")[0]["kind"], one("발등+발가락 5회")[0]["kind"]])
-ok("'[옵션]' 머리표는 이름에 남아 추가 옵션으로 읽힘", one("[옵션] 제모 후 진정관리 10회")[0]["name"].startswith("[옵션]") and
-   taxonomy.variant(one("[옵션] 제모 후 진정관리 10회")[0]["mname"])[0] is None, one("[옵션] 제모 후 진정관리 10회")[0]["name"])
+opt_row = one("[옵션] 제모 후 진정관리 10회")
+ok("'[옵션]' 머리표 줄은 이름은 그대로(머리표 뗌), addon=1이라 비교 키 없음", opt_row and opt_row[0]["addon"] == "1" and not opt_row[0]["keys"]
+   and not opt_row[0]["name"].startswith("["), opt_row and (opt_row[0]["name"], opt_row[0]["addon"], opt_row[0]["keys"]))
+
+# data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
+import datameta  # noqa: E402
+
+
+def mini(rows):
+    """a tiny data.json: rows (branch, name, price, kind) at brand A"""
+    s = ["A"] + sorted({r[0] for r in rows} | {r[1] for r in rows} | {r[3] for r in rows})
+    ix = {t: i for i, t in enumerate(s)}
+    br = sorted({r[0] for r in rows})
+    cols = [[br.index(r[0]) for r in rows], [0] * len(rows), [ix[r[1]] for r in rows], [r[2] for r in rows], [0] * len(rows), [ix[r[3]] for r in rows]]
+    return {"s": s, "meta": {"brands": [["A"]]}, "branches": [[0, ix[b]] for b in br], "cols": cols}
+
+
+old_d = mini([("강남점", "겨드랑이 1년 무제한", 99000, "일반"), ("강남점", "가다실9가 1회", 185000, "일반"), ("강남점", "리쥬란 2cc", 200000, "일반")])
+new_d = mini([("강남점", "겨드랑이 1년 무제한", 99000, "구독권"), ("강남점", "가다실 9가 1회", 185000, "일반"), ("강남점", "쥬베룩 2cc", 250000, "일반")])
+c = datameta.changes(old_d, new_d, "v")
+ok("가격 변동 목록: 종류·띄어쓰기만 바뀐 같은 가격은 없어짐/새로 생김이 아님, 진짜로 바뀐 것만",
+   [x[2] for x in c["added"]] == ["쥬베룩 2cc"] and [x[2] for x in c["removed"]] == ["리쥬란 2cc"], c)
 
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
