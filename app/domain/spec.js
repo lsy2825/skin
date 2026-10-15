@@ -83,5 +83,40 @@
     return out;
   }
 
-  return { PRODUCTS, norm, parse, diff, eligibility };
+  // spec-word notes (data.json meta.kb.specs from knowledge/specs.json, C7): one plain line per word of a family's spec
+  // ('보톡스' family id 'toxin' › '국산'), keyed by (family id, word). notes: [{ fid, spec, one_liner, review: { status } }];
+  // fid: the family id (famOf → f.fid); texts: where the words are, in order (the variant label, the family name, famWords);
+  // o.drafts: notes not yet medically reviewed may show (flags.showDraftKnowledge) — they come back with draft: true and the
+  // screen marks them. A word counts only as a whole word (spaces, brackets, '·' around it), the longest word first where two
+  // overlap ('HB 플러스' before '플러스'). → [{ spec, text, draft }] in the order the words stand, each word once, at most o.max
+  const EDGE = /[\s()[\]·,/+]/;
+  function notesFor(notes, fid, texts, o = {}) {
+    if (!Array.isArray(notes) || !fid) return [];
+    const mine = notes.filter((e) => e && e.fid === fid && typeof e.spec === "string" && e.spec && typeof e.one_liner === "string" && e.one_liner
+      && ((e.review || {}).status === "approved" || o.drafts)).sort((a, b) => b.spec.length - a.spec.length);
+    const out = [], seen = new Set();
+    for (const raw of [].concat(texts || [])) {
+      const t = String(raw || "").replace(/\s+/g, " "), used = [], hits = [];
+      for (const e of mine) {
+        for (let at = t.indexOf(e.spec); at >= 0; at = t.indexOf(e.spec, at + 1)) {
+          const end = at + e.spec.length;
+          if ((at && !EDGE.test(t[at - 1])) || (end < t.length && !EDGE.test(t[end]))) continue;
+          if (used.some(([a, b]) => at < b && end > a)) continue;
+          used.push([at, end]); hits.push({ at, e }); break;
+        }
+      }
+      for (const { e } of hits.sort((a, b) => a.at - b.at)) if (!seen.has(e.spec)) { seen.add(e.spec); out.push({ spec: e.spec, text: e.one_liner, draft: (e.review || {}).status !== "approved" }); }
+    }
+    return o.max ? out.slice(0, o.max) : out;
+  }
+  // the word a split family puts in front of its base family's name, also when written without a space ('스킨보톡스' on
+  // '보톡스' → '스킨'; build2/taxonomy.py AREA names the family that way). names: the family names sharing the family id; the
+  // shortest one the name ends with is the base. Whole-word words of the name are found by notesFor already. → '' when none
+  function famWords(name, names) {
+    const n = String(name || "");
+    const base = [].concat(names || []).filter((x) => typeof x === "string" && x && x !== n && n.endsWith(x)).sort((a, b) => a.length - b.length)[0];
+    return base ? n.slice(0, -base.length).trim() : "";
+  }
+
+  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords };
 });
