@@ -191,6 +191,20 @@ reset()
 f10 = fetcher({RB: Resp(200, "User-agent: *\nAllow: /\n\nUser-agent: YoonSiljangBot\nDisallow: /event/\n")})
 ok("source check asks as YoonSiljangBot, not only '*'", sources.robots(f10, "h.example", ["/event/"])["allowed"] is False)
 
+# --- source check: its own sample pages go through the answer it just recorded
+for code, rtext, label in [(503, "", "5xx"), (429, "", "429"), (200, "User-agent: *\nDisallow: /\n", "Disallow: /")]:
+    reset()
+    fs = fetcher({RB: Resp(code, rtext), "https://h.example/event/1": Resp(200, "VAT 별도")})
+    sources.robots(fs, "h.example", ["/event/1"])
+    ev, ds = sources.read_samples(fs, "x", ["https://h.example/event/1"], ["https://h.example/event/1"])
+    ok(f"source check does not read sample pages on a host it records as not to be scraped ({label})",
+       ev == [] and all(u == RB for _, u in fs.s.log) and fs.robots is False, fs.s.log)
+reset()
+fs = fetcher({RB: Resp(200, "User-agent: *\nAllow: /\n"), "https://h.example/event/1": Resp(200, "부가세 10% 별도")})
+sources.robots(fs, "h.example", ["/event/1"])
+ev, ds = sources.read_samples(fs, "x", ["https://h.example/event/1"], [])
+ok("... and still reads them where robots.txt allows (no second robots.txt request)", len(ev) == 1 and sum(1 for _, u in fs.s.log if u == RB) == 1, (ev, fs.s.log))
+
 # --- weekly gate
 import weekly  # noqa: E402
 

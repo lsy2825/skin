@@ -72,7 +72,8 @@ def robots(f, host, paths):
     r = f.get(f"https://{host}/robots.txt")
     if r is None:
         err = f.fails[-1]["error"] if f.fails and f.fails[-1]["url"].endswith("/robots.txt") else "응답 없음"
-        robots_put(host, int(err.split()[1]) if str(err).startswith("HTTP ") else 0, "")     # later steps reuse this answer
+        code = int(err.split()[1]) if str(err).startswith("HTTP ") else 0
+        robots_put(host, code, "" if code else str(err))     # later steps reuse this answer (no answer: why, for their logs)
         return robots_unread(host, str(err), paths)
     robots_put(host, 200, r.text)
     # asked as our own name: a group written for YoonSiljangBot wins over '*' (scrape/common.py, RFC 9309, any Python version)
@@ -118,6 +119,19 @@ def date_samples(f, url):
     return out
 
 
+def read_samples(f, key, sample, urls):
+    """the VAT-wording and date sample pages, read through the robots.txt answers recorded just before (the shared cache, no
+    second robots.txt request): a host that refused or did not answer, or a disallowed path, is not read (2026-10-15 검토:
+    sources.py itself read /agree/info on 리엔장 hosts it had just recorded as '수집 안 함')"""
+    f.robots = True
+    try:
+        ev = evidence(f, sample)
+        ds = date_samples(f, urls[0]) if key == "velyb" and urls else None
+    finally:
+        f.robots = False
+    return ev, ds
+
+
 def main():
     f = Fetcher(gap=1.0, retries=1)
     out = {"checked_at": now_iso(), "user_agent_rule": f"{BOT_NAME} (그 이름의 묶음이 없으면 *)", "brands": OrderedDict()}
@@ -133,11 +147,12 @@ def main():
         # page per host is all we read there
         slow = {x["host"] for x in hs if (x.get("crawl_delay") or 0) >= 10}
         sample = [u for u in sample if urlparse(u).netloc not in slow]
+        ev, ds = read_samples(f, key, sample, urls)
         entry = {**{k: v for k, v in reg.items() if k != "seeds"}, "hosts": hs, "hosts_total": len(hosts),
-                 "allowed": all(x["allowed"] for x in hs), "vat_evidence": evidence(f, sample),
+                 "allowed": all(x["allowed"] for x in hs), "vat_evidence": ev,
                  "skipped_samples_for_crawl_delay": sorted(slow)}
-        if key == "velyb" and urls:
-            entry["date_samples"] = date_samples(f, urls[0])
+        if ds is not None:
+            entry["date_samples"] = ds
         out["brands"][key] = entry
         print(f"{reg['brand']}: hosts {len(hosts)} (checked {len(hs)}), allowed={entry['allowed']}, vat evidence {len(entry['vat_evidence'])}", flush=True)
     with open(OUT, "w", encoding="utf-8", newline="\n") as fh:
