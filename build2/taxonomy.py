@@ -775,9 +775,11 @@ def build(rows, min_branches=3):
     for r in rows:
         prices[page(r) + (twin_name(r),)].add(r.get("sale"))
     twins = Counter(k[:4] for k, p in prices.items() if len(p) > 1)
+    # (rows with their sex in the name are left as they are: 유앤아이 상봉망우점 lists '男) 인중 1회' at 15,000 and 40,000 under two device
+    # tabs the scraper does not keep — taking such twins out cost 2,983 real prices (검증 8차 빌드). The fix is the scraper keeping the tab)
     for i, (r, v) in enumerate(zip(rows, vs)):
-        # (sexed rows too: 닥터에버스 미사점 writes '젠틀맥스 프로플러스 남성 제모' in front of both menus, 검증 8차)
-        if v and v["sig"].startswith("hair|") and (len(prices[page(r) + (twin_name(r),)]) > 1 or twins[page(r)] >= 2):
+        if v and v["sig"].startswith("hair|") and not re.search(r"여성|남성", v["sig"].split("|")[2]) \
+                and (len(prices[page(r) + (twin_name(r),)]) > 1 or twins[page(r)] >= 2):
             vs[i] = None
             why["같은 페이지에 같은 이름·다른 가격(성별 등 구분 없음)"] += 1
     # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families

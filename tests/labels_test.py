@@ -387,11 +387,6 @@ ok("이름에 기기가 없으면 묶음 제목·'[젠틀맥스]' 머리표의 �
    len(set(rk)) == 2 and all(rk) and sorted(k["label"] for k in ks) == ["여성 겨드랑이+인중 제모 아포지 플러스 5회", "여성 겨드랑이+인중 제모 젠틀맥스 프로 플러스 5회"],
    [k["label"] for k in ks])
 ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
-sx = fake_g([("닥터에버스", f"{i}점", f"젠틀맥스 프로플러스 남성 제모 {a} 5회", "월간 레이저") for i in range(3) for a in ("미간", "미간", "허벅지", "허벅지")])
-for j, r in enumerate(sx):
-    r.update(cat="제모", sale=str((100000, 30000, 410000, 260000)[j % 4]), url="https://example.invalid/month")
-rk, ks, fs, st = taxonomy.build(sx)
-ok("성별이 붙은 이름도 한 페이지에 같은 이름·다른 가격이면(두 메뉴) 키 없음(닥터에버스 미사점)", not any(rk), rk)
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
