@@ -118,6 +118,18 @@ import requests  # noqa: E402
 f5 = fetcher({RB: requests.ConnectionError("down"), "https://h.example/ok": Resp(200, "x")}, robots=True)
 ok("no answer at all = assume disallowed", f5.get("https://h.example/ok") is None and "unreadable" in f5.last_error)
 
+ok("... and the log keeps why it had no answer (ConnectionError, SSLError), not only 'unreadable'", "ConnectionError" in f5.last_error, f5.last_error)
+
+# --- a long Crawl-delay host is not retried in the same run (each retry would wait the whole delay)
+reset()
+fr = fetcher({RB: Resp(200, "User-agent: *\nCrawl-delay: 180\n"), "https://h.example/p": Resp(500)}, robots=True, retries=3)
+ok("Crawl-delay 180 + a 500 page = one try, the next run tries again", fr.get("https://h.example/p") is None
+   and sum(1 for _, u in fr.s.log if u == "https://h.example/p") == 1 and fr.last_error == "HTTP 500", (fr.last_error, fr.s.log))
+reset()
+fq = fetcher({"https://q.example/p": Resp(500)}, retries=3)
+fq.get("https://q.example/p")
+ok("a host without a long delay still gets its retries", sum(1 for _, u in fq.s.log if u == "https://q.example/p") == 3, fq.s.log)
+
 # --- shared robots answer between steps
 reset()
 common.robots_put("h.example", 200, "User-agent: *\nDisallow: /nope/\nCrawl-delay: 120\n")

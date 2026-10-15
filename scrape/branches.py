@@ -164,6 +164,8 @@ def geocode(addr, cache, s):
 def main():
     f = Fetcher(gap=0.7, robots=True)      # 2026-10-15: these pages used to be read without looking at robots.txt
     rows = velyb(f) + others(f)
+    for x in f.fails:                  # pages skipped this run (robots.txt, errors): the reason, so the log says why an address is old
+        print("  not read:", x["url"], "—", x["error"])
     cache = json.load(open(CACHE, encoding="utf-8")) if os.path.exists(CACHE) else {}
     s = requests.Session()
     s.headers["User-Agent"] = UA  # same self-identifying name as the price collector (round-2 DATA02)

@@ -180,6 +180,9 @@ def robots_delay(status, text):
     return robots_group(text)[1] if status == 200 else None
 
 
+LONG_DELAY = 30          # seconds of Crawl-delay from which a failed page is not retried in the same run
+
+
 class Fetcher:
     """GET/POST with a minimum gap between requests, retries, and a failure list."""
 
@@ -221,7 +224,8 @@ class Fetcher:
             if fresh:
                 r, err = self._request(f"https://{host}/robots.txt")
                 status = r.status_code if r is not None else (int(err.split()[1]) if err.startswith("HTTP ") else 0)
-                got = (status, r.text if r is not None and status == 200 else "")
+                # no answer at all: keep why ('SSLError', 'ConnectTimeout') so the log still names the cause, not only 'unreadable'
+                got = (status, r.text if r is not None and status == 200 else ("" if r is not None else err))
                 robots_put(host, *got)
             self._rules[host] = got
             delay = robots_delay(*got)
@@ -236,15 +240,22 @@ class Fetcher:
             host = urlparse(url).netloc
             status, text = self._robots(host)
             if not robots_allows(status, text, url):
-                self.last_error = "robots.txt disallows" if status == 200 else f"robots.txt unreadable ({'HTTP %d' % status if status else 'no answer'})"
+                self.last_error = "robots.txt disallows" if status == 200 else \
+                    f"robots.txt unreadable ({'HTTP %d' % status if status else 'no answer' + (': ' + text if text else '')})"
                 self.fails.append({"url": url, "error": self.last_error})
                 return None
         err = ""
+        host = urlparse(url).netloc
         for attempt in range(1, self.retries + 1):
             r, err = self._request(url, method, **kw)
             if r is not None and not err:
                 r.encoding = r.encoding if r.encoding and r.encoding.lower() != "iso-8859-1" else "utf-8"
                 return r
+            # a host that asks for a long Crawl-delay (리엔장 180 s) gets one try per page per run: every retry would wait the
+            # whole delay again, and a few failing pages could push the run past its time limit (2026-10-15 검토: up to ~60 min).
+            # The page is tried again next run.
+            if host_delay(host) >= LONG_DELAY:
+                break
             time.sleep(2 * attempt)
         self.last_error = err
         self.fails.append({"url": url, "error": err})
