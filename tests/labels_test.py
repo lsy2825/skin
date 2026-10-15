@@ -425,6 +425,13 @@ prev_t = {"s": ["A", "강남점", "울쎄라 300샷", "첫 방문", "X14", ""], 
           "keys": [["X14", 0, "울쎄라 300샷"]]}
 ok("... 체험가 줄이 조건만 잃으면(일반가가 되는 게 아님) 규칙 변경으로 보지 않음",
    appdata.reclassified(prev_t, [[0, 0, 2, 590000, 0, 1, 3, 4]], [dict(now[0], kind="체험가", tags="")]) == set())
+prev_2 = {"s": ["A", "건대점", "얼굴전체 더모톡신", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["T0AAAAAA", 0, "얼굴전체 더모톡신"]]}
+two_now = [dict(brand="A", branch="건대점", name="얼굴전체 더모톡신", sale="290000", kind="일반", tags="", keys="T0AAAAAA"),
+           dict(brand="A", branch="건대점", name="얼굴전체 더모톡신", sale="190000", kind="일반", tags="", keys="")]
+ok("같은 이름 두 줄 중 한 줄만 키를 잃으면(추가 옵션이 됨) 규칙 변경 — 190,000 → 290,000 가짜 인상 없음(검증 8차)",
+   appdata.reclassified(prev_2, [[0, 0, 2, 290000, 0, 0, 3, 4], [0, 0, 2, 190000, 0, 0, 3, 4]], two_now) == {"T0AAAAAA"}
+   and appdata.reclassified(prev_2, [[0, 0, 2, 290000, 0, 0, 3, 4], [0, 0, 2, 190000, 0, 0, 3, 5]], two_now) == set())
 prev_s = {"s": ["A", "강남점", "남성 목 제모 10회", "", "T0AAAAAA", "", "남성 목 제모 5회"], "branches": [[0, 1]],
           "meta": {"brands": [["A"]], "kinds": appdata.KINDS}, "keys": [["T0AAAAAA", 0, "남성 목 제모 10회"]]}
 two = [[0, 0, 2, 396000, 0, 0, 3, 4], [0, 0, 6, 290000, 0, 0, 3, 4]]
@@ -438,6 +445,19 @@ prev_x = {"s": ["A", "강남점", "헤어라인 or 눈썹 제모", "", "T0AAAAAA
 km = appdata.key_map(prev_x, [[0, 0, 2, 50000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="헤어라인 or 눈썹 제모", keys="TAAAAAA TBBBBBB")],
                      [["TAAAAAA", 0, "여성 눈썹·헤어라인 제모"], ["TBBBBBB", 0, "남성 눈썹·헤어라인 제모"]])
 ok("key_map: 같은 표면 옛 이름의 성별 쪽으로, 다른 성별 키로는 안 옮김", km["T0AAAAAA"][0] == "TBBBBBB", km)
+prev_b = {"s": ["A", "강남점", "브라질리언 5회", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["T0AAAAAA", 0, "여성 女 브라질리언 제모 5회"]]}
+km = appdata.key_map(prev_b, [[0, 0, 2, 50000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="브라질리언 5회", keys="TAAAAAA TBBBBBB")],
+                     [["TAAAAAA", 0, "여성 브라질리언+항문 제모 5회"], ["TBBBBBB", 0, "여성 브라질리언 제모 5회"]])
+ok("key_map: 동점이면 옛 이름과 같은 말의 키로('브라질리언'은 '브라질리언+항문'이 아님, 검증 8차)", km["T0AAAAAA"][0] == "TBBBBBB", km)
+prev_n = {"s": ["A", "강남점", "팔전체 제모", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["T0AAAAAA", 0, "팔전체 제모"]]}
+km = appdata.key_map(prev_n, [[0, 0, 2, 50000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="팔전체 제모", keys="TAAAAAA TBBBBBB")],
+                     [["TAAAAAA", 0, "남성 팔전체 제모"], ["TBBBBBB", 0, "여성 팔전체 제모"]])
+km2 = appdata.key_map(prev_n, [[0, 0, 2, 50000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="팔전체 제모", keys="TAAAAAA TCCCCCC")],
+                      [["TAAAAAA", 0, "남성 팔전체 제모"], ["TCCCCCC", 0, "팔전체 제모"]])
+ok("key_map: 성별 없는 옛 이름이 여성·남성 키로 똑같이 갈리면 옮기지 않음(옛 이름만), 성별 없는 키가 있으면 그쪽으로",
+   km["T0AAAAAA"] == ["", "팔전체 제모"] and km2["T0AAAAAA"][0] == "TCCCCCC", (km, km2))
 prev_g = {"s": ["A", "건대점", "[울써마지 옵션] 얼굴전체 더모톡신", "", "", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS}}
 mv = appdata.group_moved(prev_g, [[0, 0, 2, 190000, 0, 0, 3, 4, 1, 5]],
                          [dict(brand="A", branch="건대점", name="[울써마지 옵션] 얼굴전체 더모톡신", sale="190000", kind="일반", tags="", addon="1")], [-1])

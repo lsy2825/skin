@@ -29,7 +29,7 @@ data.json (compact, strings interned in `s`):
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
 the 'before'.
 """
-import argparse, csv, datetime, glob, json, os, re, sys
+import argparse, csv, datetime, glob, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -349,6 +349,16 @@ def reclassified(prev, prow, rows):
     for ident, x in now.items():
         if ident in was and plain(was[ident]) != plain(x):
             out |= new.get(ident[:3], set()) | old.get(ident[:3], set())
+    # a row at the same price that joined or left an id while a same-named row at another price kept it (검증 8차: 톡스앤필 건대점
+    # '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became an add-on and left T2976BFB; the 290,000 row of the same name kept it, so the
+    # name-level sets above were equal and the key read as a rise 190,000 → 290,000)
+    wk, nk = defaultdict(set), defaultdict(set)
+    for r in prow:
+        wk[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].update((ps[r[7]] or "").split())
+    for r in rows:
+        nk[(r["brand"], r["branch"], r["name"], int(r["sale"]))].update(r["keys"].split())
+    for ident in wk.keys() & nk.keys():
+        out |= wk[ident] ^ nk[ident]
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return out & before
@@ -376,9 +386,14 @@ def group_moved(prev, prow, rows, gid):
 
 
 def sex_word(label):
-    """여성 / 남성 / '' from a label in any of the clinics' forms"""
-    m = re.search(r"여성|여자|\(여\)|女|남성|남자|\(남\)|男", label or "")
+    """여성 / 남성 / '' from a label in any of the clinics' forms (NFKC: one clinic writes 女 as the compatibility letter U+F981)"""
+    m = re.search(r"여성|여자|\(여\)|女|남성|남자|\(남\)|男", unicodedata.normalize("NFKC", label or ""))
     return "" if not m else "여성" if m.group() in ("여성", "여자", "(여)", "女") else "남성"
+
+
+def bare_label(label):
+    """a label without its sex words and spaces: '여성 女 브라질리언 제모 5회' and '여성 브라질리언 제모 5회' are the same"""
+    return re.sub(r"\s+|여성|여자|남성|남자|\((?:여|남)\)|女|男", "", unicodedata.normalize("NFKC", label or ""))
 
 
 def key_map(prev, prow, rows, allk):
@@ -409,9 +424,16 @@ def key_map(prev, prow, rows, allk):
     for k, n in size.items():
         c = votes[k]
         top = max(c.values()) if c else 0
-        # a tie goes to the key of the old label's sex, then to the smaller id (not to the order rows came in)
-        tied = sorted((i for i, x in c.items() if x == top), key=lambda i: (sex_word(nlabel.get(i, "")) != sex_word(plabel.get(k, "")), i))
+        # a tie goes to the key of the old label's sex, then to the key with the old label's words ('브라질리언', not '브라질리언+항문':
+        # 검증 8차), then to the smaller id (not to the order rows came in)
+        sx, bare = sex_word(plabel.get(k, "")), bare_label(plabel.get(k, ""))
+        tied = sorted((i for i, x in c.items() if x == top),
+                      key=lambda i: (sex_word(nlabel.get(i, "")) != sx, bare_label(nlabel.get(i, "")) != bare, i))
         to = tied[0] if tied and top * 2 >= n else ""
+        # an old label without a sex whose rows split evenly between a 여성 and a 남성 key has no successor (the id order would
+        # pick a sex for the saved item: '팔전체 제모' 4:4 → 남성, 검증 8차)
+        if to and not sx and sex_word(nlabel.get(to, "")) and {"여성", "남성"} <= {sex_word(nlabel.get(i, "")) for i in tied}:
+            to = ""
         # never to another session count: '남성 목 제모 10회' is not '남성 목 제모 5회' even when half its old rows (5회 rows the
         # old build keyed wrong) went there (검증 6차) — unless every old row went there (then the old label's count was the bug);
         # never to the other sex ('남성 헤어라인 or 눈썹 제모' → a 여성 key on a tie, 검증 7차)
