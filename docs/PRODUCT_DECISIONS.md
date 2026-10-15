@@ -21,7 +21,9 @@
 | 죠미 심화 질문 | 판매 보류 | R02·R03·R15는 고쳤지만, 무료 비교 숫자를 문장으로 다시 읽는 수준이라 추가 가치가 약함 | 비교 화면 | 가치 검증 |
 | 광고 없는 기간(크레딧 보너스) | 폐지 | 앱에 광고가 없어 설명이 안 됨. 카탈로그 2판에서 0일(예전 주문은 그대로) | — | — |
 
-구현 위치: `supabase/commerce_seed.sql`(판매 플래그·카탈로그 2판), `app/domain/demowallet.js`(`sold`), `app/commerce.js`(화면), 서버는 DB의 `premium_features.active`로 거절.
+> **6.0 기록(2026-10-15, 사용자 결정):** 크레딧·유료 화면은 없앴어요. 이 절의 표는 5.0 때의 결정 기록으로만 남겨요. 아래 구현 위치는 모두 지워졌어요(`app/commerce.js` B2, `app/domain/demowallet.js`·`economics.js` B7, `supabase/commerce_seed.sql`·서버 결제 코드 A3·A). 6.0은 광고 수익을 검토하며, 그 결정은 출시 때 따로 해요.
+
+옛 구현 위치(지워짐): `supabase/commerce_seed.sql`(판매 플래그·카탈로그 2판), `app/domain/demowallet.js`(`sold`), `app/commerce.js`(화면), 서버는 DB의 `premium_features.active`로 거절.
 
 **아직 검증 안 됨:** 실제 지불 의사·전환율·환불률. 3개 도구도 가설이에요. 실결제 전에 소규모 사용자 관찰로 확인해야 해요.
 
