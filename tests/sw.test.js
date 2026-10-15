@@ -102,9 +102,11 @@ test("notificationclick with no app window: open exactly the saved tab in scope,
   }
 });
 
-test("VER is pc-v28 and every SHELL file exists under app/ (one missing file breaks install)", () => {
+test("VER is a pc-v<number> from 28 on (the push handlers) and every SHELL file exists under app/ (one missing file breaks install)", () => {
   const w = worker();
-  assert.equal(w.VER, "pc-v28");
+  // a change to a cache-first file (gate.js, the SHELL list) needs a new VER; the exact number is not pinned here
+  assert.match(w.VER, /^pc-v\d+$/);
+  assert.ok(+w.VER.slice(4) >= 28, w.VER);
   assert.ok(w.SHELL.includes("domain/push.js"));
   assert.equal(w.SHELL.indexOf("domain/push.js"), w.SHELL.indexOf("domain/metrics.js") + 1);
   assert.equal(new Set(w.SHELL).size, w.SHELL.length, "duplicate SHELL entry");

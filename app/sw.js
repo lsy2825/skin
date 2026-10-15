@@ -1,6 +1,6 @@
 // Offline cache: the app shell (code network-first, images cache-first) and map tiles. data.json / data-meta.json / home.json are not
 // handled here: app.js saves a checked copy of the price file itself and says when it shows that saved copy offline.
-const VER = "pc-v28";
+const VER = "pc-v29";
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use).
 // round-2 O5: the install list is what the app needs to START and to run offline. Code loaded later (commerce screens, the
 // map library, large Jomi portraits) is cached the first time it is used — installing it up front undid the lazy loading.

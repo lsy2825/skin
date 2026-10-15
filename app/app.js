@@ -1,7 +1,6 @@
 // 윤실장 (피부과 가격비교) — app logic. Data: data.json (built by build2/appdata.py). No framework.
 (function () {
   "use strict";
-  if (document.documentElement.hasAttribute("data-framed")) return;   // shown inside another site's frame (gate.js clickjacking guard)
   // shared helpers, storage and toasts live in core.js (docs/APP_JS_SPLIT_PLAN.md 1단계)
   const { $, h, fill, icon, won, km, PERSONAL, store, toast, toastStop, toastTimer, undoToast, actToast, copyText } = window.App;
   // one icon per procedure category (both the compare categories and the data categories)
