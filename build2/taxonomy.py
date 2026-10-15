@@ -280,16 +280,30 @@ def _area(raw):
     return got or _area_of(re.sub(r"\([^()]*\)", " ", re.sub(r"\[([^\]]*)\]", r" \1 ", raw)))
 
 
+# a device name in front of '제모' is not a body area ('젠틀맥스 프로플러스 제모 겨드랑이 5회' → 겨드랑이, 2026-10-15: one key held
+# 겨드랑이·다리 전체·브라질리언 under the area '젠틀맥스프로플러스')
+DEVICE = re.compile(r"젠틀맥스|프로\s*플러스|아포지|엘리트|클라리티|소프라노|프라임\s*레이즈|포토나|아발란체|듀얼|프로(?![가-힣])|플러스(?![가-힣])|최신|기기")
+AREA_NOISE = re.compile(r"\d+\s*회|1년|구독권|이용권|무제한|패스권|이벤트|특가|체험가|한정가|할인|여성|남성|여자|남자|솜털|레이저|부위|[♥★☆]")
+
+
 def _area_of(a):
     segs = [x for x in re.split(r"\s+·\s+", a) if x.strip()]
     seg = segs[-1] if segs else a
+    after = ""
     if "제모" in seg:
-        seg = seg.split("제모")[0]
+        seg, after = seg.split("제모", 1)
     elif len(segs) > 1 and "제모" in segs[-2]:
         pass
-    seg = re.sub(r"\d+\s*회|1년|구독권|여성|남성|여자|남자|솜털|레이저|부위|[♥★☆]", " ", seg)
+    parts = _area_parts(seg)
+    if not parts and after:
+        parts = _area_parts(after)           # '젠틀맥스 제모 겨드랑이 5회': the area comes after
+    return "/".join(parts)
+
+
+def _area_parts(seg):
+    seg = AREA_NOISE.sub(" ", DEVICE.sub(" ", seg))
     parts = sorted(p for p in (re.sub(r"\s+", "", x) for x in re.split(r"[/,·&+]", seg)) if p)
-    return "/".join(re.sub(r"[^\w가-힣]", "", p) for p in parts if re.sub(r"[^\w가-힣]", "", p))
+    return [re.sub(r"[^\w가-힣]", "", p) for p in parts if re.sub(r"[^\w가-힣]", "", p)]
 
 
 # group-title words that can change what an option is (sex, body area): with these the group title stays in the signature
@@ -327,7 +341,9 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # likewise '손등 + 손가락제모 5회' / '겨드랑이+인중 5회' on a 제모 page: '+' between areas, the only bundle mark — read by the
     # 제모 rule, which keeps 여성 and 남성 apart (as a package key they shared one key, 2026-10-15)
     plain = comp(_strip(raw))
-    plus_only = "+" in plain and not PACKAGE.search(plain.replace("+", ""))
+    # '+' between numbers ('1+1', '10+1회') is a deal, not two areas: it stays a bundle (2026-10-15)
+    plain_words = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", "", plain)
+    plus_only = "+" in plain_words and not PACKAGE.search(plain_words.replace("+", ""))
     bundle = n >= 2 or (bool(PACKAGE.search(plain)) and not (areas_only and plus_only)) or (bool(listed) and not areas_only)
     v = None
     if fam and not bundle:

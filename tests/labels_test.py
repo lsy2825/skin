@@ -7,7 +7,7 @@ import json, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-import labels, taxonomy  # noqa: E402
+import clean, labels, taxonomy  # noqa: E402
 
 fails = []
 
@@ -151,8 +151,20 @@ _, ks, _, st = taxonomy.build(fake(["[남성] 제모 10회"] * 3))
 ok("'부위 미표기' 제모는 비교 묶음을 만들지 않음", not ks and st["label_rejected"] and st["label_rejected"][0]["why"] == ["부위 미표기"], st["label_rejected"])
 ok("'!' 든 홍보 문구 이름은 막음", "기호" in labels.problems("초음파 리프팅 안에서 올려주고! 밖에서 당겨주는 더블업 리프팅"))
 
+# 검증 4차(합치기·이용권 관점)
+ok("'10+1회'는 11회, '12+1회'는 13회(1회 묶음에 들어가지 않음)", xkeys.sessions("[남성] 겨드랑이 제모 10+1회") == 11 and xkeys.sessions("다리전체 제모 12+1회") == 13
+   and taxonomy.variant("[남성] 겨드랑이 제모 10+1회", cat="제모")[0]["sess"] == 11, xkeys.sessions("[남성] 겨드랑이 제모 10+1회"))
+ok("'1+1'은 부위 나열이 아니라 묶음(1회 제모 묶음에 안 들어감)", taxonomy.variant("[남성] 겨드랑이 제모 1+1", cat="제모")[0]["fam"] == "package")
+a, _ = taxonomy.variant("젠틀맥스 프로플러스 제모 겨드랑이 5회", cat="제모")
+b, _ = taxonomy.variant("남성 젠틀맥스 프로플러스 제모 다리 전체 5회", cat="제모")
+ok("장비 이름은 부위가 아님: '젠틀맥스 프로플러스 제모 겨드랑이' → 겨드랑이, 다리 전체 → 다리전체", a and b and a["area"] == "겨드랑이" and b["area"] == "다리전체", (a and a["area"], b and b["area"]))
+for g, o, want in [("무제한 입술필러 나에게 맞는 입술", "무제한 입술필러", False), ("점 무제한", "[10월] 얼굴 무제한", False), ("무제한 실리프팅", "풀페이스 실리프팅 무제한", False),
+                   ("젠틀맥스 프로 플러스 제모 무제한 이벤트", "겨드랑이", True), ("남성 1년 무제한제모 이벤트", "남자얼굴제모", True), ("3개월 무제한 패키지", "얼굴전체", True)]:
+    ok(f"이용권 판정: '{g}' › '{o}' → {'이용권' if want else '1회'}", clean.pass_group(g, o) == want)
+ok("'[EVENT] [옵션] …'처럼 행사 머리표 뒤의 [옵션]도 추가 옵션", bool(clean.OPTION_LABEL.match("[EVENT] [옵션] 이온토 미백관리 5회")) and not clean.OPTION_LABEL.match("[EVENT] 인모드 FX"))
+
 # E4·E10: build2/clean.py on a made-up raw file (a temporary folder, the real data2/ is not touched)
-import clean, csv, tempfile  # noqa: E402
+import csv, tempfile  # noqa: E402
 raw = [  # category, group, option, sale, orig
     ("리프팅", "덴서티 리프팅", "덴서티 리프팅 600샷 체험가", 1590000, 3000000),
     ("기획전", "가을 세일 페스타", "덴서티 리프팅 600샷 체험가", 1590000, 3100000),       # same item, other page, other list price → one row
@@ -174,7 +186,15 @@ raw = [  # category, group, option, sale, orig
     ("제모", "아포지엘리트플러스 여성 제모", "[여성] 팔 하완 제모 5회", 340000, 400000),   # two price lists, other device → two rows
     ("제모", "남성 1년 무제한제모 이벤트", "남자얼굴제모", 690000, 1200000),               # a 1-year pass named in the group → 구독권
     ("제모", "젠틀맥스 여성 제모 1년 무제한으로 확실한 제모효과!", "발등+발가락 5회", 250000, 400000),   # sessions stated → not a pass
-    ("제모", "제모 옵션", "[옵션] 제모 후 진정관리 10회", 200000, 0)]                      # '[옵션]' → an add-on (addon=1)
+    ("제모", "제모 옵션", "[옵션] 제모 후 진정관리 10회", 200000, 0),                      # '[옵션]' → an add-on (addon=1)
+    ("가다실", "평일한정이벤트", "가다실 9가 1회", 175000, 343100),
+    ("건강", "10월 가을 맞이 혜택", "가다실 9가 1회", 175000, 205800),                      # two event pages → the smaller 정가
+    ("필러", "[브랜드 10주년] 무한 페스타", "국산필러 1cc", 55000, 0),
+    ("필러/실리프팅", "필러", "국산필러 1cc", 55000, 110000),                             # price list wins, but 보톡스·필러 stays (not 리프팅)
+    ("제모", "젠틀맥스 여성 1년 이용권", "젠틀맥스 얼굴전체 1년이용권", 690000, 1200000),
+    ("제모", "젠틀맥스 여성 제모", "얼굴전체", 690000, 1200000),                           # the pass listed again without the pass words
+    ("제모", "여성 1년 무제한제모 이벤트", "브라질리언", 490000, 800000),
+    ("제모", "1회 체험가", "브라질리언", 490000, 800000)]                                # a pass and a per-session row never fold
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -193,6 +213,7 @@ with tempfile.TemporaryDirectory() as tmp:
     out = list(csv.DictReader(open(os.path.join(tmp, "data2", "clean.csv"), encoding="utf-8")))
     iss = list(csv.DictReader(open(os.path.join(tmp, "data2", "issues.csv"), encoding="utf-8-sig")))
 cnt = lambda pred: sum(1 for r in out if pred(r))
+one = lambda opt: [r for r in out if r["option"] == opt]
 dens = [r for r in out if r["option"] == "덴서티 리프팅 600샷 체험가"]
 ok("E4 같은 상품·판매가, 정가만 다른 두 페이지 → 한 줄(카테고리 페이지의 정가)", len(dens) == 1 and dens[0]["orig"] == "3000000" and dens[0]["src_cat"] == "리프팅",
    [(r["src_cat"], r["orig"]) for r in dens])
@@ -200,9 +221,15 @@ ok("E10 띄어쓰기만 다른 같은 상품 → 한 줄", cnt(lambda r: r["opti
 ok("E4 성별이 다르면 이름·가격이 같아도 두 줄", cnt(lambda r: r["option"] == "미간or코 제모 1회") == 2, [r["mname"] for r in out if r["option"] == "미간or코 제모 1회"])
 ok("E4 여러 상품 페이지의 같은 추가 옵션 → 한 줄(예전 규칙 유지)", cnt(lambda r: r["option"].startswith("옵션5)")) == 1)
 ok("E4 판매가가 다르면 두 줄", cnt(lambda r: r["option"] == "덴서티 리프팅 300샷") == 2)
-ok("E4 새로 합친 줄은 issues.csv에 '합침'으로 남음", sorted(i["reason"] for i in iss if i["action"] == "합침") ==
-   ["같은 상품·판매가가 두 페이지에(정가 다름)"] * 3 + ["띄어쓰기·대소문자만 다른 같은 상품"], [(i["action"], i["reason"]) for i in iss])
-one = lambda opt: [r for r in out if r["option"] == opt]
+ok("E4 새로 합친 줄은 issues.csv에 '합침'으로 남음(예전 규칙으로도 합쳐지던 줄은 기록 안 함)", sorted(i["reason"] for i in iss if i["action"] == "합침") ==
+   ["같은 상품·판매가가 두 페이지에(정가 다름)"] * 5 + ["띄어쓰기·대소문자만 다른 같은 상품"], [(i["action"], i["reason"]) for i in iss])
+g = one("가다실 9가 1회")
+ok("두 행사 페이지의 정가가 다르면 작은 쪽", len(g) == 1 and g[0]["orig"] == "205800", [r["orig"] for r in g])
+f_ = one("국산필러 1cc")
+ok("가격표 페이지가 이겨도 분류는 첫 줄 것('필러/실리프팅' 페이지를 리프팅으로 안 읽음)", len(f_) == 1 and f_[0]["cat"] == "보톡스·필러" and f_[0]["orig"] == "110000", [(r["cat"], r["orig"]) for r in f_])
+tw = one("얼굴전체")
+ok("이용권과 판매가·정가가 같은 쌍둥이 줄은 이용권으로 봄", len(tw) == 1 and tw[0]["kind"] == "구독권" and any(i["action"] == "이용권으로 봄" for i in iss), [r["kind"] for r in tw])
+ok("이용권 줄과 1회 줄은 가격이 같아도 합치지 않음", len(one("브라질리언")) == 2 and sorted(r["kind"] for r in one("브라질리언")) == ["구독권", "일반"], [r["kind"] for r in one("브라질리언")])
 b = one("바디울쎄라 100샷")
 ok("E4 행사 페이지가 먼저 와도 가격표 페이지의 정가·분류를 남김(블리비 '기획전'만이 아님)", len(b) == 1 and b[0]["orig"] == "950000" and b[0]["src_cat"] == "레이저리프팅",
    [(r["src_cat"], r["orig"]) for r in b])

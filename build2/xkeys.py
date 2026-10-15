@@ -151,6 +151,10 @@ def sessions(name):
             s = max(s, int(m.group(1)))
         except ValueError:
             pass
+    # '10+1회' / '12+1회' is a course of eleven / thirteen sessions, not one (2026-10-15: read as 1회, 셀린 '인중 제모 10+1회'
+    # 50,000원 sat in the 1회 key whose median is 12,000원)
+    for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))", name):
+        s = max(s, int(m.group(1)) + int(m.group(2)))
     if re.search(r"이용권|무제한|1년|1달|개월|\d+주\s*(패키지|PKG|프로그램|챌린지)", name) or (COURSE.search(name) and COURSE_WORD.search(name)):
         s = 99
     return s
