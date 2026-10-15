@@ -2,7 +2,7 @@
 VAT wording and event-date wording on the pages. -> data2/sources.json
 
 usage: python scrape/sources.py            (weekly.py runs it before the scrapers; a brand whose paths are
-                                             disallowed is not scraped that week and keeps its previous data)
+                                             disallowed is not scraped in that run and keeps its previous data)
 Hand-maintained policy fields live in REGISTRY below (terms reviewed date, notes). Automatic fields:
   hosts[]        every host seen in the brand's accepted URLs (data2/accepted/<key>.csv) + extra seed URLs,
                  robots.txt status and whether our sample paths are allowed for YoonSiljangBot (its group, else '*')
@@ -62,7 +62,7 @@ def accepted_urls(key):
 def robots_unread(host, err, paths):
     """robots.txt could not be read. RFC 9309: a 4xx answer means there is none (crawling allowed) — except 401/403 (a refusal)
     and 429 (a rate limit), treated like a 5xx answer or no answer at all: assume everything is disallowed, that brand is not
-    scraped this week (same rule as scrape/common.py robots_allows)."""
+    scraped in this run (same rule as scrape/common.py robots_allows)."""
     if err.startswith("HTTP 4") and err not in ("HTTP 401", "HTTP 403", "HTTP 429"):
         return {"host": host, "robots": f"없음 ({err})", "allowed": True, "checked_paths": paths}
     return {"host": host, "robots": f"확인 실패 ({err}) — 수집 안 함", "allowed": False, "checked_paths": paths}
@@ -143,8 +143,8 @@ def main():
             pu = urlparse(u)
             hosts.setdefault(pu.netloc, set()).add((pu.path or "/") + (f"?{pu.query}" if pu.query else ""))
         hs = [robots(f, h, sorted(p)[:3]) for h, p in hosts.items()]   # every host the scraper reads
-        # hosts asking for a long crawl delay (리엔장: 180 s) get no extra sample-page request: the scraper's one weekly
-        # page per host is all we read there
+        # hosts asking for a long crawl delay (리엔장: 180 s) get no extra sample-page request: the scraper's price page
+        # (and the address step's page) is all we read there in a run
         slow = {x["host"] for x in hs if (x.get("crawl_delay") or 0) >= 10}
         sample = [u for u in sample if urlparse(u).netloc not in slow]
         ev, ds = read_samples(f, key, sample, urls)
