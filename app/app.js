@@ -1351,7 +1351,12 @@
       const s = pushState();
       if (!s || partial()) return;
       const { rules } = pushRules(), h = Push.hash(rules);
-      if (!rules.length) { await pushUnsubscribe(); toast("남은 가격 알림이 없어 휴대폰 알림 받기를 껐어요"); render(); return; }
+      if (!rules.length) {
+        await pushUnsubscribe(); render();
+        // the panel says it too; a toast only when it would not cut short another action's 되돌리기
+        if (!$("#toast").classList.contains("act")) toast("남은 가격 알림이 없어 휴대폰 알림 받기를 껐어요");
+        return;
+      }
       if (h === s.h) return;
       try {
         const r = await pushFetch(Push.rulesReq(CFG, s.id, rules));
@@ -1380,6 +1385,7 @@
       if (!reg || !reg.pushManager) return;   // not registered yet: next start
       const sub = await reg.pushManager.getSubscription();
       if (!sub) { await pushUnsubscribe(); render(); return; }
+      if (!pushRules().rules.length) { await pushUnsubscribe(); render(); return; }   // nothing left to watch: no subscription
       if (sub.endpoint !== s.ep) {
         // renewed by the browser: POST the new one first; the old id goes only once that worked (offline: next start)
         await pushSubscribe();

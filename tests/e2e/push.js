@@ -19,13 +19,13 @@ const API = 'https://alerts.example.test';   // a made-up address: answered by t
 const KEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');   // a VAPID-shaped public key
 const SUB_ID = 'sub_12345678';
 
-async function start(b, cfg, answer = 'granted', postStatus = 200) {
+async function start(b, cfg, answer = 'granted', postStatus = 200, pre = null) {
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const hits = [];
   // the browser side faked: Notification (its prompt), the service worker registration and its push manager
-  await ctx.addInitScript((answer) => {
+  await ctx.addInitScript(([answer, pre]) => {
     const log = window.__push = { perm: 0, subscribe: [], unsub: 0 };
-    let permission = 'default', sub = null;
+    let permission = pre ? pre.perm : 'default', sub = null;
     function N() {}
     Object.defineProperty(N, 'permission', { get: () => permission });
     N.requestPermission = async () => { log.perm++; permission = answer; return answer; };
@@ -35,8 +35,10 @@ async function start(b, cfg, answer = 'granted', postStatus = 200) {
       async unsubscribe() { log.unsub++; sub = null; return true; } });
     const reg = { pushManager: { getSubscription: async () => sub,
       subscribe: async (o) => { log.subscribe.push({ uvo: o.userVisibleOnly, keyLen: o.applicationServerKey && o.applicationServerKey.length, key0: o.applicationServerKey && o.applicationServerKey[0] }); sub = mk(); return sub; } } };
+    // a phone that is already subscribed (the browser may have renewed the endpoint since)
+    if (pre && pre.endpoint) { sub = mk(); sub.endpoint = pre.endpoint; }
     if (navigator.serviceWorker) navigator.serviceWorker.getRegistration = async () => reg;
-  }, answer);
+  }, [answer, pre]);
   ctx.on('request', (r) => { const u = r.url(); if (u.startsWith(API) || /\/v1\/push\//.test(u)) hits.push({ m: r.method(), u: u.replace(API, ''), body: r.postData() }); });
   if (cfg) {
     await ctx.route((u) => u.pathname.endsWith('/config.js'), async (route) => { const res = await route.fetch(); let t = await res.text();
@@ -163,5 +165,15 @@ const log = (p) => p.evaluate(() => window.__push);
     ok('해지 뒤 되돌리기: DELETE 없음, 구독·id 그대로, 켜짐', !hits.some((x) => x.m === 'DELETE') && (await log(p)).unsub === 0
       && await p.evaluate(() => !!JSON.parse(localStorage.getItem('pc:push') || 'null')) && (await pushBtn(p, '가격 알림 끄기').count()) === 1, hits.map((x) => x.m + ' ' + x.u).join(','));
     ok('해지 뒤 되돌리기: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 8) start: subscribed earlier, the browser renewed the endpoint, and no alert is left — no new (empty) POST, the old id
+  //    is DELETEd and the browser subscription taken back
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: 'https://fcm.googleapis.com/fcm/send/renewed' });
+    await p.evaluate(() => localStorage.setItem('pc:push', JSON.stringify({ id: 'sub_old12345', ep: 'https://fcm.googleapis.com/fcm/send/old', h: '1:x' })));
+    hits.length = 0; await p.reload(); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    ok('시작: 주소가 바뀌었고 알림이 없으면 빈 POST 없이 옛 id DELETE + 브라우저 구독 해지', !hits.some((x) => x.m === 'POST') && hits.some((x) => x.m === 'DELETE' && x.u === '/v1/push/subscribe/sub_old12345')
+      && (await log(p)).unsub === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('시작: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();
