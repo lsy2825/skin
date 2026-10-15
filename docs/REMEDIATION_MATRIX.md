@@ -94,6 +94,7 @@
 | U11·6.0 이탈 대책 '내 견적'·한 번에 담기·첫 화면 가격 | 해결(B4, lsy2825/skin#12) | 브라우저 | `quickAdd`, 홈 `coverageLine`·ⓘ, 이름 '장바구니' → '내 견적'(사용자 결정) | e2e first_screens(새), jomi | `tests/run_regression.sh`에 first_screens 넣기(A) |
 | 13px 미만 글자 | 해결(B3.5, lsy2825/skin#13) | 브라우저 | `styles.css` 61곳·인라인 2곳 → 13px(배지 등 4곳은 그대로) | 320px 넘침 36/292(main 41/292) | — |
 | 6.0 약속 2 단계별 익명 집계 | 만듦·꺼짐(B5) | 단위·브라우저 | `domain/metrics.js`, `config.js` `metrics`·`metricsApi`, `check_csp.js` | metrics.test, e2e metrics(꺼짐 0건·켜짐 단계별 1번) | 켜기: A4 주소 + C 처리방침 + 사용자 승인. `run_regression.sh`에 metrics 넣기(A) |
+| 6.0 약속 1 푸시 구독 화면·sw.js | 만듦·꺼짐(B6) | 단위·브라우저 | `domain/push.js`, 관심 탭 `.nfp`, `sw.js` push·notificationclick, `config.js` `alertsApi`·`pushPublicKey` | push.test, sw.test, e2e push(꺼짐 0건·켜짐 POST/PUT/DELETE) | 켜기: A5 주소·공개키 + C 처리방침. 실기기 푸시 확인. `run_regression.sh`에 push 넣기(A) |
 
 ## 회귀 결과(2026-10-14)
 

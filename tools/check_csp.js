@@ -1,14 +1,15 @@
 // Deployment check (round-2 R11, 6.0 약속 5): the page's Content-Security-Policy must allow exactly the origins app/config.js
 // will call. A server address set in config.js but missing from connect-src is blocked by the browser (every call fails
 // quietly); an origin in the CSP that nothing uses is an unneeded opening. Run before each deploy: node tools/check_csp.js [appDir]
-// Exit 0 = consistent. The addresses are the 6.0 Workers chat A runs (metricsApi = cf/metrics); a new one goes in API_KEYS.
+// Exit 0 = consistent. The addresses are the 6.0 Workers chat A runs (metricsApi = cf/metrics, alertsApi = cf/alerts); a new
+// one goes in API_KEYS. pushPublicKey is a key, not an address.
 const fs = require("node:fs");
 const path = require("node:path");
 const dir = path.resolve(process.argv[2] || path.join(__dirname, "../app"));
 const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
 const cfgSrc = fs.readFileSync(path.join(dir, "config.js"), "utf8");
 // config.js keys that hold a server address the app calls with fetch/sendBeacon (connect-src)
-const API_KEYS = ["metricsApi"];
+const API_KEYS = ["metricsApi", "alertsApi"];
 // read-only origins the app calls on its own, not from config.js: the price factory's run status (app/screens/ops.js)
 const KNOWN_ORIGINS = ["https://yoonsiljang-factory.lsy2825.workers.dev"];
 
@@ -34,6 +35,9 @@ function check(htmlText, cfgText) {
   // the app's own rule for the address (app/domain/metrics.js): with metrics on, an address it refuses means nothing is sent
   if (cfg.metrics === true && !require("../app/domain/metrics.js").endpoint(cfg))
     problems.push("metrics is on but metricsApi is not a plain https address (empty, a query, fragment or login) — the app sends nothing");
+  // push (B6): half set up, or set up with values the app refuses (app/domain/push.js), means no push button at all
+  if ((cfg.alertsApi || cfg.pushPublicKey) && !require("../app/domain/push.js").enabled(cfg))
+    problems.push("push is set up but the app would hide it: alertsApi must be a plain https address and pushPublicKey a 65-byte VAPID public key (base64url) — both together");
   if (cfg.supabaseUrl && !allows(connect, origin(cfg.supabaseUrl))) problems.push(`connect-src is missing ${origin(cfg.supabaseUrl)}`);
   const used = new Set([...Object.values(apis), ...KNOWN_ORIGINS]);
   for (const x of connect) if (/workers\.dev|yoonsiljang/.test(x) && !used.has(x)) problems.push(`connect-src allows ${x} but no config.js address uses it`);

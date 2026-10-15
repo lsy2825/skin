@@ -15,7 +15,7 @@ const ROUTES = ['home', 'explore', 'saved', 'change', 'table', 'data', 'guide', 
   'search/' + encodeURIComponent('보톡스'), 'cart', 'me', 'ops', 'versus'];
 // buttons whose effect leaves the page or the browser by design (checked by their own tests)
 // … and the ones that reset this phone's data or lock the app (their own tests: ux_qa, demo_features)
-const SKIP = /설치하기|휴대폰 알림 켜기|테스트 알림|원본 보기|홈페이지|길찾기|전화|공유|저장된 가격 지우고|다시 받기|로그아웃|잠금|잠그기|초기화|기록 지우기/;
+const SKIP = /설치하기|휴대폰 알림 켜기|테스트 알림|가격 알림 받기|가격 알림 끄기|원본 보기|홈페이지|길찾기|전화|공유|저장된 가격 지우고|다시 받기|로그아웃|잠금|잠그기|초기화|기록 지우기/;
 
 (async () => {
   const b = await chromium.launch();
