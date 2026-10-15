@@ -56,6 +56,12 @@ test("규격을 물었는데 그 규격이 없으면 정직하게 표시(specHon
   assert.equal(r.specHonored, false);
 });
 
+test("지역을 물으면 같은 점수의 묶음 중 그 지역에 가격이 있는 것: '홍대 제모 싼 곳' → 홍대 가격(2026-10-15 C1 데이터)", () => {
+  const r = ask("홍대 제모 싼 곳");
+  assert.equal(r.kind, "price");
+  assert.ok(r.price && r.price.n > 0, `${r.fams.map((f) => f.name).join(", ")} — 홍대 가격 ${r.price && r.price.n}`);
+});
+
 test("답에 병원 이름을 넣지 않음(엔진 결과에 지점이 없음 — 줄 세우기는 비교 화면에서)", () => {
   const r = ask("강남 슈링크 제일 싼 곳");
   assert.equal(r.kind, "price");
