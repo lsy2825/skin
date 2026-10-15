@@ -5,6 +5,8 @@
 //     nothing is asked before the tap; the tap asks for the permission first, then subscribes with the public key and
 //     POSTs {subscription, rules}; removing the alert PUTs the new rules to /v1/push/rules/{id}; '끄기' DELETEs and
 //     unsubscribes; a refused permission sends nothing; a Worker that fails takes back the subscription just made
+//  3. no rule left (user decision 2026-10-15): with no alert there is a hint instead of the button; removing the last
+//     alert DELETEs the subscription once the 6 s '되돌리기' is over; an undo inside it keeps the subscription
 // The service worker's push and notificationclick handlers are unit-tested (tests/sw.test.js): headless Chromium has no
 // push service and cannot click a notification.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/push.js
@@ -17,13 +19,13 @@ const API = 'https://alerts.example.test';   // a made-up address: answered by t
 const KEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');   // a VAPID-shaped public key
 const SUB_ID = 'sub_12345678';
 
-async function start(b, cfg, answer = 'granted', postStatus = 200) {
+async function start(b, cfg, answer = 'granted', postStatus = 200, pre = null) {
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const hits = [];
   // the browser side faked: Notification (its prompt), the service worker registration and its push manager
-  await ctx.addInitScript((answer) => {
+  await ctx.addInitScript(([answer, pre]) => {
     const log = window.__push = { perm: 0, subscribe: [], unsub: 0 };
-    let permission = 'default', sub = null;
+    let permission = pre ? pre.perm : 'default', sub = null;
     function N() {}
     Object.defineProperty(N, 'permission', { get: () => permission });
     N.requestPermission = async () => { log.perm++; permission = answer; return answer; };
@@ -33,8 +35,10 @@ async function start(b, cfg, answer = 'granted', postStatus = 200) {
       async unsubscribe() { log.unsub++; sub = null; return true; } });
     const reg = { pushManager: { getSubscription: async () => sub,
       subscribe: async (o) => { log.subscribe.push({ uvo: o.userVisibleOnly, keyLen: o.applicationServerKey && o.applicationServerKey.length, key0: o.applicationServerKey && o.applicationServerKey[0] }); sub = mk(); return sub; } } };
+    // a phone that is already subscribed (the browser may have renewed the endpoint since)
+    if (pre && pre.endpoint) { sub = mk(); sub.endpoint = pre.endpoint; }
     if (navigator.serviceWorker) navigator.serviceWorker.getRegistration = async () => reg;
-  }, answer);
+  }, [answer, pre]);
   ctx.on('request', (r) => { const u = r.url(); if (u.startsWith(API) || /\/v1\/push\//.test(u)) hits.push({ m: r.method(), u: u.replace(API, ''), body: r.postData() }); });
   if (cfg) {
     await ctx.route((u) => u.pathname.endsWith('/config.js'), async (route) => { const res = await route.fetch(); let t = await res.text();
@@ -55,9 +59,9 @@ async function start(b, cfg, answer = 'granted', postStatus = 200) {
   await p.waitForSelector('.pc'); await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
   return { ctx, p, hits, errs };
 }
-// a 지켜보기 alert on 리쥬란힐러 2cc (X24), made the way a person makes it: compare → ⋯ → 가격 알림 → 알림 만들기
-async function watchX24(p) {
-  await p.evaluate(() => { location.hash = '#compare?k=X24'; }); await p.waitForTimeout(900);
+// a 지켜보기 alert (X24 = 리쥬란힐러 2cc), made the way a person makes it: compare → ⋯ → 가격 알림 → 알림 만들기
+async function watchX24(p, key = 'X24') {
+  await p.evaluate((k) => { location.hash = '#compare?k=' + k; }, key); await p.waitForTimeout(900);
   await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '가격 알림' }).click(); await p.waitForTimeout(300);
   await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(400);
   await p.evaluate(() => { location.hash = '#saved'; }); await p.waitForTimeout(600);
@@ -81,7 +85,7 @@ const log = (p) => p.evaluate(() => window.__push);
 
   // 2) on
   { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
-    await watchX24(p);
+    await watchX24(p, 'X12'); await watchX24(p);
     ok('켜짐: 누르기 전에는 권한을 묻지 않고 요청도 없음', (await log(p)).perm === 0 && hits.length === 0 && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify(await log(p)));
     await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
     const l = await log(p);
@@ -99,7 +103,8 @@ const log = (p) => p.evaluate(() => window.__push);
     hits.length = 0;
     await p.locator('#main button[aria-label$="알림 해지"]').first().click(); await p.waitForTimeout(1200);
     const put = hits.find((x) => x.m === 'PUT');
-    ok('켜짐: 알림을 해지하면 PUT /v1/push/rules/{id} {rules}', put && put.u === `/v1/push/rules/${SUB_ID}` && JSON.stringify(JSON.parse(put.body)) === '{"rules":[]}', put ? `${put.u} ${put.body}` : hits.map((x) => x.m + ' ' + x.u).join(','));
+    const left = put ? JSON.parse(put.body).rules : null;
+    ok('켜짐: 알림 하나를 해지하면 PUT /v1/push/rules/{id} {남은 rules}', put && put.u === `/v1/push/rules/${SUB_ID}` && left.length >= 1 && left.every((r) => r.key === left[0].key) && !hits.some((x) => x.m === 'DELETE'), put ? `${put.u} ${put.body}` : hits.map((x) => x.m + ' ' + x.u).join(','));
 
     // off
     hits.length = 0;
@@ -126,5 +131,49 @@ const log = (p) => p.evaluate(() => window.__push);
     ok('서버 실패: 구독 1 → POST 실패 → 그 구독 해지, id 없음, 다시 받기 버튼', l.subscribe.length === 1 && l.unsub === 1 && hits.filter((x) => x.m === 'POST').length === 1
       && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')) && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify(l));
     ok('서버 실패: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 5) no alert at all: a hint, no button, nothing asked
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await p.evaluate(() => { location.hash = '#saved'; }); await p.waitForTimeout(600);
+    const nfp = await p.locator('#main .nfp').innerText().catch(() => '');
+    ok('알림 없음: 받기 버튼 대신 안내(알림을 먼저 만들기), 권한·요청 0', (await pushBtn(p, '가격 알림 받기').count()) === 0 && /하나 이상 만들면/.test(nfp) && (await log(p)).perm === 0 && hits.length === 0, nfp.replace(/\s+/g, ' ').slice(0, 90));
+    ok('알림 없음: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+
+  // 6) the last alert removed: DELETE once the 되돌리기 window is over
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    hits.length = 0;
+    await p.locator('#main button[aria-label$="알림 해지"]').first().click(); await p.waitForTimeout(2000);
+    const early = hits.length;
+    await p.waitForTimeout(6000);
+    const del = hits.find((x) => x.m === 'DELETE');
+    ok('마지막 알림 해지: 되돌리기 시간 동안은 0건, 지난 뒤 DELETE + 브라우저 구독 해지 + id 지움', early === 0 && del && del.u === `/v1/push/subscribe/${SUB_ID}` && !hits.some((x) => x.m === 'PUT')
+      && (await log(p)).unsub === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), `early=${early} ${hits.map((x) => x.m + ' ' + x.u).join(',')}`);
+    ok('마지막 알림 해지: 화면은 꺼짐(알림을 먼저 만들라는 안내)', /하나 이상 만들면/.test(await p.locator('#main .nfp').innerText().catch(() => '')));
+    ok('마지막 알림 해지: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+
+  // 7) the last alert removed, then 되돌리기: the subscription stays
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    hits.length = 0;
+    await p.locator('#main button[aria-label$="알림 해지"]').first().click(); await p.waitForTimeout(500);
+    await p.locator('#toast button', { hasText: '되돌리기' }).click(); await p.waitForTimeout(7500);
+    ok('해지 뒤 되돌리기: DELETE 없음, 구독·id 그대로, 켜짐', !hits.some((x) => x.m === 'DELETE') && (await log(p)).unsub === 0
+      && await p.evaluate(() => !!JSON.parse(localStorage.getItem('pc:push') || 'null')) && (await pushBtn(p, '가격 알림 끄기').count()) === 1, hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('해지 뒤 되돌리기: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 8) start: subscribed earlier, the browser renewed the endpoint, and no alert is left — no new (empty) POST, the old id
+  //    is DELETEd and the browser subscription taken back
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: 'https://fcm.googleapis.com/fcm/send/renewed' });
+    await p.evaluate(() => localStorage.setItem('pc:push', JSON.stringify({ id: 'sub_old12345', ep: 'https://fcm.googleapis.com/fcm/send/old', h: '1:x' })));
+    hits.length = 0; await p.reload(); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    ok('시작: 주소가 바뀌었고 알림이 없으면 빈 POST 없이 옛 id DELETE + 브라우저 구독 해지', !hits.some((x) => x.m === 'POST') && hits.some((x) => x.m === 'DELETE' && x.u === '/v1/push/subscribe/sub_old12345')
+      && (await log(p)).unsub === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('시작: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();
