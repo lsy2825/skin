@@ -817,10 +817,19 @@ def build(rows, min_branches=3):
     # ('끝부분 mini', '오리지널 보톡스') is that branch's, not the family's; a second phrase far behind the first (22 rows of another
     # device under 인모드's 270 branches) is left out (2026-10-15)
     said, said_br, spelt = defaultdict(Counter), defaultdict(lambda: defaultdict(set)), defaultdict(Counter)
+    # A bundle family is explained only by the bracket right after its own product word: '보톡스 포함 패키지' showed the 울쎄라 and 레디어스
+    # brackets of '울쎄라피 프라임 리프팅(고강도 집속 초음파) 300샷 + 얼굴전체 스킨보톡스', and '기타 패키지' has no product of its own.
+    # A 제모 family's bracket that only names the device repeats what its keys already show (2026-10-15, 검증 6차)
     for i, v in enumerate(vs):
         if v:
-            for t in re.findall(r"\(([^()]{4,40})\)", rows[i]["name"]):
+            if v["fam"] == "package" and v["famname"] == "기타 패키지":
+                continue
+            for word, t in re.findall(r"([^\s()]*)\s*\(([^()]{4,40})\)", rows[i]["name"]):
                 t = t.strip()
+                if v["fam"] == "package" and not re.search(v["rx"], comp(word)):
+                    continue
+                if v["fam"] == "hair" and not re.sub(r"[^\w가-힣]", "", DEVICE.sub("", t)):
+                    continue
                 if " " in t and "," not in t and not labels.desc_problems(t) and not re.search(r"국산|국내산|수입|독일|미국|일반형|고순도|\d|회|체험|한정|이벤트|포함|별도|VAT|부가세|택|중|or|/|여|남|이상|이하|제외|소분|단독|본원|시술시|톡신|\+|전체", t):
                     lt = loose_text(t)
                     said[(v["famname"], v["cat"])][lt] += 1

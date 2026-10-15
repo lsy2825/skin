@@ -301,6 +301,12 @@ rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "울트라V 리
 dsc = [f["desc"] for f in fs if f["keys"]]
 ok("병원 설명은 띄어쓰기만 다르면 하나로 세고, 한 지점에서만 나온 문구는 뺌", dsc and dsc[0] == ["PDO 녹는 실"], dsc)
 
+rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "울쎄라피 프라임 리프팅(고강도 집속 초음파) 300샷 + 얼굴전체 스킨보톡스", "") for i in range(4)]
+                                        + [("블리비", f"{i}점", "리쥬란힐러(PN 프리미엄 스킨부스터) 2cc + 포텐자 1회", "") for i in range(4)]))
+pk = {f["name"]: f["desc"] for f in fs}
+ok("묶음 시술군 설명은 자기 상품 낱말 바로 뒤 괄호만(보톡스 포함 패키지에 울쎄라 설명 안 붙음, 리쥬란 포함 패키지는 붙음)",
+   not any("집속" in d for n, ds in pk.items() if "울쎄라" not in n for d in ds) and any("PN" in d for ds in pk.values() for d in ds), pk)
+
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
 
