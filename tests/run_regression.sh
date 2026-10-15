@@ -20,6 +20,7 @@ run "server round 2 (PostgreSQL: accounts, idempotency, refunds, deadlines, AI b
 run "CSP vs config origins" node tools/check_csp.js
 run "DB security policies" bash tests/db/run_security_tests.sh
 run "secret scan" python3 tests/security/scan_secrets.py
+run "security headers (app/_headers)" python3 tests/security/headers_test.py
 run "comparison keys (xkeys)" python3 build2/xkeys.py
 run "weekly value guard" python3 tests/weekly_guard_test.py
 run "brand collectors (parsers on saved public pages)" python3 tests/brand_parsers_test.py
