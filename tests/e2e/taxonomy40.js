@@ -47,7 +47,7 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
   if (await kinds.count() > 1) {
     const other = kinds.locator('xpath=self::*[@aria-checked="false"]').first(); const t = (await other.innerText()).trim();
     await other.click(); await p.waitForTimeout(800);
-    const label = await p.locator('.pricecard .spec .label').innerText().catch(() => '');
+    const label = await p.locator('.cmphead .cmpt').innerText().catch(() => '');
     ok('B6 다른 종류를 누르면 그 종류의 비교 묶음으로 바뀜', (await p.evaluate(() => location.hash)) !== before && label.includes(t.split(' ')[0]), `${t} → ${label}`);
   } else ok('B6 다른 종류를 누르면 그 종류의 비교 묶음으로 바뀜', false, '종류가 하나뿐');
   await p.locator('.seg.modesw button', { hasText: '자세히' }).click(); await p.waitForTimeout(700);

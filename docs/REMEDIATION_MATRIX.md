@@ -76,6 +76,22 @@
 | D7 유료 중간값 불일치 | 해결 | 단위 | R03과 같음 |
 | D8 검색 연산자·초성 | 해결 | 단위 | — |
 
+## B — 6.0 앱 화면(채팅 B, 2026-10-15)
+
+검수 보고서 U번호·개선 보고서 E번호 기준. 검증은 `단위`(node --test) · `브라우저`(e2e, 이 저장소의 시험을 잠금 해제 상태로 실행, 실기기 아님).
+
+| ID | 구현 | 검증 | 코드 | 시험 | 남은 것 / 다음 조치 |
+|---|---|---|---|---|---|
+| U4·U11 할인율·'최저' 표시 | 해결(B1, lsy2825/skin#7) | 단위·브라우저 | `app.js` trendCard·addKeySheet가 `discountEmphasis`·`lowestHighlight`를 따름 | e2e objective | — |
+| U13·U20·E8 '2주'·이력 2회 | 해결(B1) | 단위·브라우저 | `Stats.historyReady`(서로 다른 8주), `Stats.obsLabel` | stats.test, e2e audit40 B7 | 기준 바뀐 날 이전 기록 빼기는 데이터(C) |
+| U7·U14·E11 개발 문구·브랜드 수 | 해결(B1) | 브라우저 | `vatBrandsNote`·`liveBrands`(데이터에서 셈) | — | `meta.about.sources`가 5개 브랜드라 화면은 지점이 있는 브랜드로 대신(C에 부탁) |
+| U8 빨간 '초안' 배지 | 해결(B1) | 브라우저 | `reviewBadge`·`kbFoot` | e2e concern | — |
+| U5·E1 '병원 설명' | 해결(B1) | 브라우저 | guideBox·사전·죠미 답·목록에서 `f.desc` 안 보임 | — | 판촉 문구 거름 사전은 데이터(C) |
+| U6·U10·E5·E6 부가세 미확인·추가 옵션 | 해결(B1) | 단위·브라우저 | `cmpOk`·`cmpRk`, `Classify.isAddon` | classify.test | 닥터에버스·셀린 부가세 조사는 데이터(C2) |
+| E4·E10·U18·E12 중복 줄·빈 검색 요약 | 해결(B1) | 단위·브라우저 | `Search.uniqueRows` | search.test | 규격 이름 대소문자·부위 이름(E2·E3)은 데이터(C1) |
+| 크레딧 화면 제거 | 해결(B2, lsy2825/skin#8) | 단위·브라우저 | `commerce.js` 삭제, 마이 메뉴·문구 | e2e devices51·a11y 갱신 | domain 5개 파일은 A3 뒤, demowallet·economics는 A6 뒤 삭제 |
+| U1·U3·U17·E7 비교 화면 한 기준·길이·아래 막대 | 해결(B3) | 브라우저 | `cmpHead`·`rangeBar`·`cmpMoreSheet`, 목록 10곳+모두 보기, 접기 | e2e objective·compare_cards·pricenow·demo_features | '가격과 함께 꼭 확인하세요' 접기는 정책 문서 결정 필요, 13px 미만 글자(배지) 정리 |
+
 ## 회귀 결과(2026-10-14)
 
 전체 회귀 34/34 묶음 통과(단위 93, 서버 41, DB 보안·백업 복원, e2e 24개). 첫 실행에서 실패한 7개 중 2개는 앱 결함(비교 화면 '함께 확인할 것' 카드 위치, 죠미를 이미 만난 사람에게 첫 인사) → 앱 수정, 5개는 이번 제품 결정으로 낡은 기대값 → 시험 수정. 고친 내용은 커밋 `0fca15d`·`61e5a53`·`0ccd594`.

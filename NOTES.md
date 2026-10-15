@@ -64,3 +64,10 @@
 5. 휴대폰 주소: https://lsy2825.github.io/skin/ (Pages 켜진 뒤). "홈 화면에 추가" 안내.
 - 2026-10-14 규격 이름: 닥터에버스 칸 제목(가격대·꼬리표·행사명)이 상품명 앞에 붙고 남은 낱말이 붙어 나와 '20만원3921만재생' 같은 규격이 보였음 → clean.title_words·taxonomy._spaced로 원인 수정, build2/labels.py 빌드 가드(가격·날짜·홍보·기호·붙은 글자 규격은 비교 묶음 안 만듦) + tests/labels_test.py·labels.test.js. 유앤아이 제모 화면의 필링·스킨케어는 자기 이름대로 분류. docs/TREATMENT_TAXONOMY.md §1.
 - 2026-10-14 클릭 무반응: 입력칸 change/focusout이 누르는 도중 화면을 다시 그려 클릭이 사라짐(예산·최소/최대 가격 뒤 칩) → render()가 누름이 끝날 때까지 기다림, go()는 지금 주소 기준. tests/e2e/clickable.js 회귀 포함. CLAUDE.md 규칙.
+
+## 2026-10-15 · 채팅 B(앱 화면) 메모
+- 분업: 개발 지시서 https://claude.ai/code/artifact/d3a54da8-22f2-4f5c-aa90-ff3e13f6e82d (B = app/ 화면, 브랜치 app/…).
+- B1(lsy2825/skin#7) 개선 1단계, B2(#8) 화면 쪽 크레딧 제거, B3 비교 화면 새 배치 — 세 PR은 쌓여 있어 #7 → #8 → B3 순서로 합침.
+- 사용자 결정(2026-10-15): '장바구니' → '내 견적'으로 바꿈(B4). 비교 화면 '가격과 함께 꼭 확인하세요'는 접지 않고 가격 바로 아래
+  (OBJECTIVE_DISPLAY_POLICY.md 그대로). 13px 미만 글자(배지)는 따로 작업으로 13px에.
+- 이 클라우드 환경에는 APP_PIN이 없어서 e2e는 잠금 해제 상태(sessionStorage)를 미리 넣는 방식으로 돌렸음 — 공식 결과는 APP_PIN으로 다시 확인할 것.

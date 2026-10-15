@@ -68,17 +68,17 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   // feedback: cart (undo), saved, alert
   { const { ctx, p } = await page(); await p.waitForSelector('.pc');
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
-    await p.locator('.actions .addbtn').click(); await p.waitForTimeout(250); await p.locator('.sheet button', { hasText: /회 담기$/ }).click(); await p.waitForTimeout(300);
+    await p.locator('.cmphead .addbtn').click(); await p.waitForTimeout(250); await p.locator('.sheet button', { hasText: /회 담기$/ }).click(); await p.waitForTimeout(300);
     const tt = await p.locator('#toast').textContent();
     ok('담으면 죠미 확인 토스트 + 되돌리기', await said(p, 'added', tt) && await p.locator('#toast.jt img.mascot').count() === 1 && /되돌리기/.test(tt) && (await p.locator('#cart-n').textContent()) === '1', tt);
-    ok('담은 뒤 버튼이 바로 "담김"', /담김/.test(await p.locator('.actions .addbtn').textContent()));
+    ok('담은 뒤 버튼이 바로 "담김"', /담김/.test(await p.locator('.cmphead .addbtn').textContent()));
     await p.locator('#toast button', { hasText: '되돌리기' }).click(); await p.waitForTimeout(300);
     ok('되돌리기 → 장바구니에서 빠짐', await p.locator('#cart-n').isHidden() && (await p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts'))[0].items.length)) === 0);
     ok('토스트는 하나만(겹치지 않음)', await p.locator('#toast').count() === 1);
-    await p.click('.keyhead .favbtn'); await p.waitForTimeout(250);
-    ok('관심 저장 → 하트 채움 + "저장했어" 토스트', (await p.locator('.keyhead .favbtn').getAttribute('aria-pressed')) === 'true' && await said(p, 'saved', await p.locator('#toast').textContent()) && /관심 보기/.test(await p.locator('#toast').textContent()));
+    await p.click('.cmphead .favbtn'); await p.waitForTimeout(250);
+    ok('관심 저장 → 하트 채움 + "저장했어" 토스트', (await p.locator('.cmphead .favbtn').getAttribute('aria-pressed')) === 'true' && await said(p, 'saved', await p.locator('#toast').textContent()) && /관심 보기/.test(await p.locator('#toast').textContent()));
     const before = await p.locator('#toast').textContent();
-    await p.locator('.actions .btn', { hasText: '알림' }).click(); await p.waitForTimeout(250);
+    await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '가격 알림' }).click(); await p.waitForTimeout(250);
     ok('알림을 만들기 전에는 윙크 토스트 없음', !/알려줄게/.test(await p.locator('#toast.on').textContent().catch(() => '')) || before === await p.locator('#toast').textContent());
     await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(300);
     const at = await p.locator('#toast').textContent(), saved = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]').length);

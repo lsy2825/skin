@@ -30,6 +30,7 @@ const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).re
 
   // 1) price classes: the regular class = branches with a live plain row, its range = their lowest prices (VAT 포함 예상)
   await go('compare?k=X29');
+  await p.locator('#cmpmore > summary').click(); await p.waitForTimeout(200);   // 6.0: price kinds are in the folded expert section
   const cls = await p.$$eval('.pcls .pcl', (xs) => xs.map((x) => x.innerText));
   const reg = new Map();
   for (const r of ROWS) if ((S[r[7]] || '').split(' ').includes('X29') && live(r) && r[5] === 0 && !S[r[6]]) { const v = VAT(r); if (!reg.has(r[0]) || v < reg.get(r[0])) reg.set(r[0], v); }
