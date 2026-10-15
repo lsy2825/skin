@@ -1,97 +1,143 @@
 # 사고 대응 계획 (Incident Response Plan)
 
-기준일: 2026-10-13. 운영자는 1명이에요(저장소 소유자). Claude 세션은 운영자가 요청할 때 코드 수정과 확인을 도와요.
+기준일: 2026-10-15 (윤실장 6.0, 개발 지시서 A8). 문서 주인: 채팅 A(플랫폼·서버·보안).
+운영자는 1명이에요(저장소 소유자 `lsy2825`). 세 채팅(A 플랫폼·B 앱 화면·C 데이터)은 운영자가 요청할 때 고치고 확인해요.
+
+## 0. 지금 구성 (이 문서가 전제하는 것)
+
+| 무엇 | 어디 | 주의 |
+|---|---|---|
+| 코드·가격 기록 | GitHub `lsy2825/skin` **비공개**(2026-10-15 전환) | 그 전까지 공개였고, 복사본 `leebackcoding/skin`(2026-10-14)이 있어요. **2026-10-15 이전 커밋은 영원히 공개된 것으로 봐요** |
+| 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
+| 앱 주소 | Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
+| 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
+| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
+| 로그인·DB(Supabase) | 꺼져 있음(`app/config.js` 비어 있음) | §7은 켠 뒤에만 해당 |
 
 ## 1. 등급과 첫 대응 시간
+
 | 등급 | 예 | 첫 대응 |
 |---|---|---|
-| 1 (치명) | 비밀 키 유출(service_role 등), 계정 탈취, 가격 데이터 대량 변조, 사용자 데이터 유출 | 알게 된 즉시 |
-| 2 (높음) | 잘못된 가격 배포, 수집 차단으로 오래된 가격, 의존성 보안 경고(높음) | 24시간 안 |
-| 3 (보통) | 일부 지점 오류, 신고 스팸, 낮은 등급 경고 | 다음 정기 갱신 전 |
+| 1 (치명) | 비밀값 유출(Cloudflare 토큰·VAPID 비밀키 등), 계정 탈취(GitHub·Cloudflare), 가격 데이터 대량 변조, 사용자 데이터 유출 | 알게 된 즉시 |
+| 2 (높음) | 잘못된 가격 배포, 앱 화면 깨짐(합친 PR 때문), 수집 차단으로 오래된 가격, 의존성 보안 경고(높음) | 24시간 안 |
+| 3 (보통) | 일부 지점 오류, 집계·알림 Worker 일시 오류, 낮은 등급 경고 | 다음 정기 갱신 전 |
 
 **공통 순서**
-1. 멈춘다: 배포나 워크플로를 중지해요.
-2. 막는다: 키 교체, 권한 회수.
-3. 되돌린다: 커밋 revert, 백업 복구.
-4. 확인한다: 테스트를 다시 돌려요.
-5. 기록한다: 아래 §9 양식.
+1. **멈춘다:** 자동 갱신(워크플로)을 끄거나, Cloudflare에서 이전 버전으로 되돌려요(§3).
+2. **막는다:** 키를 교체하고 권한을 회수해요.
+3. **되돌린다:** 커밋을 revert하고, 필요하면 백업에서 복구해요.
+4. **확인한다:** 시험을 다시 돌리고 실제 주소에서 확인해요.
+5. **기록한다:** §12 양식에 남기고, 재발 방지 대책을 정해요.
 
-## 2. 비밀 정보가 공개됐을 때 (PIN · 키 · 토큰)
-1. 무엇이 어디에 나갔는지 확인해요.
-   - `python tests/security/scan_secrets.py --history`
-   - GitHub secret scanning 알림(켜 두었다면)
-2. **교체가 먼저예요.** 공개 저장소의 기록은 복사본이 남아서, 지우는 것만으로는 해결되지 않아요.
-3. 무엇이 나갔는지에 따라
-   - **비밀번호 화면 PIN**
-     1. 새 PIN의 해시를 만들어요: `python3 -c "import hashlib;print(hashlib.sha256(b'velyb-gate:새PIN').hexdigest())"`
-     2. `app/gate.js`의 `HASH`를 바꾸고 `app/sw.js`의 `VER`를 올려요.
-     3. push하면 자동 배포돼요. 사용하는 분들께 새 PIN을 알려요.
-   - **Supabase 키**
-     1. 대시보드에서 키를 교체(rotate)해요. service_role이 나갔다면 JWT secret까지 바꿔야 해요.
-     2. 새 service_role 키는 GitHub Settings → Secrets에만 넣어요.
-     3. Auth 로그와 `audit_logs`에서 그 사이의 이상 변경을 찾아요.
-   - **GitHub 토큰·계정**: §5
-4. 필요하면 git 기록을 다시 써요(`git filter-repo`). 단, 이미 퍼진 복사본은 없앨 수 없다는 걸 전제로 해요.
+**누가 고치나:** 파일 주인표(`CLAUDE.md` '분업')를 따라요. 앱 화면 파일은 B, 데이터·수집은 C, 배포·비밀값·Worker는 A예요. 등급 1에서는 주인을 기다리지 않아요. 운영자가 "이번만 A가 고친다"고 정하면 A가 고치고, 뒤에 주인 채팅에 알려요.
 
-## 3. 잘못되거나 변조된 가격이 배포됐을 때
-1. **멈춤:** GitHub → Actions → weekly-prices → "Disable workflow"(자동 갱신 중지)
-2. **원인 커밋 찾기:** `git log --oneline -- app/data.json data2/accepted`
-   - 봇 커밋은 'Weekly prices' 또는 'Rebuild app data'예요.
-   - 사람이 바꾼 커밋인지, 다른 계정인지 확인해요.
-3. **되돌림:** `git revert <커밋>` → push하면 지난 데이터로 재배포돼요(약 2~3분).
-4. **확인:** 앱에서 해당 시술을 보고, `data2/report.md`와 검토 대기(`data2/review.csv`)를 확인해요.
-5. 원인이 수집 쪽이면(사이트 구조 변경 등) 고친 뒤 Actions를 다시 켜고 수동 실행해요.
-6. DB를 쓰는 경우: `audit_logs`에서 해당 행의 이전값을 찾아 관리자(MFA)가 되돌리거나, 백업에서 복구해요(§6).
+## 2. 비밀값이 새었을 때
 
-## 4. 수집이 막혔거나 robots.txt가 막을 때
-- 자동 안전장치가 있어요.
-  - 행·지점이 30% 넘게 줄면 지난 자료를 유지해요.
-  - robots.txt가 막거나 확인할 수 없으면(5xx·연결 실패) 그 주 그 브랜드는 수집하지 않아요.
-- `data2/report.md`와 Actions 요약에서 어느 브랜드인지 확인해요.
-- 그 주에 수집하지 못한 지점은 앱에 바로 '지난 자료'(STALE) 표시가 붙고, '조건 없는 최저가'에서 빠져요.
-- 여러 주 이어지면 사이트 정책을 확인하고, 필요하면 수집을 중단해요.
+1. **교체가 먼저예요.** 기록을 지워도 이미 복사된 것은 남아요. 2026-10-15 이전에 커밋된 것은 공개됐다고 봐요.
+2. 어디에 나갔는지 확인해요. `python3 tests/security/scan_secrets.py --history`(전체 기록), GitHub 비밀값 검사 알림(켜 두었다면).
+3. 종류별로 이렇게 해요.
 
-## 5. GitHub 계정이나 저장소가 손상됐을 때
-1. 비밀번호 변경, 2단계 인증 확인, 모든 세션 로그아웃
-2. Settings → Applications·Tokens에서 모르는 토큰·앱 권한을 회수해요.
-3. 저장소 Settings → Collaborators·Deploy keys·Secrets를 점검해요. Secrets는 모두 교체해요.
-4. 최근 커밋과 워크플로 실행 기록을 검토하고, 변조된 커밋은 revert해요(§3).
-5. 워크플로 파일이 바뀌었는지(외부 액션, 권한) `git log -p .github/workflows` 로 확인해요.
+| 새어 나간 것 | 할 일 |
+|---|---|
+| **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 GitHub 저장소 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`에 넣어요. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
+| **VAPID 비밀키(푸시)** | ① 새 키 쌍을 만들어요(`node cf/alerts/vapid-keygen.mjs`, A5 이후). ② `wrangler secret put`으로 Worker에 넣어요. ③ 공개키를 B에게 부탁 메모로 보내 `config.js`를 바꾸게 해요. 기존 구독은 새 키로 다시 구독해야 해요 |
+| **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
+| **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 새 번호의 해시로 `app/gate.js`의 `HASH`를 바꾸고 `app/sw.js`의 `VER`를 올려요(B 파일 → 부탁 메모, 급하면 §1 예외). **예전 번호는 공개 기록에 남아 있어요** |
+| **Supabase 키**(켠 뒤) | 대시보드에서 키를 교체해요. service_role이 나갔으면 JWT secret까지 바꿔요. Auth 로그와 `audit_logs`에서 이상 변경을 찾아요 |
+| **GitHub 토큰·계정** | §5 |
 
-## 6. 데이터베이스 사고 (로그인·DB를 켠 뒤)
-1. **읽기 전용 전환(긴급):** `revoke insert, update, delete on all tables in schema public from authenticated;`
-   - 앱은 기기 저장으로 계속 동작해요.
-2. **복구:** 최근 백업(`pg_dump -Fc`)을 새 DB에 `pg_restore` 해요.
-   - 절차는 `tests/db/backup_restore_test.sh`와 같아요.
-   - 행 수·md5·정책 수·트리거 수를 비교해 같으면 전환해요.
-3. **정책 재적용:** `supabase/DATABASE_ACCESS_POLICIES.sql`(다시 실행해도 안전) → `bash tests/db/run_security_tests.sh`로 같은 정책을 테스트 DB에서 확인해요.
-4. Supabase 플랜에 따라 자동 백업·시점 복구(PITR) 여부가 달라요. 켤 때 확인하고, 주 1회 `pg_dump`를 별도로 보관하는 걸 권해요.
+4. 필요하면 git 기록을 다시 써요(`git filter-repo`). 단, 이미 퍼진 복사본은 없앨 수 없다고 보고 해요.
 
-## 7. 의존성 보안 경고
-1. Dependabot 알림이나 PR을 확인해요.
-2. `requirements.txt`의 버전을 올리거나 액션 SHA를 갱신해요.
-3. 테스트를 돌려요.
-   - `node --test`, `python build2/xkeys.py`, `python build2/taxonomy.py`
-   - 수집 모듈 import 확인
-4. push하면 자동 재배포돼요. 수집에 쓰는 패키지면 다음 주간 실행 결과를 확인해요.
+## 3. 잘못되거나 변조된 가격·화면이 배포됐을 때
 
-## 8. 남용·스팸 (신고·요청 폭주)
-- DB 한도가 먼저 막아요(신고 하루 10건 등). Postgres 로그에서 `quota_exceeded`를 찾아 사용자 id를 확인해요.
-- 반복되면 Supabase Auth에서 해당 사용자를 차단(ban)하거나 삭제해요. 그 사용자의 신고는 검수자가 REJECTED로 바꿔요.
-- 개인정보가 담긴 GitHub 신고 이슈는 운영자가 숨기거나 삭제해요.
+**가장 빠른 길: Cloudflare에서 이전 버전으로 되돌리기 (1분)**
+- 대시보드: **Workers & Pages** → `yoonsiljang` → **Deployments** → 정상이던 버전의 ⋯ → **Rollback**.
+- 명령: `npx wrangler@4.145.0 rollback --name yoonsiljang`(바로 전 버전) 또는 `rollback <버전ID>`.
+- 최근 **100개 버전**까지 되돌릴 수 있어요(Cloudflare 문서: Workers Rollbacks).
+- 되돌려도 저장소는 그대로예요. 그래서 다음 공장 실행이 같은 내용을 다시 배포할 수 있어요. 아래 단계까지 해야 끝나요.
 
-## 9. 개인정보 요청
-- **로그인 사용자의 탈퇴:** 앱의 탈퇴(`delete_me`)로 계정·프로필·기록이 함께 지워져요.
-- **기기 데이터:** 기기 데이터는 사용자 본인 브라우저에만 있어요. 브라우저 사이트 데이터를 지우면 사라져요.
+**그다음 저장소 정리**
+1. **멈춤:** GitHub → Actions → **weekly-prices** → ⋯ → **Disable workflow**(자동 갱신 중지).
+2. **원인 커밋 찾기:** `git log --oneline -- app/data.json data2/accepted`(데이터), `git log --oneline -- app/`(화면). 봇 커밋은 `Weekly prices`, `Rebuild app data`, `Price check`예요.
+3. **되돌림:** `git revert <커밋>`을 PR로 올려요. 운영자가 승인해서 main에 합치면 공장이 수집 없이 다시 만들어 배포해요(약 5분).
+   - 합친 PR 때문에 화면이 깨진 경우도 같아요. **그 PR을 올린 채팅**이 revert PR을 올려요(지시서 '충돌·사고').
+4. **확인:** 실제 주소에서 해당 시술·화면을 보고, `data2/report.md`와 검토 대기(`data2/review.csv`)를 확인해요.
+5. 원인이 수집 쪽(사이트 구조 변경 등)이면 C가 수집기·정리 규칙을 고쳐요. 데이터를 손으로 고치지 않아요(공통 규칙 9). 그 뒤 워크플로를 다시 켜고 수동 실행해요.
 
-## 10. 재해 복구 목표
-| 대상 | 복구 시점 목표(RPO) | 복구 시간 목표(RTO) | 방법 |
+## 4. 가격 공장이 실패하거나 수집이 막혔을 때
+
+- **앱은 어제 데이터를 계속 보여줘요.** `factory.sh`는 시험·빌드가 실패하면 저장·배포 전에 멈춰요(`set -e`).
+- 안전장치
+  - 행·지점이 30% 넘게 줄면 지난 자료를 유지해요(`build2/weekly.py`).
+  - robots.txt가 막거나 확인이 안 되면(5xx·연결 실패) 그 주 그 브랜드는 수집하지 않아요.
+  - 수집 못 한 지점은 앱에 '지난 자료' 표시가 붙어요.
+- 어디서 막혔는지: GitHub → Actions → 실패한 실행 → 'Factory' 단계 로그, 그리고 `data2/report.md`.
+- 원인별 담당: 시험·배포·토큰은 A, 수집기·데이터 가드는 C, 앱 시험(`tests/*.test.js`)은 B.
+- 여러 주 이어지면 사이트 정책(약관·robots.txt)을 확인하고, 필요하면 그 브랜드 수집을 멈춰요. 차단 우회는 하지 않아요.
+- 모니터링 알림(A7)이 생기면 공장 실패·데이터 가드 걸림·수집 8일 초과가 메신저로 와요. 그 전까지는 GitHub 실패 메일이 유일한 신호예요.
+
+## 5. GitHub 계정·저장소가 손상됐을 때
+
+1. 비밀번호를 바꾸고, 2단계 인증을 확인하고, 모든 세션을 로그아웃해요.
+2. Settings → Applications·Developer settings에서 모르는 토큰·앱 권한을 회수해요. Claude GitHub 앱 권한도 확인해요.
+3. 저장소 Settings → Collaborators·Deploy keys·Secrets를 점검해요. **Secrets는 모두 교체해요**(Cloudflare 토큰은 §2).
+4. 최근 커밋·PR·워크플로 실행을 검토하고, 변조된 커밋은 revert해요(§3).
+5. 워크플로 파일이 바뀌었는지 확인해요: `git log -p .github/workflows`(외부 액션, 권한, 비밀값 출력).
+6. 저장소가 다시 공개로 바뀌지 않았는지 확인해요: Settings → General → Danger Zone의 visibility.
+
+## 6. Cloudflare 계정이 손상됐을 때
+
+1. 비밀번호를 바꾸고 2단계 인증을 켜요. 모든 세션을 로그아웃해요.
+2. **API Tokens**에서 모르는 토큰을 지우고, 쓰는 토큰은 Roll해요(§2 표).
+3. **Workers & Pages**에서 Worker 목록·배포 기록·Secrets를 확인해요. 모르는 Worker는 지우고, 우리 Worker는 저장소에서 다시 배포해요(Actions → weekly-prices → Run workflow, `skip_scrape`).
+4. Members(계정 구성원)와 Access 설정(관리자 이메일 목록)을 확인해요.
+
+## 7. 데이터베이스 사고
+
+**D1(집계·알림 Worker, A4·A5 배포 뒤)**
+- 집계(`cf/metrics`)에는 날짜·단계·횟수만 있어요. 잃어도 개인정보 피해는 없고, 그날 숫자만 비어요.
+- 알림(`cf/alerts`)에는 푸시 구독 주소와 알림 조건이 있어요(이름·연락처 없음).
+  - 의심되면 Worker를 이전 버전으로 되돌리거나(§3), 알림 cron을 멈춰요(대시보드 → Worker → Settings → Triggers).
+- D1 시점 복구(Time Travel)의 보관 기간과 사용법은 배포 전에 Cloudflare 문서에서 확인해서 여기에 적어요(**확인 필요**).
+
+**Supabase(로그인·DB를 켠 뒤에만)**
+1. **읽기 전용 전환(긴급):** `revoke insert, update, delete on all tables in schema public from authenticated;` 앱은 기기 저장으로 계속 동작해요.
+2. **복구:** 최근 백업(`pg_dump -Fc`)을 새 DB에 `pg_restore`해요. 절차는 `tests/db/backup_restore_test.sh`와 같아요. 행 수·md5·정책 수·트리거 수가 같으면 전환해요.
+3. **정책 재적용:** `supabase/DATABASE_ACCESS_POLICIES.sql`(다시 실행해도 안전)을 적용하고 `bash tests/db/run_security_tests.sh`로 확인해요.
+
+## 8. 의존성 보안 경고
+
+1. Dependabot 알림·PR을 확인해요(켜는 법은 A9 안내).
+2. 파일 주인이 고쳐요.
+   - `requirements.txt`는 C
+   - 액션 SHA(`.github/`)와 wrangler 버전은 A
+   - 화면 쪽 라이브러리(`app/vendor/`)는 B
+3. 관련 시험을 돌리고 PR로 합쳐요. 수집에 쓰는 패키지면 다음 공장 실행 결과를 확인해요.
+
+## 9. 남용·스팸
+
+- **집계 Worker:** 날짜·단계별 숫자만 늘어나요. 이상하게 튀면 그날 숫자를 분석에서 빼요. 저장된 개인정보가 없어서 사용자를 찾아 막는 방법은 없어요(설계상 그래요).
+- **알림 Worker:** 구독 한도와 입력 검사가 먼저 막아요. 반복되면 구독 받기를 잠시 멈추는 판(배포)을 올려요.
+- **가격 파일 대량 수집:** 도메인을 산 뒤 `data.json` 요청 제한 규칙(A9)을 켜요. 그 전에는 막을 방법이 거의 없어요.
+
+## 10. 개인정보 요청
+
+- **기기 데이터:** 장바구니·관심·기록은 사용자 브라우저에만 있어요. 사이트 데이터를 지우면 사라져요.
+- **푸시 알림:** 앱에서 알림을 끄면 구독이 지워져요(`DELETE /v1/push/subscribe/{id}`). 이름·연락처는 처음부터 받지 않아요.
+- **익명 집계:** 날짜·단계별 횟수뿐이라, 특정인의 기록이 없어요.
+- **로그인을 켠 뒤:** 앱의 탈퇴(`delete_me`)로 계정·프로필·기록이 함께 지워져요.
+
+## 11. 복구 목표
+
+| 대상 | 복구 시점(RPO) | 복구 시간(RTO) | 방법 |
 |---|---|---|---|
-| 앱·가격 데이터(정적) | 마지막 커밋(보통 주 1회 + 이벤트 종료 다음 날) | 10분 안 | git revert 또는 워크플로 재실행. git 기록 전체가 백업이에요 |
-| 수집 원본 | 마지막 성공 주 | — | `data2/accepted/`(커밋됨) |
-| DB(켠 뒤) | 플랜의 자동 백업 주기 + 주간 pg_dump | 1시간 안(목표) | §6. 복구 절차는 CI에서 매번 검증 |
+| 앱 화면·가격 데이터 | 직전 배포 버전 | **1분**(Cloudflare 롤백) / 10분(revert + 재배포) | §3. git 기록 전체가 백업이에요 |
+| 수집 원본 | 마지막 성공 수집 | — | `data2/accepted/`(커밋됨) |
+| 집계·알림 D1 | 확인 필요(§7) | 1시간 안(목표) | §7 |
+| Supabase(켠 뒤) | 플랜의 자동 백업 주기 + 주간 `pg_dump` | 1시간 안(목표) | §7. 복구 절차는 CI에서 매번 검증 |
 
-## 11. 사고 기록 양식
+## 12. 사고 기록 양식
+
 ```
 날짜·시각(발견/대응/종료):
 등급:
@@ -99,5 +145,6 @@
 영향(사용자·데이터·기간):
 원인:
 한 일(멈춤 → 막음 → 되돌림 → 확인):
+담당 채팅·PR:
 다시 안 생기게 할 일:
 ```
