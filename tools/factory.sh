@@ -77,13 +77,21 @@ build() {   # $1 = "" (scrape) or --skip-scrape
 
 deploy() {
   if [ -z "$DEPLOY_TOKEN" ]; then log "no CLOUDFLARE_API_TOKEN — not deployed"; return 0; fi
-  log "deploy app/ to Cloudflare"
-  CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy
+  # Public hosting is paused (owner's decision 2026-10-15): the public Worker is deployed only when PUBLIC_DEPLOY is exactly
+  # "on" (GitHub → Settings → Secrets and variables → Actions → Variables → PUBLIC_DEPLOY). Off, the public address keeps
+  # serving its last version and is not updated; the admin host below (behind Cloudflare Access) still gets every build.
+  if [ "${PUBLIC_DEPLOY:-}" = on ]; then
+    log "deploy app/ to Cloudflare (public)"
+    CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy
+  else
+    log "public app NOT deployed (PUBLIC_DEPLOY is not 'on': public hosting paused) — the public address keeps its last version"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::notice title=Cloudflare::public app not deployed (PUBLIC_DEPLOY off) — admin host only"; fi
+  fi
   log "deploy app/ to Cloudflare (admin host, cf/admin)"
   # not fatal: one bad Access/Worker setting must not turn every daily run red and hide the real factory result
   if ! CLOUDFLARE_API_TOKEN=$DEPLOY_TOKEN $WRANGLER deploy --config cf/admin/wrangler.jsonc; then
-    log "admin host NOT deployed — public app is up; fix cf/admin and run 'rebuild'"
-    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::yoonsiljang-admin (cf/admin) not deployed — public app is up"; fi
+    log "admin host NOT deployed — fix cf/admin and run 'rebuild'"
+    if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::yoonsiljang-admin (cf/admin) not deployed"; fi
   fi
   return 0
 }

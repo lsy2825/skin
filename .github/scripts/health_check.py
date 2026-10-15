@@ -295,8 +295,14 @@ def run(args, env, fetch=http_fetch, now=None, send=telegram.send):
                 problems += guarded("factory", lambda: check_factory_runs(runs, now), problems, [])
         else:
             notes.append("가격 공장 실행 검사 건너뜀 (GITHUB_REPOSITORY/GITHUB_TOKEN 없음)")
-        live, live_meta = guarded("live", lambda: check_live(fetch, args.app_url), problems, ([], None))
-        problems += live
+        if env.get("PUBLIC_DEPLOY", "") == "on":
+            live, live_meta = guarded("live", lambda: check_live(fetch, args.app_url), problems, ([], None))
+            problems += live
+        else:
+            # public hosting paused (tools/factory.sh deploy): the public copy is frozen on purpose, so it is neither probed
+            # nor used for the collection dates — the repository's data is what the factory keeps building
+            live_meta = None
+            notes.append("공개 주소 검사 건너뜀 (공개 배포 멈춤 — PUBLIC_DEPLOY가 on이 아님)")
         meta, where = (live_meta, "배포된 data-meta.json") if live_meta else (file_meta, "app/data-meta.json")
         notes.append(f"수집일 검사 기준: {where}")
         problems += guarded("freshness", lambda: check_freshness(meta, today, where=where), problems, [])

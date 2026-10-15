@@ -57,6 +57,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MONITOR_WORKER_URLS: ${{ vars.MONITOR_WORKER_URLS }}
+          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # unset = public hosting paused: freshness is judged on the repository's data
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           TEST_MESSAGE: ${{ inputs.test_message && '1' || '' }}
         run: python .github/scripts/health_check.py --send --weekly-heartbeat ${TEST_MESSAGE:+--test}

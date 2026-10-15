@@ -305,7 +305,7 @@ check("factory: today's run still going (late schedule) → no '26시간' alarm"
 # ---------- health_check.run: one combined message, only when needed ----------
 
 API = "https://api.github.com/repos/o/r/actions/workflows/weekly.yml/runs"
-gh_env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "gh-test", "RUN_URL": "https://github.com/o/r/actions/runs/1"}
+gh_env = {"GITHUB_REPOSITORY": "o/r", "GITHUB_TOKEN": "gh-test", "RUN_URL": "https://github.com/o/r/actions/runs/1", "PUBLIC_DEPLOY": "on"}
 fresh = meta_of(["블리비", 58, 58, 0, "2026-10-13", "2026-10-13"])
 good = {API: (200, json.dumps({"workflow_runs": ok_runs}).encode()), A: (200, b"ok"), A + "data-meta.json": (200, json.dumps(fresh).encode())}
 
@@ -333,6 +333,28 @@ check("run: --test sends a test line (and nothing else when healthy)", len(sent)
 probs, notes, msg, sent = monitor({**good, API: (403, b"{}")})
 check("run: GitHub API refused → reported as a check problem, other checks still run",
       any("factory" in p and "403" in p for p in probs) and not any("앱" in p for p in probs), str(probs))
+
+# public hosting paused (PUBLIC_DEPLOY not 'on'): the frozen public copy is neither probed nor used for the collection dates
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "app"))
+    json.dump(fresh, open(os.path.join(tmp, "app", "data-meta.json"), "w", encoding="utf-8"))
+    for pub in (None, "", "off", "ON"):
+        env_p = {k: v for k, v in gh_env.items() if k != "PUBLIC_DEPLOY"}
+        if pub is not None:
+            env_p["PUBLIC_DEPLOY"] = pub
+        f = fetcher({API: good[API], A: (502, b""), A + "data-meta.json": (200, json.dumps(meta_of(["블리비", 58, 58, 0, "2026-09-01", "2026-09-01"])).encode())})
+        sent = []
+        args = hc.parse_args(["--send", "--today", "2026-10-16", "--root", tmp])
+        probs, notes, msg = hc.run(args, env_p, fetch=f, now=NOW, send=lambda text, env=None: sent.append(text))
+        check(f"paused public ({pub!r}): no request to the public address, its 502 and its stale dates are ignored",
+              probs == [] and not any(u.startswith(A) for u in f.calls) and sent == [], str((probs, f.calls)))
+        check(f"paused public ({pub!r}): freshness judged on the repository's app/data-meta.json, and the skip is noted",
+              any("공개 주소 검사 건너뜀" in n for n in notes) and any("app/data-meta.json" in n for n in notes), str(notes))
+    stale_tmp = meta_of(["블리비", 58, 58, 0, "2026-09-01", "2026-09-01"])
+    json.dump(stale_tmp, open(os.path.join(tmp, "app", "data-meta.json"), "w", encoding="utf-8"))
+    f = fetcher({API: good[API]})
+    probs, notes, msg = hc.run(hc.parse_args(["--today", "2026-10-16", "--root", tmp]), {k: v for k, v in gh_env.items() if k != "PUBLIC_DEPLOY"}, fetch=f, now=NOW, send=lambda *a, **k: None)
+    check("paused public: stale data in the repository is still reported (the factory keeps building it)", any("블리비" in p for p in probs), str(probs))
 
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "app"))
