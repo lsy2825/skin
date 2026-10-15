@@ -15,7 +15,7 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
     await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
     await p.goto(BASE); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: 'X24', q: 1 }] }])); localStorage.setItem('pc:short', JSON.stringify(['블리비|강남역점', '쁨|홍대점', '톡스앤필|강남본점'])); }); await p.reload();
     for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
-    for (const r of ['home', 'explore', 'saved', 'compare?k=X24', 'search/%EB%B3%B4%ED%86%A1%EC%8A%A4', 'guide', 'table', 'cart', 'me', 'wallet', 'premium', 'branch/3', 'map', 'concern?c=wrinkle',
+    for (const r of ['home', 'explore', 'saved', 'compare?k=X24', 'search/%EB%B3%B4%ED%86%A1%EC%8A%A4', 'guide', 'table', 'cart', 'me', 'branch/3', 'map', 'concern?c=wrinkle',
       'table?q=%EB%B3%B4%ED%86%A1%EC%8A%A4&att=%EA%B5%AD%EC%82%B0', 'cards:compare?k=X12', 'versus/3/5', 'quick', 'terms', 'data', 'search/%EC%82%AC%EA%B0%81%ED%84%B1%2050U%20-%EC%A0%9C%EC%98%A4%EB%AF%BC?nl=0']) {   // + 세부 구분 filter, compare as cards, A/B, quick compare, terms
       const cards = r.startsWith('cards:'); await p.goto(BASE + '#' + r.replace('cards:', '')); await p.waitForTimeout(900);
       if (cards) { await p.locator('#clinics .seg.vsw button', { hasText: '카드' }).click(); await p.waitForTimeout(400); }

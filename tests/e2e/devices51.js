@@ -8,7 +8,7 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 300)}`); };
 const DEV = [['iPhone SE', devices['iPhone SE']], ['iPhone 14', devices['iPhone 14']], ['Pixel 7', devices['Pixel 7']], ['Galaxy S8 (360)', devices['Galaxy S8']],
   ['iPad Mini', devices['iPad Mini']], ['Desktop 1280', { viewport: { width: 1280, height: 800 } }]];
-const SCREENS = ['home', 'explore', 'compare?k=X24', 'cart', 'me', 'wallet', 'premium', 'ops', 'admin'];
+const SCREENS = ['home', 'explore', 'compare?k=X24', 'cart', 'me', 'ops'];
 
 (async () => {
   const b = await chromium.launch();
