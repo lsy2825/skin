@@ -1,0 +1,4 @@
+# Windows PCs (docs/LOCAL_SETUP_WINDOWS.md): bash stops on Windows line ends (CRLF); cmd.exe needs them in .bat files.
+# Only these two kinds are fixed, so files already stored with CRLF (data2/*.csv, saved pages) are left exactly as they are.
+*.sh  text eol=lf
+*.bat text eol=crlf

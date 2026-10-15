@@ -36,6 +36,8 @@
     APP_PIN=<번호> bash tests/run_regression.sh      # 전체 회귀 (PostgreSQL 필요)
     python build2/weekly.py --skip-scrape            # 이미 모은 자료로 앱 데이터 다시 만들기
     python tests/security/scan_secrets.py            # 비밀 정보 검사
+Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설치, 위치는 `C:\yoonsiljang-tools\INSTALLED.md`), 앱 보기·끄기는
+`start.bat`·`stop.bat`, 명령은 Git Bash에서 — `docs/LOCAL_SETUP_WINDOWS.md`.
 
 ## 작업 원칙
 - 한 번에 하나만 바꾼다. 바꾼 뒤 관련 단위·e2e 테스트를 돌리고 결과를 보고한다.
@@ -77,7 +79,7 @@
 **파일 주인표.** 한 파일의 주인은 한 채팅뿐이다. 주인이 아니면 읽기만 하고, 고칠 일은 '부탁 메모'로 넘긴다.
 | 주인 | 경로 |
 |---|---|
-| A | `.github/`, `tools/factory.sh`, `cf/`(새 Worker 포함), `wrangler.jsonc`, `server/`, `supabase/`, `tests/db/`, `tests/security/`, `tests/factory_worker.test.js`, `app/_headers`, `app/screens/ops.js`, `tests/run_regression.sh`, `README.md`, `CLAUDE.md`, 운영·보안·이사·사고 문서(`docs/CLOUDFLARE_MIGRATION.md`, `docs/SECURITY_*`, `docs/INCIDENT_RESPONSE_PLAN.md`, `docs/ARCHITECTURE.md`), `docs/VERIFIED_FEATURE_INVENTORY.md`(사용자 결정 2026-10-15), 결제·크레딧 전용 문서 |
+| A | `.github/`, `tools/factory.sh`, `cf/`(새 Worker 포함), `wrangler.jsonc`, `server/`, `supabase/`, `tests/db/`, `tests/security/`, `tests/factory_worker.test.js`, `app/_headers`, `app/screens/ops.js`, `tests/run_regression.sh`, `README.md`, `CLAUDE.md`, 운영·보안·이사·사고 문서(`docs/CLOUDFLARE_MIGRATION.md`, `docs/SECURITY_*`, `docs/INCIDENT_RESPONSE_PLAN.md`, `docs/ARCHITECTURE.md`), `docs/VERIFIED_FEATURE_INVENTORY.md`(사용자 결정 2026-10-15), 결제·크레딧 전용 문서, Windows PC 준비(`tools/windows/`, `docs/LOCAL_SETUP_WINDOWS.md`, `.gitattributes`) |
 | B | 위에 없는 `app/` 전부(`app.js`, `index.html`·CSP, `config.js`, `sw.js`, `styles.css`, `commerce.js`, `domain/`, `screens/`(ops 제외), `state/`, `workers/`, `data/`, `icons*`, `assets/`, `vendor/`), `tools/check_csp.js`, `tests/e2e/`, `tests/perf/`, `app/domain`을 시험하는 `tests/*.test.js`, `brand/`, `tools/jomi_chat_eval.js`, 화면·디자인 문서(`APP_JS_SPLIT_PLAN.md`, `DESIGN_SYSTEM.md`, `UX_*`, `JOMI_*`, `PWA_IMPLEMENTATION.md`), `tests/fixtures/jomi_chat_eval.json`, `tests/fixtures/jomi_chat_holdout.json` |
 | C | `scrape/`, `build2/`, `data2/`, `knowledge/`, `requirements.txt`, 데이터 시험(`tests/*_test.py`, `build2`를 시험하는 `*.test.js`), `tools/audit_data.js`, `tools/review_queue.js`, 데이터·법률 문서(`DATA_*`, `TREATMENT_TAXONOMY.md`, `LEGAL_REVIEW_CHECKLIST.md`, `RELEASE_DECISION.md`, `docs/legal/`) |
 | 공동 | `NOTES.md`(자기 날짜·채팅 제목 아래 끝에 덧붙이기만), `docs/REMEDIATION_MATRIX.md`(자기 담당 행만), `docs/IMPLEMENTATION_STATUS.md`(채팅마다 자기 절만 덧붙이기) |

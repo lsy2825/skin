@@ -12,10 +12,9 @@
 - 브랜드 간 같은 시술 묶기: `build2/xkeys.py` (테스트: `python build2/xkeys.py`).
 - 비밀번호 화면: `app/gate.js` (화면 잠금일 뿐, 데이터 파일은 공개 주소에 있어요).
 
-Windows PC 준비(한 번): PowerShell에 아래 한 줄을 붙여 넣으면 Git·Python 3.12·Node.js·GitHub CLI 설치, `C:\dev\skin`에 저장소 받기,
-파이썬 패키지 설치, 단위 테스트까지 해요(`tools/setup-windows.ps1`, 다시 실행해도 안전).
-
-    irm https://raw.githubusercontent.com/lsy2825/skin/main/tools/setup-windows.ps1 | iex
+Windows PC 준비(한 번): `tools\windows\setup.bat`와 `setup.ps1`을 같은 폴더에 두고 `setup.bat` 더블클릭 — Git·GitHub CLI·Python 3.12·
+Node.js 22·Playwright·Chromium·axe-core 설치, `Desktop\윤실장`에 저장소 받기, 설치 위치는 `C:\yoonsiljang-tools\INSTALLED.md`.
+앱 보기·끄기는 `start.bat`·`stop.bat`. 자세히: `docs/LOCAL_SETUP_WINDOWS.md` (저장소가 비공개라 예전 `irm … | iex` 한 줄 설치는 못 써요).
 
 로컬 실행:
 
