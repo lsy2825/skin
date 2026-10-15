@@ -303,7 +303,7 @@ def _area(raw):
 # 겨드랑이·다리 전체·브라질리언 under the area '젠틀맥스프로플러스')
 DEVICE = re.compile(r"젠틀맥스|젠맥|(?<![A-Za-z])BBL(?![A-Za-z])|프로\s*플러스|아포지|엘리트|클라리티|소프라노|프라임\s*레이즈|포토나|아발란체|듀얼|프로(?![가-힣])|플러스(?![가-힣])|최신|기기")
 AREA_NOISE = re.compile(r"\d+\s*\+\s*\d+(?:\s*회)?|\d+\s*회|1년|구독권|이용권|무제한|패스권|이벤트|특가|체험가|한정가|할인|여성|남성|여자|남자|男|女|솜털|레이저|"
-                        r"부위|첫방문고객|첫시술고객|신규고객|첫방문|첫시술|중\s*택\s*1(?!\s*회|\d)|택\s*1(?!\s*회|\d)|중?\s*택(?=\s*1\s*회)|[♥★☆]")
+                        r"부위|첫방문고객|첫시술고객|신규고객|첫방문|첫시술|(?<![가-힣])중\s*택\s*1(?!\s*회|\d)|택\s*1(?!\s*회|\d)|(?:(?<![가-힣])중)?\s*택(?=\s*1\s*회)|[♥★☆]")
 # body-area words of a 제모 option, and the words that only qualify one ('윗', '전체', '라인'): a '+' between these lists areas of one
 # option; anything else after '+' is another product ('얼굴전체 제모 + 빙하팩', '겨드랑이제모+겨드랑이 미백레이저', '네오빔 + 스케일링' —
 # 2026-10-15, they went into the plain one-area key)
@@ -572,7 +572,8 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
         cat = ROWCAT.get(rowcat) or ("톡신" if re.search(r"톡신|보톡|톡스", comp(raw)) else "윤곽·필러" if rowcat == "보톡스·필러" else "기타")
         sub = " ".join(([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else [])) or "기본"
         label = " ".join([famname] + ([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else []))
-        rx = re.escape(comp(famname))
+        # the shop's own 'or' / '또는' became '/' in the name: the rows still say 'or' (검증 8차: '이 지점의 같은 시술군' found none)
+        rx = re.escape(comp(famname)).replace("/", "(?:/|[oO][rR]|또는)")
         fid = "generic"
     sig = "|".join(["x", famname, sigtext, str(sess)])
     # the sex from the group title ('[여성] …' in mname) when the name itself doesn't say it: '발등 + 발가락 5회' for women and for
@@ -770,7 +771,8 @@ def build(rows, min_branches=3):
     # more such twins lists two menus — none of its sexless 제모 rows can be told apart (검증 7차)
     page = lambda r: (r["brand"], r["branch"], r.get("url", ""), r.get("group", ""))
     # (brackets stay: '얼굴전체 (이마제외) 5회' and '얼굴전체 5회' at one 톡스앤필 page are two products, not two menus)
-    twin_name = lambda r: loose_text(SPELL_RX.sub(lambda m: AREA_SPELL[m.group()], r["name"]))
+    # (spaces out first: '팔 하완' and '팔하완' are one spelling — the other way round '(?<!팔)하완' read '팔 하완' as '팔 팔하완', 검증 8차)
+    twin_name = lambda r: SPELL_RX.sub(lambda m: AREA_SPELL[m.group()], loose_text(r["name"]))
     prices = defaultdict(set)
     for r in rows:
         prices[page(r) + (twin_name(r),)].add(r.get("sale"))

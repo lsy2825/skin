@@ -386,6 +386,11 @@ rk, ks, fs, st = taxonomy.build(dv)
 ok("이름에 기기가 없으면 묶음 제목·'[젠틀맥스]' 머리표의 기기 하나를 받음 — 한 지점 두 기기가 한 키에 섞이지 않음",
    len(set(rk)) == 2 and all(rk) and sorted(k["label"] for k in ks) == ["여성 겨드랑이+인중 제모 아포지 플러스 5회", "여성 겨드랑이+인중 제모 젠틀맥스 프로 플러스 5회"],
    [k["label"] for k in ks])
+ok("'인중 택1'의 '중'은 지우지 않음('겨드랑이/인중 택1회' → 겨드랑이·인중, '인' 아님)",
+   hv("겨드랑이/인중 택1회 제모")["area"] == "겨드랑이/인중" and hv("겨드랑이 제모 중 택1 5회")["area"] == "겨드랑이")
+_mv = taxonomy.variant("미희주사 이마 or 관자 3회", cat="윤곽·필러")[0]
+ok("'or'를 '/'로 바꾼 시술군도 rx는 원래 이름('… 이마 or 관자')에 맞음(같은 시술군 더 보기)",
+   bool(re.search(_mv["rx"], taxonomy.comp("미희주사 이마 or 관자 3회"))) and bool(re.search(_mv["rx"], taxonomy.comp("미희주사 이마/관자 1회"))), _mv["rx"])
 ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
