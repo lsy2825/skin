@@ -441,7 +441,9 @@ def variant(name, addon=False, kind="", cat="", display=None):
         pieces = [AREA_SPELL.get(p, p) for x in listed for p in re.split(r"\s*\+\s*", comp(x)) if p]
         o = re.sub(r"전체$", "", outer) or outer
         # a clinic's own name for a set of areas ('수염라인(인중+앞턱)', 'U라인 이중턱 제외(턱+볼+구렛+인중)'): the bracket says which (검증 7차)
-        named = not re.search(r"[+/]", o) and not re.fullmatch(HAIR_PART, o)
+        # — but not a collective name the clinics fill differently ('젠틀맨 U라인 (턱+볼+턱라인+인중+윗목)' at one branch, '(인중+턱라인+
+        # 이중턱+턱끝+양볼+구렛나루)' at the next): split by the list, every one fell under 3 branches (검증 7차 빌드: 132 rows lost keys)
+        named = not re.search(r"[+/]", o) and not re.fullmatch(HAIR_PART, o) and not re.search(r"U라인|하관|상체|하체|올누드|전신", o)
         # only when the bracket spells out the outer area ('손 (손등 + 손가락)', '손 전체 (손가락 + 손등)': every piece starts with it),
         # adds to it ('겨드랑이 (겨드랑이 + 인중)') or the outer is a named set; '팔하완(손등+손가락)', '다리전체(발등+발가락)' are the arm /
         # leg — the bracket is a note (검증 6차: a 700,000 팔전체 price sat in a 손가락+손등 key)
@@ -517,6 +519,8 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
             # Titles that say who or where ('남성 · …', '바디 · …') can change the product, so those keep the full name.
             src = seg[-1]
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
+    # 'A or B' and 'A/B' choose the same way ('미희주사 옆볼or앞볼' and '옆볼/앞볼' were two keys, 검증 7차)
+    sigtext = re.sub(r"(?<![A-Za-z])(?:or|OR|Or)(?![A-Za-z])|또는", "/", sigtext)
     # a list marker left by a price-kind word ('첫방문고객) 비타민관리' → ')비타민관리'): not part of the product (as _tidy does for labels)
     # ('체험가E) 크라이오', '첫방문E) 크라이오' → 'E)크라이오': the letter is the clinic's list mark too)
     if re.match(r"[A-Z]\)", sigtext) and sigtext.count(")") > sigtext.count("("):
@@ -539,7 +543,7 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
         base = _tidy(KINDWORDS.sub(" ", base))
         if not base:
             return None, "이름 없음"
-        famname = base
+        famname = re.sub(r"\s*(?<![A-Za-z])(?:or|OR|Or)(?![A-Za-z])\s*|\s*또는\s*", "/", base)
         cat = ROWCAT.get(rowcat) or ("톡신" if re.search(r"톡신|보톡|톡스", comp(raw)) else "윤곽·필러" if rowcat == "보톡스·필러" else "기타")
         sub = " ".join(([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else [])) or "기본"
         label = " ".join([famname] + ([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else []))
