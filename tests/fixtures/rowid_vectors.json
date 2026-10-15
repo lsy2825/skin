@@ -1,429 +1,446 @@
 {
- "about": "build2/rowid.py 규칙으로 만든 가격 줄 번호 예시(다른 구현 확인용). rows의 순서가 곧 데이터 순서",
+ "about": "build2/rowid.py 규칙으로 만든 가격 줄 번호 예시(다른 구현 확인용). rows의 순서가 곧 데이터 순서이고, 번호는 이 목록 전체로 매겨요(같은 바탕의 '~2'). 앞쪽은 2026-10-16 빌드에서 고른 실제 줄(체인마다 4줄, 같은 이름 여러 줄), 끝의 3줄은 공백(U+3000·U+FEFF)·ASCII만 소문자(전각 Ｈ·İ는 그대로)를 확인하는 만든 줄이에요.",
  "rows": [
   {
-   "brand": "블리비",
-   "branch": "강남역점",
-   "name": "온다 리프팅(고강도 극초단파) - 60,000J 연간 구독권",
-   "kind": "구독권",
-   "sale": "1690000",
-   "id": "o0c9mz6z"
-  },
-  {
-   "brand": "블리비",
-   "branch": "경주점",
-   "name": "실루엣 소프트 (프리미엄 PLLA 콜라겐실) 2줄",
-   "kind": "일반",
-   "sale": "900000",
-   "id": "ibgt878u"
-  },
-  {
-   "brand": "블리비",
-   "branch": "광명점",
-   "name": "헐리우드 스펙트라 문신제거 · 명함 1장 사이즈(단색) 5회",
-   "kind": "일반",
-   "sale": "300000",
-   "id": "qm727tvt"
-  },
-  {
-   "brand": "블리비",
-   "branch": "구미점",
-   "name": "카복시테라피/지방분해주사(지방세포 파괴) 1개월 무제한",
-   "kind": "일반",
-   "sale": "50000",
-   "id": "m46glr9m"
-  },
-  {
-   "brand": "블리비",
-   "branch": "김해점",
-   "name": "(남자) 얼굴전체 제모(아포지 플러스) 체험가",
-   "kind": "체험가",
-   "sale": "29000",
-   "id": "s0xt57nl"
-  },
-  {
-   "brand": "블리비",
-   "branch": "동탄점",
-   "name": "(남자) 팔전체 제모(아포지 플러스) 5회",
-   "kind": "일반",
-   "sale": "490000",
-   "id": "fa1x9zcy"
-  },
-  {
-   "brand": "블리비",
-   "branch": "마산점",
-   "name": "릴리이드 · 릴리이드M(프리미엄 히알루론산) 5cc 5회",
-   "kind": "일반",
-   "sale": "590000",
-   "id": "71msmzuh"
-  },
-  {
-   "brand": "블리비",
-   "branch": "목동점",
-   "name": "옵션2) 스킨보톡스(국산 일반형) 1부위 1회 추가",
-   "kind": "일반",
-   "sale": "25000",
-   "id": "866b2u73~2"
-  },
-  {
-   "brand": "블리비",
-   "branch": "목동점",
-   "name": "옵션2) 스킨보톡스(국산 일반형) 1부위 1회 추가",
-   "kind": "일반",
-   "sale": "23000",
-   "id": "866b2u73"
-  },
-  {
-   "brand": "블리비",
-   "branch": "부산 남포점",
-   "name": "바디보톡스(국산 고순도) - 종아리/승모근 100유닛",
-   "kind": "일반",
-   "sale": "65000",
-   "id": "kkqdi8up"
-  },
-  {
-   "brand": "블리비",
-   "branch": "부산 남포점",
-   "name": "옵션6) 리제반PN(PN 프리미엄 스킨부스터) 2cc 3회 추가",
+   "brand": "닥터에버스",
+   "branch": "인천점",
+   "name": "리프팅 레이저 텐써마 300샷 1회",
    "kind": "일반",
    "sale": "550000",
-   "id": "b25cb89t"
+   "url": "https://incheon.drevers.com/event/weekday-deal/",
+   "id": "78jyf1ffb6"
   },
   {
-   "brand": "블리비",
-   "branch": "부산 덕천점",
-   "name": "올리디아 볼륨(PLLA 콜라겐부스터) 1cc",
+   "brand": "닥터에버스",
+   "branch": "동탄점",
+   "name": "스킨보톡스(이마/턱라인/나비존) 국산",
    "kind": "일반",
-   "sale": "99000",
-   "id": "m8asvpew"
+   "sale": "29000",
+   "url": "https://dongtan.drevers.com/event/gain-opening-special/",
+   "id": "48k8obns5q"
   },
   {
-   "brand": "블리비",
-   "branch": "부산 센텀점",
-   "name": "피코라이트 피코토닝(피코 세컨드 레이저) 5회",
+   "brand": "닥터에버스",
+   "branch": "동탄점",
+   "name": "나비존(코 포함) 피코플러스프락셀+모델링팩 3회",
    "kind": "일반",
-   "sale": "189000",
-   "id": "edrfd6x3"
+   "sale": "235000",
+   "url": "https://dongtan.drevers.com/event-month-acne_pore_scar/",
+   "id": "5hg6ipazyh"
   },
   {
-   "brand": "블리비",
-   "branch": "부천점",
-   "name": "NMN(NAD+ 활성화 스킨부스터) 2.5cc + 크라이오셀 체험가",
-   "kind": "체험가",
-   "sale": "159000",
-   "id": "p3e08i2z"
-  },
-  {
-   "brand": "블리비",
-   "branch": "왕십리점",
-   "name": "바디 착색토닝(회음부/사타구니/엉덩이 등) 1회",
+   "brand": "닥터에버스",
+   "branch": "범계점",
+   "name": "PRP 줄기세포 스킨부스터 3cc+PPP LED재생레이저+모델링팩 1회",
    "kind": "일반",
-   "sale": "69000",
-   "id": "pq34sr2m"
+   "sale": "390000",
+   "url": "https://beomgye.drevers.com/event-month-collagen_renewal/",
+   "id": "kk7ox6n54g"
   },
   {
-   "brand": "블리비",
-   "branch": "왕십리점",
-   "name": "바디 착색토닝(회음부/사타구니/엉덩이 등) 1회",
-   "kind": "일반",
-   "sale": "99000",
-   "id": "pq34sr2m~2"
-  },
-  {
-   "brand": "블리비",
-   "branch": "의정부점",
-   "name": "다이어트 끝장내기 · 블리비S(지방세포 파괴 및 배출) 체험가",
-   "kind": "체험가",
-   "sale": "99000",
-   "id": "oz16z6bv"
-  },
-  {
-   "brand": "쁨",
-   "branch": "명동점",
-   "name": "[남성]사타구니 제모 1회",
-   "kind": "일반",
-   "sale": "120000",
-   "id": "qz3v8mpj"
-  },
-  {
-   "brand": "쁨",
-   "branch": "서울대입구점",
-   "name": "아이리쥬란 1cc",
-   "kind": "일반",
-   "sale": "140000",
-   "id": "kc8gam3z"
-  },
-  {
-   "brand": "쁨",
-   "branch": "천안점",
-   "name": "[브랜드 10주년 기념, 무한 페스타] 슬림컷주사 300cc",
-   "kind": "일반",
-   "sale": "129000",
-   "id": "gg1yflkk"
-  },
-  {
-   "brand": "쁨",
-   "branch": "창원점",
-   "name": "얼굴 제모 · 남자 이마라인 12+1회",
+   "brand": "데이뷰",
+   "branch": "부산서면점",
+   "name": "바디보톡스 200유닛 (국산 프리미엄)",
    "kind": "일반",
    "sale": "150000",
-   "id": "fo58ux7r"
-  },
-  {
-   "brand": "톡스앤필",
-   "branch": "건대점",
-   "name": "광대보톡스 (프리미엄 독일산)",
-   "kind": "일반",
-   "sale": "128000",
-   "id": "gpmeiey1"
-  },
-  {
-   "brand": "톡스앤필",
-   "branch": "노원점",
-   "name": "바디제모(남성) · 남성 배/가슴 택1 5회",
-   "kind": "일반",
-   "sale": "450000",
-   "id": "ipnoywuf"
-  },
-  {
-   "brand": "톡스앤필",
-   "branch": "분당점",
-   "name": "카프리레이저 · 추가옵션3) PDT",
-   "kind": "일반",
-   "sale": "50000",
-   "id": "jrgr4i36"
-  },
-  {
-   "brand": "톡스앤필",
-   "branch": "제주점",
-   "name": "얼굴전체스킨보톡스(국산프리미엄)",
-   "kind": "일반",
-   "sale": "210000",
-   "id": "da9n5l5z"
-  },
-  {
-   "brand": "톡스앤필",
-   "branch": "제주점",
-   "name": "4주 기본 색소 프로그램(올인원색소1회/피코토닝+비타민관리 4회)",
-   "kind": "일반",
-   "sale": "890000",
-   "id": "l98g3kyw"
-  },
-  {
-   "brand": "밴스",
-   "branch": "목동",
-   "name": "온다리프팅 60KJ (1회 체험가)",
-   "kind": "체험가",
-   "sale": "450000",
-   "id": "jgplr14n"
-  },
-  {
-   "brand": "밴스",
-   "branch": "동대문",
-   "name": "쥬베룩 스킨 1cc",
-   "kind": "일반",
-   "sale": "82000",
-   "id": "hntw64mg"
-  },
-  {
-   "brand": "밴스",
-   "branch": "부산남포",
-   "name": "쥬베룩스킨 3CC (1회체험가)",
-   "kind": "체험가",
-   "sale": "169000",
-   "id": "6rg5sp2g"
-  },
-  {
-   "brand": "밴스",
-   "branch": "신촌",
-   "name": "얼굴전체제모 5회",
-   "kind": "일반",
-   "sale": "500000",
-   "id": "8yv4pukn"
-  },
-  {
-   "brand": "밴스",
-   "branch": "신촌",
-   "name": "얼굴 전체 제모 5회",
-   "kind": "일반",
-   "sale": "500000",
-   "id": "8yv4pukn~2"
-  },
-  {
-   "brand": "밴스",
-   "branch": "잠실",
-   "name": "내맘대로피부관리 베이직 5회패키지",
-   "kind": "일반",
-   "sale": "129000",
-   "id": "kk1cw969"
-  },
-  {
-   "brand": "유앤아이",
-   "branch": "영등포점",
-   "name": "울쎄라피 프라임 300샷",
-   "kind": "일반",
-   "sale": "1050000",
-   "id": "7v56y7vq"
-  },
-  {
-   "brand": "유앤아이",
-   "branch": "인천검단점",
-   "name": "홍조올패키지 (브이빔(혈관) + v레이저(홍조) + 뉴디엔 재생주사 1cc) 1회",
-   "kind": "일반",
-   "sale": "270000",
-   "id": "h8wq7nld"
-  },
-  {
-   "brand": "유앤아이",
-   "branch": "천호점",
-   "name": "티타늄 미백 토닝 패키지 1회",
-   "kind": "일반",
-   "sale": "290000",
-   "id": "6bk64omi"
-  },
-  {
-   "brand": "유앤아이",
-   "branch": "화성봉담점",
-   "name": "남성제모(그외) · 男) 브라질리언 (항문 포함) 10회",
-   "kind": "일반",
-   "sale": "800000",
-   "id": "dqc2pqdb"
+   "url": "https://daybeauclinic15.com/branch/event.php?uid=903",
+   "id": "75rjyyfl94"
   },
   {
    "brand": "데이뷰",
    "branch": "강서발산점",
-   "name": "입꼬리 또는 콧볼 보톡스 (국산 프리미엄)",
+   "name": "울쎄라 300샷 1회",
    "kind": "일반",
-   "sale": "49000",
-   "id": "4cyyi807"
+   "sale": "890000",
+   "url": "https://daybeauclinic01.com/branch/event.php?uid=3",
+   "id": "ln4b60xv29"
   },
   {
    "brand": "데이뷰",
-   "branch": "분당점",
-   "name": "스킨케어/수액 · 수액클리닉 · 내맘대로 수액 10회",
+   "branch": "광주상무점",
+   "name": "스킨부스터 · 필로르가NCTF · 필로르가NCTF 3CC 1회",
    "kind": "일반",
    "sale": "250000",
-   "id": "o6yw85ym"
+   "url": "https://daybeauclinic05.com/branch/event.php?uid=111",
+   "id": "kqp6qobo9v"
   },
   {
    "brand": "데이뷰",
-   "branch": "분당점",
-   "name": "스킨케어/수액 · 수액클리닉 · 내맘대로 수액 10회",
+   "branch": "명동 더프리미엄점",
+   "name": "[10월] 바디 슈링크 (카톡플친 적용가)",
    "kind": "일반",
-   "sale": "550000",
-   "id": "o6yw85ym~2"
+   "sale": "990000",
+   "url": "https://daybeauclinic11.com/branch/event.php?uid=1515",
+   "id": "99wxa38is0"
   },
   {
-   "brand": "데이뷰",
-   "branch": "수원점",
-   "name": "점제거 직경2mm이하 (카톡플친 적용가)",
-   "kind": "일반",
-   "sale": "100",
-   "id": "1wxthyq1"
+   "brand": "리엔장",
+   "branch": "목동점",
+   "name": "피코토닝",
+   "kind": "고시가",
+   "sale": "120000",
+   "url": "https://mokdong.lienjang.net/agree/info",
+   "id": "la51ic5unk"
   },
   {
-   "brand": "데이뷰",
-   "branch": "수원점",
-   "name": "바디보톡스 150U (수입 순수톡신)",
-   "kind": "일반",
-   "sale": "359000",
-   "id": "9y2xl6it"
+   "brand": "리엔장",
+   "branch": "하남점",
+   "name": "스킨케어 · 이온자임",
+   "kind": "고시가",
+   "sale": "70000",
+   "url": "https://hanam.lienjang.net/agree/info",
+   "id": "gn6wcbl9ex"
   },
   {
-   "brand": "데이뷰",
-   "branch": "안양점",
-   "name": "커스텀 디자인 실리프팅 10줄",
-   "kind": "일반",
-   "sale": "850000",
-   "id": "cjsc7g3q"
+   "brand": "리엔장",
+   "branch": "명동점",
+   "name": "지방분해주사",
+   "kind": "고시가",
+   "sale": "49000",
+   "url": "https://myeongdong.lienjang.net/agree/info",
+   "id": "2ziofkehy5"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "건대점",
-   "name": "레이저 제모 뒷목 1회",
-   "kind": "일반",
-   "sale": "45000",
-   "id": "1nri35ww"
+   "brand": "리엔장",
+   "branch": "홍대점",
+   "name": "스킨케어 · 이온자임",
+   "kind": "고시가",
+   "sale": "59000",
+   "url": "https://hongdae.lienjang.net/agree/info",
+   "id": "0o6vyeocv5"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "건대점",
-   "name": "레이저 제모 배꼽주위/유륜 1회",
+   "brand": "밴스",
+   "branch": "부산해운대",
+   "name": "민트실 4줄",
    "kind": "일반",
-   "sale": "30000",
-   "id": "l5nf6mx1"
+   "sale": "300000",
+   "url": "https://haeundae.vandsclinics.com/web/product?categoryId=6756",
+   "id": "fagfvlpokk"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "건대점",
-   "name": "레이저 제모 뒷목 1회",
+   "brand": "밴스",
+   "branch": "목동",
+   "name": "엘러간 주름보톡스 3+1부위 (미간/이마/눈가/눈밑/콧잔등/자갈턱)",
    "kind": "일반",
-   "sale": "79000",
-   "id": "1nri35ww~2"
+   "sale": "230000",
+   "url": "https://mokdong.vandsclinics.com/web/product?categoryId=7055",
+   "id": "19dwvq6x5h"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "건대점",
-   "name": "레이저 제모 배꼽주위/유륜 1회",
+   "brand": "밴스",
+   "branch": "천안",
+   "name": "주름보톡스 2부위 (미간/이마/눈가/눈밑/콧잔등/자갈턱/눈썹위)",
    "kind": "일반",
-   "sale": "98000",
-   "id": "l5nf6mx1~2"
+   "sale": "28000",
+   "url": "https://cheonan.vandsclinics.com/web/product?categoryId=7017",
+   "id": "fey3fg1lun"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "수원인계점",
-   "name": "식욕조절주사 M 2.5mg 1박스(4펜)",
+   "brand": "밴스",
+   "branch": "글로벌제주",
+   "name": "사각턱보톡스 시술",
    "kind": "일반",
-   "sale": "320000",
-   "id": "n9lvcqnx"
+   "sale": "14900",
+   "url": "https://jeju.vandsclinics.com/web/product?categoryId=6233",
+   "id": "ayvt37mfoj"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "검단점",
-   "name": "바디온다리프팅 12만줄 3회",
+   "brand": "블리비",
+   "branch": "원주점",
+   "name": "올리디아 스킨(PLLA 콜라겐부스터) 5cc 1회",
    "kind": "일반",
-   "sale": "1050000",
-   "id": "pfa6scww"
+   "sale": "490000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%9B%90%EC%A3%BC%EC%A0%90&sField=5",
+   "id": "3cbfai8bi2"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "광교점",
-   "name": "벨라콜린 한병(2ml)+윤곽주사 에그쉐이핑 12cc 3회",
+   "brand": "블리비",
+   "branch": "영등포점",
+   "name": "옵션4) 레스노베 크리스탈(천연 키토산 스킨부스터) 2cc 추가",
    "kind": "일반",
-   "sale": "550000",
-   "id": "fuo1s2bc"
+   "sale": "49000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%98%81%EB%93%B1%ED%8F%AC%EC%A0%90&sField=3",
+   "id": "kuzncrr0kl"
   },
   {
-   "brand": "닥터에버스",
-   "branch": "청담점",
-   "name": "원데이 여드름 패키지(압출+염증주사 필요시 포함) 1회",
+   "brand": "블리비",
+   "branch": "잠실점",
+   "name": "릴리이드M(프리미엄 히알루론산) 5cc 체험가",
+   "kind": "체험가",
+   "sale": "99000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%9E%A0%EC%8B%A4%EC%A0%90&sField=1",
+   "id": "frxuda02i0"
+  },
+  {
+   "brand": "블리비",
+   "branch": "청주점",
+   "name": "주름보톡스(영국 고순도) 1부위",
    "kind": "일반",
-   "sale": "450000",
-   "id": "ao2rzgji"
+   "sale": "59000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EC%B2%AD%EC%A3%BC%EC%A0%90&sField=2",
+   "id": "d9n6wbtpkp"
+  },
+  {
+   "brand": "쁨",
+   "branch": "부평점",
+   "name": "상체 제모 · [남성] 배 5회",
+   "kind": "일반",
+   "sale": "490000",
+   "url": "https://bupyeong.ppeum.com/selectSurgery",
+   "id": "fjeonrnez7"
+  },
+  {
+   "brand": "쁨",
+   "branch": "춘천점",
+   "name": "PS주사 3cc",
+   "kind": "일반",
+   "sale": "39000",
+   "url": "https://chuncheon.ppeum.com/selectSurgery",
+   "id": "kqdzcvsm7t"
+  },
+  {
+   "brand": "쁨",
+   "branch": "부천점",
+   "name": "얼굴 제모 · [남성]이중턱 5회",
+   "kind": "일반",
+   "sale": "150000",
+   "url": "https://bucheon.ppeum.com/selectSurgery",
+   "id": "kekfqeqw5j"
+  },
+  {
+   "brand": "쁨",
+   "branch": "대구점",
+   "name": "점/비립종/사마귀/쥐젖 · 목 전체 비립종 (40개 이하)",
+   "kind": "일반",
+   "sale": "350000",
+   "url": "https://daegu.ppeum.com/selectSurgery",
+   "id": "brxxqepsty"
   },
   {
    "brand": "셀린",
    "branch": "하남미사점",
-   "name": "[10월 EVENT] [남성] 겨드랑이 5회 (강력한 제모 효과, 정품 DCD 냉각가스로 통증은 낮추고 피부는 더욱 안전하게✨ 🤩젠틀맥스 프로 플러스 제모)",
+   "name": "릴리이드 물광주사 2.5cc + 더모톡신(내성없는국산)",
    "kind": "일반",
-   "sale": "190000",
-   "id": "ks4ngalk"
+   "sale": "119000",
+   "url": "https://www.cellinclinic5.com/clinicPriceSide/clinicSideList.php#li_10259",
+   "id": "e2v5u2cm99"
   },
   {
    "brand": "셀린",
-   "branch": "청주점",
-   "name": "여드름 패키지 · 여드름 박멸 [4주]패키지",
+   "branch": "분당정자점",
+   "name": "윗입술보톡스(수입/독일산OR영국산)",
    "kind": "일반",
-   "sale": "390000",
-   "id": "6a26n2a9"
+   "sale": "59000",
+   "url": "https://www.cellinclinic10.com/clinicPriceSide/clinicSideList.php#li_3220",
+   "id": "kjqu6otm9x"
   },
   {
-   "brand": "A",
-   "branch": "강남점",
-   "name": "Rejuran HB  Plus 2CC",
+   "brand": "셀린",
+   "branch": "수원망포점",
+   "name": "인모드FX+FORMA *3회",
+   "kind": "일반",
+   "sale": "650000",
+   "url": "https://www.cellinclinic1.com/clinicPriceSide/clinicSideList.php#li_5468",
+   "id": "ihip1b1x6a"
+  },
+  {
+   "brand": "셀린",
+   "branch": "광명점",
+   "name": "디자인 페이스필러(국산)1cc 이마 /관자 / 입술 / 코 / 눈밑 / 마리 (이마 /관자 / 입술 / 코 / 눈밑 / 마리오네트)",
+   "kind": "일반",
+   "sale": "160000",
+   "url": "https://www.cellinclinic6.com/clinicPriceSide/clinicSideList.php#li_1061",
+   "id": "42uawehtyl"
+  },
+  {
+   "brand": "유앤아이",
+   "branch": "분당미금점",
+   "name": "클라리티II (색소/혈관/제네시스 모드) 1가지",
+   "kind": "일반",
+   "sale": "190000",
+   "url": "https://www.bmuni114.co.kr/",
+   "id": "52jocvl5vp"
+  },
+  {
+   "brand": "유앤아이",
+   "branch": "천안점",
+   "name": "벨로테로(스위스산) 1cc",
+   "kind": "일반",
+   "sale": "230000",
+   "url": "https://www.cauni114.co.kr/",
+   "id": "kgwi2hhq3y"
+  },
+  {
+   "brand": "유앤아이",
+   "branch": "대구점",
+   "name": "여성 얼굴 제모(젠틀맥스 프로 플러스) · 뒷목/앞목 1회",
+   "kind": "일반",
+   "sale": "50000",
+   "url": "https://www.dguni114.co.kr/",
+   "id": "j8xolmstao"
+  },
+  {
+   "brand": "유앤아이",
+   "branch": "시흥배곧점",
+   "name": "아그네스 레이저 한관종 제거(눈 밑 + 눈꺼풀 기준) 1회",
+   "kind": "일반",
+   "sale": "290000",
+   "url": "https://www.bguni114.co.kr/",
+   "id": "8frzamekjm"
+  },
+  {
+   "brand": "톡스앤필",
+   "branch": "안양점",
+   "name": "[남성] 젠틀맥스 프로 플러스 · 무릎",
+   "kind": "일반",
+   "sale": "90000",
+   "url": "https://www.toxnfill28.com/detail.php?c=704&i=31884",
+   "id": "d6d3n08c0t"
+  },
+  {
+   "brand": "톡스앤필",
+   "branch": "노원점",
+   "name": "인모드 FX 1회",
+   "kind": "일반",
+   "sale": "85000",
+   "url": "https://www.toxnfill15.com/detail.php?c=266&i=22579",
+   "id": "0t2uegzhmb"
+  },
+  {
+   "brand": "톡스앤필",
+   "branch": "원주점",
+   "name": "수입 필러 1cc",
+   "kind": "일반",
+   "sale": "350000",
+   "url": "https://www.toxnfill42.com/detail.php?c=1144&i=4448",
+   "id": "iwhe7y05xc"
+  },
+  {
+   "brand": "톡스앤필",
+   "branch": "압구정점",
+   "name": "인모드FX+FORMA 3회",
+   "kind": "일반",
+   "sale": "890000",
+   "url": "https://www.toxnfill2.com/detail.php?c=2539&i=4539",
+   "id": "7si50g8unn"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 인모드 리프팅(고강도 양극성 고주파) 1부위 1회- 팔뚝/허벅지/부유방 등",
+   "kind": "일반",
+   "sale": "69000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=1",
+   "id": "3w4v399pix"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 인모드 리프팅(고강도 양극성 고주파) 1부위 1회- 팔뚝/허벅지/부유방 등",
+   "kind": "일반",
+   "sale": "99000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=7",
+   "id": "3w4v399pix~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "건대점",
+   "name": "아큐주사(페이스 컨투어링) 3cc 체험가",
+   "kind": "체험가",
+   "sale": "9900",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B1%B4%EB%8C%80%EC%A0%90&sField=1",
+   "id": "lqsox7c2qk"
+  },
+  {
+   "brand": "블리비",
+   "branch": "건대점",
+   "name": "아큐주사(페이스 컨투어링) 3cc 체험가",
+   "kind": "체험가",
+   "sale": "6900",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B1%B4%EB%8C%80%EC%A0%90&sField=2",
+   "id": "lqsox7c2qk~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "건대점",
+   "name": "옵션3) 스킨보톡스 시술(국산 일반형) 얼굴전체 1회 추가",
+   "kind": "일반",
+   "sale": "99000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B1%B4%EB%8C%80%EC%A0%90&sField=4",
+   "id": "j622xoyl89"
+  },
+  {
+   "brand": "블리비",
+   "branch": "건대점",
+   "name": "옵션3) 스킨보톡스 시술(국산 일반형) 얼굴전체 1회 추가",
+   "kind": "일반",
+   "sale": "69000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B1%B4%EB%8C%80%EC%A0%90&sField=5",
+   "id": "j622xoyl89~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 착색토닝(겨드랑이/팔꿈치/무릎) 1부위 1회",
+   "kind": "일반",
+   "sale": "29000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3",
+   "id": "j1nq0djb8n"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 착색토닝(겨드랑이/팔꿈치/무릎) 1부위 1회",
+   "kind": "일반",
+   "sale": "59000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3",
+   "id": "j1nq0djb8n~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 착색토닝(겨드랑이/팔꿈치/무릎) 1부위 5회",
+   "kind": "일반",
+   "sale": "139000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3",
+   "id": "la72sp4n93"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "바디 착색토닝(겨드랑이/팔꿈치/무릎) 1부위 5회",
+   "kind": "일반",
+   "sale": "290000",
+   "url": "https://www.velyb.kr/community/community01.php?tb=event_multi&etc5=%EA%B0%95%EB%82%A8%EC%97%AD%EC%A0%90&sField=3",
+   "id": "la72sp4n93~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "리쥬란　HB PLUS 2cc",
+   "kind": "일반",
+   "sale": "290000",
+   "url": "https://example.invalid/a",
+   "id": "fs912x0awh"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "﻿리쥬란 hb plus 2cc",
    "kind": "일반",
    "sale": "250000",
-   "id": "r9eveg72"
+   "url": "https://example.invalid/b",
+   "id": "fs912x0awh~2"
+  },
+  {
+   "brand": "블리비",
+   "branch": "강남역점",
+   "name": "ＨＢ 리쥬란 İ 2cc",
+   "kind": "일반",
+   "sale": "1",
+   "url": "",
+   "id": "i5uxad8e7i"
   }
  ]
 }

@@ -499,16 +499,27 @@ ok("E9 지난 기록에 없던 체인(새로 왔거나 쉬다 돌아옴)의 줄�
    _ad.chain_was_there(dd, "2026-10-14", "블리비") and not _ad.chain_was_there(dd, "2026-10-14", "포에버")
    and not _ad.chain_was_there(dd, "2026-10-13", "밴스") and _ad.chain_was_there(dd, "", "셀린"))
 # C8 가격 줄 번호: 빌드가 바뀌어도 같은 번호(바뀐 줄만 받는 업데이트 준비)
-r8 = [dict(brand="A", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000"), dict(brand="A", branch="강남점", name="리쥬란  2CC", kind="일반", sale="190000"),
-      dict(brand="A", branch="강남점", name="쥬베룩 2cc", kind="일반", sale="250000"), dict(brand="B", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000")]
+r8 = [dict(brand="A", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000", url="u/a"),
+      dict(brand="A", branch="강남점", name="리쥬란\u3000 2CC", kind="일반", sale="190000", url="u/b"),
+      dict(brand="A", branch="강남점", name="쥬베룩 2cc", kind="일반", sale="250000", url="u/a"), dict(brand="B", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000", url="u/a")]
 import rowid  # noqa: E402
 i1 = rowid.row_ids(r8)
 i2 = rowid.row_ids(list(reversed(r8)))[::-1]
-ok("C8 같은 줄은 순서가 바뀌어도 같은 번호(같은 이름 두 가격은 가격 순)", i1 == i2, (i1, i2))
-ok("C8 번호는 줄마다 다름(같은 이름 두 가격은 '~2')", len(set(i1)) == 4 and sum(1 for x in i1 if x.endswith("~2")) == 1, i1)
-i3 = rowid.row_ids([dict(r8[2], sale="260000")] + r8[3:] + [dict(brand="A", branch="강남점", name="새 시술", kind="일반", sale="1")])
-ok("C8 가격이 바뀌거나 다른 줄이 생겨도 그 줄 번호는 그대로", i3[0] == i1[2] and i3[1] == i1[3], (i1, i3))
-ok("C8 번호는 8글자(숫자·소문자)", all(re.fullmatch(r"[0-9a-z]{8}(~\w+)?", x) for x in i1), i1)
+ok("C8 같은 줄은 순서가 바뀌어도 같은 번호", i1 == i2, (i1, i2))
+ok("C8 번호는 줄마다 다름(같은 이름이 두 줄이면 주소 순으로 '~2' — 전각 공백·대문자는 같은 이름)", len(set(i1)) == 4 and i1[1] == i1[0] + "~2", i1)
+i3 = rowid.row_ids([dict(r8[0], sale="500000"), dict(r8[1], sale="10000")] + r8[2:] + [dict(brand="A", branch="강남점", name="새 시술", kind="일반", sale="1", url="u/c")])
+ok("C8 가격이 바뀌거나 다른 줄이 생겨도 번호는 그대로(같은 이름 두 줄은 주소 순이라 가격이 바뀌어도 서로 안 바뀜)", i3[:4] == i1, (i1, i3))
+ok("C8 번호는 10글자(숫자·소문자)", all(re.fullmatch(r"[0-9a-z]{10}(~\d+)?", x) for x in i1), i1)
+_sid = rowid.short_id
+rowid.short_id = lambda b: "0000000001"                # every base on one root: the clash rule
+try:
+    ic = rowid.row_ids([dict(brand="A", branch="x", name="가", kind="일반", sale="1", url=""), dict(brand="A", branch="x", name="나", kind="일반", sale="1", url=""),
+                        dict(brand="A", branch="x", name="나", kind="일반", sale="2", url="")])
+finally:
+    rowid.short_id = _sid
+ok("C8 다른 바탕이 같은 번호면 뒤 바탕에 'x'를 붙이고, 그 바탕의 반복은 그 뒤에 '~2'", ic == ["0000000001", "0000000001x", "0000000001x~2"], ic)
+bad_v, n_v = rowid.check()
+ok(f"C8 다른 구현 확인용 예시 {n_v}줄이 지금 규칙과 같음(tests/fixtures/rowid_vectors.json)", not bad_v, bad_v[:2])
 import appdata  # noqa: E402
 prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
         "keys": [["X14", 0, "울쎄라 300샷"]]}
