@@ -54,6 +54,17 @@
     toastTimer(act ? 5000 : 2600, ["on", "act"]);
   }
 
+  // brands with at least one branch in this data (a paused collector keeps its brand entry but has no branches)
+  const liveBrands = () => D.meta.brands.map((b, i) => ({ i, name: b[0] })).filter((b) => BR.some((x) => x.brand === b.i));
+  // which brands' sites were checked for '부가세 별도' (data meta.about.vat), counted from the data, never a fixed number
+  function vatBrandsNote() {
+    const vat = (D.meta.about || {}).vat || {}, live = liveBrands();
+    const ok = live.filter((b) => vat[b.name] && vat[b.name].default === "excl"), rest = live.filter((b) => !ok.includes(b));
+    const last = ok.map((b) => vat[b.name].checked).filter(Boolean).sort().pop();
+    if (!ok.length) return "부가세 표기를 확인한 브랜드가 아직 없어요.";
+    return (rest.length ? `${ok.length}개 브랜드는 사이트에 '부가세 10% 별도'라고 적혀 있어요` : `${ok.length}개 브랜드 모두 사이트에 '부가세 10% 별도'라고 적혀 있어요`)
+      + (last ? `(${last} 확인).` : ".") + (rest.length ? ` ${rest.map((b) => b.name).join("·")}는 표기를 아직 확인하지 못해 더하지 않아요.` : "");
+  }
   // feature flags (app/config.js): features that need legal review stay off until it is done
   const FLAGS = Object.assign({ ops: true, ads: false, booking: false, emailAlerts: false, publicIndex: false, concernSearch: true, concernGenerativeAI: false,
     concernPriceLink: true, showDraftKnowledge: true, lowestHighlight: false, branchRanking: false, discountEmphasis: false }, (window.APP_CONFIG || {}).flags || {});
@@ -2177,7 +2188,7 @@
         row("마지막 동기화", local ? `${local.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} — 이 휴대폰이 서버의 데이터 버전을 확인한 시각${SYNC.metaOk ? "" : " (그때 서버에 닿지 못함)"}` : "-"),
         row("이번 갱신에서 바뀐 가격", cc ? `가격 바뀜 ${cc.price}개 · 새로 생김 ${cc.added}개 · 빠짐 ${cc.removed}개 (지난 수집본과 비교, 실제로 달라진 줄만)` : "비교할 지난 수집본 정보가 없어요"),
         row("갱신 실패", `${stale}곳${SYNC.failed ? ` · 이 휴대폰의 마지막 내려받기 실패: ${SYNC.failed}` : ""}`),
-        row("데이터 원본", h("span", {}, Object.entries((A.sources || {}).brands || {}).map(([b, x]) => `${b}: ${x.method}`).join(" · ") || "병원 공식 홈페이지")),
+        row("데이터 원본", `${liveBrands().length}개 브랜드 공식 홈페이지의 공개 가격 페이지 (${liveBrands().map((b) => b.name).join("·")})`),
         row("가격 비교 기준", "같은 시술·같은 용량(샷 수)·같은 회차·같은 원산지끼리만 비교해요. 다른 규격은 '조건 상이'로 따로 둬요."),
         row("부가세 처리", "병원이 '부가세 별도'라고 적은 가격에만 10%를 더해 '부가세 포함 예상가'로 보여줘요. 부가세 표기를 못 찾은 가격은 더하지도 빼지도 않아요. 마이 → 가격 표시에서 병원 표시가로 바꿀 수 있어요."),
         row("이벤트 가격 처리", "체험가·한정가·첫 방문·시간 조건 가격은 '조건부'로 표시해요. 종료일이 지난 가격은 비교에서 빠지고, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격은 확인 전까지 빠져요."),
@@ -4496,8 +4507,7 @@
             `${PROVIDER_L[pv]}로 시작하기`)))))
         // demo: login is not connected — say so, list what is prepared, offer no button that pretends to work
         : h("div", { class: "acctprep" }, h("div", { class: "row", style: "gap:6px" }, icon("lock", "sm"), h("b", {}, "계정 연결은 정식 출시 때 열려요")),
-          h("p", { class: "sub" }, "지금은 시연 단계라 로그인·회원가입·약관 동의가 없어요. 기록·장바구니·관심은 이 휴대폰에만 저장돼요."),
-          h("p", { class: "tiny" }, "준비된 것: 카카오·Google·Apple 로그인 화면 배치와 인증 구조(app/auth.js, Supabase), 계정 동기화 코드, DB 접근 정책. 실제 연결에는 각 서비스의 키가 필요해요."))));
+          h("p", { class: "sub" }, "지금은 시연 단계라 로그인·회원가입·약관 동의가 없어요. 기록·장바구니·관심은 이 휴대폰에만 저장돼요."))));
     // records
     box.append(h("div", { class: "card flush" }, h("div", { class: "row", style: "padding:14px 14px 4px" }, h("h3", {}, "최근 받은 시술"), h("span", { class: "sp" }),
       h("button", { class: "btn sm gray", type: "button", onclick: () => recordSheet(null) }, icon("plus", "sm"), "기록하기")),
@@ -4522,7 +4532,7 @@
     box.append(h("div", { class: "card settings" }, h("h2", {}, "내 설정"), h("div", { class: "sub" }, "이 휴대폰에서 보이는 방식을 바꿔요. 데이터 자체는 바뀌지 않아요."),
       h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "가격 표시"), h("b", { class: "now" }, st.vat === "incl" ? "지금: 부가세 포함 예상가" : "지금: 병원 표시가")),
         radios("가격 표시", [["incl", "부가세 포함 예상가"], ["listed", "병원 표시가"]], st.vat, (v) => { st.vat = v; store.set("vat", v); applyVat(); render(); toast(v === "incl" ? "부가세 포함 예상가로 보여요" : "병원이 적은 가격 그대로 보여요"); }),
-        h("div", { class: "sub" }, st.vat === "incl" ? "병원이 '부가세 별도'라고 적은 가격에 10%를 더해 보여줘요. 4개 브랜드 모두 사이트에 '부가세 10% 별도'라고 적혀 있어요(2026-10-13 확인)." : "병원 사이트에 적힌 숫자 그대로예요. 실제 결제는 부가세 10%가 더해질 수 있어요.")),
+        h("div", { class: "sub" }, st.vat === "incl" ? `병원이 '부가세 별도'라고 적은 가격에 10%를 더해 보여줘요. ${vatBrandsNote()}` : "병원 사이트에 적힌 숫자 그대로예요. 실제 결제는 부가세 10%가 더해질 수 있어요.")),
       h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "화면 테마"), h("b", { class: "now" }, `지금: ${{ auto: "기기 설정 따름", light: "밝게", dark: "어둡게" }[theme]}`)),
         radios("화면 테마", [["auto", "기기 설정"], ["light", "밝게"], ["dark", "어둡게"]], theme, (t) => { store.set("theme", t); applyTheme(); render(); })),
       h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "지역"), h("b", { class: "now" }, `지금: ${regionName()} ${regionCount()}곳`)),
