@@ -259,6 +259,29 @@ check("workers: 200 without {ok:true} → down", any("e.example" in p for p in p
 check("workers: only /health is requested", all(u.endswith("/health") for u in f.calls) and len(f.calls) == 5, str(f.calls))
 check("workers: http:// URL refused", len(hc.check_workers(fetcher({}), "http://x.example")[0]) == 1)
 
+# the alerts Worker never evicts subscriptions: /health "capacity" tells a person when the table is (nearly) full; "stale" =
+# no factory finish for 2+ days. ok / missing field = alive and no warning; the message carries the host, never numbers.
+def cap_probs(body):
+    f = fetcher({"https://cap.example.workers.dev/health": (200, body)})
+    return hc.check_workers(f, "https://cap.example.workers.dev/")
+probs, notes = cap_probs(b'{"ok":true,"window":"08-21 KST","sending":true,"finished":"2026-10-15","capacity":"ok","stale":false}')
+check("workers: capacity ok → alive, no warning", probs == [] and any("cap.example" in n for n in notes), str(probs))
+probs, notes = cap_probs(b'{"ok":true,"finished":null}')
+check("workers: capacity field missing (older Worker) → alive, no warning", probs == [] and any("cap.example" in n for n in notes), str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"nearly_full"}')
+check("workers: capacity nearly_full → one warning line (still alive)", len(probs) == 1 and "거의 찼어요" in probs[0] and "MAX_SUBS" in probs[0]
+      and "cap.example" in probs[0] and any("살아 있음" in n for n in notes), str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"full"}')
+check("workers: capacity full → one warning line", len(probs) == 1 and "가득 찼어요" in probs[0] and "MAX_SUBS" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"surprise"}')
+check("workers: unknown capacity value → a warning (not silence)", len(probs) == 1 and "알 수 없어요" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","stale":true}')
+check("workers: stale true → one warning line", len(probs) == 1 and "2일 넘게" in probs[0] and "price_alerts" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":false,"capacity":"full"}')
+check("workers: ok:false stays 'down' (capacity of a dead Worker is not read)", len(probs) == 1 and "상태 확인 실패" in probs[0], str(probs))
+probs, notes = cap_probs(b'[1,2]')
+check("workers: a JSON list is not a health body → down, no crash", len(probs) == 1 and "상태 확인 실패" in probs[0], str(probs))
+
 A = hc.APP_URL
 meta_bytes = json.dumps(m).encode()
 probs, live = hc.check_live(fetcher({A: (200, b"<html>"), A + "data-meta.json": (200, meta_bytes)}))

@@ -1,0 +1,46 @@
+// 가격 알림 (price alerts) Worker — Cloudflare FREE plan. Deployed by .github/workflows/cf-alerts.yml:
+//   wrangler@4.145.0 (installed in a step without the token) d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc
+//   wrangler@4.145.0 deploy --config cf/alerts/wrangler.jsonc
+// Secrets (set once in the dashboard or with `wrangler secret put`, never in this file):
+//   VAPID_PRIVATE_JWK   private key JWK from `node cf/alerts/vapid-keygen.mjs` (one line of JSON)
+//   ALERTS_SECRET       the factory's token (same value as the GitHub secret ALERTS_SECRET)
+// Not secret: VAPID_PUBLIC_KEY (also app/config.js pushPublicKey), database_id, ALERTS_URL.
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang-alerts",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-07",
+  "workers_dev": true,
+  // our console lines carry counts only. Invocation logs are off because they record each request URL, and
+  // PUT/DELETE URLs hold the subscription id (the phone's only key). CPU time stays visible under Metrics.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // UTC: 23:00–11:50 = 08:00–20:50 KST, every 10 minutes = 78 runs a day; src/rules.js inWindow refuses 20:50 and is checked
+  // again before every push → 77 sending runs × SEND_LIMIT 40 = 3,080 pushes a day (src/worker.js has the full arithmetic).
+  // One cron trigger of the account's 5 on the free plan.
+  "triggers": { "crons": ["*/10 23,0-11 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yoonsiljang-alerts",
+      // the D1 database's id (not secret) — the user creates the database in the dashboard and A writes the id here.
+      // cf-alerts.yml skips deploying while this is still the placeholder.
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // abuse guard for POST /v1/push/subscribe: 3 a minute per client per Cloudflare location. The key is the connecting IP,
+  // which lives only in this binding's in-memory counter (never in D1, never in logs). The daily budget NEW_PER_DAY in D1
+  // caps what gets past it. If the free plan refuses this binding, delete it: the code skips the check when SUBS_RL is missing.
+  "ratelimits": [{ "name": "SUBS_RL", "namespace_id": "2601", "simple": { "limit": 3, "period": 60 } }],
+  "vars": {
+    "ALLOWED_ORIGIN": "https://yoonsiljang.lsy2825.workers.dev",
+    "DEV_ORIGINS": "",
+    "VAPID_PUBLIC_KEY": "",
+    "VAPID_SUBJECT": "https://yoonsiljang.lsy2825.workers.dev",
+    // what the cron can serve with ~25% headroom (src/worker.js: 21,560 pushes a week ÷ ~2 per phone). Nothing evicts: at the
+    // cap new phones get 503 FULL and GET /health says capacity "full" (80% = "nearly_full"; the monitor warns)
+    "MAX_SUBS": "8000",
+    // new subscriptions per KST day (D1 Free allows 100,000 rows written a day; one new subscription ≈ 5)
+    "NEW_PER_DAY": "2000"
+  }
+}

@@ -285,3 +285,82 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python3 .github/scripts/health_check.py --report-only --send
+
+  # Price alerts (cf/alerts): hand the numbers of the watched treatments in the published app/data.json to the alerts
+  # Worker, which marks who gets a push (sent 08:00–21:00 KST). A job of its own on a FRESH runner, so nothing the factory
+  # ran (scrapers, `pip install -r requirements.txt` packages, build code) can touch this machine, its files, $GITHUB_ENV or
+  # the alerts token: only this job has ALERTS_*, it installs nothing, and it can only read the repository.
+  # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
+  # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
+  # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
+  # but cannot edit Actions variables, so nothing the factory pushes can ever become the code that holds ALERTS_SECRET.
+  # (github.sha is NOT used: a scheduled run takes main's last commit, which may be a factory push nobody reviewed.) Unset or
+  # malformed → the job is skipped with a notice. The DATA is app/data.json from main (after a successful factory run the
+  # new data; when the factory failed, what was already published, so the daily expiring check still runs), copied as a
+  # regular file and only JSON.parse'd — never run. Pinned code that lags main is harmless (the shape guard in notify.mjs
+  # and the Worker's own checks refuse data it cannot read); a notice says when main's alerts code is newer than the pin.
+  # Also on 'nothing to do today' days (run=false): ending prices are checked daily. Never fails the price build: notify.mjs
+  # exits 0 with a ::warning, and continue-on-error covers anything else. Unset secrets = skipped.
+  price_alerts:
+    needs: update
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
+        id: pin
+        env:
+          PIN: ${{ vars.ALERTS_CODE_SHA }}
+        run: |
+          if printf '%s' "$PIN" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "sha=$PIN" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code — price alerts skipped"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.pin.outputs.sha }}     # the CODE: the reviewed commit, never main
+          path: code
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          ref: main                  # the DATA: what the factory committed (only app/data.json is taken, below)
+          path: published
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          node-version: "22"
+      - name: Take app/data.json from main as data
+        id: data
+        if: steps.pin.outputs.ok == 'true'
+        run: |
+          set -u
+          F=published/app/data.json
+          # a regular file inside the checkout (a symlink — or a symlinked app/ — could point at a file on this machine)
+          if [ -f "$F" ] && [ ! -L "$F" ] && [ "$(realpath "$F")" = "$(realpath published)/app/data.json" ]; then
+            cp "$F" "$RUNNER_TEMP/data.json"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=price alerts::app/data.json on main is not a regular file — nothing sent"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+          # a hint only (no security role): main's alerts code is newer than the pin
+          if ! diff -rq code/cf/alerts published/cf/alerts >/dev/null 2>&1 || ! diff -rq code/app/domain published/app/domain >/dev/null 2>&1; then
+            echo "::notice title=price alerts::main's cf/alerts or app/domain differs from ALERTS_CODE_SHA — after reviewing it, set the variable to the new commit"
+          fi
+      - name: Price alerts (cf/alerts/notify.mjs)
+        if: steps.pin.outputs.ok == 'true' && steps.data.outputs.ok == 'true'
+        timeout-minutes: 10
+        continue-on-error: true
+        run: node code/cf/alerts/notify.mjs "$RUNNER_TEMP/data.json"
+        env:
+          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL }}
+          ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
