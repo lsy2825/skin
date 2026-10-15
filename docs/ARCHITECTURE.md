@@ -191,7 +191,7 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
   - 쿼리는 필터 상태예요.
 - **data.json의 가격 줄은 열 단위(2026-10-13):** `cols[필드][줄]`, `colDelta`의 필드(상품명 번호)는 앞 줄과의 차이로 저장해요. 같은 종류 값이 모여 gzip 뒤 크기가 1,063KB → 781KB(−27%)로 줄었어요. 앱(`rowsOf`)·도구(`rows_of`)·테스트(`tests/e2e/rows.js`)가 줄 배열로 되돌려 써요. 빌드가 되돌린 결과가 원래 줄과 같은지 확인한 뒤에만 파일을 써요. 예전 `rows` 형식도 그대로 읽어요.
 - **가격 파일 미리 받기:** `index.html`의 `<link rel="preload" as="fetch">`로 비밀번호 화면을 그리는 동안 받기 시작해요(요청은 한 번만 가는 것을 확인).
-- **클릭재킹 방지:** `gate.js` 맨 앞. 다른 사이트 프레임 안이면 화면을 숨기고 새 창 링크만 보여줘요.
+- **클릭재킹 방지:** 응답 헤더 `Content-Security-Policy: frame-ancestors 'none'`(`app/_headers`, A2 — Cloudflare가 붙이고 2026-10-15 실제 응답에서 확인). GitHub Pages 시절 `gate.js` 맨 앞에 두었던 스크립트 방어(다른 사이트 프레임이면 화면 숨김)는 헤더가 확인된 뒤 뺐어요(B7 #32). `tests/e2e/frame.js`가 헤더로 막히는지 봐요.
 - **데이터 인덱스:** `byB`(지점→행), `byKB`(비교 키→지점→행), `byG`(자동 묶음→행), `byName`(이름→행), 검색 인덱스(`Search.buildIndex`, 캐시)
 - **도메인 로직(`app/domain/`, UI 없음, 브라우저·Node 공용)**
   - `pricing.js`: 부가세, 종료일, 방문 조건, 줄 계산, 지점 비교, 첫 방문 중복 방지, 패키지 판정
