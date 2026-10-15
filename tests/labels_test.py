@@ -498,6 +498,17 @@ ok("E9 meta.brandFirst: 기록 없이 이번에 처음 모은 체인은 이번 �
 ok("E9 지난 기록에 없던 체인(새로 왔거나 쉬다 돌아옴)의 줄은 '새로 생김'에 하나씩 넣지 않음",
    _ad.chain_was_there(dd, "2026-10-14", "블리비") and not _ad.chain_was_there(dd, "2026-10-14", "포에버")
    and not _ad.chain_was_there(dd, "2026-10-13", "밴스") and _ad.chain_was_there(dd, "", "셀린"))
+# C8 가격 줄 번호: 빌드가 바뀌어도 같은 번호(바뀐 줄만 받는 업데이트 준비)
+r8 = [dict(brand="A", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000"), dict(brand="A", branch="강남점", name="리쥬란  2CC", kind="일반", sale="190000"),
+      dict(brand="A", branch="강남점", name="쥬베룩 2cc", kind="일반", sale="250000"), dict(brand="B", branch="강남점", name="리쥬란 2cc", kind="일반", sale="200000")]
+import rowid  # noqa: E402
+i1 = rowid.row_ids(r8)
+i2 = rowid.row_ids(list(reversed(r8)))[::-1]
+ok("C8 같은 줄은 순서가 바뀌어도 같은 번호(같은 이름 두 가격은 가격 순)", i1 == i2, (i1, i2))
+ok("C8 번호는 줄마다 다름(같은 이름 두 가격은 '~2')", len(set(i1)) == 4 and sum(1 for x in i1 if x.endswith("~2")) == 1, i1)
+i3 = rowid.row_ids([dict(r8[2], sale="260000")] + r8[3:] + [dict(brand="A", branch="강남점", name="새 시술", kind="일반", sale="1")])
+ok("C8 가격이 바뀌거나 다른 줄이 생겨도 그 줄 번호는 그대로", i3[0] == i1[2] and i3[1] == i1[3], (i1, i3))
+ok("C8 번호는 8글자(숫자·소문자)", all(re.fullmatch(r"[0-9a-z]{8}(~\w+)?", x) for x in i1), i1)
 import appdata  # noqa: E402
 prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
         "keys": [["X14", 0, "울쎄라 300샷"]]}
