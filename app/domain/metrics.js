@@ -54,7 +54,15 @@
     // a copy in memory as well: storage that is blocked or full (io.load gives nothing back) must not turn 'once a day' into
     // 'on every scroll' — without storage it is once per page load
     let mem = null;
-    const load = () => { let v = null; try { v = clean(io.load()); } catch (e) { v = null; } return v || mem; };
+    // storage that reads but cannot write (full) would hand back an old value forever: the stored value and the memory copy
+    // are merged — the later day wins, the same day keeps the steps of both
+    const load = () => {
+      let v = null;
+      try { v = clean(io.load()); } catch (e) { v = null; }
+      if (!v || !mem) return v || mem;
+      if (v.d !== mem.d) return days(v.d, mem.d) > 0 ? mem : v;
+      return { d: v.d, s: [...new Set([...v.s, ...mem.s])] };
+    };
     const save = (v) => { mem = v; try { io.save(v); } catch (e) { /* storage unavailable: memory only */ } };
     const send = (name) => { try { return !!io.beacon(url, body(name)); } catch (e) { return false; } };
     // send `name` unless it went today; true when it went now. A beacon the browser did not queue is tried again next time.

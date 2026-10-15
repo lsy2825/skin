@@ -118,6 +118,15 @@ test("storage blocked or full: once per page load, never once per scroll", () =>
   assert.deepEqual(sent, ["open", "first_price", "cart_open"]);
 });
 
+test("storage that reads an old value but cannot write (full): the memory copy still holds once a day", () => {
+  const sent = [];
+  const m = M.make(ON, { load: () => ({ d: "2026-10-14", s: ["open"] }), save: () => {}, today: () => "2026-10-15",
+    beacon: (u, b) => { sent.push(JSON.parse(b).s); return true; } });
+  m.opened(); m.hit("cart_open"); m.hit("cart_open"); m.hit("compare_open"); m.opened();
+  assert.deepEqual(sent, ["return_7d", "open", "cart_open", "compare_open"]);
+  assert.equal(m.pending("cart_open"), false);
+});
+
 test("a return the browser did not queue is not lost: return_7d goes first and both are tried again", () => {
   let fails = 1;
   const p = phone(ON, { kept: { d: "2026-10-10", s: [] }, queued: () => !(fails-- > 0) });

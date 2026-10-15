@@ -1436,7 +1436,9 @@
   // nothing sent (tests/e2e/metrics.js counts zero requests).
   const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => today(),
     beacon: (url, body) => !!(navigator.sendBeacon && navigator.sendBeacon(url, body)) });
-  const metric = (name) => metrics.hit(name);
+  // behind the PIN screen (html.locked hides the page) nothing has been seen yet: steps wait; 'unlocked' draws the screen again
+  const unseen = () => document.documentElement.classList.contains("locked");
+  const metric = (name) => (unseen() ? false : metrics.hit(name));
   // 'first_price': a price (…원) is on screen for the first time today — checked after each draw and while scrolling
   let priceLook = 0, priceDay = "";   // priceDay: the day it went (or was found already sent) — scrolling then costs nothing
   function seePrice() {
@@ -4866,9 +4868,9 @@
           boot(); } }, icon("refresh-cw", "sm"), "다시 시도")))));
     });
   }
-  metrics.opened();
-  window.addEventListener("unlocked", seePrice);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { metrics.opened(); seePrice(); } });
+  if (!unseen()) metrics.opened();
+  window.addEventListener("unlocked", () => { metrics.opened(); render(); });   // the view runs again: compare_open, cart_open, first_price
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && !unseen()) { metrics.opened(); seePrice(); } });
   boot();
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then

@@ -146,6 +146,10 @@ test("R11: the CSP allows exactly the origins the config calls (a metrics addres
   assert.match(check(fixed, cfg.replace('metricsApi: ""', 'metricsApi: "http://m.yoonsiljang.example"')).problems.join(" "), /must be https/);
   // an opening nothing uses: the metrics origin left in the CSP after the address is taken out of config.js
   assert.match(check(fixed, cfg).problems.join(" "), /allows https:\/\/m\.yoonsiljang\.example but no config\.js address uses it/);
+  // metrics on with an address the app refuses (it would send nothing): caught before deploy
+  const on = (api) => check(fixed, cfg.replace('metrics: false', 'metrics: true').replace('metricsApi: ""', `metricsApi: "${api}"`));
+  assert.equal(on("https://m.yoonsiljang.example").ok, true);
+  for (const bad of ["https://m.yoonsiljang.example/?k=1", "https://u:p@m.yoonsiljang.example", ""]) assert.match(on(bad).problems.join(" "), /not a plain https address/, bad);
   assert.equal(/commerce|apiBase/.test(cfg), false, "the credit/commerce settings are gone (6.0: no credits)");
 });
 

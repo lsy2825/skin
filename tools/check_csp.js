@@ -31,7 +31,9 @@ function check(htmlText, cfgText) {
     apis[key] = o;
     if (!allows(connect, o)) problems.push(`connect-src is missing the ${key} origin ${o}`);
   }
-  if (cfg.metrics === true && !cfg.metricsApi) notes.push("metrics is on but metricsApi is empty — nothing is sent");
+  // the app's own rule for the address (app/domain/metrics.js): with metrics on, an address it refuses means nothing is sent
+  if (cfg.metrics === true && !require("../app/domain/metrics.js").endpoint(cfg))
+    problems.push("metrics is on but metricsApi is not a plain https address (empty, a query, fragment or login) — the app sends nothing");
   if (cfg.supabaseUrl && !allows(connect, origin(cfg.supabaseUrl))) problems.push(`connect-src is missing ${origin(cfg.supabaseUrl)}`);
   const used = new Set([...Object.values(apis), ...KNOWN_ORIGINS]);
   for (const x of connect) if (/workers\.dev|yoonsiljang/.test(x) && !used.has(x)) problems.push(`connect-src allows ${x} but no config.js address uses it`);
