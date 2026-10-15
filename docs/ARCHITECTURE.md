@@ -40,6 +40,7 @@ GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저
 | 배포·스케줄 | `tools/factory.sh`를 비공개 GitHub Actions가 돌림(Cloudflare Containers 버전은 보류). 앱은 Cloudflare Workers 정적 파일(무료) | `tools/factory.sh`, `cf/factory/`, `wrangler.jsonc`, `.github/workflows/weekly.yml` |
 | 프런트 | 바닐라 JS(`app.js` 약 3,300줄 + `domain/` 약 570줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
 | 사용자 데이터 | 기기 localStorage(`pc:` 접두사). Supabase(Postgres+Auth)는 준비만 | `app/auth.js`, `supabase/schema.sql` |
+| 익명 이용 단계 집계 (A4) | Cloudflare Worker `yoonsiljang-metrics` + D1(무료). `POST /v1/m {"s":단계}` 8개만, (KST 날짜, 단계) → 횟수만 저장, IP·브라우저·쿠키는 읽지도 않고 요청 로그·추적 모두 끔, 단계당 하루 5,000 상한. `GET /v1/m/daily`는 Cloudflare Access JWT 검증(설정 전엔 항상 403), `GET /health` | `cf/metrics/`, `.github/workflows/cf-workers.yml`(main의 `cf/metrics/**` 변경 시 배포 — 합치기 전 사용자 확인) |
 | 테스트 | node:test(단위), Python 자체 테스트(xkeys·taxonomy·knowledge), Playwright(E2E·QA·접근성, 로컬 실행) | `tests/`, `tests/e2e/` |
 
 ## 2. 설계 결정

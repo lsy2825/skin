@@ -23,6 +23,7 @@ run "comparison keys (xkeys)" python3 build2/xkeys.py
 run "weekly value guard" python3 tests/weekly_guard_test.py
 run "monitoring alerts (Telegram token never printed, checks; no network)" python3 tests/security/monitor_test.py
 run "brand collectors (parsers on saved public pages)" python3 tests/brand_parsers_test.py
+run "metrics worker (cf/metrics: 8 stages only, no IP stored, Access)" bash -c "node --test cf/metrics/test/*.test.mjs"
 run "spec labels (no price/date/promo words, nothing we glued)" python3 tests/labels_test.py
 run "branch addresses (own address, loose forms, on saved public pages)" python3 tests/branch_addr_test.py
 run "backup / restore" bash tests/db/backup_restore_test.sh
