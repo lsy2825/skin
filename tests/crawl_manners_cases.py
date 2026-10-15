@@ -2,7 +2,8 @@
   - Crawl-delay is a minimum gap between ANY two requests to the host across the steps of a run (the clock file),
   - Fetcher(robots=True) asks the shared robots.txt answer first and skips what it disallows,
   - the weekly gate skips only a brand that is blocked or missing from the source check, and the run goes on.
-Run: python3 tests/crawl_manners_test.py"""
+Run: python3 tests/crawl_manners_cases.py — tests/brand_parsers_test.py runs it too, so the PR checks (.github/scripts/pr_checks.sh,
+'brand collectors') run it on every PR."""
 import os, sys, tempfile, types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

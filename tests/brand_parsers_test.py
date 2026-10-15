@@ -96,5 +96,12 @@ common("셀린", rows)
 r0 = rows[0]
 ok("셀린: item with sale and list price, condition kept in the name", (r0["option"], r0["sale"], r0["orig"]) == ("[카톡플친대상/첫방문] 턱보톡스 50U (국산)", 9900, 19000), r0)
 
+# the collectors' robots.txt / Crawl-delay manners (scrape/common.py Fetcher, lienjang, branches, the weekly gate; no network):
+# their own file, run from here so the PR checks run them (2026-10-16)
+import subprocess  # noqa: E402
+r = subprocess.run([sys.executable, os.path.join(ROOT, "tests", "crawl_manners_cases.py")], capture_output=True, text=True, timeout=240)
+print(r.stdout, end="")
+ok("수집 예절(robots.txt·Crawl-delay) — tests/crawl_manners_cases.py", r.returncode == 0, "" if r.returncode == 0 else (r.stdout + r.stderr)[-600:])
+
 print(f"{'FAIL' if fails else 'PASS'}: {len(fails)} failing")
 sys.exit(1 if fails else 0)
