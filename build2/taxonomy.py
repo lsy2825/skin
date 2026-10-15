@@ -35,8 +35,9 @@ def T(label, rx, where=None, split=None, scope="short"):
 
 
 # origin / tier words: also inside brackets ('스킨보톡스(국산 일반형)', '[국내산]')
-ORIGIN = [T("국산", r"(?<![미외])국산|국내산", scope="full"), T("독일산", r"독일산?|제오민", scope="full"), T("미국산", r"미국산?|엘러간|앨러간", scope="full"),
-          T("수입", r"수입산?|외국산|외산", scope="full"), T("프리미엄", r"프리미엄|코어톡스|이노톡스|고순도|내성", scope="full"), T("파워", r"파워|용량업|두배")]
+# '영국산' is not '국산' (검증 8차: 303 영국산 rows sat in 국산 keys, the 국산 lowest price at 48 branches)
+ORIGIN = [T("국산", r"(?<![미외영중])국산|국내산", scope="full"), T("독일산", r"독일산?|제오민", scope="full"), T("미국산", r"미국산?|엘러간|앨러간", scope="full"),
+          T("수입", r"수입산?|외국산|외산|영국산|중국산", scope="full"), T("프리미엄", r"프리미엄|코어톡스|이노톡스|고순도|내성", scope="full"), T("파워", r"파워|용량업|두배")]
 EYE = T("아이", r"아이(?!라인|돌)|눈가전용")
 # 제모 devices as the clinics write them ('제모(아포지 플러스)', '[남성제모] 젠틀맥스 …'): a different device is a different
 # treatment, so it is part of the variant (4.0 audit: one key mixed 아포지 플러스 9,900원 and 에일린 19,000원)

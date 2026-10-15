@@ -553,6 +553,16 @@ mv = appdata.group_moved(prev_g, [[0, 0, 2, 190000, 0, 0, 3, 4, 1, 5]],
 ok("자동 묶음: 같은 줄·같은 가격이 규칙 때문에 빠지면(추가 옵션이 됨) 그 가격은 '가격 변동'의 근거가 아님",
    mv == {("A|건대점", appdata.G.comp("[울써마지 옵션] 얼굴전체 더모톡신"), 190000)}, mv)
 
+# C1 다음(검증 8차, 예전부터 있던 것)
+tg = lambda s: [t for t, p in clean.TAGS if re.search(p, s)]
+ok("해피아워·'화/수/목'·'12시~17시'·'평일 한정'은 시간 조건('평일 낮') — 일반가로 비교하지 않음",
+   all(tg(s) == ["평일 낮"] for s in ("온다 해피아워 이벤트 온다 리프팅 60KJ", "♥화/수/목 해피아워 이벤트♥ 11시~16시 한정", "해피아워 (평일 한정) 슈링크 300샷", "화수목 해피아워 리쥬란"))
+   and tg("리쥬란힐러 2cc") == [] and tg("화요일 휴진 안내") == [])
+ok("'영국산' 톡신은 '국산'이 아니라 수입", "국산" not in taxonomy.variant("주름 보톡스 2부위 (영국산)")[0]["label"].split()
+   and taxonomy.variant("주름 보톡스 2부위 (국산)")[0]["label"].startswith("국산"))
+ok("... 큐레이션 '국산' 키(X02·X07)에도 안 들어감", not [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")]
+   and "X02" in [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (국산)")], [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")])
+
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
 bad = [(k[2], labels.problems(k[2])) for k in D["keys"] if labels.problems(k[2])]
