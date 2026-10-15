@@ -211,7 +211,8 @@ raw = [  # category, group, option, sale, orig
     ("남성제모", "", "이마(헤어+삼자) 제모1회", 50000, 0),                                    # sex only in the page name
     ("여성제모", "", "인중 1회", 9000, 0),
     ("남성제모", "", "인중 1회", 25000, 0),                                                   # 쁨 서울대입구: no '제모' in the option, an area only
-    ("남성제모", "", "女) 겨드랑이 1회", 30000, 0)]                                           # the option's own sex wins over the page's
+    ("남성제모", "", "女) 겨드랑이 1회", 30000, 0),                                           # the option's own sex wins over the page's
+    ("▼ 부가세 포함 10만원 19.6만 ▼", "10월 특가", "▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : 라라필+피코슈어토닝", 100000, 0)]   # heading glued in front
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -253,6 +254,9 @@ ok("제모 페이지의 부위 대괄호('[겨드랑이] 5회')는 이름에 남
 im = [r for r in out if r["option"].replace(" ", "") == "이마(헤어+삼자)제모1회"]
 ok("성별이 페이지 이름에만 있는 제모 줄(쁨 '여성제모'/'남성제모')은 합치지 않고 이름(mname)에 성별", len(im) == 2 and
    sorted(r["mname"][:4] for r in im) == ["[남성]", "[여성]"], [r["mname"] for r in im])
+lt = [r for r in out if "라라토닝" in r["option"]]
+ok("칸 제목('▼ 부가세 포함 … ▼')이 앞에 붙은 상품은 안내 문구가 아니라 상품, 부가세는 칸 제목대로 '포함'",
+   len(lt) == 1 and lt[0]["option"].startswith("1. 라라토닝") and lt[0]["vat"] == "포함", [(r["option"], r["vat"]) for r in lt])
 iz = one("인중 1회")
 ok("'제모' 글자 없이 부위만 있는 제모 페이지 줄(쁨 서울대입구 '인중 1회')도 이름에 페이지 성별", len(iz) == 2 and
    sorted(r["mname"][:4] for r in iz) == ["[남성]", "[여성]"], [r["mname"] for r in iz])
@@ -326,6 +330,14 @@ rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "울쎄라피 �
 pk = {f["name"]: f["desc"] for f in fs}
 ok("묶음 시술군 설명은 자기 상품 낱말 바로 뒤 괄호만(보톡스 포함 패키지에 울쎄라 설명 안 붙음, 리쥬란 포함 패키지는 붙음)",
    not any("집속" in d for n, ds in pk.items() if "울쎄라" not in n for d in ds) and any("PN" in d for ds in pk.values() for d in ds), pk)
+
+# E6 부가세: 행의 표기(옵션·묶음 제목·페이지 칸 제목) → 브랜드 기본값, 확인 못 한 지점은 '미확인' (2026-10-15)
+vd = {"닥터에버스": ("excl", {"청담점"})}
+row = lambda **k: dict({"brand": "닥터에버스", "branch": "미사점", "category": ""}, **k)
+ok("부가세: 칸 제목의 '부가세 포함'이 브랜드 기본값(별도)보다 먼저", clean.vat_of(row(category="부가세 포함 만원(1회 한정) 1.96만"), "10월 2차", "국산 사각턱보톡스 50유닛", vd) == "포함")
+ok("부가세: 표기 없으면 브랜드 기본값", clean.vat_of(row(), "", "리쥬란 2cc", vd) == "별도")
+ok("부가세: 확인 못 한 지점은 미확인('')", clean.vat_of(row(branch="청담점"), "", "리쥬란 2cc", vd) == "")
+ok("부가세: 행 표기는 확인 못 한 지점에서도 그대로", clean.vat_of(row(branch="청담점"), "", "리쥬란 2cc (VAT 별도)", vd) == "별도")
 
 # E5 추가 옵션 (xkeys.addon_only → clean.csv addon → data.json addon): 790 newly marked rows were judged one by one (2026-10-15)
 for n in ["레이저토닝 · 옵션8) 에어녹스(비수면 통증제어 마취 시스템) 추가", "(목필러 옵션) 슈링크 유니버스 100샷 추가", "미희주사 1cc 추가당",

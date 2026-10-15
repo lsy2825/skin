@@ -9,7 +9,7 @@ come from the branch list printed on the same page — NAMELESS below). Per bran
                                   {name, event_name, category, price, original_price, is_inquiry} — read as is.
                                   is_inquiry = 1 ('가격 문의') is not a price.
 Events for 카카오톡 friends say so in their name ('해피아워 이벤트(카톡친구대상)'); the name is kept as the group.
-VAT wording: none found on the probe pages -> no vat_policy entry (unknown stays unknown).
+VAT wording: the event cards say 'VAT 별도' (2026-10-15 check) -> data2/vat_policy.json 닥터에버스 (branches not confirmed stay unknown).
 robots.txt (2026-10-14): Disallow /wp-admin/ /wp-json/ /backpg/ /shop/ — event pages are allowed. The words 'captcha' and
 '로그인이 필요' seen by the probe were inside scripts (a consultation form), not a wall in front of the prices.
 """
