@@ -212,7 +212,12 @@ for f in FAMILIES:
     f["_rx"] = re.compile(f["rx"])
     f["_stop"] = re.compile(f["stop"]) if f["stop"] else None
 
-AMOUNT = re.compile(r"(\d+(?:\.\d+)?)(U|cc|ml|샷|KJ|부위|개(?!월)|줄|시린지|vial|분|mm)(?![a-zA-Z])")
+# vial in any case ('쥬베룩 볼륨 1Vial' and '1vial' are one spec — 2026-10-15, 개선 보고서 E2); unit() writes it 'vial'
+AMOUNT = re.compile(r"(\d+(?:\.\d+)?)(U|cc|ml|샷|KJ|부위|개(?!월)|줄|시린지|[vV][iI][aA][lL]|분|mm)(?![a-zA-Z])")
+
+
+def unit(u):
+    return "vial" if u.lower() == "vial" else u
 PACKAGE = re.compile(r"패키지|PKG|pkg|세트|SET|콤보|\+|&|(?<=[0-9샷cU])X(?=[가-힣])|결합|동시|코스")
 # filler words that don't change the product (marketing, price kind, generic nouns)
 STOP = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|할인|세일|첫방문|첫시술|1인1회|신규|웰컴|선착순|NEW|BEST|HOT|기획전|"
@@ -306,18 +311,26 @@ def variant(name, addon=False, kind="", cat="", display=None):
         return None, "이용권·무제한"
     fam, n = family_of(raw)
     # a bundle: two families, '+'/패키지 in the short name, or ' + ' between parts in the explanation ('환절기 스킨 리커버리(A + B)')
-    bundle = n >= 2 or bool(PACKAGE.search(comp(_strip(raw)))) or bool(re.search(r"\([^()]*\s\+\s[^()]*\)", raw))
+    # On a 제모 page '(손등 + 손가락)' lists the areas of one option, not two products: read as a bundle, '[여성]손 5회' and
+    # '[남성]손 5회' shared one key labelled '손 5회 (손등 + 손가락)' (2026-10-15, 개선 보고서 E3)
+    # The listed areas stay in the signature and the label ('여성 손 제모 5회 (손등 + 손가락)'), so only the same listing joins: the
+    # 제모 rule reads its area outside brackets and would otherwise put '겨드랑이 (겨드랑이 + 인중)' with plain '겨드랑이'.
+    areas_only = cat == "제모" and (not fam or fam["id"] == "hair")
+    listed = re.findall(r"\(([^()]*\s\+\s[^()]*)\)", raw)
+    bundle = n >= 2 or bool(PACKAGE.search(comp(_strip(raw)))) or (bool(listed) and not areas_only)
+    v = None
     if fam and not bundle:
         v, why = _family_variant(raw, fam, sess, display)
-        if v:
-            return v, ""
     elif not fam and not bundle and cat == "제모":
         # '얼굴 제모 · [여성] 이마 1회': the area is the option, '제모' only in the group name
         seg = re.split(r"\s+·\s+", display or raw)[-1]
         sex = " ".join(re.findall(r"\[(?:여성|남성)\]", raw))
         v, why = _family_variant(f"{sex} {seg} 제모", FAM_BY_ID["hair"], sess)
-        if v:
-            return v, ""
+    if v:
+        if listed and areas_only:
+            parts = " + ".join(re.sub(r"\s+", " ", x).strip() for x in listed)
+            v = dict(v, sig=f"{v['sig']}|{comp(parts)}", label=f"{v['label']} ({parts})", sub=f"{v['sub']} ({parts})")
+        return v, ""
     return _exact(display or raw, sess, cat, bundle)
 
 
@@ -368,7 +381,7 @@ def _exact(raw, sess, rowcat, bundle):
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
     if not sigtext:
         return None, "이름 없음"
-    amounts = " ".join(dict.fromkeys(f"{v}{u}" for v, u in AMOUNT.findall(amounts_text(disp))))
+    amounts = " ".join(dict.fromkeys(f"{v}{unit(u)}" for v, u in AMOUNT.findall(amounts_text(disp))))
     if bundle:
         first = next((f for f in FAMILIES if f["_rx"].search(comp(raw))), None)
         famname, cat = (f"{first['name']} 포함 패키지" if first else "기타 패키지"), "패키지"
@@ -390,8 +403,8 @@ def _exact(raw, sess, rowcat, bundle):
         fid = "generic"
     sig = "|".join(["x", famname, sigtext, str(sess)])
     desc = re.findall(r"\(([^()]{2,40})\)", disp)
-    return dict(fam=fid, famname=famname, cat=cat, tags=[], area="", residual="", detail=desc[0] if desc else "", amount=amounts, sess=sess,
-                sig=sig, label=label, sub=sub, rx=rx), ""
+    return dict(fam=fid, famname=famname, cat=cat, tags=[], area="", residual="", detail=desc[0] if desc else "", details=desc, amount=amounts,
+                sess=sess, sig=sig, label=label, sub=sub, rx=rx), ""
 
 
 def comp_spaces(s):
@@ -427,7 +440,7 @@ def _family_variant(raw, fam, sess, display=None):
     st = _strip(raw)
     by_unit = defaultdict(set)
     for v, u in AMOUNT.findall(amounts_text(raw)):
-        by_unit[u].add(float(v))
+        by_unit[unit(u)].add(float(v))
     if fam["id"] not in ("inmode", "ldm"):        # minutes are the dose for these two ('LDM … #6분' vs '#24분')
         by_unit.pop("분", None)
     if any(len(v) > 1 for v in by_unit.values()):
@@ -485,6 +498,21 @@ def _family_variant(raw, fam, sess, display=None):
                 rx=fam["rx"] + ("|보톡스|보툴" if fam["id"] == "toxin" else "")), ""
 
 
+def loose_text(s):
+    """a name with letter case and word breaks taken out ('HB Plus 2cc' → 'hbplus2cc')"""
+    return re.sub(r"\s+", "", s or "").casefold()
+
+
+def loose_sig(sig):
+    """a signature with letter case, word breaks and the order of bracketed parts taken out — two specs with the same
+    loose_sig are written differently but are the same product"""
+    parts = sig.split("|")
+    if parts[0] == "x" and len(parts) == 4:
+        # exact names: '줄기세포페이스(손주사)3cc' and '줄기세포페이스3cc(손주사)' — the bracket moved, nothing else
+        parts[2] = re.sub(r"\([^()]*\)", "", parts[2]) + "".join(sorted(re.findall(r"\([^()]*\)", parts[2])))
+    return "|".join(loose_text(p) for p in parts)
+
+
 def key_id(sig):
     return "T" + hashlib.sha1(sig.encode("utf-8")).hexdigest()[:7].upper()
 
@@ -499,11 +527,41 @@ def build(rows, min_branches=3):
         vs.append(v)
         if not v:
             why[reason] += 1
+    # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families
+    # (2026-10-15, 개선 보고서 E10). The spelling with the most word breaks wins (it never reads as words we glued), then the
+    # most rows. Labels follow; signatures don't change.
+    spell = defaultdict(Counter)
+    for v in vs:
+        if v:
+            spell[(loose_text(v["famname"]), v["cat"], v["fam"])][v["famname"]] += 1
+    canon = {g: sorted(c.items(), key=lambda x: (-x[0].count(" "), -x[1], x[0]))[0][0] for g, c in spell.items()}
+    for v in vs:
+        if v:
+            best = canon[(loose_text(v["famname"]), v["cat"], v["fam"])]
+            if best != v["famname"]:
+                if v["famname"] in v["label"]:
+                    v["label"] = v["label"].replace(v["famname"], best, 1)
+                v["famname"] = best
     by_sig = defaultdict(list)
     for i, v in enumerate(vs):
         if v:
             by_sig[v["sig"]].append(i)
+    # specs that differ only in letter case, word breaks or where a bracket stands ('리쥬란 S'/'리쥬란 s', 'HB PLUS'/'HB Plus',
+    # '아르기닌 주사'/'아르기닌주사', '줄기세포 페이스 (손주사) 3cc'/'… 3cc (손주사)') are one spec (2026-10-15, 개선 보고서 E2·E10).
+    # They join the one sold at the most branches, which keeps its id; the ids that go away are followed by appdata's keymap.
+    merged = []
+    by_loose = defaultdict(list)
+    for sig in by_sig:
+        by_loose[loose_sig(sig)].append(sig)
+    for sigs in by_loose.values():
+        if len(sigs) < 2:
+            continue
+        sigs.sort(key=lambda s: (-len({(rows[i]["brand"], rows[i]["branch"]) for i in by_sig[s]}), -len(by_sig[s]), s))
+        for s in sigs[1:]:
+            merged.append(dict(into=vs[by_sig[sigs[0]][0]]["label"], label=vs[by_sig[s][0]]["label"], rows=len(by_sig[s])))
+            by_sig[sigs[0]].extend(by_sig.pop(s))
     keys, row_keys, owned, rejected = {}, [""] * len(rows), {}, []
+    details = {}
     for sig, idx in by_sig.items():
         branches = {(rows[i]["brand"], rows[i]["branch"]) for i in idx}
         if len(branches) < min_branches:
@@ -524,6 +582,7 @@ def build(rows, min_branches=3):
         kid = key_id(sig)
         keys[sig] = dict(id=kid, cat=v["cat"], label=v["label"], fam=v["fam"], famname=v["famname"], sub=v["sub"], sig=sig, n=len(branches), rx=v["rx"],
                          detail=v["detail"])
+        details[sig] = v.get("details") or ([v["detail"]] if v["detail"] else [])
         for i in idx:
             row_keys[i] = kid
     # families: auto keys + the curated keys whose rows mostly fall in that family
@@ -545,8 +604,14 @@ def build(rows, min_branches=3):
         seen[(k["famname"], k["cat"], k["label"])].append(k)
     for ks in seen.values():
         if len(ks) > 1:
-            for n, k in enumerate(sorted(ks, key=lambda x: -x["n"])):
-                extra = k["detail"] or f"표기 {n + 1}"
+            # the explanation that tells them apart: '(요정귀) (벨로테로)' / '(요정귀) (레스틸렌)' → 벨로테로 / 레스틸렌, not 요정귀 for all
+            # three (2026-10-15); when none does, '표기 1', '표기 2'
+            common = set.intersection(*(set(details.get(k["sig"], [])) for k in ks))
+            ks = sorted(ks, key=lambda x: (-x["n"], x["id"]))
+            extras = [next((d for d in details.get(k["sig"], []) if d not in common), "") for k in ks]
+            for n, (k, extra) in enumerate(zip(ks, extras)):
+                if not extra or extras.count(extra) > 1:
+                    extra = f"표기 {n + 1}"
                 k["label"], k["sub"] = f"{k['label']} ({extra})", f"{k['sub']} ({extra})"
     fams = {}
     new_fam = lambda name, cat, fid, rx: dict(name=name, cat=cat, fam=fid, keys=[], curated=[], desc=[], rx=rx)
@@ -565,7 +630,7 @@ def build(rows, min_branches=3):
         if v:
             for t in re.findall(r"\(([^()]{4,40})\)", rows[i]["name"]):
                 t = t.strip()
-                if " " in t and "," not in t and not re.search(r"국산|국내산|수입|독일|미국|일반형|고순도|\d|회|체험|한정|이벤트|포함|별도|VAT|부가세|택|중|or|/|여|남|이상|이하|제외|소분|단독|본원|시술시|톡신|\+|전체", t):
+                if " " in t and "," not in t and not labels.desc_problems(t) and not re.search(r"국산|국내산|수입|독일|미국|일반형|고순도|\d|회|체험|한정|이벤트|포함|별도|VAT|부가세|택|중|or|/|여|남|이상|이하|제외|소분|단독|본원|시술시|톡신|\+|전체", t):
                     said[(v["famname"], v["cat"])][t] += 1
     for key, f in fams.items():
         f["desc"] = [t for t, n in said[key].most_common(2) if n >= 3]
@@ -573,7 +638,7 @@ def build(rows, min_branches=3):
     few = sum(1 for i, v in enumerate(vs) if v and not row_keys[i] and not any(k.startswith("X") for k in (rows[i].get("keys") or "").split()))
     why["판매 지점 3곳 미만(비교 대상 없음)"] = few
     stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why),
-                 label_rejected=sorted(rejected, key=lambda x: -x["n"]))
+                 label_rejected=sorted(rejected, key=lambda x: -x["n"]), merged=sorted(merged, key=lambda x: -x["rows"]))
     return row_keys, list(keys.values()), list(fams.values()), stats
 
 

@@ -5,8 +5,9 @@ Rules (each dropped or changed row is listed in issues.csv with the reason):
   drop   price missing/0 · option empty · notes (※, ▶) · paperwork fees (진단서·소견서·제증명·수수료) · price > 5천만원
          · event already over (until = YYYY-MM-DD before today, KST)
   fix    list price below the sale price, or 10x+ the sale price -> list price removed (typo on the site)
-  dedupe the same (brand, branch, option, sale, list) shown on several pages of one branch -> kept once
-         (a category page wins over the 기획전 page, so the row keeps its real category)
+  dedupe the same (brand, branch, matching name, sale) shown on several pages of one branch -> kept once
+         (a category page wins over the 기획전 page, so the row keeps its real category and list price; the matching name is
+         compared without word breaks or letter case; folds the old rule didn't make are listed as '합침')
 Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가), cat (common category), name (display name),
 mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 일요일 · 첫 방문), keys (matched comparison ids),
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
@@ -195,16 +196,33 @@ def main():
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
                "vat": "별도" if VAT_EX.search(f"{grp} {opt}") else "포함" if VAT_IN.search(f"{grp} {opt}") else
                       {"excl": "별도", "incl": "포함"}.get(vdef.get(r["brand"], ""), "")}
-        # the same item shown in two events of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row
-        k = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig)
-        if k in seen:
-            prev = seen[k]
+        # the same item shown on two pages of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row.
+        # 2026-10-15 (개선 보고서 E4·E10): the list price no longer has to match — a 기획전 page and the category page often give the
+        # same item at the same price with different list prices (블리비 덴서티 600샷 1,590,000원: 정가 3,100,000 / 3,000,000) —
+        # and names that differ only in word breaks or letter case are one item ('플라센타관리' / '플라센타 관리'). mname, not the
+        # option, decides: it carries the sex from the group title, so '남성 제모 › 미간or코 제모 1회' and '여성 제모 › 미간or코 제모
+        # 1회' at the same price stay two rows.
+        # The older rule still folds too: same option, sale and list price (an add-on listed on several product pages, '온다 리프팅 ›
+        # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), now only within one sex.
+        sex = next(iter(re.findall(r"남성|남자|여성|여자", mname)), "")
+        k_old = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig, sex)
+        k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname)).casefold(), sale)
+        if k in seen or k_old in seen:
+            prev = seen[k] if k in seen else seen[k_old]
             if row["tags"] and row["tags"] not in prev["tags"]:
+                # conservative: a condition seen on either page stays (a price that may need it is not shown as unconditional)
                 prev["tags"] = "·".join(dict.fromkeys([t for t in (prev["tags"] + "·" + row["tags"]).split("·") if t]))
+            other_orig = str(prev["orig"]) != str(orig or "")
+            other_name = strip_event_prefix(prev["option"]) != strip_event_prefix(opt)
+            if other_orig or other_name:     # what the old rule (same option and list price) kept as two rows
+                issues.append({**r, "action": "합침", "reason": "같은 상품·판매가가 두 페이지에(정가 다름)" if other_orig else
+                               "띄어쓰기·대소문자만 다른 같은 상품"})
             if prev["src_cat"] == "기획전" and r["category"] != "기획전":
-                prev.update({"src_cat": r["category"], "cat": cat, "url": r["url"]})
+                prev.update({"src_cat": r["category"], "cat": cat, "url": r["url"], "orig": orig or ""})
+            seen.setdefault(k, prev)
+            seen.setdefault(k_old, prev)
             continue
-        seen[k] = row
+        seen[k] = seen[k_old] = row
         out.append(row)
     # comparison keys
     for row in out:
