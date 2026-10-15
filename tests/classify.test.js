@@ -59,3 +59,33 @@ test("isAddon: options sold only with another treatment stay out of a group's ra
     "포텐자 · 옵션1) 일반 팁 추가", "보톡스(국산 일반형) · 옵션)수면마취 추가", "[추가] 이마 보톡스"]) assert.equal(Classify.isAddon(n), true, n);
   for (const n of ["히알라제(필러 녹이는 주사)", "리쥬란 HB 플러스 2cc", "포텐자 1회", "", undefined]) assert.equal(Classify.isAddon(n), false, String(n));
 });
+
+test("hasAddonField: the build's add-on field (row field 15, 2026-10-15) is read once per file, older files fall back to the name", () => {
+  // build2 C2 example rows: field 15 = 1 add-on, 0 not
+  const rows = [[0, 0, 972, 100000, 0, 0, 546, 546, 1, -1, 707, 739, 2, 0, 546, 1], [0, 1, 705, 23000, 45500, 2, 546, 706, 1, 4604, 707, 708, 2, 0, 546, 0]];
+  const cols = rows[0].map((_, f) => rows.map((r) => r[f]));
+  assert.equal(Classify.ADDON_FIELD, 15);
+  assert.equal(Classify.hasAddonField({ cols }), true);
+  assert.equal(Classify.hasAddonField({ cols: cols.slice(0, 15) }), false);   // data.json from before: 15 fields
+  assert.equal(Classify.hasAddonField({ rows }), true);                       // the older row form
+  assert.equal(Classify.hasAddonField({ rows: rows.map((r) => r.slice(0, 15)) }), false);
+  for (const d of [null, undefined, {}, { rows: [] }, { cols: [] }]) assert.equal(Classify.hasAddonField(d), false, JSON.stringify(d));
+  // the decoded rows keep the field where the app moves it from (app.js applyData: r[19] = r[15] || 0); 15 fields read as 0
+  const { rowsOf } = require("../app/domain/pricectx.js");
+  assert.deepStrictEqual(rowsOf({ cols, colDelta: [] }).map((r) => r[15] || 0), [1, 0]);
+  assert.deepStrictEqual(rowsOf({ cols: cols.slice(0, 15), colDelta: [] }).map((r) => r[15] || 0), [0, 0]);
+});
+
+test("row: the data's add-on call (o.addon) wins over the name rule; without it the name decides as before", () => {
+  // '비용추가)' is a note inside a procedure price, not an add-on — the name rule calls it one, the build does not
+  const note = "[국산] 헤어라인 다한증 보톡스 (면적에 따라 비용추가)";
+  assert.equal(Classify.isAddon(note), true);
+  assert.equal(c({ name: note, keyLabel: "다한증" }), "H");
+  assert.notEqual(c({ name: note, keyLabel: "다한증", addon: false }), "H");
+  // an add-on the site marks without the words the rule knows ('시술옵션 · 촉촉팩')
+  assert.equal(Classify.isAddon("실펌 팁"), false);
+  assert.equal(c({ name: "실펌 팁", addon: true }), "H");
+  assert.equal(c({ name: "실펌 팁" }), c({ name: "실펌 팁", addon: undefined }));
+  // the price-jump check still comes first
+  assert.equal(c({ name: "실펌 팁", addon: true, price: 1000, median: 100000 }), "R");
+});

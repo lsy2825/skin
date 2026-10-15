@@ -56,7 +56,8 @@
   }
 
   // o: { name, sess, kind (0 일반 · 1 체험가 · 2 한정가 · 3 구독권 · 4 고시가), tags [], keyLabel, mix (mixOf of the group),
-  //      price, median (of the group, same basis) } → { c, ...CLASSES[c], why }
+  //      price, median (of the group, same basis), addon (optional: the data's own add-on call, data.json row field 15 —
+  //      without it the name rule ADDON decides) } → { c, ...CLASSES[c], why }
   function row(o) {
     const name = o.name || "", label = o.keyLabel || "";
     const out = (c, why) => ({ c, ...CLASSES[c], why: why || CLASSES[c].say });
@@ -65,7 +66,7 @@
       // 체험가 far below the middle is an event, not an error; the review is for the rest
       if (!(r < 1 && (o.kind === 1 || o.kind === 2))) return out("R", `${CLASSES.R.say} (중간값의 ${r < 1 ? Math.round(r * 100) + "%" : r.toFixed(1) + "배"})`);
     }
-    if (ADDON.test(name)) return out("H");
+    if (o.addon != null ? o.addon : ADDON.test(name)) return out("H");
     if ((o.sess || 1) >= 99) return out("G");
     if (isBundle(name) && !/\+/.test(label)) return out("F");
     if (o.kind === 1 || o.kind === 2 || (o.tags || []).length || /첫\s*방문|신규|평일|주말|타임|선착순/.test(name)) return out("E");
@@ -80,6 +81,11 @@
   // an add-on sold only with another treatment ('옵션) 히알라제 추가', class H): never a stand-alone price, so it stays out of a
   // group's range, middle and lowest (audit U10, E5)
   const isAddon = (name) => ADDON.test(name || "");
+  // data.json row field 15 'addon' (build2/appdata.py, 2026-10-15): 1 = an add-on, decided by the build from the site's own
+  // option labels. Files from before have 15 fields: then the app reads the name (isAddon) instead. Checked once per file.
+  const ADDON_FIELD = 15;
+  const hasAddonField = (d) => !!d && (Array.isArray(d.cols) ? d.cols.length > ADDON_FIELD
+    : Array.isArray(d.rows) && Array.isArray(d.rows[0]) && d.rows[0].length > ADDON_FIELD);
 
-  return { CLASSES, DEVICES, products, mixOf, isBundle, isAddon, row };
+  return { CLASSES, DEVICES, products, mixOf, isBundle, isAddon, ADDON_FIELD, hasAddonField, row };
 });
