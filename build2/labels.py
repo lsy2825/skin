@@ -39,7 +39,7 @@ AREA_ONLY = re.compile(r"(?:얼굴|페이스|바디|전신|전체|얼굴전체|�
                        r"추가\*|기본|1개|개)")
 UNIT = re.compile(r"\d+(?:\.\d+)?\s*(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm|회)(?![a-zA-Z])", re.I)
 # a bracketed explanation that is a sales condition or a pitch, not what the product is (desc_problems)
-DESC_PROMO = re.compile(r"적용가|플친|플러스\s*친구|카톡|카카오|첫\s*만남|첫\s*방문|이벤트|특가|할인|혜택|추천|병행|불가|가능|무관|상관\s*없|"
+DESC_PROMO = re.compile(r"인기|BEST|[Bb]est|베스트|눈앞\s*개봉|타원|정품|원장|신규\s*도입|당일|크기|사이즈|mini|적용가|플친|플러스\s*친구|카톡|카카오|첫\s*만남|첫\s*방문|이벤트|특가|할인|혜택|추천|병행|불가|가능|무관|상관\s*없|"
                         r"진행|미진행|동시에|한정|선착순|증정|무료|[!?~]")
 
 

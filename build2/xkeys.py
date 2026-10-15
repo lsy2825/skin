@@ -133,7 +133,10 @@ ADDON_PER = re.compile(r"추가당|추가\*|추가시(?!술)")
 def addon_only(name):
     """True when a name is only sold on top of another procedure (comp() of the whole name, and the per-unit add-on words
     outside brackets)"""
-    return bool(ADDON_ONLY.search(comp(name)) or ADDON_PER.search(comp(re.sub(r"\([^()]*\)", " ", name or ""))))
+    out, prev = name or "", None
+    while out != prev:                       # nested brackets ('(… (부가세 별도) … 추가시 …)') come off from the inside out
+        out, prev = re.sub(r"\([^()]*\)", " ", out), out
+    return bool(ADDON_ONLY.search(comp(name)) or ADDON_PER.search(comp(out)))
 
 
 ONCE = re.compile(r"체험가|체험|한정가|한정|첫방문|첫 방문|첫시술|첫 시술|1회한정|웰컴|첫구매|1인\s*1회|1인당\s*1회|신규고객|신규회원|신규방문|선착순")
@@ -145,18 +148,24 @@ COURSE_WORD = re.compile(r"프로그램|패키지|PKG|챌린지|솔루션|케어
 
 
 def sessions(name):
+    name = name or ""
+    if re.search(r"이용권|무제한|1년|1달|개월|\d+주\s*(패키지|PKG|프로그램|챌린지)", name) or (COURSE.search(name) and COURSE_WORD.search(name)):
+        return 99
+    # the option's own count, not a note in brackets or after '*': '[젠틀맥스] 남성 인중 + 앞턱 제모 5회 (*10회 53만원)' is a 5-session
+    # price (2026-10-15: read as 10회, 셀린 청주 5회 prices sat in 10회 keys). A count written only in a note ('배꼽주변 제모 (10회)',
+    # '브라질리언제모+항문 *5회') still counts.
+    outside = re.sub(r"\([^()]*\)", " ", name)
+    text = next((t for t in (outside.split("*")[0], outside) if SESS.search(t)), name)
     s = 1
-    for m in SESS.finditer(name):
+    for m in SESS.finditer(text):
         try:
             s = max(s, int(m.group(1)))
         except ValueError:
             pass
     # '10+1회' / '12+1회' is a course of eleven / thirteen sessions, not one (2026-10-15: read as 1회, 셀린 '인중 제모 10+1회'
     # 50,000원 sat in the 1회 key whose median is 12,000원)
-    for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))", name):
+    for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))", text):
         s = max(s, int(m.group(1)) + int(m.group(2)))
-    if re.search(r"이용권|무제한|1년|1달|개월|\d+주\s*(패키지|PKG|프로그램|챌린지)", name) or (COURSE.search(name) and COURSE_WORD.search(name)):
-        s = 99
     return s
 
 

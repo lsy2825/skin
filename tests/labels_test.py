@@ -70,8 +70,9 @@ ok("E3 괄호 안 '추가 시' 설명은 기본가를 빼지 않음(톡스앤필
 # as clean.py hands them over: mname with the group title in front ('상체 제모 [여성]손 …'), name with ' · '
 w, _ = taxonomy.variant("상체 제모 [여성]손 5회 (손등 + 손가락)", cat="제모", display="상체 제모 · [여성]손 5회 (손등 + 손가락)")
 m, _ = taxonomy.variant("상체 제모 [남성]손 5회 (손등 + 손가락)", cat="제모", display="상체 제모 · [남성]손 5회 (손등 + 손가락)")
-ok("E3 제모 괄호 안 '+'는 부위 나열: 여성·남성이 따로", w and m and w["label"] == "여성 손 제모 5회 (손등 + 손가락)" and w["sig"] != m["sig"],
-   (w and w["label"], m and m["label"]))
+p_, _ = taxonomy.variant("[여성] 손등 + 손가락제모 5회", cat="제모")
+ok("E3 제모 괄호 안 '+'는 부위 나열: 여성·남성이 따로, '손 (손등 + 손가락)'은 '손등 + 손가락제모'와 같은 상품",
+   w and m and p_ and w["label"] == "여성 손가락+손등 제모 5회" and w["sig"] != m["sig"] and w["sig"] == p_["sig"], (w and w["label"], m and m["label"]))
 a, _ = taxonomy.variant("[여성] 겨드랑이 제모 5회 (겨드랑이 + 인중)", cat="제모")
 b, _ = taxonomy.variant("[여성] 겨드랑이 제모 5회", cat="제모")
 ok("E3 괄호 안 부위 목록이 다르면 따로(겨드랑이+인중 ≠ 겨드랑이)", a and b and a["sig"] != b["sig"], (a and a["label"], b and b["label"]))
@@ -140,7 +141,7 @@ ok("'10 mm 이내'와 '10mm 이내'는 같은 규격",
    taxonomy.variant("리팟레이저 10 mm 이내 1개")[0]["sig"] == taxonomy.variant("리팟레이저 10mm 이내 1개")[0]["sig"])
 
 # 검증 3차: 제모 부위 읽기·성별·부위 미표기·홍보 문구
-for n, d, want in [("[여성] 손등 + 손가락제모 5회", None, "여성 손가락·손등 제모 5회"), ("여성 바디 제모 [겨드랑이] 5회", "여성 바디 제모 · [겨드랑이] 5회", "여성 겨드랑이 제모 5회")]:
+for n, d, want in [("[여성] 손등 + 손가락제모 5회", None, "여성 손가락+손등 제모 5회"), ("여성 바디 제모 [겨드랑이] 5회", "여성 바디 제모 · [겨드랑이] 5회", "여성 겨드랑이 제모 5회")]:
     v, _ = taxonomy.variant(n, cat="제모", display=d)
     ok(f"제모 부위: '{n}' → '{want}'", v and v["label"] == want, v and v["label"])
 w, _ = taxonomy.variant("[여성] 발등+발가락 5회", cat="기타", display="젠틀맥스 제모 · 발등+발가락 5회")
@@ -194,7 +195,11 @@ raw = [  # category, group, option, sale, orig
     ("제모", "젠틀맥스 여성 1년 이용권", "젠틀맥스 얼굴전체 1년이용권", 690000, 1200000),
     ("제모", "젠틀맥스 여성 제모", "얼굴전체", 690000, 1200000),                           # the pass listed again without the pass words
     ("제모", "여성 1년 무제한제모 이벤트", "브라질리언", 490000, 800000),
-    ("제모", "1회 체험가", "브라질리언", 490000, 800000)]                                # a pass and a per-session row never fold
+    ("제모", "1회 체험가", "브라질리언", 490000, 800000),                                # a pass and a per-session row never fold
+    ("남성 바디 제모", "남성 바디 제모", "[겨드랑이] 5회", 100000, 0),
+    ("남성 바디 제모", "남성 바디 제모", "[종아리] 5회", 100000, 0),                         # area only in the label, same price
+    ("여성제모", "", "이마(헤어+삼자) 제모 1회", 50000, 0),
+    ("남성제모", "", "이마(헤어+삼자) 제모1회", 50000, 0)]                                    # sex only in the page name
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -230,6 +235,12 @@ ok("가격표 페이지가 이겨도 분류는 첫 줄 것('필러/실리프팅'
 tw = one("얼굴전체")
 ok("이용권과 판매가·정가가 같은 쌍둥이 줄은 이용권으로 봄", len(tw) == 1 and tw[0]["kind"] == "구독권" and any(i["action"] == "이용권으로 봄" for i in iss), [r["kind"] for r in tw])
 ok("이용권 줄과 1회 줄은 가격이 같아도 합치지 않음", len(one("브라질리언")) == 2 and sorted(r["kind"] for r in one("브라질리언")) == ["구독권", "일반"], [r["kind"] for r in one("브라질리언")])
+ax, cf = one("[겨드랑이] 5회"), one("[종아리] 5회")
+ok("제모 페이지의 부위 대괄호('[겨드랑이] 5회')는 이름에 남고, 같은 값의 다른 부위와 합치지 않음", len(ax) == 1 and len(cf) == 1 and "[겨드랑이]" in ax[0]["name"]
+   and taxonomy._area(ax[0]["name"]) == "겨드랑이", [(r["name"], r["option"]) for r in ax + cf])
+im = [r for r in out if r["option"].replace(" ", "") == "이마(헤어+삼자)제모1회"]
+ok("성별이 페이지 이름에만 있는 제모 줄(쁨 '여성제모'/'남성제모')은 합치지 않고 이름(mname)에 성별", len(im) == 2 and
+   sorted(r["mname"][:4] for r in im) == ["[남성]", "[여성]"], [r["mname"] for r in im])
 b = one("바디울쎄라 100샷")
 ok("E4 행사 페이지가 먼저 와도 가격표 페이지의 정가·분류를 남김(블리비 '기획전'만이 아님)", len(b) == 1 and b[0]["orig"] == "950000" and b[0]["src_cat"] == "레이저리프팅",
    [(r["src_cat"], r["orig"]) for r in b])
@@ -242,6 +253,51 @@ ok("1년 무제한 묶음의 회차 없는 옵션은 구독권, 회차가 적힌
 opt_row = one("[옵션] 제모 후 진정관리 10회")
 ok("'[옵션]' 머리표 줄은 이름은 그대로(머리표 뗌), addon=1이라 비교 키 없음", opt_row and opt_row[0]["addon"] == "1" and not opt_row[0]["keys"]
    and not opt_row[0]["name"].startswith("["), opt_row and (opt_row[0]["name"], opt_row[0]["addon"], opt_row[0]["keys"]))
+
+# 검증 5차(묶음 키·제모·이름·설명·변동 목록)
+H = lambda n, d=None: taxonomy.variant(n, cat="제모", display=d)[0]
+a, b = H("(남자) 손등/손가락 제모(아포지 플러스) 1회"), H("(남자) 손등 + 손가락 제모(아포지 플러스) 1회")
+ok("제모 '/'(택1)와 '+'(두 부위 다)는 다른 상품", a and b and a["sig"] != b["sig"] and a["area"] == "손가락/손등" and b["area"] == "손가락+손등", (a and a["area"], b and b["area"]))
+for n, d, want in [("레이저 제모 겨드랑이 5회", None, "겨드랑이"), ("여성제모 : 인중+겨드랑이", None, "겨드랑이+인중"), ("레이저 제모 인중+입가+앞턱 5회", None, "앞턱+인중+입가"),
+                   ("레이저제모 남성)인중+앞턱 제모 1회", None, "앞턱+인중"), ("여성 얼굴 제모 · 1회", "여성 얼굴 제모 · 1회", "얼굴"), ("남성제모 (겨드랑이) 1회", None, "겨드랑이"),
+                   ("(여자) 팔전체 제모 + 손등 + 손가락 제모(아포지 플러스) 5회", None, "손가락+손등+팔전체"),
+                   ("손등+손가락 or 발등+발가락 제모 5회", None, "발가락+발등/손가락+손등"), ("[남성] 男) 인중 + 앞턱 1회", None, "앞턱+인중")]:
+    v = H(n, d)
+    ok(f"제모 부위 읽기: '{n}' → '{want}'", v and v["area"] == want, v and v["area"])
+for n in ["[남성] 얼굴전체 제모 + 빙하팩 5회", "[EVENT] 겨드랑이제모+겨드랑이 미백레이저 [각5회]", "네오빔 + 스케일링 1회"]:
+    v = H(n)
+    ok(f"제모 페이지라도 '+' 뒤가 부위가 아니면 묶음: '{n}'", v and v["fam"] == "package", v and (v["fam"], v["label"]))
+a, b, c = H("[여성] 女) 종아리 + 무릎 1회"), H("[여성] \uf981) 종아리 + 무릎 1회"), H("[여성] 종아리 + 무릎 제모 1회")
+ok("'女)'·'男)'은 성별 표시(부위 아님, U+F981 포함)", a and b and c and a["sig"] == b["sig"] == c["sig"] and "女" not in a["label"], (a and a["label"], b and b["label"]))
+ok("회차: 괄호·'*' 메모가 아니라 옵션의 회차('5회 (*10회 53만원)' → 5), 메모에만 있으면 메모('(10회)', '*5회')",
+   xkeys.sessions("[젠틀맥스] 남성 인중 + 앞턱 제모 5회 (*10회 53만원)") == 5 and xkeys.sessions("[여성] 배꼽주변 제모 (10회)") == 10
+   and xkeys.sessions("남성)브라질리언제모+항문 *5회") == 5)
+ok("괄호 안 괄호의 '추가시'는 기본가를 추가 옵션으로 만들지 않음", not xkeys.addon_only("울쎄라 100샷 (부위 추가시 (최대 2부위) 가능)") and xkeys.addon_only("울쎄라 100샷 추가시"))
+ok("'라인 모드'(브이로)는 인모드가 아님", (taxonomy.family_of("브이로 어드밴스 리프팅(고강도 집속 초음파) 라인 모드 100샷")[0] or {}).get("id") != "inmode"
+   and taxonomy.family_of("인모드 FX 얼굴전체")[0]["id"] == "inmode")
+ok("'E)' 목록 표시는 상품이 아님('체험가E) 크라이오' = '크라이오')", taxonomy.variant("체험가E) 크라이오")[0]["sig"] == taxonomy.variant("크라이오")[0]["sig"])
+ok("판촉 문구는 병원 설명이 아님(인기 패키지·눈앞개봉·크기)", all(labels.desc_problems(t) for t in ["인기 패키지", "포텐자팁 눈앞개봉", "명함 크기"]))
+ok("시술군 이름에 홀로 남은 '이내'·'당'은 뺌", taxonomy.fam_tidy("리팟레이저 이내") == "리팟레이저" and taxonomy.fam_tidy("편평사마귀 제거 당") == "편평사마귀 제거"
+   and taxonomy.fam_tidy("리팟 레이저 - 이하") == "리팟 레이저")
+
+
+def fake_g(items):
+    """rows (brand, branch, name, group): name as clean.py writes it ('title · option'), mname without the ' · '"""
+    return [dict(brand=b, branch=br, name=n, mname=n.replace(" · ", " "), group=g, addon="0", kind="일반", cat="기타", keys="") for b, br, n, g in items]
+
+
+rk, ks, fs, st = taxonomy.build(fake_g([("밴스", f"{i}점", "THE 미희주사 꺼진 눈밑 시술 · 팔자 1회", "THE 미희주사 꺼진 눈밑 시술") for i in range(3)]
+                                        + [("밴스", f"{i}점", "미희주사 팔자 1회", "") for i in range(3, 7)]))
+ok("되살린 이름이 같은 상품의 기존 규격과 같으면 한 묶음('(표기 1)/(표기 2)' 없음)", len(ks) == 1 and ks[0]["label"] == "미희주사 팔자" and len(set(rk)) == 1 and ks[0]["n"] == 7,
+   [(k["label"], k["n"]) for k in ks])
+rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "트리플 바디 1회", "") for i in range(3)]
+                                        + [("블리비", f"{i}점", "트리플 바디(셀룰라이트 파괴 및 지방배출) 1회", "") for i in range(3, 6)]))
+ok("설명이 없는 쪽 하나는 '(표기 n)' 없이 그대로", sorted(k["label"] for k in ks) == ["트리플 바디", "트리플 바디 (셀룰라이트 파괴 및 지방배출)"], [k["label"] for k in ks])
+rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "울트라V 리프팅 (PDO 녹는 실) 10줄", "") for i in range(3)]
+                                        + [("블리비", f"{i}점", "울트라V 리프팅 (PDO 녹는실) 10줄", "") for i in range(3, 5)]
+                                        + [("블리비", "9점", "울트라V 리프팅 (끝부분 미니 라인) 10줄", "")] * 3))
+dsc = [f["desc"] for f in fs if f["keys"]]
+ok("병원 설명은 띄어쓰기만 다르면 하나로 세고, 한 지점에서만 나온 문구는 뺌", dsc and dsc[0] == ["PDO 녹는 실"], dsc)
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
@@ -261,6 +317,35 @@ new_d = mini([("강남점", "겨드랑이 1년 무제한", 99000, "구독권"), 
 c = datameta.changes(old_d, new_d, "v")
 ok("가격 변동 목록: 종류·띄어쓰기만 바뀐 같은 가격은 없어짐/새로 생김이 아님, 진짜로 바뀐 것만",
    [x[2] for x in c["added"]] == ["쥬베룩 2cc"] and [x[2] for x in c["removed"]] == ["리쥬란 2cc"], c)
+old_d = mini([("강남점", "남성 1년 무제한제모 · 가슴 전체", 490000, "구독권"), ("강남점", "라페라 리프팅 · 풀페이스 2000샷", 159000, "일반"),
+              ("강남점", "(여자) 레이저 제모 · 옵션)에어녹스 추가", 70000, "일반"), ("강남점", "보톡스 · 옵션)에어녹스 추가", 70000, "일반")])
+new_d = mini([("강남점", "남성 1년 무제한제모 · 가슴 전체", 490000, "구독권"), ("강남점", "여성 1년 무제한제모 · 가슴 전체", 490000, "구독권"),
+              ("강남점", "라페라리프팅 풀페이스 2000샷", 159000, "일반"), ("강남점", "보톡스 · 옵션)에어녹스 추가", 70000, "일반")])
+c = datameta.changes(old_d, new_d, "v")
+ok("가격 변동 목록: 합치기가 풀리거나(성별) 묶음 제목·' · '만 바뀐 줄은 새로 생김/없어짐이 아님", not c["added"] and not c["removed"], c["counts"])
+
+
+def dated(d, day):
+    d = json.loads(json.dumps(d))
+    d["s"].append(day)
+    for b in d["branches"]:
+        b += [0, 0, 0, 0, 0, len(d["s"]) - 1]
+    return d
+
+
+old_d = mini([("강남점", "리쥬란 2cc", 200000, "일반")])
+new_d = mini([("강남점", "쥬베룩 2cc", 250000, "일반")])
+same_day = datameta.changes(dated(old_d, "2026-10-14"), dated(new_d, "2026-10-14"), "v")["counts"]
+next_day = datameta.changes(dated(old_d, "2026-10-14"), dated(new_d, "2026-10-21"), "v")["counts"]
+ok("가격 변동 목록: 수집일이 같은 지점(규칙만 바꿔 다시 만든 빌드)은 변동 없음, 새로 모은 지점만", same_day == {"price": 0, "added": 0, "removed": 0}
+   and next_day == {"price": 0, "added": 1, "removed": 1}, (same_day, next_day))
+import appdata  # noqa: E402
+prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+        "keys": [["X14", 0, "울쎄라 300샷"]]}
+prow = [[0, 0, 2, 590000, 0, 0, 3, 4]]
+now = [dict(brand="A", branch="강남점", name="울쎄라 300샷", sale="590000", kind="일반", tags="", keys="X14")]
+ok("같은 줄·같은 가격인데 조건(tags)만 바뀌면 규칙 변경(recl)으로 봄 — 가짜 가격 변동 없음", appdata.reclassified(prev, prow, now) == {"X14"}
+   and appdata.reclassified(prev, prow, [dict(now[0], tags="평일 낮")]) == set())
 
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))

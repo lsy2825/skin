@@ -335,6 +335,18 @@ def reclassified(prev, prow, rows):
         o = old.get(ident)
         if o is not None:
             out |= o ^ n
+    # a row at the same price whose kind or condition tags changed (2026-10-15: a page-wide '평일 낮' / '첫 방문' tag dropped by the
+    # fold rule) moves the key's plain lowest price without any clinic changing a price: 울쎄라 300샷 read as three price cuts
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    pkinds = prev["meta"].get("kinds") or KINDS
+    was, now = defaultdict(set), defaultdict(set)
+    for r in prow:
+        was[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].add((pkinds[r[5]], ps[r[6]] or ""))
+    for r in rows:
+        now[(r["brand"], r["branch"], r["name"], int(r["sale"]))].add((r["kind"], r["tags"] or ""))
+    for ident, x in now.items():
+        if ident in was and was[ident] != x:
+            out |= new.get(ident[:3], set()) | old.get(ident[:3], set())
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return out & before

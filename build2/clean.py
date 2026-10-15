@@ -13,7 +13,7 @@ mname (name used for matching), sess (sessions), tags (conditions such as 평일
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
 evidence from the site, see data2/sources.json).
 """
-import csv, datetime, json, os, re, sys
+import csv, datetime, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -51,7 +51,7 @@ def pass_group(grp, opt):
     return "무제한" in grp and "제모" in f"{grp} {opt}" and not NO_CAP.search(f"{grp} {opt}")
 # a page that is an event or sale rather than the clinic's price list for that category (fold: the price list row is kept)
 EVENT_PAGE = re.compile(r"기획전|이벤트|EVENT|[Ee]vent|체험가|특가|한정|할인|세일|페스타|런칭|오픈|맞이|혜택|선착순|[★♥☆]|\d+\s*월\)|이달")
-SEX = {"남자": "남성", "여자": "여성"}
+SEX = {"남자": "남성", "여자": "여성", "男": "남성", "女": "여성"}
 
 
 def event_page(row):
@@ -87,13 +87,16 @@ KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|�
 OPTION_LABEL = re.compile(r"^(?:\s*\[[^\]]*\])*?\s*\[[^\]]*옵션[^\]]*\]")   # also behind an event label: '[EVENT] [옵션] …'
 
 
-def strip_event_prefix(s):
+def strip_event_prefix(s, hair=False):
     """Drop leading event labels that only name a sale: '[메가세일] 주름보톡스' / '[EVENT] 벨라콜린 1cc' /
     '[브랜드 10주년 기념, 무한 페스타] 염증주사 1개' -> the procedure name. Labels that describe the product
-    ('[대표원장]', '[국산]', '[남성]') stay."""
+    ('[대표원장]', '[국산]', '[남성]') stay, and on a 제모 page (hair=True) a label that is a body area: '[겨드랑이] 5회',
+    '[종아리] 5회' (톡스앤필 인천부평) were all '5회' — no area to compare, and the same price folded two areas into one row (2026-10-15).
+    Only when the rest names no area itself, so '[겨드랑이] 겨드랑이 제모' still folds with '겨드랑이 제모'."""
     while True:
         m = re.match(r"^\[([^\]]+)\]\s*(.+)$", s)
-        if not m or KEEP_LABEL.search(m.group(1)):
+        if not m or KEEP_LABEL.search(m.group(1)) or (hair and taxonomy.hair_area(m.group(1), strict=True)
+                                                      and not re.search(taxonomy.HAIR_PART, strip_event_prefix(m.group(2)))):
             return s
         s = m.group(2)
 
@@ -182,12 +185,18 @@ def main():
             head = title_words(sec)
             if head and comp_name(head) not in comp_name(opt):
                 opt = f"{head} {opt}"
-        name = strip_event_prefix(opt)
+        hair = bool(re.search(r"제모", f"{r['category']} {grp}"))
+        name = strip_event_prefix(opt, hair)
         if name == "(대표가)" or not PROC.search(name):
             head = title_words(grp)
             name = (f"{head} · {name}" if head else name) if name != "(대표가)" else f"{grp} (최저가부터)"
         mname = name.replace(" · ", " ")
         g = re.search(r"(남성|남자|여성|여자)", grp)
+        if not g and re.search(r"제모", f"{grp} {opt}"):
+            # a 제모 item whose sex is only in the page name (쁨 범계 '여성제모' / '남성제모' › '이마(헤어+삼자) 제모 1회'): the same option at
+            # the same price on both pages is two products, and one key held both (2026-10-15). Only for 제모 items — 유앤아이 lists every
+            # procedure under its '남성제모' / '여성제모' pages.
+            g = re.search(r"(남성|남자|여성|여자)", r["category"] or "")
         if g and not re.search(r"남성|남자|여성|여자", mname):
             mname = f"[{g.group(1)}] {mname}"
         text = f"{r['category']} {grp} {opt}"
@@ -227,12 +236,12 @@ def main():
         # different products whose name lacks the device or colour ('젠틀맥스 › 팔 하완 5회' / '아포지 › 팔 하완 5회'): not folded.
         # The older rule still folds too: same option, sale and list price (an add-on listed on several product pages, '온다 리프팅 ›
         # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), within one sex (남자 = 남성) or with a row that names no sex.
-        m = re.search(r"남성|남자|여성|여자", mname)
+        m = re.search(r"남성|남자|여성|여자|男|女", unicodedata.normalize("NFKC", mname))   # '女)' (유앤아이) is a sex too
         sex = SEX.get(m.group(), m.group()) if m else ""
         # a pass (구독권) never folds with a per-session row at the same price: both keys carry it
         is_pass = kind == "구독권"
-        k_old = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig, is_pass)
-        k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname)).casefold().replace("남자", "남성").replace("여자", "여성"), sale, is_pass)
+        k_old = (r["brand"], r["branch"], strip_event_prefix(opt, hair), sale, orig, is_pass)
+        k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname, hair)).casefold().replace("남자", "남성").replace("여자", "여성"), sale, is_pass)
         prev = seen.get(k)
         if prev is not None and prev["orig"] and orig and prev["orig"] != orig and prev["group"] != grp and not event_page(prev) \
                 and not event_page(row):
