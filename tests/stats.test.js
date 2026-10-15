@@ -71,3 +71,16 @@ test("medianSorted", () => {
   assert.equal(S.medianSorted([1, 2, 9]), 2);
   assert.equal(S.medianSorted([1, 2, 3, 9]), 2.5);
 });
+
+test("historyReady: a price history is shown only after 8 distinct weeks", () => {
+  const days = (n, step) => Array.from({ length: n }, (_, i) => new Date(Date.UTC(2026, 9, 13 + i * step)).toISOString().slice(0, 10));
+  const obs = (dates) => S.observations(dates, dates.map(() => [100, 90, 5]));
+  assert.equal(S.HISTORY_MIN_WEEKS, 8);
+  assert.equal(S.historyReady(obs(["2026-10-13", "2026-10-14"])), false);   // two snapshots a day apart: 1 week, not '2주'
+  assert.equal(S.historyReady(obs(days(30, 1))), false);                     // a month of daily snapshots: 5 weeks
+  assert.equal(S.historyReady(obs(days(7, 7))), false);                      // 7 weekly snapshots
+  assert.equal(S.historyReady(obs(days(8, 7))), true);                       // 8 weekly snapshots
+  assert.equal(S.historyReady(S.observations(days(8, 7), [null, null, null, null, null, null, [1, 1, 1], [1, 1, 1]])), false);   // a key seen twice
+  assert.equal(S.historyReady(null), false);
+  assert.match(S.obsLabel(obs(["2026-10-13", "2026-10-14"])), /^관측 2회 · 10\/13~10\/14$/);
+});

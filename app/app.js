@@ -639,9 +639,9 @@
         const have = st.carts[s.ci].items.find((c) => c.t === "k" && c.k === KEYS[s.k].id);
         fill(box,
           fam && fam.f.vs.length > 1 ? h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "옵션"),
-            h("div", { class: "opts" }, fam.f.vs.map((v) => { const tp = ranking(v.k, "price")[0];
+            h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = ranking(v.k, "price");   // lowestHighlight off: the middle price, not '최저'
               return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
-                h("b", {}, v.label), h("span", { class: "num" }, tp ? `최저 ${won(tp.p)}` : "가격 없음")); }))) : null,
+                h("b", {}, v.label), h("span", { class: "num" }, !vr.length ? "가격 없음" : FLAGS.lowestHighlight ? `최저 ${won(vr[0].p)}` : `중간 ${won(median(vr.map((x) => x.p)))}`)); }))) : null,
           h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:12px" }, "2회째부터는 지점의 일반가로 계산")),
             h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
           cartPicker(s.ci, (i) => { s.ci = i; paint(); }),
@@ -1132,9 +1132,11 @@
     kbox.append(g, tip);
     return h("div", { class: "lc" }, legend, kbox);
   }
+  // weeks the trend snapshots cover (every date counts; a key's own gaps are checked in keyTrend)
+  const trendObs = () => { const tr = TR(); return Stats.observations(tr.dates, tr.dates.map(() => [0, 0, 0])); };
   function trendCard() {
     const tr = TR();
-    if (!tr.dates.length) return null;
+    if (!Stats.historyReady(trendObs())) return null;   // hidden until 8 distinct weeks: two snapshots are not a trend
     const cats = CMP_CATS.filter((c) => FAM.some((f) => f.cat === c));
     if (!st.tcat || !cats.includes(st.tcat)) st.tcat = cats[0];
     // the main variant of the category's most-sold families (a category can hold hundreds of variants)
@@ -1143,20 +1145,20 @@
     const avg = chs.length ? chs.reduce((s, c) => s + c.pct, 0) / chs.length : null;
     const card = h("div", { class: "card flush" });
     card.append(h("div", { style: "padding:14px 14px 4px" }, h("div", { class: "row" }, h("h3", {}, "가격 동향"), h("span", { class: "sp" }),
-      h("span", { class: "sub" }, tr.dates.length > 1 ? `${md(tr.dates[0])}~${md(tr.dates[tr.dates.length - 1])} · ${tr.dates.length}주` : `기록 시작 ${md(tr.dates[0])}`)),
-      h("div", { class: "sub" }, "선과 '지난 수집 대비'는 실제로 모은 일반가 중간값의 변화(가격 이력)예요. '정가 표기 대비'는 이번 주 병원이 적은 정가에서 할인된 정도라 이력과 다른 숫자예요."),
+      h("span", { class: "sub" }, Stats.obsLabel(trendObs()))),
+      FLAGS.discountEmphasis ? h("div", { class: "sub" }, "선과 '지난 수집 대비'는 실제로 모은 일반가 중간값의 변화(가격 이력)예요. '정가 표기 대비'는 이번 주 병원이 적은 정가에서 할인된 정도라 이력과 다른 숫자예요.") : null,
       h("div", { class: "chips", style: "margin-top:10px" }, cats.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": c === st.tcat ? "true" : "false", onclick: () => { st.tcat = c; render(); } }, c))),
       h("div", { class: "row", style: "margin-top:10px" }, h("b", {}, `${st.tcat} 평균`), avg == null ? h("span", { class: "sub" }, tr.dates.length < 2 ? "다음 주 월요일부터 지난 수집 대비 변동이 보여요" : "변동 없음")
         : chg({ pct: avg }))),
       h("ul", { class: "list" }, keys.map((k) => { const v = (tr.k[k.id] || []).map((x) => x && x[0]); const now = v[v.length - 1]; const disc = tr.disc[k.id];
         return h("li", {}, h("button", { class: "item", type: "button", onclick: () => { st.key = k.i; nav("compare"); } },
           h("span", { class: "t" }, k.label), h("span", { class: "p num" }, now != null ? won(now) : "-"),
-          h("span", { class: "m" }, h("span", { class: "sub" }, "지난 수집 대비"), chg(keyChange(k.id)), disc != null ? h("span", { class: "k k4", title: "병원이 적은 정가와 판매가 비교(이번 주). 가격 이력과 별개" }, `정가 표기 대비 −${disc}%`) : null, h("span", { class: "sp" }), sparkline(v)))); })));
+          h("span", { class: "m" }, h("span", { class: "sub" }, "지난 수집 대비"), chg(keyChange(k.id)), disc != null && FLAGS.discountEmphasis ? h("span", { class: "k k4", title: "병원이 적은 정가와 판매가 비교(이번 주). 가격 이력과 별개" }, `정가 표기 대비 −${disc}%`) : null, h("span", { class: "sp" }), sparkline(v)))); })));
     return card;
   }
   function keyTrend(k) {
     const tr = TR(), v = tr.k[k.id];
-    if (!v || !tr.dates.length) return null;
+    if (!v || !Stats.historyReady(Stats.observations(tr.dates, v))) return null;   // hidden until 8 distinct weeks of this key
     const ranges = [["7", "7일"], ["30", "30일"], ["90", "90일"], ["", "전체"]];
     const from = st.hrange ? Intel.daysBefore(today(), +st.hrange) : "";
     const keep = tr.dates.map((d) => d >= from);

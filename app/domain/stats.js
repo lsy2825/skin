@@ -76,5 +76,10 @@
   const obsLabel = (o) => !o.n ? "관측 없음" : o.n === 1 ? `관측 1회 · ${o.first.slice(5).replace("-", "/")}`
     : `관측 ${o.n}회 · ${o.first.slice(5).replace("-", "/")}~${o.last.slice(5).replace("-", "/")}${o.weeks >= 2 ? ` (서로 다른 ${o.weeks}주)` : ""}`;
 
-  return { median, observations, obsLabel, isoWeek, medianSorted, groupStat, position, byLevel, order, SORTS };
+  // a price history is drawn (line, 'N% 변동', 최저가 변동 횟수) only after this many distinct weeks were observed: one or
+  // two snapshots read as a trend they are not (audit U13·U20, improvement report stage 1)
+  const HISTORY_MIN_WEEKS = 8;
+  const historyReady = (o) => !!o && o.weeks >= HISTORY_MIN_WEEKS;
+
+  return { median, observations, obsLabel, historyReady, HISTORY_MIN_WEEKS, isoWeek, medianSorted, groupStat, position, byLevel, order, SORTS };
 });
