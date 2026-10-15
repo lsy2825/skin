@@ -1416,14 +1416,17 @@
     return true;
   }
   function alertSheet(base) {
-    const now = alertNow(base);
+    // the price shown is the one the alert will watch: addAlert gives a comparison alert the region and the special setting in
+    // use now (st.region, st.special), so the sheet reads it the same way — not nationwide while the label names a region
+    const watched = base.k ? { ...base, reg: base.reg || st.region || "전국", sp: base.sp != null ? base.sp : st.special } : base;
+    const now = alertNow(watched);
     sheet("가격 알림", (close) => {
       const box = h("div", {});
       const types = base.k ? ["watch", "target", "newlow", "newmatch"] : base.cart != null ? ["cartdrop"] : ["expiring", "target"];
       const s = { type: types[0], on: { drop: true, target: true, lowbranch: true, newmatch: true, lowended: true, recheck: true } };
       const tgt = h("input", { class: "field", type: "number", inputmode: "numeric", min: "0", step: "1000", value: now && now.value ? Math.floor(now.value * 0.9 / 1000) * 1000 : "", "aria-label": "목표 금액" });
       const paint = () => fill(box,
-        h("div", { class: "sub" }, `${alertName(base)}${now && now.value ? ` · 지금 ${base.cart != null ? "한 곳 최저 합계" : `최저(병원 표시가, ${base.k ? (st.region || "전국") : ""})`} ${won(now.value)}` : ""}`),
+        h("div", { class: "sub" }, `${alertName(base)}${now && now.value ? ` · 지금 ${base.cart != null ? "한 곳 최저 합계" : `최저(병원 표시가, ${base.k ? watched.reg : ""})`} ${won(now.value)}` : ""}`),
         h("div", { class: "opts", style: "margin-top:10px" }, types.map((ty) => h("button", { class: "opt", type: "button", "aria-pressed": s.type === ty ? "true" : "false", onclick: () => { s.type = ty; paint(); } }, h("b", {}, ALERT_TYPES[ty]),
           ty === "watch" ? h("span", {}, "여러 변화를 한 번에") : null))),
         s.type === "watch" ? h("div", { class: "pcgrp", role: "group", "aria-label": "알려줄 변화" }, h("div", { class: "sub", style: "margin:12px 0 4px" }, "알려줄 변화"),
