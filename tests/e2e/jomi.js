@@ -15,6 +15,11 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
 (async () => { const OUT = process.argv[2] || require('os').tmpdir(); const b = await chromium.launch();
   const page = async (opts = {}, setup) => { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, ...opts }); const p = await ctx.newPage();
     p.errs = []; p.on('pageerror', (e) => p.errs.push(e.message));
+    // the full line set (data/jomi_lines.json) replaces the built-in lines a moment after the prices: a screen drawn before
+    // it came says a built-in line that is no longer in JomiLines.RECORDS. p.lines() waits for it so the check reads the
+    // same set the screen was drawn from (the 'empty quote' check failed now and then without this).
+    p.linesIn = false; p.on('requestfinished', (q) => { if (/data\/jomi_lines\.json/.test(q.url())) p.linesIn = true; });
+    p.lines = async () => { for (let i = 0; i < 100 && !p.linesIn; i++) await p.waitForTimeout(100); await p.waitForTimeout(150); };
     p.ext = []; p.on('request', (r) => { if (/\.(png|webp|jpe?g|gif|svg)(\?|$)/.test(r.url()) && !r.url().startsWith(BASE) && !/tile\.openstreetmap/.test(r.url())) p.ext.push(r.url()); });
     if (setup) await setup(p);
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload();
@@ -92,9 +97,9 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await ctx.close(); }
 
   // empty states, loading, error recovery, reduced motion
-  { const { ctx, p } = await page(); await p.waitForSelector('.pc');
+  { const { ctx, p } = await page(); await p.waitForSelector('.pc'); await p.lines();
     await p.goto(BASE + '#cart'); await p.waitForTimeout(300);
-    ok('빈 장바구니: 죠미 + 안내 + 다음 행동', await p.locator('#main .jomi-empty img').count() === 1 && await said(p, 'emptyCart', await p.locator('#main').innerText()) && await p.locator('#main .btn', { hasText: '시술 고르러 가기' }).count() === 1);
+    ok('빈 내 견적: 죠미 + 안내 + 다음 행동', await p.locator('#main .jomi-empty img').count() === 1 && await said(p, 'emptyCart', await p.locator('#main').innerText()) && await p.locator('#main .btn', { hasText: '시술 고르러 가기' }).count() === 1);
     await p.goto(BASE + '#search/zzqqxx?nl=0'); await p.waitForTimeout(600);
     ok('검색 결과 없음: 시무룩한 죠미 + 바꿔 보기 안내', await said(p, 'emptySearch', await p.locator('#main').innerText()) && await p.locator('#main .jomi-empty').count() === 1 && /expr-empty-360/.test(await p.locator('#main .jomi-empty img').getAttribute('src')));
     await p.goto(BASE + '#concern'); await p.waitForTimeout(300);
