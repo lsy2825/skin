@@ -51,7 +51,7 @@ test("the address: {metricsApi}/v1/m, a trailing slash or a base path kept as gi
 });
 
 test("the body is only the step name — no date, id, page or device", () => {
-  const p = phone(ON);
+  const p = phone(ON, { kept: { d: "2026-10-15", s: ["open"] } });
   p.m.hit("keep_cart");
   assert.deepEqual(p.sent, [{ url: "https://m.example.test/v1/m", body: '{"s":"keep_cart"}' }]);
   assert.deepEqual(Object.keys(JSON.parse(p.sent[0].body)), ["s"]);
@@ -59,7 +59,7 @@ test("the body is only the step name — no date, id, page or device", () => {
 });
 
 test("each step once a day per phone; a new day sends it again", () => {
-  const p = phone(ON);
+  const p = phone(ON, { kept: { d: "2026-10-15", s: ["open"] } });
   assert.equal(p.m.hit("keep_fav"), true);
   assert.equal(p.m.hit("keep_fav"), false);
   assert.equal(p.m.hit("keep_cart"), true);
@@ -72,17 +72,20 @@ test("each step once a day per phone; a new day sends it again", () => {
   p.setDay("2026-10-16");
   assert.equal(p.m.pending("keep_fav"), true);
   assert.equal(p.m.hit("keep_fav"), true);
-  assert.deepEqual(p.kept(), { d: "2026-10-16", s: ["keep_fav"] });
+  assert.deepEqual(p.kept(), { d: "2026-10-16", s: ["return_7d", "open", "keep_fav"] }, "the new day's first step brings its open");
 });
 
 test("return_7d: decided on the phone from the last day kept — 1 to 7 days ago, never the same day or after 8", () => {
-  const cases = [[null, ["open"]], ["2026-10-15", []], ["2026-10-14", ["open", "return_7d"]], ["2026-10-08", ["open", "return_7d"]],
-    ["2026-10-07", ["open"]], ["2025-10-14", ["open"]], ["2026-10-16", ["open"]], ["garbage", ["open"]]];
-  for (const [d, want] of cases) {
+  // same day: 'open' already went. A day kept 1 day ahead (clock or time zone moved back): hold, nothing sent, nothing moved.
+  // Further ahead the kept day was wrong: a new day without return_7d.
+  const cases = [[null, ["open"], "2026-10-15"], ["2026-10-15", [], "2026-10-15"], ["2026-10-14", ["return_7d", "open"], "2026-10-15"],
+    ["2026-10-08", ["return_7d", "open"], "2026-10-15"], ["2026-10-07", ["open"], "2026-10-15"], ["2025-10-14", ["open"], "2026-10-15"],
+    ["2026-10-16", [], "2026-10-16"], ["2026-11-30", ["open"], "2026-10-15"], ["garbage", ["open"], "2026-10-15"]];
+  for (const [d, want, keptAfter] of cases) {
     const p = phone(ON, { kept: d && { d, s: ["open"] } });
     p.m.opened();
-    assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), want, String(d));   // same day: 'open' already went
-    assert.equal(p.kept().d, "2026-10-15", "the kept day moves to today");
+    assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), want, String(d));
+    assert.equal(p.kept().d, keptAfter, String(d));
   }
   // month and year ends count calendar days
   assert.equal(M.days("2026-12-31", "2027-01-01"), 1);
@@ -90,7 +93,44 @@ test("return_7d: decided on the phone from the last day kept — 1 to 7 days ago
   // opening twice on the same day sends nothing more
   const p = phone(ON, { kept: { d: "2026-10-10", s: [] } });
   p.m.opened(); p.m.opened();
-  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["open", "return_7d"]);
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["return_7d", "open"]);
+});
+
+test("a tab left open overnight: the first step of the new day sends that day's open (and return_7d) first", () => {
+  const p = phone(ON, { kept: { d: "2026-10-12", s: ["open", "keep_cart"] } });
+  assert.equal(p.m.hit("keep_cart"), true);
+  p.m.opened();
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["return_7d", "open", "keep_cart"]);
+  assert.deepEqual(p.kept(), { d: "2026-10-15", s: ["return_7d", "open", "keep_cart"] });
+  // the clock moved back a day after that: nothing is counted again for the same real day
+  p.setDay("2026-10-14");
+  for (const s of M.STAGES) p.m.hit(s);
+  assert.equal(p.m.pending("first_price"), false);
+  assert.equal(p.sent.length, 3);
+});
+
+test("storage blocked or full: once per page load, never once per scroll", () => {
+  const sent = [];
+  const m = M.make(ON, { load: () => null, save: () => { throw new Error("QuotaExceededError"); }, today: () => "2026-10-15",
+    beacon: (u, b) => { sent.push(JSON.parse(b).s); return true; } });
+  for (let i = 0; i < 20; i++) if (m.pending("first_price")) m.hit("first_price");
+  m.hit("cart_open"); m.hit("cart_open"); m.opened();
+  assert.deepEqual(sent, ["open", "first_price", "cart_open"]);
+});
+
+test("a return the browser did not queue is not lost: return_7d goes first and both are tried again", () => {
+  let fails = 1;
+  const p = phone(ON, { kept: { d: "2026-10-10", s: [] }, queued: () => !(fails-- > 0) });
+  assert.equal(p.m.opened(), false);
+  assert.equal(p.kept().d, "2026-10-10", "nothing kept while return_7d has not gone");
+  assert.equal(p.m.opened(), true);
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["return_7d", "return_7d", "open"]);
+  // 'open' not queued: it goes before the day's next step
+  let n = 0;
+  const q = phone(ON, { kept: { d: "2026-10-10", s: [] }, queued: () => n++ !== 1 });
+  q.m.opened(); q.m.hit("keep_cart");
+  assert.deepEqual(q.sent.map((x) => JSON.parse(x.body).s), ["return_7d", "open", "open", "keep_cart"]);
+  assert.deepEqual(q.kept(), { d: "2026-10-15", s: ["return_7d", "open", "keep_cart"] });
 });
 
 test("a beacon the browser did not queue is tried again later; a broken kept value counts as no visit", () => {
@@ -100,7 +140,7 @@ test("a beacon the browser did not queue is tried again later; a broken kept val
   assert.equal(p.m.pending("cart_open"), true);
   ok = true;
   assert.equal(p.m.hit("cart_open"), true);
-  assert.equal(p.sent.length, 2);
+  assert.deepEqual(p.sent.map((x) => JSON.parse(x.body).s), ["open", "open", "cart_open"], "the day's open (not queued the first time) goes first");
   const q = phone(ON, { kept: { d: "2026-10-15", s: "open" } });
   assert.equal(q.m.hit("open"), true);
   const r = phone(ON, { kept: { d: "2026-10-15", s: ["open", "made_up"] } });

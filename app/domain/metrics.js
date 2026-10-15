@@ -2,8 +2,9 @@
 // report, and when. The app sends only the body {"s":"<step>"} with navigator.sendBeacon to {metricsApi}/v1/m — no date,
 // no id, no page, no search words, no device. Off unless app/config.js sets metrics: true and an https metricsApi (C writes
 // the privacy text, the user approves, then it is turned on); while off nothing is stored and nothing is sent.
-// A step goes at most once a day per phone. return_7d: this phone was last used 1–7 days ago — decided on the phone from the
-// day it keeps; that day never leaves the phone. window.Metrics in the app, require()d by tests/metrics.test.js.
+// A step goes at most once a day per phone. The first step of a day (a fresh start, or a tab left open overnight) sends the
+// day's 'open' first, and 'return_7d' when the last day kept is 1–7 days before — decided on the phone; that day never
+// leaves the phone. window.Metrics in the app, require()d by tests/metrics.test.js.
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.Metrics = factory();
@@ -31,42 +32,70 @@
   // (nothing yet, an old or broken value) counts as no visit before.
   const clean = (state) => state && typeof state.d === "string" && DAY.test(state.d) && Array.isArray(state.s)
     ? { d: state.d, s: state.s.filter((x) => STAGES.includes(x)) } : null;
-  // one step on day `today`: send it unless it already went today. Returns the state to keep (a new day starts with no
-  // steps sent) and whether it differs from what was kept. A name outside STAGES is never sent.
-  function step(state, name, today) {
-    const was = clean(state), cur = was && was.d === today ? was : { d: today, s: [] }, moved = cur !== was;
-    if (!STAGES.includes(name) || cur.s.includes(name)) return { send: false, next: cur, moved };
-    return { send: true, next: { d: today, s: [...cur.s, name] }, moved: true };
+  // today against the day kept: 'same'; 'new' (a later day, or nothing kept); 'back' — the clock or time zone went back by
+  // a day: hold and send nothing, so the same real day is not counted twice. Further back than that the kept day was
+  // wrong (a clock set far ahead): a new day, without return_7d.
+  function when(state, today) {
+    const s = clean(state);
+    if (!s) return "new";
+    const gap = days(s.d, today);
+    return gap === 0 ? "same" : gap === -1 ? "back" : "new";
   }
-  // the steps of opening the app: 'open', and 'return_7d' when the last day kept is 1–7 days before today
+  // the steps that open a new day: 'open', and 'return_7d' first when the last day kept is 1–7 days before today
   function opening(state, today) {
-    const was = clean(state), gap = was ? days(was.d, today) : null;
-    return gap != null && gap >= 1 && gap <= RETURN_DAYS ? ["open", "return_7d"] : ["open"];
+    const s = clean(state), gap = s ? days(s.d, today) : null;
+    return gap != null && gap >= 1 && gap <= RETURN_DAYS ? ["return_7d", "open"] : ["open"];
   }
 
   // the sender the app uses. io = { load(), save(state), beacon(url, body) → true when queued, today() → YYYY-MM-DD }.
   // Off (no endpoint): every call returns at once — load, save and beacon are never called.
   function make(cfg, io) {
     const url = endpoint(cfg);
+    // a copy in memory as well: storage that is blocked or full (io.load gives nothing back) must not turn 'once a day' into
+    // 'on every scroll' — without storage it is once per page load
+    let mem = null;
+    const load = () => { let v = null; try { v = clean(io.load()); } catch (e) { v = null; } return v || mem; };
+    const save = (v) => { mem = v; try { io.save(v); } catch (e) { /* storage unavailable: memory only */ } };
+    const send = (name) => { try { return !!io.beacon(url, body(name)); } catch (e) { return false; } };
+    // send `name` unless it went today; true when it went now. A beacon the browser did not queue is tried again next time.
     const hit = (name) => {
-      if (!url) return false;
-      const day = io.today(), r = step(io.load(), name, day);
-      if (!r.send) { if (r.moved) io.save(r.next); return false; }
-      let ok = false;
-      try { ok = !!io.beacon(url, body(name)); } catch (e) { ok = false; }
-      // a beacon the browser did not queue is tried again next time; the day is kept either way
-      io.save(ok ? r.next : { d: day, s: r.next.s.filter((x) => x !== name) });
-      return ok;
+      if (!url || !STAGES.includes(name)) return false;
+      const day = io.today();
+      let s = load();
+      const w = when(s, day);
+      if (w === "back") return false;
+      let went = false;
+      if (w === "new") {
+        // return_7d goes before open: when it is not queued nothing is kept, and both are tried again on the next step
+        const sent = [];
+        for (const n of opening(s, day)) {
+          if (!send(n)) { if (sent.length) save({ d: day, s: sent }); return false; }
+          sent.push(n);
+        }
+        s = { d: day, s: sent }; save(s);
+        went = sent.includes(name);
+      } else if (name !== "open" && !s.s.includes("open") && send("open")) {
+        // a day whose 'open' was not queued: it still goes before this step
+        s = { d: day, s: [...s.s, "open"] }; save(s);
+      }
+      if (s.s.includes(name)) return went;
+      if (!send(name)) return false;
+      save({ d: day, s: [...s.s, name] });
+      return true;
     };
     return {
       on: !!url,
       hit,
-      // app start: 'open' (+ 'return_7d') — the gap is read before 'open' moves the kept day to today
-      opened() { if (!url) return; for (const n of opening(io.load(), io.today())) hit(n); },
+      // app start, or the app shown again (a tab or a home-screen app left open since an earlier day)
+      opened() { return hit("open"); },
       // true while this step has not gone out today — lets the app skip work (the first-price check) when it has, or when off
-      pending(name) { if (!url) return false; const s = clean(io.load()); return !(s && s.d === io.today() && s.s.includes(name)); },
+      pending(name) {
+        if (!url) return false;
+        const s = load(), w = when(s, io.today());
+        return w === "new" || (w === "same" && !s.s.includes(name));
+      },
     };
   }
 
-  return { STAGES, RETURN_DAYS, endpoint, body, days, step, opening, make };
+  return { STAGES, RETURN_DAYS, endpoint, body, days, when, opening, make };
 });

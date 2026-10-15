@@ -66,6 +66,8 @@ const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } c
   // 2) on — config and CSP rewritten by the test, the server faked
   { const { ctx, p, hits, errs } = await start(b, true);
     await p.goto(BASE); await p.waitForTimeout(500); await p.evaluate(() => localStorage.clear()); hits.length = 0; await p.reload(); await unlock(p);
+    // the home's prices are on screen as soon as the PIN screen opens (it hides the page while the home is drawn behind it)
+    ok('켜짐: 비밀번호를 풀고 홈만 봐도 open·first_price', steps(hits).join() === 'open,first_price', steps(hits).join(','));
     await walk(p); await p.waitForTimeout(500);
     const got = steps(hits);
     ok('켜짐: 7단계가 한 번씩(open·first_price·compare_open·keep_cart·keep_fav·keep_alert·cart_open)', WALK.every((s) => got.filter((x) => x === s).length === 1) && got.length === WALK.length, got.join(','));

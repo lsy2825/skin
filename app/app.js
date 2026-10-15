@@ -1449,7 +1449,7 @@
         if (!/\d만?원/.test(t.nodeValue)) continue;   // 250,000원 · 25만원
         n++;
         const r = t.parentElement && t.parentElement.getBoundingClientRect();
-        if (r && r.width && r.height && r.bottom > 0 && r.top < vh) { metric("first_price"); return; }
+        if (r && r.width && r.height && r.bottom > 0 && r.top < vh) { if (metric("first_price")) priceDay = today(); return; }
       }
     });
   }
@@ -4867,6 +4867,8 @@
     });
   }
   metrics.opened();
+  window.addEventListener("unlocked", seePrice);
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { metrics.opened(); seePrice(); } });
   boot();
   if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then
