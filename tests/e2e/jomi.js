@@ -68,7 +68,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   // feedback: cart (undo), saved, alert
   { const { ctx, p } = await page(); await p.waitForSelector('.pc');
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
-    await p.locator('.cmphead .addbtn').click(); await p.waitForTimeout(250); await p.locator('.sheet button', { hasText: /회 담기$/ }).click(); await p.waitForTimeout(300);
+    await p.locator('.cmphead .addbtn').click(); await p.waitForTimeout(300);   // 6.0: the spec on screen goes in with one tap
+    ok('비교 화면 담기는 한 번에(옵션 창 없음)', await p.locator('.sheet').count() === 0);
     const tt = await p.locator('#toast').textContent();
     ok('담으면 죠미 확인 토스트 + 되돌리기', await said(p, 'added', tt) && await p.locator('#toast.jt img.mascot').count() === 1 && /되돌리기/.test(tt) && (await p.locator('#cart-n').textContent()) === '1', tt);
     ok('담은 뒤 버튼이 바로 "담김"', /담김/.test(await p.locator('.cmphead .addbtn').textContent()));

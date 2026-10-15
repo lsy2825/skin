@@ -591,9 +591,16 @@
     const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false",
       "aria-label": target ? `${inCart(k) ? "담김" : "담기"} · ${target} — ${KEYS[k].label} ${inCart(k) ? "횟수 바꾸기" : "내 견적에 담기"}` : `${KEYS[k].label} ${inCart(k) ? "담김 · 횟수 바꾸기" : "내 견적에 담기"}` },
       icon(inCart(k) ? "check" : "plus", "sm"), target ? h("span", {}, `${inCart(k) ? "담김" : "담기"} · ${target}`) : inCart(k) ? "담김" : "담기");
-    b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => addKeySheet(k), "전체 가격을 받는 대로 담기 화면을 열게요"); });
+    // with a target (the compare header): the spec on screen goes in with one tap (audit U11 — no second spec picker);
+    // once it is in, the same button opens the sheet to change sessions or take it out
+    b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => (target && !inCart(k) ? quickAdd(k) : addKeySheet(k)), "전체 가격을 받는 대로 담기 화면을 열게요"); });
     return b;
   };
+  function quickAdd(k) {
+    const c = cur(), it = { t: "k", k: KEYS[k].id, q: 1 };
+    c.items.push(it); track("cart_add", { k: it.k }); saveCarts(); render();
+    jomiToast("happy", `${jline("added") || "내 견적에 담았어요"} (${c.items.length}개)`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
+  }
   const rowAddBtn = (i) => h("button", { class: "addbtn", type: "button", onclick: (e) => { e.stopPropagation(); addRowSheet(i); } }, icon("plus", "sm"), "담기");
 
   // bottom sheet
@@ -2876,6 +2883,7 @@
   function cmpMoreSheet(k, rk, N) {
     sheet(k.label, (close) => { const act = (ic, label, fn, leaves) => h("button", { type: "button", onclick: () => { close(leaves ? true : undefined); fn(); } }, icon(ic, "sm"), label);
       return h("div", { class: "actsheet" },
+        rk.length ? act("plus", "횟수·다른 옵션으로 담기", () => addKeySheet(k.i)) : null,
         act("bell", "가격 알림", () => alertSheet({ k: k.id })),
         rk.length ? act("map", "지도에서 보기", () => { st.mapKey = k.i; nav("map"); }, true) : null,
         rk.length ? act("copy", "가격 요약 복사", () => { const ps = rk.map((x) => x.p).sort((a, c) => a - c);
