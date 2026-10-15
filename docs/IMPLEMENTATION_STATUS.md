@@ -309,7 +309,7 @@
   - 테이블: 브랜드·지점, 시술 제품·변형, offers·조건, 공식 패키지, 날짜 파티션 가격 스냅샷, source_registry, ingestion_jobs, 검증·감사·신고 로그
   - 내보내기: `build2/export_db.py`
   - 사용자 데이터: `supabase/schema.sql`(RLS)
-- **기능 플래그**(`app/config.js`): 광고·예약·이메일 알림·검색 노출은 꺼져 있어요. 단계별 익명 집계(`metrics`, 6.0 약속 2)도 꺼져 있고, 꺼져 있으면 저장·전송이 0건이에요(`app/domain/metrics.js`, `tests/e2e/metrics.js`). 켜기는 A의 집계 주소 + C의 처리방침 + 사용자 승인 뒤.
+- **기능 플래그**(`app/config.js`): 광고·예약·이메일 알림·검색 노출은 꺼져 있어요.
 - **PWA:** 오프라인 캐시, Pretendard 글꼴, 비밀번호 화면
 
 ## IN PROGRESS
