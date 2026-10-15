@@ -1,0 +1,52 @@
+name: monitor
+
+# Daily watchdog for the price factory and the app → Telegram (docs/SECURITY_ARCHITECTURE.md §9, .github/scripts/health_check.py).
+# weekly.yml already alerts from inside its own run; this separate job also catches what that run cannot report itself:
+# a factory that did not run at all (schedule off, minutes used up, runner lost), a run stuck or failed (sent again as a
+# reminder), collection older than 8 days, the app URL down, and (optional) the metrics/alerts Workers down.
+# One combined message only when something is wrong; on Mondays a labeled "주간 생존 신호" so silence is not mistaken for health.
+on:
+  schedule:
+    - cron: "30 0 * * *"      # every day 09:30 KST, after the 06:00 KST factory run (90-minute timeout) has finished
+  workflow_dispatch:           # "Run workflow" button
+    inputs:
+      test_message:
+        description: "텔레그램 시험 메시지 보내기 (연결 확인용)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read     # check out the scripts and app/data-meta.json
+  actions: read      # read weekly.yml's run history (GitHub REST API)
+
+concurrency:
+  group: monitor
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false   # read-only job: no git token left on disk
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      # Worker probes run only for the URLs in the repository variable MONITOR_WORKER_URLS (empty = skipped), so Workers
+      # that are not deployed yet never raise false alarms. Without the TELEGRAM_* secrets nothing is sent (a notice only).
+      # The live security headers, for the record (app/_headers): readable from the run's annotations without a browser.
+      - name: Live security headers (notice only)
+        run: |
+          H=$(curl -sSI --max-time 20 https://yoonsiljang.lsy2825.workers.dev/ | tr -d '\r' | grep -iE '^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy):' | tr '\n' ' ')
+          echo "::notice title=app security headers::${H:-none seen}"
+      - name: Check and alert (Telegram)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MONITOR_WORKER_URLS: ${{ vars.MONITOR_WORKER_URLS }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TEST_MESSAGE: ${{ inputs.test_message && '1' || '' }}
+        run: python .github/scripts/health_check.py --send --weekly-heartbeat ${TEST_MESSAGE:+--test}
