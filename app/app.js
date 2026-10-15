@@ -1434,16 +1434,18 @@
   // 단계별 익명 집계 (6.0 약속 2, app/domain/metrics.js) — separate from the on-phone 사용 통계 above. Off unless config.js
   // turns it on (metrics + metricsApi); then only {"s":"<step>"} goes out, each step once a day. While off: nothing stored,
   // nothing sent (tests/e2e/metrics.js counts zero requests).
-  const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => today(),
-    beacon: (url, body) => !!(navigator.sendBeacon && navigator.sendBeacon(url, body)) });
+  // the body is a string (text/plain, no CORS preflight); without sendBeacon, the no-cors keepalive POST chat A gave
+  const metrics = Metrics.make(window.APP_CONFIG, { load: () => store.get("metrics", null), save: (v) => store.set("metrics", v), today: () => Metrics.kstDay(),
+    beacon: (url, body) => navigator.sendBeacon ? navigator.sendBeacon(url, body)
+      : (fetch(url, { method: "POST", body, keepalive: true, mode: "no-cors", credentials: "omit" }).catch(() => {}), true) });
   // behind the PIN screen (html.locked hides the page) nothing has been seen yet: steps wait; 'unlocked' draws the screen again
   const unseen = () => document.documentElement.classList.contains("locked");
   const metric = (name) => (unseen() ? false : metrics.hit(name));
   // 'first_price': a price (…원) is on screen for the first time today — checked after each draw and while scrolling
   let priceLook = 0, priceDay = "";   // priceDay: the day it went (or was found already sent) — scrolling then costs nothing
   function seePrice() {
-    if (!metrics.on || priceLook || priceDay === today()) return;
-    if (!metrics.pending("first_price")) { priceDay = today(); return; }
+    if (!metrics.on || priceLook || priceDay === Metrics.kstDay()) return;
+    if (!metrics.pending("first_price")) { priceDay = Metrics.kstDay(); return; }
     priceLook = requestAnimationFrame(() => {
       priceLook = 0;
       const main = $("#main"), vh = window.innerHeight, walk = document.createTreeWalker(main, NodeFilter.SHOW_TEXT);
@@ -1451,7 +1453,7 @@
         if (!/\d만?원/.test(t.nodeValue)) continue;   // 250,000원 · 25만원
         n++;
         const r = t.parentElement && t.parentElement.getBoundingClientRect();
-        if (r && r.width && r.height && r.bottom > 0 && r.top < vh) { if (metric("first_price")) priceDay = today(); return; }
+        if (r && r.width && r.height && r.bottom > 0 && r.top < vh) { if (metric("first_price")) priceDay = Metrics.kstDay(); return; }
       }
     });
   }

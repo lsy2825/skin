@@ -25,7 +25,10 @@
     return u.origin + u.pathname.replace(/\/+$/, "") + "/v1/m";
   }
   const body = (step) => JSON.stringify({ s: step });
-  // whole days from day a to day b (both YYYY-MM-DD, the phone's own calendar)
+  // the day the metrics Worker counts in: the KST (Asia/Seoul, UTC+9, no daylight saving) calendar date, whatever the phone's
+  // time zone — 'once a day' then turns over at the same midnight as the server's table (chat A's memo, PR #15)
+  const kstDay = (now = Date.now()) => new Date(now + 9 * 3600e3).toISOString().slice(0, 10);
+  // whole days from day a to day b (both YYYY-MM-DD)
   const days = (a, b) => Math.round((Date.parse(b + "T00:00:00Z") - Date.parse(a + "T00:00:00Z")) / 864e5);
 
   // what this phone keeps: { d: the last day the app was used, s: the steps already sent that day }. Anything else
@@ -105,5 +108,5 @@
     };
   }
 
-  return { STAGES, RETURN_DAYS, endpoint, body, days, when, opening, make };
+  return { STAGES, RETURN_DAYS, endpoint, body, days, kstDay, when, opening, make };
 });

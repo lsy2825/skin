@@ -44,6 +44,13 @@ test("off (the default config, or no https address): no storage read or write, n
   assert.equal(M.endpoint(w.APP_CONFIG), null);
 });
 
+test("the day is the KST calendar date (the server's table), whatever the phone's time zone", () => {
+  assert.equal(M.kstDay(Date.parse("2026-10-14T14:59:59Z")), "2026-10-14");
+  assert.equal(M.kstDay(Date.parse("2026-10-14T15:00:00Z")), "2026-10-15", "00:00 KST");
+  assert.equal(M.kstDay(Date.parse("2026-12-31T15:00:00Z")), "2027-01-01");
+  assert.match(M.kstDay(), /^\d{4}-\d{2}-\d{2}$/);
+});
+
 test("the address: {metricsApi}/v1/m, a trailing slash or a base path kept as given", () => {
   assert.equal(M.endpoint(ON), "https://m.example.test/v1/m");
   assert.equal(M.endpoint({ metrics: true, metricsApi: "https://m.example.test/" }), "https://m.example.test/v1/m");

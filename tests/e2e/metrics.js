@@ -85,14 +85,14 @@ const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } c
 
     // last used 3 days ago: open + return_7d; the date itself is not sent
     hits.length = 0;
-    await p.evaluate(() => { const d = new Date(Date.now() - 3 * 864e5); const s = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    await p.evaluate(() => { const s = new Date(Date.now() + 9 * 3600e3 - 3 * 864e5).toISOString().slice(0, 10);   // the KST day, as the app keeps it
       localStorage.setItem('pc:metrics', JSON.stringify({ d: s, s: ['open', 'first_price'] })); });
     await home(p); await p.waitForTimeout(300);
     const back = steps(hits);
     ok('켜짐: 3일 전에 왔던 폰 → open + return_7d (+ first_price), 날짜는 보내지 않음', back.includes('open') && back.includes('return_7d') && hits.every((x) => !/\d{4}-\d{2}/.test(x.body)), back.join(','));
     // 8 days ago: not a 7-day return
     hits.length = 0;
-    await p.evaluate(() => { const d = new Date(Date.now() - 8 * 864e5); const s = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    await p.evaluate(() => { const s = new Date(Date.now() + 9 * 3600e3 - 8 * 864e5).toISOString().slice(0, 10);
       localStorage.setItem('pc:metrics', JSON.stringify({ d: s, s: [] })); });
     await home(p); await p.waitForTimeout(300);
     ok('켜짐: 8일 전이면 return_7d 없음', steps(hits).includes('open') && !steps(hits).includes('return_7d'), steps(hits).join(','));
