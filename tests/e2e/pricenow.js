@@ -167,7 +167,7 @@ const CAPITAL = ['서울', '경기', '인천'];
   // 16) watch a treatment
   await open(p, {});   // default region 수도권
   await go(p, 'compare?k=X12', 900);
-  await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button[aria-label="가격 알림"]').click(); await p.waitForTimeout(300);
+  await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '가격 알림' }).click(); await p.waitForTimeout(300);
   ok('S16 알림 종류 첫 번째 = 지켜보기, 변화 6가지 선택', (await p.locator('.sheet .opt[aria-pressed="true"]').first().textContent()).includes('지켜보기') && await p.locator('.sheet .pcgrp input[type=checkbox]').count() === 6);
   await p.locator('.sheet .btn', { hasText: '알림 만들기' }).click(); await p.waitForTimeout(400);
   const al = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts'))[0]);
