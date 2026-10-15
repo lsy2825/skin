@@ -1,7 +1,8 @@
 # 윤실장 (피부과 가격비교) — Claude 작업 안내
 
 공장형 피부과 브랜드(블리비·쁨·톡스앤필·리엔장)의 지점별 시술 가격을 모아 비교하는 PWA.
-프레임워크·번들러 없음(순수 JS). GitHub Pages로 `app/`을 배포.
+프레임워크·번들러 없음(순수 JS). `app/`을 GitHub Pages로 배포하고, Cloudflare Workers(정적 파일, `wrangler.jsonc`)로도
+배포할 준비가 돼 있다 — 저장소 시크릿 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`가 생기면 `weekly.yml`이 함께 올린다(2026-10-15).
 
 ## 대화 규칙
 - 한국어로 답한다.

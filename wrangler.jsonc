@@ -1,0 +1,14 @@
+// Cloudflare Workers (static assets) — the same app/ folder GitHub Pages serves. 2026-10-15: hosting moves to Cloudflare.
+// Deployed by .github/workflows/weekly.yml after each data build (step 'Deploy to Cloudflare'), only when the repository
+// secrets CLOUDFLARE_API_TOKEN (permission: Edit Cloudflare Workers) and CLOUDFLARE_ACCOUNT_ID are set; without them the
+// step is skipped and GitHub Pages keeps serving. Limits that matter here: 25 MiB per file (data.json ≈ 15 MB), 20,000
+// files on the free plan (app/ has ~170).
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang",
+  "compatibility_date": "2026-10-13",
+  "assets": {
+    "directory": "./app",
+    "not_found_handling": "none"
+  }
+}
