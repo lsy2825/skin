@@ -150,6 +150,11 @@ test("R11: the CSP allows exactly the origins the config calls (a metrics addres
   const on = (api) => check(fixed, cfg.replace('metrics: false', 'metrics: true').replace('metricsApi: ""', `metricsApi: "${api}"`));
   assert.equal(on("https://m.yoonsiljang.example").ok, true);
   for (const bad of ["https://m.yoonsiljang.example/?k=1", "https://u:p@m.yoonsiljang.example", ""]) assert.match(on(bad).problems.join(" "), /not a plain https address/, bad);
+  // the alerts Worker (6.0 contract 1, B6): the same rules
+  const withAlerts = cfg.replace('alertsApi: ""', 'alertsApi: "https://alerts.yoonsiljang.example/"');
+  assert.match(check(html, withAlerts).problems.join(" "), /connect-src is missing the alertsApi origin https:\/\/alerts\.yoonsiljang\.example/);
+  assert.equal(check(html.replace("connect-src 'self'", "connect-src 'self' https://alerts.yoonsiljang.example"), withAlerts).ok, true);
+  assert.match(check(html, cfg.replace('alertsApi: ""', 'alertsApi: "http://alerts.yoonsiljang.example"')).problems.join(" "), /alertsApi must be https/);
   assert.equal(/commerce|apiBase/.test(cfg), false, "the credit/commerce settings are gone (6.0: no credits)");
 });
 

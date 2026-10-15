@@ -10,6 +10,11 @@ window.APP_CONFIG = {
   // 넣고 node tools/check_csp.js 로 확인해요.
   metrics: false,
   metricsApi: "",
+  // 푸시 알림(6.0 약속 1, app/domain/push.js): 둘 다 있어야 관심 탭에 '가격 알림 받기'가 보여요. 비어 있으면 버튼도 요청도 없어요.
+  // alertsApi = A의 알림 주소(cf/alerts, https), pushPublicKey = VAPID 공개키(공개돼도 되는 값). A가 부탁 메모로 알려 줘요.
+  // 주소를 넣으면 index.html CSP connect-src에도 넣고 node tools/check_csp.js 로 확인해요.
+  alertsApi: "",
+  pushPublicKey: "",
   // 기능 플래그: 법률 검토(의료광고·환자 알선·개인정보)가 필요한 기능은 꺼 둬요. 지금 앱에는 광고·예약 기능 자체가 없어요.
   flags: {
     ops: true,          // 내정보 → 운영 현황(수집 상태·검토 큐), 비밀번호 화면 뒤에만 있어요

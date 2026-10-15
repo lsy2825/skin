@@ -1,14 +1,15 @@
 // Deployment check (round-2 R11, 6.0 약속 5): the page's Content-Security-Policy must allow exactly the origins app/config.js
 // will call. A server address set in config.js but missing from connect-src is blocked by the browser (every call fails
 // quietly); an origin in the CSP that nothing uses is an unneeded opening. Run before each deploy: node tools/check_csp.js [appDir]
-// Exit 0 = consistent. The addresses are the 6.0 Workers chat A runs (metricsApi = cf/metrics); a new one goes in API_KEYS.
+// Exit 0 = consistent. The addresses are the 6.0 Workers chat A runs (metricsApi = cf/metrics, alertsApi = cf/alerts); a new
+// one goes in API_KEYS. pushPublicKey is a key, not an address.
 const fs = require("node:fs");
 const path = require("node:path");
 const dir = path.resolve(process.argv[2] || path.join(__dirname, "../app"));
 const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
 const cfgSrc = fs.readFileSync(path.join(dir, "config.js"), "utf8");
 // config.js keys that hold a server address the app calls with fetch/sendBeacon (connect-src)
-const API_KEYS = ["metricsApi"];
+const API_KEYS = ["metricsApi", "alertsApi"];
 // read-only origins the app calls on its own, not from config.js: the price factory's run status (app/screens/ops.js)
 const KNOWN_ORIGINS = ["https://yoonsiljang-factory.lsy2825.workers.dev"];
 

@@ -129,7 +129,7 @@
   function fullArrived() {
     const fn = pending; pending = null;
     if (fn) { pressing = false; render(); fn(); } else render();   // fn may act on the new screen: draw it now
-    checkAlerts();
+    checkAlerts(); pushCheck();
     if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user);
   }
   // live readers for screen files split out later: functions, never copies (D and ROWS are replaced when new data arrives)
@@ -1252,7 +1252,7 @@
     const recheck = lb != null && fresh(lb).stale ? `최저가 지점(${bname(lb)})이 이번 주 수집에 실패해 지난 가격이에요` : "";
     return { low, lowB, lowName: lb != null ? bname(lb) : "", lowRow, count: set.length, set, rowState, recheck };
   }
-  const saveAlerts = () => { store.set("alerts", st.alerts); store.set("notes", st.notes.slice(0, 30)); paintMeN(); };
+  const saveAlerts = () => { store.set("alerts", st.alerts); store.set("notes", st.notes.slice(0, 30)); paintMeN(); pushSync(); };
   function paintMeN() { const el = $("#me-n"); if (!el) return; const n = st.notes.filter((x) => !x.read).length; el.hidden = !n; el.textContent = n; }
   function alertNow(a) {
     if (a.k) { const n = watchNow(a); return n && { value: n.low, count: n.count }; }
@@ -1297,6 +1297,75 @@
   const notifySupported = () => "Notification" in window && "serviceWorker" in navigator;
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+  // 푸시 알림 (6.0 약속 1, app/domain/push.js): only when config.js has alertsApi + pushPublicKey (chat A sends both). The
+  // permission prompt and the subscription happen only inside the tap on '가격 알림 받기'; the id the Worker gives back stays
+  // on this phone (device key 'push', not per account). The rules follow the phone's alerts (PUT when they change).
+  const CFG = window.APP_CONFIG || {};
+  const PUSH = Push.enabled(CFG);
+  const pushSupported = () => notifySupported() && "PushManager" in window;
+  const pushState = () => Push.cleanState(store.get("push", null));
+  // a branch product → its comparison keys, in that branch's 시·도 ('이벤트 종료 3일 전' as a key rule)
+  const rowPushKeys = (row) => { const sid = SI.get(row.n), b = BK.get(row.br); if (sid == null || b == null) return [];
+    const i = (byName.get(sid) || []).find((x) => ROWS[x][0] === b);
+    return i == null ? [] : (S[ROWS[i][7]] || "").split(" ").filter(Boolean).map((key) => ({ key, region: BR[b].region })); };
+  const pushRules = () => Push.rulesOf(st.alerts, rowPushKeys);
+  const pushFetch = (req) => fetch(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body, credentials: "omit", cache: "no-store" });
+  // the registration, or null: navigator.serviceWorker.ready never settles when registering failed
+  const swReg = () => Promise.race([navigator.serviceWorker.getRegistration().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
+  async function pushSubscribe() {
+    const reg = await swReg();
+    if (!reg || !reg.pushManager) throw new Error("no service worker");
+    const sub = (await reg.pushManager.getSubscription()) || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Push.keyBytes(CFG.pushPublicKey) });
+    const { rules } = pushRules(), req = Push.subscribeReq(CFG, sub, rules);
+    if (!req) throw new Error("unusable subscription");
+    const res = await pushFetch(req);
+    const id = res.ok ? Push.idOf(await res.json().catch(() => null)) : null;
+    if (!id) throw new Error(`subscribe ${res.status}`);
+    store.set("push", { id, ep: sub.endpoint, h: Push.hash(rules) });
+  }
+  async function pushUnsubscribe() {
+    const s = pushState(), req = s && Push.unsubscribeReq(CFG, s.id);
+    store.set("push", null);
+    if (req) await pushFetch(req).catch(() => {});
+    const reg = await swReg(), sub = reg && reg.pushManager ? await reg.pushManager.getSubscription().catch(() => null) : null;
+    if (sub) await sub.unsubscribe().catch(() => {});
+  }
+  // after an alert is added or removed (and at start, with the full price file): PUT the rules when they differ from the
+  // last sent. A subscription the Worker no longer knows (404/410) is forgotten here too.
+  let pushT = null;
+  function pushSync() {
+    if (!PUSH || !pushState()) return;
+    clearTimeout(pushT);
+    pushT = setTimeout(async () => {
+      const s = pushState();
+      if (!s || partial()) return;
+      const { rules } = pushRules(), h = Push.hash(rules);
+      if (h === s.h) return;
+      try {
+        const r = await pushFetch(Push.rulesReq(CFG, s.id, rules));
+        if (r.ok) store.set("push", { ...s, h });
+        else if (r.status === 404 || r.status === 410) { store.set("push", null); render(); }
+      } catch (e) { /* offline: the next change or the next start sends them */ }
+    }, 600);
+  }
+  // at start: the browser may have dropped the subscription (permission taken back) or renewed it — follow it
+  async function pushCheck() {
+    const s = pushState();
+    if (!PUSH || !s || !pushSupported()) return;
+    try {
+      if (Notification.permission !== "granted") { await pushUnsubscribe(); render(); return; }
+      const reg = await swReg();
+      if (!reg || !reg.pushManager) return;   // not registered yet: next start
+      const sub = await reg.pushManager.getSubscription();
+      if (!sub) { await pushUnsubscribe(); render(); return; }
+      if (sub.endpoint !== s.ep) {
+        store.set("push", null); await pushSubscribe();
+        const old = Push.unsubscribeReq(CFG, s.id); if (old) pushFetch(old).catch(() => {});
+        return;
+      }
+      pushSync();
+    } catch (e) { /* offline or the Worker is down: nothing changes on the phone */ }
+  }
   async function deviceNotify(title, body, tag = "pc-alert") {
     if (!notifySupported() || Notification.permission !== "granted") return false;
     try { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.showNotification(title, { body, tag, icon: "icons/icon-192.png", badge: "icons/favicon-32.png" }); else new Notification(title, { body, tag }); return true; } catch (e) { return false; }
@@ -1335,7 +1404,8 @@
           s.on.target ? h("label", { class: "flabel" }, "목표가 (이 금액 이하가 되면)", tgt) : null) : null,
         s.type === "target" || s.type === "cartdrop" ? h("label", { class: "flabel" }, s.type === "cartdrop" ? "이 금액 이하가 되면 (비우면 지금보다 내리면)" : "이 금액 이하가 되면", tgt) : null,
         h("div", { class: "sub", style: "margin-top:8px" }, "매주 실제로 모은 가격끼리 비교해서, 앱을 열 때 관심 탭과 위쪽 종 아이콘으로 알려요. 같은 변화는 다시 알리지 않아요. 값은 병원 표시가 기준이고, 화면의 부가세·지역 설정을 바꿔도 알림이 생기지 않아요."),
-        h("div", { class: "tiny", style: "margin-top:4px" }, "휴대폰 알림을 켜 두면 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
+        h("div", { class: "tiny", style: "margin-top:4px" }, PUSH ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
+          : "휴대폰 알림을 켜 두면 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
         h("button", { class: "btn", type: "button", style: "width:100%;margin-top:14px", onclick: () => {
           const v = Math.round(+tgt.value || 0);
           if (s.type === "target" && !v) { toast("목표 금액을 적어 주세요"); return; }
@@ -1380,14 +1450,39 @@
     card.append(notifyPanel());
     return card;
   }
-  // 휴대폰 알림 panel: real state of this browser; the permission prompt only after a tap
+  // 휴대폰 알림 panel: real state of this browser; the permission prompt only after a tap. With push set up (config.js) it is
+  // the push switch: '가격 알림 받기' asks for the permission first (iOS wants it straight from the tap), then subscribes.
   function notifyPanel() {
     const box = h("div", { class: "nfp" });
     const paint = () => {
-      const kids = [h("b", {}, icon("bell-ring", "sm"), " 휴대폰 알림")];
-      if (!notifySupported()) kids.push(h("div", { class: "sub" }, "이 브라우저는 웹 알림을 지원하지 않아요. 앱 안의 알림(관심 탭·종 아이콘)은 그대로 돼요."));
-      else if (isIOS() && !standalone()) kids.push(h("div", { class: "sub" }, "iPhone·iPad는 홈 화면에 설치한 앱에서만 알림을 켤 수 있어요(iOS 16.4 이상). ", h("button", { class: "linkbtn", type: "button", onclick: () => nav("about") }, "설치 방법")));
+      const kids = [h("b", {}, icon("bell-ring", "sm"), PUSH ? " 가격 알림 받기" : " 휴대폰 알림")];
+      // iPhone·iPad first: a Safari tab has no Notification at all, and the answer there is 'install', not 'unsupported'
+      if (isIOS() && !standalone()) kids.push(h("div", { class: "sub" }, "iPhone·iPad는 홈 화면에 설치한 앱에서만 알림을 켤 수 있어요(iOS 16.4 이상). ", h("button", { class: "linkbtn", type: "button", onclick: () => nav("about") }, "설치 방법")));
+      else if (!(PUSH ? pushSupported() : notifySupported())) kids.push(h("div", { class: "sub" }, "이 브라우저는 웹 알림을 지원하지 않아요. 앱 안의 알림(관심 탭·종 아이콘)은 그대로 돼요."));
       else if (Notification.permission === "denied") kids.push(h("div", { class: "sub" }, "브라우저 설정에서 이 사이트의 알림이 꺼져 있어요. 켜려면 브라우저 설정에서 바꿔 주세요."));
+      else if (PUSH) {
+        const s = pushState(), { rules, local, cut } = pushRules();
+        const note = [local ? `${local}개는 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
+        if (s && Notification.permission === "granted") {
+          kids.push(h("div", { class: "sub" }, `켜짐 — 앱이 닫혀 있어도 관심 시술 가격이 바뀌면 알려요. 일주일에 한 번 묶어서(행사 마감 임박은 따로), 오전 8시~오후 9시에만 와요. 보낸 조건 ${rules.length}개.`),
+            note ? h("div", { class: "tiny" }, note) : null);
+          const off = h("button", { class: "btn sm gray", type: "button", style: "margin-top:8px", onclick: async () => {
+            off.disabled = true; await pushUnsubscribe(); toast("가격 알림을 껐어요"); paint(); } }, "가격 알림 끄기");
+          kids.push(off);
+        } else {
+          kids.push(h("div", { class: "sub" }, "켜면 앱이 닫혀 있어도 관심 시술 가격이 바뀔 때 알려요(일주일에 한 번 묶어서). 누르기 전에는 권한을 묻지 않아요."),
+            note ? h("div", { class: "tiny" }, note) : null);
+          const on = h("button", { class: "btn sm", type: "button", style: "margin-top:8px", onclick: async () => {
+            on.disabled = true;
+            let p = null;
+            try { p = await Notification.requestPermission(); } catch (e) { /* old Safari: callback form */ }
+            if ((p || Notification.permission) !== "granted") { paint(); return; }
+            on.textContent = "켜는 중…";
+            try { await pushSubscribe(); toast("가격 알림을 켰어요"); } catch (e) { console.error(e); toast("가격 알림을 켜지 못했어요. 잠시 뒤 다시 해 주세요"); }
+            paint(); } }, "가격 알림 받기");
+          kids.push(on);
+        }
+      }
       else if (Notification.permission === "granted") kids.push(h("div", { class: "sub" }, "켜짐 — 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
         h("button", { class: "btn sm gray", type: "button", style: "margin-top:8px", onclick: async () => {
           const okN = await deviceNotify("[TEST] 윤실장 알림 시험", "시험용 알림이에요. 실제 가격 변화가 아니에요.", "pc-test");
@@ -2313,7 +2408,7 @@
         row("데이터 버전", SYNC.version || "-"),
         row("앱 버전", keys.find((k) => /^pc-v\d+$/.test(k)) || "서비스 워커 없음(이 브라우저는 오프라인 앱을 쓰지 않아요)"),
         est && est.usage ? row("이 사이트 저장 공간", `${(est.usage / 1e6).toFixed(1)}MB 사용`) : null,
-        row("휴대폰 알림", !notifySupported() ? "지원 안 함" : Notification.permission === "granted" ? "켜짐(앱을 열 때만)" : Notification.permission === "denied" ? "꺼짐(브라우저 설정)" : "아직 안 켬"));
+        row("휴대폰 알림", !notifySupported() ? "지원 안 함" : Notification.permission === "denied" ? "꺼짐(브라우저 설정)" : PUSH && pushState() ? "켜짐(앱이 닫혀 있어도)" : Notification.permission === "granted" ? "켜짐(앱을 열 때만)" : "아직 안 켬"));
     })();
     return box;
   }
@@ -4858,7 +4953,7 @@
       // a stored region no branch has (an old version's value, a typo) would empty every list: back to the default
       if (st.region && st.region !== "수도권" && !BR.some((b) => b.region === st.region)) { st.region = "수도권"; store.set("region", st.region); paintRegion(); }
       if (store.get("locPlace", "")) usePlace(store.get("locPlace", "")); render(); loadJomiLines();
-      if (!partial()) { checkAlerts(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); } }).catch((e) => {   // with home.json first: fullArrived
+      if (!partial()) { checkAlerts(); pushCheck(); if (window.Auth && window.Auth.enabled) onAccount(window.Auth.user); } }).catch((e) => {   // with home.json first: fullArrived
       clearTimeout(slow); D = null; console.error(e);
       const main = $("#main"); main.removeAttribute("aria-busy");
       main.replaceChildren(h("div", { class: "view" }, h("div", { class: "card", role: "alert" }, jomiEmpty("error", jline("error") || "문제가 생겼어요",
@@ -4878,5 +4973,6 @@
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadSW) actToast(jline("appUpdated") || "앱이 새 버전으로 바뀌었어요", ["새로고침", () => location.reload()]); });
     navigator.serviceWorker.register("sw.js").catch(() => {});
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "nav" && e.data.to === "saved") nav("saved"); });
   }
 })();
