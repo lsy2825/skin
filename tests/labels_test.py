@@ -211,7 +211,8 @@ raw = [  # category, group, option, sale, orig
     ("남성제모", "", "이마(헤어+삼자) 제모1회", 50000, 0),                                    # sex only in the page name
     ("여성제모", "", "인중 1회", 9000, 0),
     ("남성제모", "", "인중 1회", 25000, 0),                                                   # 쁨 서울대입구: no '제모' in the option, an area only
-    ("남성제모", "", "女) 겨드랑이 1회", 30000, 0)]                                           # the option's own sex wins over the page's
+    ("남성제모", "", "女) 겨드랑이 1회", 30000, 0),                                           # the option's own sex wins over the page's
+    ("▼ 부가세 포함 10만원 19.6만 ▼", "10월 특가", "▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : 라라필+피코슈어토닝", 100000, 0)]   # heading glued in front
 with tempfile.TemporaryDirectory() as tmp:
     os.makedirs(os.path.join(tmp, "data2", "raw"))
     with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
@@ -253,6 +254,9 @@ ok("제모 페이지의 부위 대괄호('[겨드랑이] 5회')는 이름에 남
 im = [r for r in out if r["option"].replace(" ", "") == "이마(헤어+삼자)제모1회"]
 ok("성별이 페이지 이름에만 있는 제모 줄(쁨 '여성제모'/'남성제모')은 합치지 않고 이름(mname)에 성별", len(im) == 2 and
    sorted(r["mname"][:4] for r in im) == ["[남성]", "[여성]"], [r["mname"] for r in im])
+lt = [r for r in out if "라라토닝" in r["option"]]
+ok("칸 제목('▼ 부가세 포함 … ▼')이 앞에 붙은 상품은 안내 문구가 아니라 상품, 부가세는 칸 제목대로 '포함'",
+   len(lt) == 1 and lt[0]["option"].startswith("1. 라라토닝") and lt[0]["vat"] == "포함", [(r["option"], r["vat"]) for r in lt])
 iz = one("인중 1회")
 ok("'제모' 글자 없이 부위만 있는 제모 페이지 줄(쁨 서울대입구 '인중 1회')도 이름에 페이지 성별", len(iz) == 2 and
    sorted(r["mname"][:4] for r in iz) == ["[남성]", "[여성]"], [r["mname"] for r in iz])
@@ -327,6 +331,28 @@ pk = {f["name"]: f["desc"] for f in fs}
 ok("묶음 시술군 설명은 자기 상품 낱말 바로 뒤 괄호만(보톡스 포함 패키지에 울쎄라 설명 안 붙음, 리쥬란 포함 패키지는 붙음)",
    not any("집속" in d for n, ds in pk.items() if "울쎄라" not in n for d in ds) and any("PN" in d for ds in pk.values() for d in ds), pk)
 
+# E6 부가세: 행의 표기(옵션·묶음 제목·페이지 칸 제목) → 브랜드 기본값, 확인 못 한 지점은 '미확인' (2026-10-15)
+vd = {"닥터에버스": ("excl", {"청담점"})}
+row = lambda **k: dict({"brand": "닥터에버스", "branch": "미사점", "category": ""}, **k)
+ok("부가세: 칸 제목의 '부가세 포함'이 브랜드 기본값(별도)보다 먼저", clean.vat_of(row(category="부가세 포함 만원(1회 한정) 1.96만"), "10월 2차", "국산 사각턱보톡스 50유닛", vd) == "포함")
+ok("부가세: 표기 없으면 브랜드 기본값", clean.vat_of(row(), "", "리쥬란 2cc", vd) == "별도")
+ok("부가세: 확인 못 한 지점은 미확인('')", clean.vat_of(row(branch="청담점"), "", "리쥬란 2cc", vd) == "")
+ok("부가세: 행 표기는 확인 못 한 지점에서도 그대로", clean.vat_of(row(branch="청담점"), "", "리쥬란 2cc (VAT 별도)", vd) == "별도")
+
+# E5 추가 옵션 (xkeys.addon_only → clean.csv addon → data.json addon): 790 newly marked rows were judged one by one (2026-10-15)
+for n in ["레이저토닝 · 옵션8) 에어녹스(비수면 통증제어 마취 시스템) 추가", "(목필러 옵션) 슈링크 유니버스 100샷 추가", "미희주사 1cc 추가당",
+          "염증주사 압출 (15개까지) (단독사용불가)", "(뉴비쥬 진행고객님 한정) 슈링크 300샷 당,", "스킨부스터 옵션 (옵션) 엠보케어 1회",
+          "압출 1개 (*단독 불가 / 추가상품)", "관리 추가 (크라이오 or 비타민)", "추가) 더마샤인 팁", "무릎추가 5회"]:
+    ok(f"추가 옵션: '{n}'", xkeys.addon_only(n))
+for n in ["[국산] 헤어라인 다한증 보톡스 (면적에 따라 비용추가)", "남성 얼굴 제모 男) 얼굴전체 1회 (클라리티 기기로 변경 시 3만원 추가)",
+          "신데렐라주사 1회 + 비타민C 앰플 추가", "올리지오 300샷+추가 30샷", "울쎄라 추가 20% 울쎄라 600샷",
+          "패키지 진행시 회당 비용 -크롬레이저 (화이트닝2가지)1회 (적립금 적용가능)", "온다리프팅 6만줄 (# 3회 패키지 진행시 10% 추가할인)",
+          "포텐자 (모공팁) + 크라이오 + 시트팩 3회 (※팁 포함 ※ 옵션) 리쥬란S1CC (흉터전용) 추가 시 1회 +140,000원)",
+          "주름보톡스 국산 1부위 (1회 체험가 / 처음 이용고객 대상)", "ㄴ필링 1회 (부스터필/블랙필/밀크필 택1)",
+          "보톡스 눈밑쫀쫀주사 or 눈밑촉촉주사 동시 시술 1회", "시그니처 내맘대로 관리 패키지 10회 옵션1) 1회 차감 : 아쿠아필",
+          "내 마음대로 피부관리 프로그램 중 택 1 - 10회 ※압출단독불가", "리쥬란 HB 1cc (※옵션)LDM(6분) +30,000)"]:
+    ok(f"추가 옵션 아님(메모가 붙은 시술 가격): '{n}'", not xkeys.addon_only(n))
+
 hv = lambda raw, d=None: taxonomy.variant(raw, cat="제모", display=d)[0]
 ok("라벨 안의 ' · '는 이름을 자르지 않음('[남성 EVENT · 주말제외] 인중' → 부위 인중)", hv("[남성 EVENT · 주말제외] 인중 제모 5회")["area"] == "인중")
 ok("바깥 부위가 더 넓으면 괄호는 메모('팔하완(손등+손가락)' → 팔하완, '다리전체(발등+발가락)' → 다리전체)",
@@ -399,6 +425,13 @@ for r in rp:
 rk, ks, fs, st = taxonomy.build(rp)
 ok("'이내'를 뗀 시술군 이름의 rx도 자기 상품 이름에 맞음(같은 시술군 더 보기)",
    bool(fs) and all(re.search(f["rx"], taxonomy.comp("리팟 5mm 이내 1개")) for f in fs), [(f["name"], f["rx"]) for f in fs])
+ok("'(클라리티 기기로 변경 시 3만원 추가)'의 기기는 이 가격의 기기가 아님(C2 검토)",
+   hv("女) 브라질리언 (항문 제외) 1회 (클라리티 기기로 변경 시 3만원 추가)")["sig"] == hv("女) 브라질리언 (항문 제외) 1회")["sig"]
+   and "클라리티" not in hv("女) 브라질리언 (항문 제외) 1회 (클라리티 기기로 변경 시 3만원 추가)")["label"])
+ok("... 괄호의 다른 조각(무엇이 들어 있는지)은 남김 — '(피코슈어토닝 + 크라이오관리 + 모델링팩 * LDM관리로 변경 시 2만원 추가)'",
+   taxonomy.strip_upgrade("피코슈어 토닝 1회 (피코슈어토닝 + 크라이오관리 + 모델링팩 * LDM관리로 변경 시 2만원 추가)") == "피코슈어 토닝 1회 (피코슈어토닝 + 크라이오관리 + 모델링팩)"
+   and taxonomy.strip_upgrade("피코슈어토닝 1회 (*피코 슈어 토닝 5회로 변경시 +39만원)").strip() == "피코슈어토닝 1회"
+   and taxonomy.strip_upgrade("여성 겨드랑이 제모 (아포지) 5회") == "여성 겨드랑이 제모 (아포지) 5회")
 ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'

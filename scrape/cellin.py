@@ -7,7 +7,7 @@ Branch list = the '지점안내' links on any branch page (a[title$='정보보�
                                           li.ListBox (.Name item, .Info explanation, .Price b sale price, em list price)
 Branches whose site moved to the new platform ({slug}.cellinclinic.com/ko — 2026-10-15: 연신내 본점, 다산, 홍대) are logged
 as 'moved' and skipped until that platform is read; a foreign-language site (Cellin水原网浦店) is not a price list.
-VAT wording: none found on the probe pages -> no vat_policy entry (unknown stays unknown).
+VAT wording: the event cards say 'VAT 별도' (2026-10-15 check) -> data2/vat_policy.json 셀린 (branches not confirmed stay unknown).
 robots.txt (2026-10-15, YoonSiljangBot and *): the price pages are allowed (scrape/raw_probe.py index). Probe history and
 why 셀린 was held back before: docs/DATA_AND_LEGAL.md §1.
 """

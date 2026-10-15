@@ -1,5 +1,5 @@
 {
- "_about": "브랜드 기본 부가세 표기. 사이트 원문 근거가 있을 때만 적어요(scrape/sources.py가 모은 data2/sources.json). 행 이름에 '부가세 포함/별도'가 따로 있으면 그게 우선이에요.",
+ "_about": "브랜드 기본 부가세 표기. 사이트 원문 근거가 있을 때만 적어요(scrape/sources.py가 모은 data2/sources.json). 행 이름에 '부가세 포함/별도'가 따로 있으면 그게 우선이에요. 지점마다 문구를 확인하지 못한 곳은 branches_unconfirmed에 적고, 그 지점 가격은 '미확인'으로 둬요(행 이름에 표기가 있으면 그게 우선).",
  "블리비": {
   "default": "excl",
   "checked": "2026-10-13",
@@ -41,5 +41,27 @@
   "checked": "2026-10-14",
   "url": "https://daybeauclinic08.com/branch/event.php?uid=282",
   "evidence": "VAT는 별도입니다."
+ },
+ "닥터에버스": {
+  "default": "excl",
+  "checked": "2026-10-15",
+  "url": "https://bucheon.drevers.com/event-month-botox_filler/",
+  "evidence": "26.10.01~26.10.31 | 부천점 방문고객 대상 | VAT 별도 — 이벤트 배너마다 같은 틀의 문구(34개 지점 중 30곳에서 읽음). 묶음 제목에 '부가세 포함'이 있는 이벤트(동탄 flash-2, 미사 week-2)는 행 단위로 '포함'",
+  "branches_unconfirmed": [
+   "청담점",
+   "청라점",
+   "청량리점",
+   "홍대점"
+  ]
+ },
+ "셀린": {
+  "default": "excl",
+  "checked": "2026-10-15",
+  "url": "https://www.cellinclinic11.com/clinicPriceSide/clinicSideList.php",
+  "evidence": "- 모든 시술 VAT 10% 별도입니다 . (노원 73/76칸) · ※모든시술 부가세별도 (수원망포) · *VAT 별도/ 카드, 현금가 동일 (청주) · [카톡플친 대상｜모든 시술 VAT 10% 별도] (하남미사) — 9개 지점 중 7곳의 칸 소개글. 광명·분당정자는 칸 문구가 없어 미확인",
+  "branches_unconfirmed": [
+   "광명점",
+   "분당정자점"
+  ]
  }
 }

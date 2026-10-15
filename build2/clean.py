@@ -18,7 +18,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match, ONCE, sessions  # noqa: E402
+from xkeys import X, match, ONCE, sessions, addon_only  # noqa: E402
 import taxonomy  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
@@ -30,9 +30,12 @@ VAT_POLICY = os.path.join(ROOT, "data2", "vat_policy.json")
 
 
 def vat_policy():
+    """brand → (default 'excl'/'incl'/'', branches the default is not confirmed for). A branch whose own pages were not read or
+    say nothing (셀린 광명·분당정자, 2026-10-15) keeps 'unknown' instead of borrowing the brand's wording."""
     if not os.path.exists(VAT_POLICY):
         return {}
-    return {b: v.get("default", "") for b, v in json.load(open(VAT_POLICY, encoding="utf-8")).items() if not b.startswith("_")}
+    return {b: (v.get("default", ""), set(v.get("branches_unconfirmed", [])))
+            for b, v in json.load(open(VAT_POLICY, encoding="utf-8")).items() if not b.startswith("_")}
 BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필"), ("lienjang", "리엔장"), ("forever", "포에버"),
           ("vands", "밴스"), ("uandi", "유앤아이"), ("daybeau", "데이뷰"), ("drevers", "닥터에버스"), ("cellin", "셀린")]
 
@@ -87,6 +90,13 @@ KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|�
 OPTION_LABEL = re.compile(r"^(?:\s*\[[^\]]*\])*?\s*\[[^\]]*옵션[^\]]*\]")   # also behind an event label: '[EVENT] [옵션] …'
 
 
+def addon_name(mname):
+    """a price sold only on top of another procedure, read from the name the same way the compare keys read it
+    (taxonomy.variant): '옵션5) 에어녹스 추가', '… 추가당', '… 추가 시' (2026-10-15, 개선 보고서 E5: the app keeps these out of
+    ranges, medians and 'lowest', so the flag is stored, not guessed on screen)"""
+    return addon_only(mname)
+
+
 def strip_event_prefix(s, hair=False):
     """Drop leading event labels that only name a sale: '[메가세일] 주름보톡스' / '[EVENT] 벨라콜린 1cc' /
     '[브랜드 10주년 기념, 무한 페스타] 염증주사 1개' -> the procedure name. Labels that describe the product
@@ -136,6 +146,18 @@ def price(x):
         return 0
 
 
+def vat_of(r, grp, opt, vdef):
+    """the row's own wording first — its option, group title or the page's section heading ('부가세 포함 만원(1회 한정) 1.96만' is
+    the 닥터에버스 미사점 heading of 9 rows, 2026-10-15) — then the brand default unless that branch is unconfirmed"""
+    text = f"{r.get('category', '')} {grp} {opt}"
+    if VAT_EX.search(text):
+        return "별도"
+    if VAT_IN.search(text):
+        return "포함"
+    default, unconfirmed = vdef.get(r["brand"], ("", set()))
+    return "" if r["branch"] in unconfirmed else {"excl": "별도", "incl": "포함"}.get(default, "")
+
+
 def load():
     rows = []
     for key, brand in BRANDS:
@@ -151,6 +173,14 @@ def main():
     issues, out, seen, seen_old, sex_of = [], [], {}, {}, {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
+        # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
+        # the heading stays the section (category, read for VAT), the product is what follows — read whole, the '▼' made all ten
+        # products a notice and they were dropped (2026-10-15)
+        sec = norm_text(r.get("category", ""))
+        # Only a '▼ … ▼' price heading: '※카카오톡 플러스친구 혜택' / '※항목별 1회씩 적용' headings are conditions (381 닥터에버스 rows
+        # stay out as before — a condition tag for them is a separate change)
+        if sec.startswith("▼") and len(sec) >= 4 and opt.startswith(sec) and opt[len(sec):].strip():
+            opt = opt[len(sec):].strip()
         sale, orig = price(r["sale"]), price(r["orig"])
         why = None
         if not opt:
@@ -224,10 +254,9 @@ def main():
             tags.append("일요일")
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
                "name": name, "mname": mname, "cat": cat, "kind": kind, "sale": sale, "orig": orig or "",
-               "addon": "1" if OPTION_LABEL.match(opt) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
+               "addon": "1" if OPTION_LABEL.match(opt) or addon_name(mname) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
-               "vat": "별도" if VAT_EX.search(f"{grp} {opt}") else "포함" if VAT_IN.search(f"{grp} {opt}") else
-                      {"excl": "별도", "incl": "포함"}.get(vdef.get(r["brand"], ""), "")}
+               "vat": vat_of(r, grp, opt, vdef)}
         # the same item shown on two pages of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row.
         # 2026-10-15 (개선 보고서 E4·E10): the list price no longer has to match — a 기획전 page and the category page often give the
         # same item at the same price with different list prices (블리비 덴서티 600샷 1,590,000원: 정가 3,100,000 / 3,000,000) —

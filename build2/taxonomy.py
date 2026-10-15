@@ -391,12 +391,13 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # 'U라인 제모 5회' key fell under 3 branches) and '브라질리언 항문포함' / '브라질리언(항문포함 1회' with no closing bracket (밴스: a key
     # of its own beside '브라질리언+항문')
     def _spell(s):
+        s = strip_upgrade(s)
         s = re.sub(r"(?<![A-Za-z])u(?=\s*라인)", "U", s)
         return re.sub(r"브라질리언\s*\(?\s*항문\s*포함\s*\)?", "브라질리언 (항문 포함) ", s)
     raw = _spell(raw)
     display = _spell(display) if display else display
     full = comp(raw)
-    if re.search(r"옵션\s*\d*\)", raw) or addon_only(raw):
+    if addon_only(raw):
         return None, "추가 옵션"
     if COND.search(full):
         return None, "조건부 가격(○○ 이상 시)"
@@ -486,6 +487,24 @@ def variant(name, addon=False, kind="", cat="", display=None):
     sx = re.search(r"\[(여성|여자|남성|남자)\]|\((여성|여자|남성|남자|여|남)\)|(女|男)", raw)
     sxw = next((g for g in sx.groups() if g), "") if sx else ""
     return _exact(display or raw, sess, cat, bundle, {"여자": "여성", "남자": "남성", "여": "여성", "남": "남성", "女": "여성", "男": "남성"}.get(sxw, sxw))
+
+
+# a bracket offering another device or product for a surcharge ('(클라리티 기기로 변경 시 3만원 추가)', 유앤아이 부평점) is not what the
+# row's price buys: its device word made the base price a '클라리티Ⅱ' spec, the lowest of that key (C2 검토, 2026-10-16)
+# Only that clause goes: '(피코슈어토닝 + 크라이오관리 + 모델링팩 * LDM관리로 변경 시 2만원 추가)' (셀린 노원점) keeps what the price buys
+UPGRADE_CLAUSE = re.compile(r"(?:변경|업그레이드|교체)[^*※/,]*(?:추가|\+\s*\d)|(?:추가|\+\s*\d)[^*※/,]*(?:변경|업그레이드|교체)")
+
+
+def strip_upgrade(s):
+    """a name without the surcharge-for-another-device clauses inside its brackets"""
+    def fix(m):
+        parts = re.split(r"\s*[*※/,]\s*", m.group(1))
+        keep = [x for x in parts if not UPGRADE_CLAUSE.search(x)]
+        if len(keep) == len(parts):
+            return m.group(0)
+        keep = [x for x in keep if x.strip()]
+        return f"({' * '.join(keep)})" if keep else " "
+    return re.sub(r"\(([^()]*)\)", fix, s or "")
 
 
 def _with_area(v, area, text):
@@ -759,7 +778,7 @@ def build(rows, min_branches=3):
         if not v or not v["sig"].startswith("hair|") or any(d["label"] in v["sig"].split("|")[2].split(",") for d in HAIR_DEVICES):
             continue
         found = {d["label"] for d in HAIR_DEVICES if d["rx"].search(r.get("group", ""))} \
-            | {d["label"] for d in HAIR_DEVICES if d["rx"].search(r.get("option", "")) and not d["rx"].search(r["name"])}
+            | {d["label"] for d in HAIR_DEVICES if d["rx"].search(strip_upgrade(r.get("option", ""))) and not d["rx"].search(r["name"])}
         if len(found) == 1:
             dev = found.pop()
             nv, _ = variant(f"{dev} {r.get('mname') or r['name']}", r.get("addon") == "1", r.get("kind", ""), r.get("cat", ""),
