@@ -5,16 +5,16 @@ usage: python scrape/sources.py            (weekly.py runs it before the scraper
                                              disallowed is not scraped that week and keeps its previous data)
 Hand-maintained policy fields live in REGISTRY below (terms reviewed date, notes). Automatic fields:
   hosts[]        every host seen in the brand's accepted URLs (data2/accepted/<key>.csv) + extra seed URLs,
-                 robots.txt status and whether our sample paths are allowed for user-agent '*'
+                 robots.txt status and whether our sample paths are allowed for YoonSiljangBot (its group, else '*')
   vat_evidence[] sentences on sample pages that mention 부가세/VAT with 포함/별도 (±60 chars)
   date_samples[] raw text of the event-period element (블리비) so the meaning of 'until' can be checked
 Nothing here bypasses anything: one GET per robots.txt and a handful of sample pages, 1 s apart.
 """
-import csv, json, os, re, urllib.robotparser
+import csv, json, os, re
 from collections import OrderedDict
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
-from common import BOT_NAME, Fetcher, ROOT, clean, now_iso, robots_put, set_delay, stamp
+from common import BOT_NAME, Fetcher, ROOT, clean, now_iso, robots_allows, robots_delay, robots_put, set_delay, stamp
 
 OUT = os.path.join(ROOT, "data2", "sources.json")
 ACC = os.path.join(ROOT, "data2", "accepted")
@@ -60,9 +60,10 @@ def accepted_urls(key):
 
 
 def robots_unread(host, err, paths):
-    """robots.txt could not be read. RFC 9309: a 4xx answer means there is none (crawling allowed); a 5xx answer or no
-    answer at all (timeout, connection error) means assume everything is disallowed — that brand is not scraped this week."""
-    if err.startswith("HTTP 4"):
+    """robots.txt could not be read. RFC 9309: a 4xx answer means there is none (crawling allowed) — except 401/403 (a refusal)
+    and 429 (a rate limit), treated like a 5xx answer or no answer at all: assume everything is disallowed, that brand is not
+    scraped this week (same rule as scrape/common.py robots_allows)."""
+    if err.startswith("HTTP 4") and err not in ("HTTP 401", "HTTP 403", "HTTP 429"):
         return {"host": host, "robots": f"없음 ({err})", "allowed": True, "checked_paths": paths}
     return {"host": host, "robots": f"확인 실패 ({err}) — 수집 안 함", "allowed": False, "checked_paths": paths}
 
@@ -74,11 +75,9 @@ def robots(f, host, paths):
         robots_put(host, int(err.split()[1]) if str(err).startswith("HTTP ") else 0, "")     # later steps reuse this answer
         return robots_unread(host, str(err), paths)
     robots_put(host, 200, r.text)
-    rp = urllib.robotparser.RobotFileParser()
-    rp.parse(r.text.splitlines())
-    # asked as our own name: a rule written for YoonSiljangBot wins over '*' (RobotFileParser falls back to '*' when there is none)
-    blocked = [p for p in paths if not rp.can_fetch(BOT_NAME, f"https://{host}{p}")]
-    delay = rp.crawl_delay(BOT_NAME)
+    # asked as our own name: a group written for YoonSiljangBot wins over '*' (scrape/common.py, RFC 9309, any Python version)
+    blocked = [p for p in paths if not robots_allows(200, r.text, f"https://{host}{p}")]
+    delay = robots_delay(200, r.text)
     if delay:                                  # this read is the first request of the run to the host: later steps wait from here
         set_delay(host, delay)
         stamp(host)
@@ -121,7 +120,7 @@ def date_samples(f, url):
 
 def main():
     f = Fetcher(gap=1.0, retries=1)
-    out = {"checked_at": now_iso(), "user_agent_rule": "*", "brands": OrderedDict()}
+    out = {"checked_at": now_iso(), "user_agent_rule": f"{BOT_NAME} (그 이름의 묶음이 없으면 *)", "brands": OrderedDict()}
     for key, reg in REGISTRY.items():
         urls = accepted_urls(key)
         sample = (urls[:3] + reg["seeds"])[:6]

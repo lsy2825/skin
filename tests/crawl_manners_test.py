@@ -66,7 +66,7 @@ def reset():
     for p in (common.CLOCK_PATH, common.ROBOTS_PATH):
         if os.path.exists(p):
             os.remove(p)
-    common._delays.clear()
+    common._clock = None
     sleeps.clear()
     T[0] = 1000.0
 
@@ -124,11 +124,42 @@ common.robots_put("h.example", 200, "User-agent: *\nDisallow: /nope/\nCrawl-dela
 f6 = fetcher({"https://h.example/ok": Resp(200, "x")}, robots=True)
 f6.get("https://h.example/ok")
 ok("a robots.txt answer from an earlier step is reused (no second request)", all(u != RB for _, u in f6.s.log), f6.s.log)
-ok("... and its Crawl-delay is known to this step", common.host_delay("h.example") == 120.0, common._delays)
+ok("... and its Crawl-delay is known to this step", common.host_delay("h.example") == 120.0, common._clock)
 T[0] += common.ROBOTS_MAX_AGE + 1
 f7 = fetcher({RB: Resp(200, "User-agent: *\nAllow: /\n"), "https://h.example/ok": Resp(200, "x")}, robots=True)
 f7.get("https://h.example/ok")
 ok("an answer older than 36 h is asked for again", any(u == RB for _, u in f7.s.log))
+
+# --- refusals and rate limits; the delay is not forgotten
+reset()
+common.set_delay("h.example", 180)
+common.stamp("h.example")
+for code in (403, 429, 401):
+    common._clock = None                               # a new step reads the clock file again
+    fx = fetcher({RB: Resp(code), "https://h.example/ok": Resp(200, "x")}, robots=True)
+    ok(f"robots.txt answers {code} = treat as disallowed", fx.get("https://h.example/ok") is None and "unreadable" in fx.last_error, fx.last_error)
+ok("... and the Crawl-delay learned earlier is kept (a non-file answer does not erase it)", common.host_delay("h.example") == 180)
+T[0] += 10
+sleeps.clear()
+common._clock = None
+os.remove(common.ROBOTS_PATH)                      # a new run: no cached answer, so robots.txt itself is asked for again
+fy = fetcher({RB: Resp(200, "User-agent: *\nAllow: /\n"), "https://h.example/ok": Resp(200, "x")}, robots=True)
+fy.get("https://h.example/ok")
+ok("the next run's first request (robots.txt) still waits out the remembered delay", sum(sleeps) >= 170, sleeps)
+
+# --- robots.txt read the same on every Python (RFC 9309)
+ga = lambda txt, path: common.robots_allows(200, txt, "https://h.example" + path)
+ok("'Disallow: /*' blocks everything", not ga("User-agent: *\nDisallow: /*\n", "/a"))
+ok("the longest rule wins: Allow /map.php over Disallow /", ga("User-agent: *\nDisallow: /\nAllow: /map.php\n", "/map.php") and not ga("User-agent: *\nDisallow: /\nAllow: /map.php\n", "/x"))
+ok("same length: Allow wins", ga("User-agent: *\nDisallow: /a\nAllow: /a\n", "/a"))
+ok("'Allow: /' then 'Disallow: /map.php' blocks /map.php", not ga("User-agent: *\nAllow: /\nDisallow: /map.php\n", "/map.php"))
+ok("wildcard in the middle (리엔장 '/*?testpage=*')", not ga("User-agent: *\nDisallow: /*?testpage=*\n", "/agree/info?testpage=1") and ga("User-agent: *\nDisallow: /*?testpage=*\n", "/agree/info"))
+ok("'$' ends the pattern", not ga("User-agent: *\nDisallow: /*.pdf$\n", "/a.pdf") and ga("User-agent: *\nDisallow: /*.pdf$\n", "/a.pdf?x=1"))
+ok("a group called 'bot' is not ours (no substring match)", not ga("User-agent: bot\nAllow: /\n\nUser-agent: *\nDisallow: /\n", "/a"))
+ok("two '*' groups are merged, with their Crawl-delay", common.robots_delay(200, "User-agent: *\nDisallow: /x\n\nUser-agent: *\nCrawl-delay: 1.5\n") == 1.5
+   and not ga("User-agent: *\nDisallow: /x\n\nUser-agent: *\nCrawl-delay: 1.5\n", "/x"))
+ok("a byte-order mark at the start does not hide the first line", not ga("\ufeffUser-agent: *\nDisallow: /\n", "/a"))
+ok("our own group with a version ('YoonSiljangBot/1.0') counts as ours", not ga("User-agent: YoonSiljangBot/1.0\nDisallow: /\n\nUser-agent: *\nAllow: /\n", "/a"))
 
 # --- the other scrapers are unchanged: no robots request unless asked for
 reset()

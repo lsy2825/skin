@@ -2,7 +2,7 @@
 
 Every scraper writes data2/raw/<brand>.csv with RAW_FIELDS and data2/raw/<brand>.log.json (pages, failures).
 """
-import csv, datetime, json, os, re, threading, time, urllib.robotparser
+import csv, datetime, json, os, re, threading, time, urllib.parse
 from urllib.parse import urlparse
 import requests
 
@@ -30,7 +30,7 @@ CLOCK_PATH = os.path.join(ROOT, "data2", ".host_clock.json")
 ROBOTS_PATH = os.path.join(ROOT, "data2", ".robots_cache.json")
 ROBOTS_MAX_AGE = 36 * 3600
 _lock = threading.Lock()
-_delays = {}                       # host → Crawl-delay seconds, learned from robots.txt in this process
+_clock = None                      # host → {"at": last request time, "delay": Crawl-delay}; CLOCK_PATH, read once per process
 _now, _sleep = time.time, time.sleep      # replaced by tests
 
 
@@ -50,26 +50,42 @@ def _save(path, d):
             json.dump(d, f)
         os.replace(tmp, path)
     except OSError:
-        pass                       # a read-only checkout only loses the cross-step memory
+        pass                       # a read-only disk loses only the memory between steps; this process keeps its own
+
+
+def _clock_map():
+    global _clock
+    if _clock is None:
+        _clock = {h: {"at": float(v.get("at", 0)), "delay": float(v.get("delay", 0))}
+                  for h, v in _load(CLOCK_PATH).items() if isinstance(v, dict)}
+    return _clock
 
 
 def set_delay(host, seconds):
+    """remember a host's Crawl-delay. The largest one seen stays: a later robots.txt answer that is not a readable file (429,
+    5xx, no answer) must not make the collector forget it"""
     if host and seconds and seconds > 0:
-        _delays[host] = float(seconds)
+        with _lock:
+            e = _clock_map().setdefault(host, {"at": 0.0, "delay": 0.0})
+            if seconds > e["delay"]:
+                e["delay"] = float(seconds)
+                _save(CLOCK_PATH, _clock)
 
 
 def host_delay(host):
-    return _delays.get(host, 0.0)
+    e = _clock_map().get(host)
+    return e["delay"] if e else 0.0
 
 
 def wait_turn(host):
-    """block until Crawl-delay seconds have passed since the last request to this host (any step of this run)"""
+    """block until Crawl-delay seconds have passed since the last request to this host (any step of this run, and an earlier
+    run on the same disk)"""
     d = host_delay(host)
     if not d:
         return
     while True:
         with _lock:
-            left = _load(CLOCK_PATH).get(host, 0) + d - _now()
+            left = _clock_map()[host]["at"] + d - _now()
         if left <= 0:
             return
         _sleep(min(left, d))
@@ -78,9 +94,8 @@ def wait_turn(host):
 def stamp(host):
     if host_delay(host):
         with _lock:
-            clock = _load(CLOCK_PATH)
-            clock[host] = _now()
-            _save(CLOCK_PATH, clock)
+            _clock_map()[host]["at"] = _now()
+            _save(CLOCK_PATH, _clock)
 
 
 def robots_get(host):
@@ -98,20 +113,71 @@ def robots_put(host, status, text):
         _save(ROBOTS_PATH, c)
 
 
-def robots_rules(status, text):
-    """→ (RobotFileParser or None, allow_all). status: HTTP code of robots.txt, or 0 for no answer"""
-    if status == 200:
-        rp = urllib.robotparser.RobotFileParser()
-        rp.parse((text or "").splitlines())
-        return rp, False
-    if 400 <= status < 500:
-        return None, True          # no robots.txt: nothing is disallowed
-    return None, False             # no answer / 5xx: assume everything is disallowed
+# robots.txt read the same way on every Python (RFC 9309): Python's own robotparser changed between 3.12 (the factory) and 3.13
+# (wildcards, Allow/Disallow order), matches user-agent names as substrings ('bot' would catch YoonSiljangBot) and keeps only the
+# first group of a name. Here: the group named exactly YoonSiljangBot (case-insensitive, all such groups merged), else '*';
+# '*' and '$' in paths; the longest matching rule wins, Allow on a tie; a blank Disallow means nothing.
+def robots_group(text):
+    """→ (rules [(allow, pattern)], crawl_delay or None) of the group that applies to us"""
+    groups, names, in_rules = {}, [], False
+    for line in (text or "").lstrip("\ufeff").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        k, v = (x.strip() for x in line.split(":", 1))
+        k = k.lower()
+        if k == "user-agent":
+            if in_rules:
+                names, in_rules = [], False
+            name = v.split("/")[0].strip().lower()
+            names.append(name)
+            groups.setdefault(name, {"rules": [], "delay": None})
+        elif k in ("allow", "disallow", "crawl-delay"):
+            in_rules = True
+            for n in names:
+                g = groups[n]
+                if k == "crawl-delay":
+                    try:
+                        g["delay"] = max(g["delay"] or 0.0, float(v))
+                    except ValueError:
+                        pass
+                elif v:
+                    g["rules"].append((k == "allow", v))
+    g = groups.get(BOT_NAME.lower()) or groups.get("*") or {"rules": [], "delay": None}
+    return g["rules"], g["delay"]
+
+
+def _rule_re(pattern):
+    p = urllib.parse.unquote(pattern)
+    end = p.endswith("$")
+    return re.compile(re.escape(p[:-1] if end else p).replace(r"\*", ".*") + ("$" if end else ""))
+
+
+def robots_path_allowed(rules, url):
+    u = urlparse(url)
+    path = urllib.parse.unquote((u.path or "/") + (f"?{u.query}" if u.query else ""))
+    best = None                    # (length, allow)
+    for allow, pattern in rules:
+        if _rule_re(pattern).match(path):
+            cand = (len(pattern), allow)
+            if best is None or cand[0] > best[0] or (cand[0] == best[0] and allow):
+                best = cand
+    return True if best is None else best[1]
 
 
 def robots_allows(status, text, url):
-    rp, allow_all = robots_rules(status, text)
-    return allow_all if rp is None else rp.can_fetch(BOT_NAME, url)
+    """status: HTTP code of robots.txt (0 = no answer). 200 = its rules; 401/403/429 = treat as disallowed (a refusal or a rate
+    limit is not 'no file' — the old 리엔장 code skipped such hosts too); other 4xx = no file, nothing disallowed; 5xx or no answer
+    = disallowed (RFC 9309: unreachable)"""
+    if status == 200:
+        return robots_path_allowed(robots_group(text)[0], url)
+    if status in (401, 403, 429):
+        return False
+    return 400 <= status < 500
+
+
+def robots_delay(status, text):
+    return robots_group(text)[1] if status == 200 else None
 
 
 class Fetcher:
@@ -158,9 +224,9 @@ class Fetcher:
                 got = (status, r.text if r is not None and status == 200 else "")
                 robots_put(host, *got)
             self._rules[host] = got
-            rp, _ = robots_rules(*got)
-            if rp is not None:
-                set_delay(host, rp.crawl_delay(BOT_NAME))
+            delay = robots_delay(*got)
+            if delay:
+                set_delay(host, delay)
                 if fresh:
                     stamp(host)          # the robots.txt request just made is the first one the delay counts from
         return self._rules[host]

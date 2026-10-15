@@ -18,7 +18,7 @@ PAGES = {"vands": ("밴스", ""), "uandi": ("유앤아이", "/direction/"),
 
 def main(key, out):
     brand, path = PAGES[key]
-    f = Fetcher(gap=1.0)
+    f = Fetcher(gap=1.0, robots=True)     # the same address pages as scrape/branches.py: robots.txt first
     cache = json.load(open(branches.CACHE, encoding="utf-8")) if os.path.exists(branches.CACHE) else {}
     s = requests.Session()
     s.headers["User-Agent"] = UA
