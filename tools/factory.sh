@@ -38,9 +38,17 @@ save() {
   if git diff --cached --quiet; then log "nothing new to save"; return 0; fi
   git -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" commit -q -m "$msg $(date -u +%F)"
   if [ "${FACTORY_NO_PUSH:-}" = 1 ]; then log "committed, not pushed (FACTORY_NO_PUSH=1)"; return 0; fi
-  git pull -q --rebase -X theirs origin main   # another run may have pushed meanwhile
-  git push -q origin HEAD:main
-  log "saved: $(git log -1 --format='%h %s')"
+  # main may have moved meanwhile (another run, a merged PR): replay the commit on top of it and push. The replay needs a
+  # committer identity like the commit above — a bare runner has none and git stops with "empty ident name" (exit 128),
+  # which is how the 2026-10-15 run that overlapped a PR merge failed. Rejected pushes are retried a few times.
+  local try
+  for try in 1 2 3; do
+    git -c user.name="$BOT_NAME" -c user.email="$BOT_EMAIL" pull -q --rebase -X theirs origin main
+    if git push -q origin HEAD:main; then log "saved: $(git log -1 --format='%h %s')"; return 0; fi
+    log "push to main rejected (it moved again) — try $try of 3"; sleep 3
+  done
+  log "could not push to main after 3 tries"
+  return 1
 }
 
 install() { if [ "${FACTORY_INSTALL:-}" = 1 ]; then pip install -q -r requirements.txt; fi; }
