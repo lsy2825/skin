@@ -273,8 +273,14 @@ def _clean(text, fam):
 
 
 def _area(raw):
-    """제모: the body area before '제모' ('겨드랑이/인중 제모' → '겨드랑이/인중', '상체 제모 · 겨드랑이' → '겨드랑이')"""
-    a = re.sub(r"\[[^\]]*\]|\([^()]*\)", " ", raw)
+    """제모: the body area before '제모' ('겨드랑이/인중 제모' → '겨드랑이/인중', '상체 제모 · 겨드랑이' → '겨드랑이'). An area written
+    only in square brackets ('[겨드랑이] 5회', 톡스앤필) is read from there (2026-10-15: it was '부위 미표기')."""
+    raw = re.sub(r"\[(?:여성|남성|여자|남자)\]", " ", raw or "")
+    got = _area_of(re.sub(r"\[[^\]]*\]|\([^()]*\)", " ", raw))
+    return got or _area_of(re.sub(r"\([^()]*\)", " ", re.sub(r"\[([^\]]*)\]", r" \1 ", raw)))
+
+
+def _area_of(a):
     segs = [x for x in re.split(r"\s+·\s+", a) if x.strip()]
     seg = segs[-1] if segs else a
     if "제모" in seg:
@@ -282,7 +288,7 @@ def _area(raw):
     elif len(segs) > 1 and "제모" in segs[-2]:
         pass
     seg = re.sub(r"\d+\s*회|1년|구독권|여성|남성|여자|남자|솜털|레이저|부위|[♥★☆]", " ", seg)
-    parts = sorted(p for p in (re.sub(r"\s+", "", x) for x in re.split(r"[/,·&]", seg)) if p)
+    parts = sorted(p for p in (re.sub(r"\s+", "", x) for x in re.split(r"[/,·&+]", seg)) if p)
     return "/".join(re.sub(r"[^\w가-힣]", "", p) for p in parts if re.sub(r"[^\w가-힣]", "", p))
 
 
@@ -318,7 +324,11 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # 제모 rule reads its area outside brackets and would otherwise put '겨드랑이 (겨드랑이 + 인중)' with plain '겨드랑이'.
     areas_only = cat == "제모" and (not fam or fam["id"] == "hair")
     listed = re.findall(r"\(([^()]*\s\+\s[^()]*)\)", raw)
-    bundle = n >= 2 or bool(PACKAGE.search(comp(_strip(raw)))) or (bool(listed) and not areas_only)
+    # likewise '손등 + 손가락제모 5회' / '겨드랑이+인중 5회' on a 제모 page: '+' between areas, the only bundle mark — read by the
+    # 제모 rule, which keeps 여성 and 남성 apart (as a package key they shared one key, 2026-10-15)
+    plain = comp(_strip(raw))
+    plus_only = "+" in plain and not PACKAGE.search(plain.replace("+", ""))
+    bundle = n >= 2 or (bool(PACKAGE.search(plain)) and not (areas_only and plus_only)) or (bool(listed) and not areas_only)
     v = None
     if fam and not bundle:
         v, why = _family_variant(raw, fam, sess, display)
@@ -332,7 +342,8 @@ def variant(name, addon=False, kind="", cat="", display=None):
             parts = " + ".join(re.sub(r"\s+", " ", x).strip() for x in listed)
             v = dict(v, sig=f"{v['sig']}|{comp(parts)}", label=f"{v['label']} ({parts})", sub=f"{v['sub']} ({parts})")
         return v, ""
-    return _exact(display or raw, sess, cat, bundle)
+    sx = re.search(r"\[(여성|여자|남성|남자)\]", raw)
+    return _exact(display or raw, sess, cat, bundle, {"여자": "여성", "남자": "남성"}.get(sx.group(1), sx.group(1)) if sx else "")
 
 
 def _tidy(s):
@@ -358,7 +369,7 @@ def _tidy(s):
     return re.sub(r"\s+", " ", s).strip(" -·")
 
 
-def _exact(raw, sess, rowcat, bundle):
+def _exact(raw, sess, rowcat, bundle, sex=""):
     """names no family rule covers (or that a rule can't read): same product only when the whole name is the same
     (labels and explanations included, price-kind words and session counts aside). Bundles go to '패키지'."""
     # a section title written 'name:' ('고주파 리프팅 텐텐듀얼리프팅: 1회', '내맘대로 스킨케어:'): the colon ends the title, it is not
@@ -409,6 +420,12 @@ def _exact(raw, sess, rowcat, bundle):
         rx = re.escape(comp(famname))
         fid = "generic"
     sig = "|".join(["x", famname, sigtext, str(sess)])
+    # the sex from the group title ('[여성] …' in mname) when the name itself doesn't say it: '발등 + 발가락 5회' for women and for
+    # men were one key, or two told apart only by '표기 n' (2026-10-15)
+    if sex and not re.search(r"남성|여성|남자|여자|男|女", sigtext):
+        sig += f"|{sex}"
+    if sex and not re.search(r"남성|여성|남자|여자|男|女|\((?:남|여)\)", label):
+        label, sub = f"{sex} {label}", f"{sex} {sub}" if sub != label else f"{sex} {label}"
     desc = re.findall(r"\(([^()]{2,40})\)", disp)
     return dict(fam=fid, famname=famname, cat=cat, tags=[], area="", residual="", detail=desc[0] if desc else "", details=desc, amount=amounts,
                 sess=sess, sig=sig, label=label, sub=sub, rx=rx), ""
@@ -619,7 +636,8 @@ def build(rows, min_branches=3):
             continue
         v = vs[idx[0]]
         names = [rows[i]["name"] for i in idx] + sorted(group_names[(loose_text(v["famname"]), v["cat"], v["fam"])])
-        bad = labels.problems(v["label"], names)
+        # 제모 with no readable area mixes every area and its add-ons in one key (진정관리, 마취 스프레이, 인중 … 다리 전체): none
+        bad = ["부위 미표기"] if v.get("area") == "부위 미표기" else labels.problems(v["label"], names)
         if bad == ["부위만"]:
             # only the product word is missing from the label, and every row of the spec names the same product in its section
             # title ('리팟레이저 … · 5mm 이내 1개', 'THE 미희주사 … · 팔자 1회'): put it back instead of dropping a spec that never mixed

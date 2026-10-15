@@ -28,7 +28,7 @@ import re
 PRICE = re.compile(r"\d+(?:[.,]\d+)?\s*만\s*원|\d+(?:\.\d+)?만(?!\s*[J샷줄]|[a-zA-Z가-힣])|\d{1,3}(?:,\d{3})+\s*원|(?<![\d.,])\d{4,}\s*원|만원")
 DATE = re.compile(r"\d{1,2}\s*월\s*\d{1,2}\s*일|\d{2,4}\s*년\s*\d{1,2}\s*월|까지")
 PROMO = re.compile(r"이벤트|특가|할인|혜택|맞이|누림|기념|잔치|페스타|추천|플러스친구|카카오톡|런칭|안내|선착순|최저가")
-MARK = re.compile(r"[|｜※♥★☆]")
+MARK = re.compile(r"[|｜※♥★☆!]")   # '!' (2026-10-15): '… 안에서 올려주고! 밖에서 당겨주는 …' is a slogan, not a spec
 WORD = re.compile(r"[\s·()/,+\[\]]+")
 LONG = 8
 # words that name where or how much, never what: a label made only of these has lost its product (rule 부위만)

@@ -39,6 +39,14 @@ BRANDS = [("velyb", "블리비"), ("ppeum", "쁨"), ("toxnfill", "톡스앤필")
 PAPER = re.compile(r"진단서|소견서|제증명|증명서|수수료|사본|발급")
 NOTE = re.compile(r"^[※▶▷★▼■●◆]|참조|참고하세요|가격표")
 SUBS = re.compile(r"구독권|이용권|멤버십|정기권")
+UNLIMITED = re.compile(r"무제한|이용권|패스권|(?<!\d)1\s*년")
+# a page that is an event or sale rather than the clinic's price list for that category (fold: the price list row is kept)
+EVENT_PAGE = re.compile(r"기획전|이벤트|EVENT|[Ee]vent|체험가|특가|한정|할인|세일|페스타|런칭|오픈|맞이|혜택|선착순|[★♥☆]|\d+\s*월\)|이달")
+SEX = {"남자": "남성", "여자": "여성"}
+
+
+def event_page(row):
+    return bool(EVENT_PAGE.search(f"{row['src_cat']} {row['group']}"))
 PROC = re.compile(r"톡신|톡스|보톡스|필러|벨로테로|쥬비덤|레스틸렌|슈링크|울쎄라|써마지|인모드|온다|올리지오|볼뉴머|티타늄|리쥬란|쥬베룩|"
                   r"토닝|제네시스|아쿠아필|포텐자|제모|주사|점|레이저|리프팅|필링|관리|부스터|스킨|윤곽|실|엑소좀|물광")
 CATS = [  # first match wins; tested on category + group + option
@@ -64,7 +72,8 @@ def norm_text(s):
     return s
 
 
-KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|여|PKG|패키지|\d")
+# 옵션 (2026-10-15): '[옵션] 제모 후 진정관리' is an add-on; taken off as an event label it passed the add-on check
+KEEP_LABEL = re.compile(r"국산|수입|독일|미국|대표원장|원장|남|여|PKG|패키지|옵션|\d")
 
 
 def strip_event_prefix(s):
@@ -125,7 +134,7 @@ def load():
 def main():
     raw = load()
     vdef = vat_policy()
-    issues, out, seen = [], [], {}
+    issues, out, seen, seen_old, sex_of = [], [], {}, {}, {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
         sale, orig = price(r["sale"]), price(r["orig"])
@@ -173,7 +182,9 @@ def main():
         text = f"{r['category']} {grp} {opt}"
         if r["brand"] == "리엔장":
             kind = "고시가"
-        elif SUBS.search(f"{grp} {opt}"):
+        elif SUBS.search(f"{grp} {opt}") or (UNLIMITED.search(grp) and not re.search(r"\d+\s*회", opt)):
+            # a 1-year / unlimited pass named only in the group title ('남성 1년 무제한제모 이벤트' › '남자얼굴제모' 690,000원) is not a
+            # one-session price; an option that states its sessions ('발등+발가락 5회') is (2026-10-15)
             kind = "구독권"
         elif re.search(r"체험", f"{opt}"):
             kind = "체험가"
@@ -201,28 +212,41 @@ def main():
         # same item at the same price with different list prices (블리비 덴서티 600샷 1,590,000원: 정가 3,100,000 / 3,000,000) —
         # and names that differ only in word breaks or letter case are one item ('플라센타관리' / '플라센타 관리'). mname, not the
         # option, decides: it carries the sex from the group title, so '남성 제모 › 미간or코 제모 1회' and '여성 제모 › 미간or코 제모
-        # 1회' at the same price stay two rows.
+        # 1회' at the same price stay two rows. Two price-list pages (not events) with different group titles and list prices hold
+        # different products whose name lacks the device or colour ('젠틀맥스 › 팔 하완 5회' / '아포지 › 팔 하완 5회'): not folded.
         # The older rule still folds too: same option, sale and list price (an add-on listed on several product pages, '온다 리프팅 ›
-        # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), now only within one sex.
-        sex = next(iter(re.findall(r"남성|남자|여성|여자", mname)), "")
-        k_old = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig, sex)
+        # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), within one sex (남자 = 남성) or with a row that names no sex.
+        m = re.search(r"남성|남자|여성|여자", mname)
+        sex = SEX.get(m.group(), m.group()) if m else ""
+        k_old = (r["brand"], r["branch"], strip_event_prefix(opt), sale, orig)
         k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname)).casefold(), sale)
-        if k in seen or k_old in seen:
-            prev = seen[k] if k in seen else seen[k_old]
-            if row["tags"] and row["tags"] not in prev["tags"]:
-                # conservative: a condition seen on either page stays (a price that may need it is not shown as unconditional)
-                prev["tags"] = "·".join(dict.fromkeys([t for t in (prev["tags"] + "·" + row["tags"]).split("·") if t]))
+        prev = seen.get(k)
+        if prev is not None and str(prev["orig"]) != str(orig or "") and prev["group"] != grp and not event_page(prev) \
+                and not event_page(row):
+            prev = None
+        if prev is None:
+            prev = next((p for p in seen_old.get(k_old, []) if not sex or sex_of[id(p)] in (sex, "")), None)
+        if prev is not None:
             other_orig = str(prev["orig"]) != str(orig or "")
             other_name = strip_event_prefix(prev["option"]) != strip_event_prefix(opt)
             if other_orig or other_name:     # what the old rule (same option and list price) kept as two rows
                 issues.append({**r, "action": "합침", "reason": "같은 상품·판매가가 두 페이지에(정가 다름)" if other_orig else
                                "띄어쓰기·대소문자만 다른 같은 상품"})
-            if prev["src_cat"] == "기획전" and r["category"] != "기획전":
-                prev.update({"src_cat": r["category"], "cat": cat, "url": r["url"], "orig": orig or ""})
+            # a condition stays only when every page says it: the same price on a page without it is open to anyone (a union
+            # turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
+            prev["tags"] = "·".join(t for t in prev["tags"].split("·") if t and t in row["tags"].split("·"))
+            if event_page(prev) and not event_page(row):
+                # the price list row wins: its category, link, list price and end date (an event's end date expired the row)
+                prev.update({"src_cat": r["category"], "cat": cat, "url": r["url"], "orig": orig or "", "until": r["until"]})
+            elif not prev["orig"] and orig:
+                prev["orig"] = orig
             seen.setdefault(k, prev)
-            seen.setdefault(k_old, prev)
+            if prev not in seen_old.setdefault(k_old, []):
+                seen_old[k_old].append(prev)
             continue
-        seen[k] = seen[k_old] = row
+        seen[k] = row
+        seen_old.setdefault(k_old, []).append(row)
+        sex_of[id(row)] = sex
         out.append(row)
     # comparison keys
     for row in out:
