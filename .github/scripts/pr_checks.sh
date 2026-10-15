@@ -43,6 +43,7 @@ check "security headers (app/_headers)"   python3 tests/security/headers_test.py
 check "monitoring alerts"                 python3 tests/security/monitor_test.py
 check "brand collectors (saved pages)"    python3 tests/brand_parsers_test.py
 check "spec labels"                       python3 tests/labels_test.py
+check "data size guard (app/data.json)"  python3 tests/size_guard_test.py
 check "branch addresses (saved pages)"    python3 tests/branch_addr_test.py
 if [ $fail -ne 0 ]; then echo "failed: ${failed[*]}"; fi
 exit $fail

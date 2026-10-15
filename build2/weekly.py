@@ -7,6 +7,7 @@ and the report says so (the app then shows that brand's older date). If every br
 Report: data2/report.md (also printed) — what changed, what was kept, issues fixed.
 """
 import argparse, csv, datetime, json, os, shutil, subprocess, sys
+import size_guard   # build2/size_guard.py: app/data.json over 20 MiB = the build failed (Cloudflare file limit 25 MiB)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RAW, ACC = os.path.join(ROOT, "data2", "raw"), os.path.join(ROOT, "data2", "accepted")
@@ -128,7 +129,15 @@ def main():
         run(["scrape/branches.py"])
     # draft report first, so the app data built next (운영 현황) shows this run's collection status
     open(os.path.join(ROOT, "data2", "report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(report) + "\n")
-    build = lambda: run(["build2/clean.py"]) and run(["build2/appdata.py", "--date", a.date])
+    live = size_guard.DATA
+    before = open(live, "rb").read() if os.path.exists(live) else None   # the file the app has now
+
+    def put_back():
+        """a build over the size limit leaves app/data.json too big: restore what the app has now — the retry's appdata.py
+        reads it as the 'previous' data (id redirects for saved carts), and a stop must leave it as it was"""
+        if before is not None and size_guard.problem():
+            open(live, "wb").write(before)
+    build = lambda: run(["build2/clean.py"]) and run(["build2/appdata.py", "--date", a.date]) and run(["build2/size_guard.py"])
     if not build():
         # the new data broke the build: publish last week's data instead, so the app keeps working
         for key, brand in fresh:
@@ -138,8 +147,12 @@ def main():
             elif os.path.exists(new):
                 os.remove(new)
         report.append(f"- **새 자료로 앱 데이터 만들기 실패 → 지난 자료로 배포** (새로 읽은 브랜드: {', '.join(b for _, b in fresh) or '-'}) — 오류는 실행 요약 참고")
+        if size_guard.problem():
+            report.append(f"  - 이유: {size_guard.problem()}")
+            put_back()
         fresh = []
         if not build():
+            put_back()
             print("\n".join(report))
             sys.exit("build failed: nothing to publish")
     for key, _ in fresh:
@@ -151,6 +164,8 @@ def main():
     if meta.get("review"):
         report.append(f"- **급변 가격 검토 대기 {meta['review']}개** (지난주보다 90% 넘게 내리거나 10배 넘게 오름) — data2/review.csv, "
                       "맞으면 data2/review_ok.csv에 brand,branch,name,price로 추가. 그 전까지 앱 비교에서 빠져요")
+    if size_guard.report_line():
+        report.append(size_guard.report_line())
     open(os.path.join(ROOT, "data2", "report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(report) + "\n")
     print("\n".join(report))
 
