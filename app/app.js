@@ -2374,7 +2374,7 @@
       ch && (ch.price.length || ch.added.length || ch.removed.length) ? h("details", { class: "fold small" }, h("summary", {}, "바뀐 가격 목록 보기"),
         h("ul", { class: "plain chlist" }, [...ch.price.map((x) => `${x[0]} ${x[1]} · ${x[2]} : ${won(x[3])} → ${won(x[4])}`), ...ch.added.map((x) => `새로 생김 · ${x[0]} ${x[1]} · ${x[2]} ${won(x[3])}`),
           ...ch.removed.map((x) => `빠짐 · ${x[0]} ${x[1]} · ${x[2]} ${won(x[3])}`)].slice(0, 40).map((t) => h("li", {}, t))), h("p", { class: "tiny" }, "병원 표시가 기준이에요. 40개까지 보여요.")) : null,
-      FLAGS.ops ? h("button", { class: "linkbtn", type: "button", style: "margin-top:8px", onclick: () => nav("ops") }, "운영 현황(수집 보고·검토 큐·재수집 순서)", icon("chevron-right", "xs")) : null);
+      FLAGS.ops && adminHost() ? h("button", { class: "linkbtn", type: "button", style: "margin-top:8px", onclick: () => nav("ops") }, "운영 현황(수집 보고·검토 큐·재수집 순서)", icon("chevron-right", "xs")) : null);
   }
   // next-collection order (PRICE_REFRESH_DESIGN.md §scheduling): old checks, failed runs, events ending soon, prices under
   // review, failed source re-checks, recent changes. The weekly collector still reads every branch; this is the order a
@@ -4784,7 +4784,7 @@
           h("span", { class: "t row" }, b != null ? bdot(b) : null, brLabel(br) || "지점 미입력"), h("span", { class: "p num" }, `${v.n}회`),
           h("span", { class: "m" }, h("span", {}, `마지막 ${v.last}`), v.sum ? h("span", {}, `합계 ${won(v.sum)}`) : null, b == null ? h("span", {}, "앱 목록에 없는 곳") : null))); }))));
     // more pages
-    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].map(([v, ic, l, s]) =>
+    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].filter(([v]) => v !== "ops" || adminHost()).map(([v, ic, l, s]) =>
       h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(v) }, h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, l), h("span", { class: "sub", style: "display:block;font-weight:500" }, s))), icon("chevron-right", "sm")))))));
     // ---- 내 설정 (what this phone shows) — separate from the data information below
     const theme = store.get("theme", "auto");
@@ -4942,14 +4942,9 @@
   // the top bar gets a hairline once the page scrolls under it
   window.addEventListener("scroll", () => { $("#top").classList.toggle("scrolled", window.scrollY > 4); seePrice(); }, { passive: true });
 
-  // the credit, premium, report and admin screens were removed (6.0: no credits, revenue from ads after launch). The ops
-  // screen (app/screens/ops.js, chat A) still draws its credit economics card from these two files until A6 removes it;
-  // then this loader and both files go.
-  const OPS_ECON_JS = ["domain/demowallet.js", "domain/economics.js"];
-  let econP = null;
-  const loadCommerce = () => econP || (econP = OPS_ECON_JS.reduce((p, src) => p.then(() => new Promise((ok, bad) => {
-    const el = document.createElement("script"); el.src = src; el.onload = ok; el.onerror = () => bad(new Error(src)); document.body.append(el);
-  })), Promise.resolve()).catch((e) => { econP = null; throw e; }));
+  // the ops screen (app/screens/ops.js, chat A) has content only on the admin address behind Cloudflare Access (A6): the two
+  // ways in (마이 menu, the data-state card) are drawn only there. ops.js sets App.onAdminHost; without it, nowhere.
+  function adminHost() { return !!(App.onAdminHost && App.onAdminHost()); }
   applyTheme();
   applyMotion();   // 죠미 설정 → 움직임 (or the device's reduce-motion setting)
   if (st.when && (!st.when.date || st.when.date < new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10))) { st.when = null; store.set("when", null); }
@@ -4962,7 +4957,7 @@
   $("#jomibtn").addEventListener("click", () => jomiSheet());
   // split-out screens (screens/*.js, loaded before this file) get the helpers this file still owns, then register their views.
   // Data that is replaced on refresh is read through App.state() at render time, never copied (docs/APP_JS_SPLIT_PLAN.md).
-  Object.assign(App, { views, FLAGS, fresh, verified, recheckQueue, bdot, bname, kbOf, loadCommerce, nav,
+  Object.assign(App, { views, FLAGS, fresh, verified, recheckQueue, bdot, bname, kbOf, nav,
     state: () => ({ D, BR, byB, ROWS, KB, FAM }) });
   for (const install of App.screens || []) install();
   // start: no splash delay — the page shows as soon as data.json is read; a slow read says so after 12 s, a failed one
