@@ -903,6 +903,16 @@
 "help": "vat"
 },
 {
+"q": "내 견적 어떻게 써",
+"intent": "help",
+"help": "cart"
+},
+{
+"q": "견적에 담으면 뭐가 좋아",
+"intent": "help",
+"help": "cart"
+},
+{
 "q": "장바구니 어떻게 써",
 "intent": "help",
 "help": "cart"

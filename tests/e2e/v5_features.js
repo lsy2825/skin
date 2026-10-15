@@ -38,7 +38,7 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     const clip = await p.evaluate(() => navigator.clipboard.readText()).catch(() => '');
     ok('A/B: 링크 공유 = 이 두 지점 주소', /#versus\/3\/5$/.test(clip), clip);
     // cart-only
-    await p.locator('label.switch', { hasText: '장바구니 시술만' }).click(); await p.waitForTimeout(500);
+    await p.locator('label.switch', { hasText: '내 견적 시술만' }).click(); await p.waitForTimeout(500);
     const txt = await p.locator('#main').innerText();
     ok('장바구니 A/B: 담은 시술 수로 비교', /'내 장바구니' 3개 시술로 비교/.test(txt));
     const totals = await p.$$eval('#main dl.kv dd', (d) => d.map((x) => +x.textContent.replace(/[^\d]/g, '')));
