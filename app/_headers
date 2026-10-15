@@ -1,0 +1,9 @@
+# Security headers for every response from Cloudflare Workers static assets (docs/SECURITY_ARCHITECTURE.md).
+# This file is read by Cloudflare and not served itself. Owner: chat A (platform). Chat B owns the script/connect allowlist
+# (the <meta> CSP in index.html and tools/check_csp.js), so this file must NOT list script or connect sources — only
+# frame-ancestors, which a <meta> CSP cannot set (development brief, promise 5).
+/*
+  Content-Security-Policy: frame-ancestors 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
