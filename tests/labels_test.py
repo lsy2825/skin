@@ -324,6 +324,27 @@ pk = {f["name"]: f["desc"] for f in fs}
 ok("묶음 시술군 설명은 자기 상품 낱말 바로 뒤 괄호만(보톡스 포함 패키지에 울쎄라 설명 안 붙음, 리쥬란 포함 패키지는 붙음)",
    not any("집속" in d for n, ds in pk.items() if "울쎄라" not in n for d in ds) and any("PN" in d for ds in pk.values() for d in ds), pk)
 
+hv = lambda raw, d=None: taxonomy.variant(raw, cat="제모", display=d)[0]
+ok("라벨 안의 ' · '는 이름을 자르지 않음('[남성 EVENT · 주말제외] 인중' → 부위 인중)", hv("[남성 EVENT · 주말제외] 인중 제모 5회")["area"] == "인중")
+ok("바깥 부위가 더 넓으면 괄호는 메모('팔하완(손등+손가락)' → 팔하완, '다리전체(발등+발가락)' → 다리전체)",
+   [hv(x)["area"] for x in ("[EVENT] [여성] 팔하완(손등+손가락) 5회", "[남성] 다리전체(발등+발가락) 5회")] == ["팔하완", "다리전체"])
+ok("'포함'·'제외' 괄호는 부위 나열이 아님('팔전체 (손등+손가락 포함)' → 팔전체, 묶음 아님)",
+   [hv(x)["area"] for x in ("팔전체 (손등+손가락 포함) 1회", "팔전체 1회 (손등+손가락 제외)")] == ["팔전체", "팔전체"])
+ok("괄호가 바깥 부위를 풀어 쓰면 그 부위들('손 (손등 + 손가락)', '겨드랑이 (겨드랑이 + 인중)')",
+   [hv(x)["area"] for x in ("[여성]손 5회 (손등 + 손가락)", "겨드랑이 (겨드랑이 + 인중) 1회")] == ["손가락+손등", "겨드랑이+인중"])
+ok("병원 표기 '구렛'·'윗못'도 부위('(턱+볼+구렛+인중+이중턱)'이 묶음이 아님)", hv("남자하관전체제모 (턱+볼+구렛+인중+이중턱) 1회")["sig"].startswith("hair|하관전체")
+   and hv("남성 윗못or뒷목 제모 1회")["sig"].startswith("hair|"))
+pt = [taxonomy.variant(x, cat="여드름")[0] for x in ("에토좀PTT(압출+염증주사 포함/필요 시 여드름약 처방 포함) 1회", "에토좀PTT 1회")]
+ok("제모 밖에서 괄호 속 '+'(띄어 쓰지 않음)는 묶음이 아님 — 에토좀 PTT 한 규격", pt[0] and pt[1] and pt[0]["sig"] == pt[1]["sig"], [v and v["sig"] for v in pt])
+ok("... ' + '로 띄어 쓴 괄호는 예전처럼 묶음", taxonomy.variant("환절기 스킨 리커버리(A + B)", cat="피부")[0]["fam"] == "package")
+dup = fake_g([("닥터에버스", f"{i}점", "레이저 제모 겨드랑이 5회", "월간 레이저") for i in range(3)]
+             + [("닥터에버스", f"{i}점", "레이저 제모 겨드랑이 5회", "월간 레이저") for i in range(3)]
+             + [("닥터에버스", f"{i}점", "레이저 제모 인중 5회", "월간 레이저") for i in range(3)])
+for i, r in enumerate(dup):
+    r.update(cat="제모", sale=str(13000 if i < 3 else 65000 if i < 6 else 9000), url="https://example.invalid/month")
+rk, ks, fs, st = taxonomy.build(dup)
+ok("한 페이지에 같은 이름·다른 가격(성별 제목을 못 읽음)인 제모 줄은 성별 없는 부위 키에 넣지 않음", rk[:6] == [""] * 6 and all(rk[6:9]), rk)
+
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
 
@@ -376,6 +397,16 @@ ok("key_map: 새 id 둘이 같은 표를 받으면 작은 id (집합 순서·PYT
    all(appdata.key_map(prev_km, [[0, 0, 2, 590000, 0, 0, 3, 4]], rows_km, [["TZZZZZZ"], ["TBBBBBB"]])["T0AAAAAA"][0] == "TBBBBBB" for _ in range(3)))
 ok("같은 줄·같은 가격인데 조건(tags)만 바뀌면 규칙 변경(recl)으로 봄 — 가짜 가격 변동 없음", appdata.reclassified(prev, prow, now) == {"X14"}
    and appdata.reclassified(prev, prow, [dict(now[0], tags="평일 낮")]) == set())
+prev_s = {"s": ["A", "강남점", "남성 목 제모 10회", "", "T0AAAAAA", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+          "keys": [["T0AAAAAA", 0, "남성 목 제모 10회"]]}
+km = appdata.key_map(prev_s, [[0, 0, 2, 290000, 0, 0, 3, 4]], [dict(brand="A", branch="강남점", name="남성 목 제모 10회", keys="TBBBBBB")],
+                     [["TBBBBBB", 0, "남성 목 제모 5회"]])
+ok("key_map: 횟수가 다른 키로는 옮기지 않음('10회' → '5회' 아님, 옛 이름만 보여 줌)", km["T0AAAAAA"] == ["", "남성 목 제모 10회"], km)
+prev_g = {"s": ["A", "건대점", "[울써마지 옵션] 얼굴전체 더모톡신", "", "", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS}}
+mv = appdata.group_moved(prev_g, [[0, 0, 2, 190000, 0, 0, 3, 4, 1, 5]],
+                         [dict(brand="A", branch="건대점", name="[울써마지 옵션] 얼굴전체 더모톡신", sale="190000", kind="일반", tags="", addon="1")], [-1])
+ok("자동 묶음: 같은 줄·같은 가격이 규칙 때문에 빠지면(추가 옵션이 됨) 그 가격은 '가격 변동'의 근거가 아님",
+   mv == {("A|건대점", appdata.G.comp("[울써마지 옵션] 얼굴전체 더모톡신"), 190000)}, mv)
 
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))

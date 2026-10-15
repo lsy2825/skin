@@ -272,6 +272,13 @@ def _clean(text, fam):
     return re.sub(r"[^\w가-힣%]", "", text)
 
 
+def _segs(s):
+    """s split at ' · ' outside brackets: a kept label '[남성 EVENT · 주말제외] 인중 5회' is one part, not '주말제외] 인중 5회' (검증 6차:
+    톡스앤필 청주점 rows read the area '주말제외인중')"""
+    masked = re.sub(r"\[[^\]]*\]|\([^()]*\)", lambda m: m.group().replace("·", "\0"), s or "")
+    return [x.replace("\0", "·") for x in re.split(r"\s+·\s+", masked)]
+
+
 def _area(raw):
     """제모: the body area of an option ('겨드랑이/인중 제모' → '겨드랑이/인중', '상체 제모 · 겨드랑이' → '겨드랑이'). '/' lists areas
     to choose from, '+' areas done together: '손등/손가락' (택1) 12,000원 and '손등 + 손가락' 20,000원 at one 블리비 branch are two
@@ -280,7 +287,7 @@ def _area(raw):
     제모 · 1회'). A sex marker is not an area ('男) 인중 + 앞턱', '(여)', '남성)인중', 2026-10-15)."""
     raw = re.sub(r"[\uf900-\ufaff]", lambda m: unicodedata.normalize("NFKC", m.group()), raw or "")
     raw = re.sub(r"\[(?:여성|남성|여자|남자)\]|\((?:남|여|남성|여성|남자|여자)\)", " ", raw)
-    segs = [x for x in re.split(r"\s+·\s+", raw) if x.strip()] or [raw]
+    segs = [x for x in _segs(raw) if x.strip()] or [raw]
     for seg in [segs[-1]] + ([segs[-2]] if len(segs) > 1 and "제모" in segs[-2] else []):
         for text in (re.sub(r"\[[^\]]*\]|\([^()]*\)", " ", seg),
                      re.sub(r"\([^()]*\)", " ", re.sub(r"\[([^\]]*)\]", r" \1 ", seg)),
@@ -299,7 +306,7 @@ AREA_NOISE = re.compile(r"\d+\s*\+\s*\d+(?:\s*회)?|\d+\s*회|1년|구독권|이
 # body-area words of a 제모 option, and the words that only qualify one ('윗', '전체', '라인'): a '+' between these lists areas of one
 # option; anything else after '+' is another product ('얼굴전체 제모 + 빙하팩', '겨드랑이제모+겨드랑이 미백레이저', '네오빔 + 스케일링' —
 # 2026-10-15, they went into the plain one-area key)
-HAIR_PART = (r"겨드랑이|인중|콧수염|턱수염|수염|앞턱|아래턱|이중턱|턱끝|턱밑|턱라인|턱선|턱|하관|구레나룻|구렛나룻|구렛나루|구레나루|양볼|볼|윗목|앞목|"
+HAIR_PART = (r"겨드랑이|인중|콧수염|턱수염|수염|앞턱|아래턱|이중턱|턱끝|턱밑|턱라인|턱선|턱|하관|구레나룻|구렛나룻|구렛나루|구레나루|구렛|양볼|볼|윗목|윗못|앞목|"
              r"뒷목|목|이마라인|이마교정|이마|헤어라인|3자이마|삼자이마|눈썹|눈두덩이|눈밑|미간|코|입술|입가|입|귀|얼굴|페이스|풀페이스|U라인|"
              r"팔하완|팔상완|팔꿈치|팔|하완|상완|어깨|손등|손가락|손|다리|종아리|허벅지|무릎|발등|발가락|발|가슴|배꼽|배렛나루|배레나룻|"
              r"베렛나루|배레나루|배|복부|등|허리|옆구리|엉덩이|비키니|브라질리언|항문|회음부|사타구니|유륜|성기|전신|올누드|상체|하체|바디")
@@ -386,29 +393,38 @@ def variant(name, addon=False, kind="", cat="", display=None):
     areas_only = cat == "제모" and (not fam or fam["id"] == "hair")
     # a bracket holding only a device name ('(젠틀맥스프로+)', 유앤아이 section titles) lists nothing (2026-10-15: read as a bundle,
     # 147 유앤아이 제모 rows lost their keys)
+    # an include/exclude note ('팔전체(손등+손가락 포함)', '(손등+손가락 제외)') is not the option's area list either (검증 6차: 192 밴스
+    # 팔·다리전체 rows went to garbled '손가락 포함+손등' keys)
     listed = [x for x in re.findall(r"\(([^()]*\+[^()]*)\)", raw)
-              if not re.search(r"\d\s*\+\s*\d", x) and re.sub(r"[^\w가-힣]", "", DEVICE.sub("", x))]
+              if not re.search(r"\d\s*\+\s*\d", x) and re.sub(r"[^\w가-힣]", "", DEVICE.sub("", x)) and not re.search(r"포함|제외", x)]
     listed_areas = areas_only and bool(listed) and all(_hair_list(x) or hair_area(x) for x in listed)
-    last = re.split(r"\s+·\s+", display or raw)[-1]
+    last = _segs(display or raw)[-1]
     plus_only = areas_only and _hair_list(re.sub(r"\[[^\]]*\]|\([^()]*\)", " ", last))
     # on a 제모 page only the option decides (a '+' in the section title, '젠틀맥스프로+', is not a bundle), and '10+1회' is a course of
     # eleven sessions (sessions()), not two products
     plain = re.sub(r"(?<=\d)\+(?=\d+회)", "", comp(_strip(last))) if areas_only else comp(_strip(raw))
+    # a bracket '+' makes a bundle on a 제모 page only when it is not an area list; elsewhere only ' + ' with spaces, as before round 5
+    # ('에토좀PTT(압출+염증주사 포함/…)', '얼굴위쪽(이마+미간+눈가+콧등)' are one product — 검증 6차: 에토좀 PTT 48 → 24 branches)
     bundle = n >= 2 or (bool(PACKAGE.search(plain)) and not (plus_only and not PACKAGE.search(plain.replace("+", "")))) \
-        or (bool(listed) and not listed_areas)
+        or ((bool(listed) and not listed_areas) if areas_only else bool(re.search(r"\([^()]*\s\+\s[^()]*\)", raw)))
     v = None
     if fam and not bundle:
         v, why = _family_variant(raw, fam, sess, display)
         if v and v.get("area") and v["area"] != "부위 미표기" and not re.search(HAIR_PART, v["area"]):
             v = None                       # '여성제모 · 소노케어 1회': not a body area, so not a 제모 spec — read as its own name
-    elif not fam and not bundle and cat == "제모" and re.search(HAIR_PART, re.split(r"\s+·\s+", display or raw)[-1]):
+    elif not fam and not bundle and cat == "제모" and re.search(HAIR_PART, _segs(display or raw)[-1]):
         # '얼굴 제모 · [여성] 이마 1회': the area is the option, '제모' only in the group name. Only a body area: 소노케어·크라이오 listed
         # on a 제모 page are skin care, not '소노케어 제모' (검증 6차)
-        seg = re.split(r"\s+·\s+", display or raw)[-1]
+        seg = _segs(display or raw)[-1]
         sex = " ".join(re.findall(r"\[(?:여성|남성)\]", raw))
         v, why = _family_variant(f"{sex} {seg} 제모", FAM_BY_ID["hair"], sess)
     if v:
-        if listed_areas and v.get("area"):
+        outer = v.get("area") or ""
+        pieces = [p for x in listed for p in re.split(r"\s*\+\s*", comp(x)) if p]
+        # only when the bracket spells out the outer area ('손 (손등 + 손가락)': every piece starts with it) or adds to it ('겨드랑이
+        # (겨드랑이 + 인중)'); '팔하완(손등+손가락)', '다리전체(발등+발가락)' are the arm / leg — the bracket is a note (검증 6차: a 700,000
+        # 팔전체 price sat in a 손가락+손등 key)
+        if listed_areas and outer and (outer in pieces or all(p.startswith(outer) for p in pieces)):
             # the bracket spells the option's areas out ('손 (손등 + 손가락)', '겨드랑이 (겨드랑이 + 인중)'): those are the areas — the same
             # product as '손등 + 손가락제모' (쁨 branches were split between the two)
             area = _area_parts(" / ".join(listed))
@@ -452,7 +468,7 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
     raw = re.sub(r"\s*[:：]\s*(?=(?:\d+\s*회)?\s*(?:\([^()]*\))?\s*$)", " ", raw).rstrip()
     nm = re.sub(r"\[[^\]]*\]", " ", raw)
     nm = nm if bundle else ADDON.sub("", nm)
-    seg = [x for x in re.split(r"\s+·\s+", nm) if x.strip()]
+    seg = [x for x in _segs(nm) if x.strip()]
     disp = (seg[-1] if seg else nm).strip()
     # a package's parts all count ('+ 크라이오셀' is a part here, not a free extra): keep '+' away from comp()'s add-on rule
     src = " ".join(seg) if seg else nm
@@ -671,6 +687,17 @@ def build(rows, min_branches=3):
         vs.append(v)
         if not v:
             why[reason] += 1
+    # one page listing the same 제모 option twice at different prices with nothing to tell them apart (닥터에버스 monthly laser page:
+    # the 여성 and 남성 menus under headings the scraper does not keep, 겨드랑이 5회 13,000 and 65,000): two products under one name.
+    # A sexless area key would hold both and show the cheaper as the branch's price, so neither gets a key (검증 6차)
+    prices = defaultdict(set)
+    for r in rows:
+        prices[(r["brand"], r["branch"], r.get("url", ""), r.get("group", ""), r["name"])].add(r.get("sale"))
+    for i, (r, v) in enumerate(zip(rows, vs)):
+        if v and v["sig"].startswith("hair|") and not re.search(r"여성|남성", v["sig"].split("|")[2]) \
+                and len(prices[(r["brand"], r["branch"], r.get("url", ""), r.get("group", ""), r["name"])]) > 1:
+            vs[i] = None
+            why["같은 페이지에 같은 이름·다른 가격(성별 등 구분 없음)"] += 1
     # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families
     # (2026-10-15, 개선 보고서 E10). The spelling most rows use wins ('뒷목' 1,166 rows over one '뒷 목'), then the one with more
     # word breaks. Labels follow; signatures don't change. The glued-word check (labels.py) is given every name of the

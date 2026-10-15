@@ -34,7 +34,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match as xmatch  # noqa: E402
+from xkeys import X, match as xmatch, sessions as xsessions  # noqa: E402
 import groups as G  # noqa: E402
 import knowledge  # noqa: E402
 import datameta  # noqa: E402
@@ -352,6 +352,27 @@ def reclassified(prev, prow, rows):
     return out & before
 
 
+def group_moved(prev, prow, rows, gid):
+    """(brand|branch, group key, price) of rows that are in both builds at the same price but now count for their automatic
+    group's regular price when they did not, or the other way round (2026-10-15: '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became
+    an add-on, and the group read it as a price rise 190,000 → 290,000 at 톡스앤필 건대점). A change whose old or new price is such
+    a row is the rules', not the clinic's."""
+    if not prev:
+        return set()
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    pkinds = prev["meta"].get("kinds") or KINDS
+    was = {}
+    for r in prow:
+        counted = len(r) > 9 and r[9] >= 0 and pkinds[r[5]] in ("일반", "고시가") and not ps[r[6]]
+        ident = (pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))
+        was[ident] = was.get(ident, False) or counted
+    now = {}
+    for r, g in zip(rows, gid):
+        ident = (r["brand"], r["branch"], r["name"], int(r["sale"]))
+        now[ident] = now.get(ident, False) or (g >= 0 and G.regular(r))
+    return {(f"{i[0]}|{i[1]}", G.comp(i[2]), i[3]) for i, c in now.items() if i in was and was[i] != c}
+
+
 def key_map(prev, prow, rows, allk):
     """old comparison id → [new id or "", old label] for ids the previous data.json had and this one doesn't (a taxonomy fix
     or renamed options change an auto key's signature). The app moves saved carts, favourites and alerts with it, and shows
@@ -375,10 +396,16 @@ def key_map(prev, prow, rows, allk):
             size[k] += 1
             for n in sorted(nk):          # a tie goes to the smaller id, not to set order (changed with PYTHONHASHSEED)
                 votes[k][n] += 1
+    nlabel = {k[0]: k[2] for k in allk if len(k) > 2}
     out = {}
     for k, n in size.items():
         best = votes[k].most_common(1)
-        out[k] = [best[0][0] if best and best[0][1] * 2 >= n else "", plabel.get(k, k)]
+        to = best[0][0] if best and best[0][1] * 2 >= n else ""
+        # never to another session count: '남성 목 제모 10회' is not '남성 목 제모 5회' even when half its old rows (5회 rows the
+        # old build keyed wrong) went there (검증 6차)
+        if to and xsessions(plabel.get(k, "")) != xsessions(nlabel.get(to, "")):
+            to = ""
+        out[k] = [to, plabel.get(k, k)]
     for k, (to, label) in (prev["meta"].get("keymap") or {}).items():
         if k in now or k in out:
             continue
@@ -439,7 +466,16 @@ def main():
     ALLK, VFAM = variant_keys()
     prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     prev_data, prev_rows = load_prev(prev_txt)
-    recl_now = reclassified(prev_data, prev_rows, rows) & {k[0] for k in ALLK}
+    hist = os.path.join(ROOT, "data2", "history")
+    os.makedirs(hist, exist_ok=True)
+    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < collected)
+    prev = load_snapshot(prev_files[-1]) if prev_files else {}
+    # an id the app's data.json does not have but the last snapshot does (gone in an earlier rules change, back now with other
+    # rows): its snapshot prices are another mix of rows, so it is regrouped too (검증 6차: 'TAE6F24F 남성 얼굴 제모' read as
+    # 톡스앤필 목동 30,000 → 100,000)
+    prev_ids = {k[0] for k in (prev_data or {}).get("keys", [])}
+    revived = ({kk.split("|")[0] for kk in prev} - prev_ids) if prev_data else set()
+    recl_now = (reclassified(prev_data, prev_rows, rows) | revived) & {k[0] for k in ALLK}
     # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
     recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != collected]
     same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == collected), [])
@@ -461,14 +497,10 @@ def main():
                 best[kk] = min(best.get(kk, 10 ** 12), int(r["sale"]))
     # weekly snapshot + changes against the previous one — dated by the collection, not the build: a rebuild without scraping
     # on a later day rewrites that collection's snapshot instead of adding an observation that never happened
-    hist = os.path.join(ROOT, "data2", "history")
-    os.makedirs(hist, exist_ok=True)
-    prev_files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] < collected)
     save_snapshot(hist, collected, best)
     changes, prev_date = [], ""
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
-        prev = load_snapshot(prev_files[-1])
         # every id regrouped after that snapshot (this build or an earlier build of a later day / the same day): its
         # 'change' since the snapshot is a new mix of rows, not a price change
         regrouped = {k for d, ks in recl for k in ks if d > prev_date} | recl_now
@@ -483,6 +515,8 @@ def main():
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
+    moved = group_moved(prev_data, prev_rows, rows, gid)
+    achg = [c for c in achg if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved and (bkeys[c[1]], gkeys[c[0]], c[3]) not in moved]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
