@@ -145,8 +145,8 @@ SEO 랜딩 페이지는 Python이 정적 HTML을 미리 만들어 같은 Pages�
 - 새 수집 결과가 30% 넘게 줄거나 빌드가 실패하면 지난 자료로 배포해요.
 
 **D5. 수집 정책.**
-공개 페이지만 읽어요. 요청 간격은 수집기마다 달라요(0.5~1.5초, `scrape/*.py`의 `gap`), 지점마다 따로 읽는 수집기는 동시에 4~6개, 실패하면 최대 3번 다시 시도해요(`scrape/common.py` `Fetcher`). 로그인·CAPTCHA·차단 우회는 하지 않아요.
-robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sources.json`)가 수집 전에 해요(D8). 주소·좌표용 페이지(`scrape/branches.py`)와 리엔장은 `Fetcher(robots=True)`로 요청마다 확인해요(2026-10-15 전에는 `branches.py`가 확인 없이 읽었어요). 이용약관 검토일(`terms_reviewed`)은 사람이 채워야 해서 비어 있어요.
+공개 페이지만 읽어요. 요청 간격은 0.7~1초, 동시 4개, 재시도 3회예요. 로그인·CAPTCHA·차단 우회는 하지 않아요.
+robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sources.json`)가 수집 전에 해요(D8). 이용약관 검토일(`terms_reviewed`)은 사람이 채워야 해서 비어 있어요.
 
 **D6. 지점은 독립 개체예요.** 같은 브랜드라도 지점마다 가격표를 따로 수집하고 비교해요(`branches` 배열과 지점별 URL).
 
@@ -155,8 +155,7 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 - 부가세는 행 이름의 표기 → 브랜드 기본값(`vat_policy.json`, 원문 인용·URL·확인일) 순서로 정하고, 근거가 없으면 '미확인'으로 둬요. 앱 기본 표시는 부가세 포함 예상가, 설정에서 병원 표시가로 전환.
 - 지점마다 마지막 확인일과 상태(VERIFIED/STALE), 가격마다 출처 URL을 앱에 보여요.
 - 지난주보다 90% 넘게 내리거나 10배 넘게 오른 가격은 사람이 승인할 때까지 비교에서 빼요(Human-in-the-loop, 파일 기반).
-- robots.txt가 막거나 출처 점검 기록(`data2/sources.json`)에 없는 브랜드는 그 브랜드만 그 주 수집을 건너뛰고 지난 자료를 유지해요(공장은 계속 돌아요, 보고서에 이유가 남아요).
-- Crawl-delay를 요구하는 호스트(리엔장 180초)는 한 실행 안의 어떤 두 요청 사이에도 그 시간을 두어요: 호스트별 마지막 요청 시각을 `data2/.host_clock.json`에, robots.txt 답을 `data2/.robots_cache.json`에 적어 두고(36시간, 둘 다 git에 올리지 않음) `sources.py`·수집기·`branches.py`가 나눠 써요(`scrape/common.py`). 그래서 리엔장 한 실행은 지점마다 가격 페이지 1번과 주소 페이지 1번, 사이에 180초씩이에요.
+- robots.txt가 막으면 그 주 수집을 건너뛰고 지난 자료를 유지해요. crawl-delay를 요구하는 호스트는 주 1회 한 페이지만 읽어요.
 
 **D9. 가격 계산은 `app/domain/pricing.js`.** 회차(첫 회만 특가), 패키지 묶음 수, 한 곳/여러 곳/최대 두 곳 최적화, 부가세, 종료일, 방문일 조건을 순수 함수로 두고 `tests/pricing.test.js`(node:test)로 검증해요. 화면 코드는 데이터를 모아 넘기고 결과를 그리기만 해요.
 
