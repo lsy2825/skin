@@ -4,12 +4,11 @@ name: pr-checks
 # (tools/factory.sh checks()) plus the quick suites of tests/run_regression.sh — about a minute, no browser, no PIN, no database.
 # The full regression (browser e2e with the PIN, PostgreSQL) still runs by hand or in batches (tests/run_regression.sh).
 # pull_request, never pull_request_target: the PR's code runs with a read-only token and without any secret.
-# Doc-only PRs are skipped (paths-ignore); if this check is ever made "required" in branch protection, drop paths-ignore first,
-# or doc-only PRs will wait for a check that never starts.
+# Every PR, doc-only ones included: the secret scan reads every tracked file and a PIN or key pasted into a .md is the
+# likeliest leak (no paths filter on purpose). Build-affecting PRs also get .github/workflows/pr-build.yml.
 on:
   pull_request:
     branches: [main]
-    paths-ignore: ["docs/**", "**/*.md"]
   workflow_dispatch:
 
 permissions: {}       # nothing by default; the job asks only for what it needs
@@ -20,10 +19,10 @@ concurrency:
 
 jobs:
   quick:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04      # fixed image: ubuntu-latest moves to Ubuntu 26 on 2026-10-19; move on purpose, in a PR
     permissions:
       contents: read
-    timeout-minutes: 15
+    timeout-minutes: 8         # ~1 minute normally; each suite also has its own 5-minute limit in the script
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:

@@ -56,6 +56,7 @@ install() { if [ "${FACTORY_INSTALL:-}" = 1 ]; then pip install -q -r requiremen
 checks() {
   log "unit tests + secret scan"
   node --test tests/*.test.js
+  bash .github/scripts/parse_check.sh   # every app/*.js and *.py parses (the unit tests never load app.js)
   python build2/xkeys.py
   python tests/weekly_guard_test.py
   python build2/taxonomy.py

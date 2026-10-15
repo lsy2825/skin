@@ -10,16 +10,21 @@ fail=0; failed=()
 check() {
   local name="$1"; shift
   local out rc
-  out=$("$@" 2>&1); rc=$?
+  out=$(timeout -k 10 300 "$@" 2>&1); rc=$?          # one suite may take at most 5 minutes (an open handle must not eat the job)
   if [ $rc -eq 0 ]; then echo "OK   | $name"
   else
-    echo "FAIL | $name"; printf '%s\n' "$out" | grep -E 'not ok|FAIL|Error|Traceback|assert' | head -12
+    [ $rc -eq 124 ] && echo "TIMEOUT | $name (over 5 minutes)" || echo "FAIL | $name"
+    printf '%s\n' "$out" | grep -E 'not ok|FAIL|Error|오류|Traceback|assert|problems' | head -12    # short summary
+    [ -n "${GITHUB_ACTIONS:-}" ] && echo "::group::$name — last 150 lines of its output"
+    printf '%s\n' "$out" | tail -n 150                                # the whole reason, not just the matching lines
+    [ -n "${GITHUB_ACTIONS:-}" ] && echo "::endgroup::"
     [ -n "${GITHUB_ACTIONS:-}" ] && echo "::error title=PR check failed::$name"
     fail=1; failed+=("$name")
   fi
 }
 # --- the price factory's own checks (tools/factory.sh checks()), in the same order
 check "unit (tests/*.test.js)"            bash -c "node --test tests/*.test.js"
+check "every app/*.js and *.py parses"   bash .github/scripts/parse_check.sh
 check "comparison keys (xkeys)"           python3 build2/xkeys.py
 check "weekly value guard"                python3 tests/weekly_guard_test.py
 check "taxonomy"                          python3 build2/taxonomy.py
