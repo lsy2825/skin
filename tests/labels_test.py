@@ -472,8 +472,32 @@ old_d = mini([("강남점", "리쥬란 2cc", 200000, "일반")])
 new_d = mini([("강남점", "쥬베룩 2cc", 250000, "일반")])
 same_day = datameta.changes(dated(old_d, "2026-10-14"), dated(new_d, "2026-10-14"), "v")["counts"]
 next_day = datameta.changes(dated(old_d, "2026-10-14"), dated(new_d, "2026-10-21"), "v")["counts"]
-ok("가격 변동 목록: 수집일이 같은 지점(규칙만 바꿔 다시 만든 빌드)은 변동 없음, 새로 모은 지점만", same_day == {"price": 0, "added": 0, "removed": 0}
-   and next_day == {"price": 0, "added": 1, "removed": 1}, (same_day, next_day))
+ok("가격 변동 목록: 수집일이 같은 지점(규칙만 바꿔 다시 만든 빌드)은 변동 없음, 새로 모은 지점만", same_day == {"price": 0, "added": 0, "removed": 0, "new_chain": 0}
+   and next_day == {"price": 0, "added": 1, "removed": 1, "new_chain": 0}, (same_day, next_day))
+two = mini([("강남점", "리쥬란 2cc", 200000, "일반")])
+two["meta"]["brands"] = [["A"], ["B"]]
+two["s"] += ["역삼점", "쥬베룩 2cc"]
+two["branches"].append([1, len(two["s"]) - 2])
+for f, v in zip(two["cols"], [1, 0, len(two["s"]) - 1, 250000, 0, two["s"].index("일반")]):
+    f.append(v)
+nc = datameta.changes(old_d, two, "v")
+ok("E9 가격 변동 목록: 처음 모은 체인(B)의 줄은 '새로 생김'이 아니라 new_chains로만 셈", nc["counts"]["new_chain"] == 1 and nc["new_chains"] == [["B", 1]]
+   and all(r[0] != "B" for r in nc["added"]), nc)
+import appdata as _ad, tempfile as _tf, gzip as _gz  # noqa: E402
+with _tf.TemporaryDirectory() as h:
+    json.dump({"X12|블리비|강남점": 1}, open(os.path.join(h, "2026-10-13.json"), "w"))
+    json.dump({}, open(os.path.join(h, "2026-10-14.json"), "w"))
+    with _gz.open(os.path.join(h, "2026-10-14.auto.json.gz"), "wt", encoding="utf-8") as f:
+        json.dump({"g": ["라벨", {"밴스|천호": 1, "블리비|강남점": 1}]}, f)
+    bf = _ad.brand_first(h, "2026-10-14")
+ok("E9 체인을 처음 모은 날: 기록에서 그 체인이 처음 나온 날", bf == {"블리비": "2026-10-13", "밴스": "2026-10-14"}, bf)
+dd = {"블리비": {"2026-10-13", "2026-10-14"}, "밴스": {"2026-10-14"}, "포에버": {"2026-10-06"}}
+fs = _ad.first_seen(dd, ["블리비", "밴스", "셀린", "포에버", "리엔장"], {"블리비", "밴스", "셀린"}, "2026-10-21")
+ok("E9 meta.brandFirst: 기록 없이 이번에 처음 모은 체인은 이번 날짜, 한 번도 안 모은 체인은 빠짐(C3 검토)",
+   fs == {"블리비": "2026-10-13", "밴스": "2026-10-14", "셀린": "2026-10-21", "포에버": "2026-10-06"}, fs)
+ok("E9 지난 기록에 없던 체인(새로 왔거나 쉬다 돌아옴)의 줄은 '새로 생김'에 하나씩 넣지 않음",
+   _ad.chain_was_there(dd, "2026-10-14", "블리비") and not _ad.chain_was_there(dd, "2026-10-14", "포에버")
+   and not _ad.chain_was_there(dd, "2026-10-13", "밴스") and _ad.chain_was_there(dd, "", "셀린"))
 import appdata  # noqa: E402
 prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
         "keys": [["X14", 0, "울쎄라 300샷"]]}

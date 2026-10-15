@@ -115,7 +115,7 @@ def build(data):
         r[9] = gmap[r[9]] if r[9] is not None and r[9] >= 0 else r[9]
         out_rows.append(r)
     pos = {j: i for i, j in enumerate(keep)}
-    meta = {k: data["meta"][k] for k in ("updated", "built", "prev", "review", "about", "brands", "kinds", "cats", "recl") if k in data["meta"]}
+    meta = {k: data["meta"][k] for k in ("updated", "built", "prev", "review", "about", "brands", "kinds", "cats", "recl", "brandFirst") if k in data["meta"]}
     meta.update({"rows": len(out_rows), "branches": len(branches), "fam": fam,
                  "checks": [[pos[c[0]]] + c[1:] for c in data["meta"].get("checks", []) if c[0] in pos],
                  "partial": {"rows": len(rows), "keys": len(keys), "cats": cats, "fn": fn}})
