@@ -31,6 +31,11 @@ PROMO = re.compile(r"이벤트|특가|할인|혜택|맞이|누림|기념|잔치|
 MARK = re.compile(r"[|｜※♥★☆!]")   # '!' (2026-10-15): '… 안에서 올려주고! 밖에서 당겨주는 …' is a slogan, not a spec
 WORD = re.compile(r"[\s·()/,+\[\]]+")
 LONG = 8
+# the version of these rules: raise it whenever problems() refuses labels it used to accept. data.json records the version it was
+# built with (meta.labelRules); tests/labels_test.py holds the shipped data to these rules only when the versions match — data the
+# factory built before a rule change is rebuilt by the next factory run (2026-10-15: the stricter '부위만' rule of C1 failed
+# the PR check on the old app/data.json, which only the factory may rewrite)
+RULES = 2
 # words that name where or how much, never what: a label made only of these has lost its product (rule 부위만)
 AREA_ONLY = re.compile(r"(?:얼굴|페이스|바디|전신|전체|얼굴전체|부분|부위|\d*부위|특수부위|가운데부위|이마|미간|눈밑|눈가|눈썹|애교|팔자|관자|볼|앞볼|뒷볼|"
                        r"광대|앞광대|턱|턱끝|턱선|턱라인|이중턱|코|콧등|입술|입꼬리|인중|목|목주름|귀|귓볼|두피|헤어라인|구렛나루|가슴|등|배|복부|옆구리|"

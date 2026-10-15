@@ -39,6 +39,7 @@ import groups as G  # noqa: E402
 import knowledge  # noqa: E402
 import datameta  # noqa: E402
 import homedata  # noqa: E402
+import labels  # noqa: E402
 
 BRANDS = [("블리비", "#6a5ae0", "지점별 이벤트 페이지(기획전·카테고리 7쪽)의 모든 가격"),
           ("쁨", "#e8437f", "지점별 온라인 예약 페이지의 모든 상품"),
@@ -564,7 +565,7 @@ def main():
         # snapshot are counted from it)
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
-                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl},
+                 "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "labelRules": labels.RULES},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
