@@ -521,14 +521,16 @@ def word_order(label):
 HEAD_SKIP = re.compile(r"(?:THE|The|the|NEW|New|BEST|Best|HOT|Hot|단|더|신|NO\.?1)")
 
 
-def product_head(names):
+def product_head(names, groups=None):
     """the product word every name shares in its section title ('리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 5mm 이내 1개' →
-    '리팟레이저', 'THE 미희주사 꺼진 눈밑 … · 팔자 1회' → '미희주사'), or '' when a name has none or they differ"""
+    '리팟레이저', 'THE 미희주사 꺼진 눈밑 … · 팔자 1회' → '미희주사'), or '' when a name has none or they differ. A name with no
+    title in front ('얼굴 1부위') uses its row's group title ('퀵제로팻 페이스 ★단 한 방…' → '퀵제로팻')."""
     heads = set()
-    for n in names:
-        if " · " not in n:
+    for n, g in zip(names, groups or [""] * len(names)):
+        title = n.split(" · ")[0] if " · " in n else (g or "")
+        if not title:
             return ""
-        words = [re.sub(r"^[^\w가-힣]+|[^\w가-힣]+$", "", w) for w in n.split(" · ")[0].split()]
+        words = [re.sub(r"^[^\w가-힣]+|[^\w가-힣]+$", "", w) for w in title.split()]
         word = next((w for w in words if len(re.sub(r"[^가-힣A-Za-z]", "", w)) >= 2 and not HEAD_SKIP.fullmatch(w) and not KINDONLY.search(w)), "")
         if not word:
             return ""
@@ -622,7 +624,7 @@ def build(rows, min_branches=3):
             # only the product word is missing from the label, and every row of the spec names the same product in its section
             # title ('리팟레이저 … · 5mm 이내 1개', 'THE 미희주사 … · 팔자 1회'): put it back instead of dropping a spec that never mixed
             # products. Rows with different or no product words ('풀커버' of 기본색소 / 프리미엄 반영구) still make no key.
-            head = product_head([rows[i]["name"] for i in idx])
+            head = product_head([rows[i]["name"] for i in idx], [rows[i].get("group", "") for i in idx])
             if head:
                 v = dict(v, famname=f"{head} {v['famname']}", label=f"{head} {v['label']}")
                 bad = labels.problems(v["label"], names + [head])
