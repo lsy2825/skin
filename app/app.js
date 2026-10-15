@@ -87,6 +87,7 @@
   let CHK = new Map();
   let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, pendingChat = "", concernPick = null;   // pendingChat: a message from the home box for 죠미와 대화 (memory only)
   let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache, KB, kbByFam, kbByFid;
+  let ADDON_COL = false;   // this file has the build's add-on field (row field 15 → r[19]); without it the name decides (isAddonRow)
   // carts: old single cart [{k, q}] becomes the first saved cart
   function newId() { return crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (Math.random() * 16) >> (c / 4)).toString(16)); }
   function loadCarts() {
@@ -164,6 +165,7 @@
   window.addEventListener("offline", () => { SYNC.metaOk = false; paintSync(); });
   function applyData(json) {
     D = json;
+    ADDON_COL = Classify.hasAddonField(D);   // once per file: data.json/home.json from before 2026-10-15 have 15 fields
     D.rows = rowsOf(D); delete D.cols;
     S = D.s;
     BR = D.branches.map((b, i) => ({ i, brand: b[0], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], region: S[b[5]], site: S[b[6]], geo: b[9] ?? 0 }));
@@ -173,10 +175,12 @@
     // source re-checks of low prices (scrape/verify_prices.py): row → { s: 1 found · 2 name only · 3 not found · 4 fetch error · 5 in the same block, d: date }
     CHK = new Map((D.meta.checks || []).map(([i, s, d]) => [i, { s, d }]));
     // r[15] = 0 live · 1 event over (until < today) · 2 price jump waiting for review; r[14] = listed price when VAT 별도
+    // r[19] = the build's add-on flag (data.json field 15: 1 = sold only with another procedure; 0 in files without it)
     const td = today();
     for (const r of ROWS) {
       const u = S[r[10]] || "";
       r[18] = r[14] || 0;                 // per-'+'-part comparison keys (data.json) moved out of the runtime slots
+      r[19] = r[15] || 0;                 // add-on flag (data.json) moved out before r[15] becomes the runtime state
       r[15] = Pricing.isExpired(u, td) ? 1 : r[13] ? 2 : 0;
       r[14] = r[3]; r[16] = r[4];        // the clinic's listed price / list price, kept for the 'VAT 포함' switch
     }
@@ -195,7 +199,7 @@
     byG = GR.map(() => []);
     ROWS.forEach((r, i) => { if (r[9] != null && r[9] >= 0) byG[r[9]].push(i); });
     gcache = new Map();
-    mixMemo.clear(); medMemo.clear();
+    mixMemo.clear(); medMemo.clear(); addonMemo.clear();   // addonMemo is keyed by string index: home.json and data.json differ
     // procedure families (option picker) and lookups for cart items stored by name
     // families (build2/taxonomy.py): name, regex for related rows (written for names without spaces), variants, compare
     // category, base family id, the clinics' own explanations. n = branches selling any variant, main = default variant
@@ -289,8 +293,11 @@
   // a price that can set a group's range, middle and lowest: VAT basis known (r[12] 0 = the site's VAT note was not found,
   // so +10% may or may not apply — audit U6, E6) and not an add-on sold only with another treatment (audit U10, E5).
   // Such rows stay in every list with a badge; a branch whose only prices are such rows is still listed.
+  // The add-on call is the build's own (r[19], C2) when the file has it — the same one its groups and keys used; only an
+  // older file falls back to the name rule (Classify.isAddon), memoised per name for this load.
   const addonMemo = new Map();
-  const isAddonRow = (i) => { const n = ROWS[i][2]; if (!addonMemo.has(n)) addonMemo.set(n, Classify.isAddon(S[n])); return addonMemo.get(n); };
+  const addonOf = (r) => { if (ADDON_COL) return r[19] === 1; const n = r[2]; if (!addonMemo.has(n)) addonMemo.set(n, Classify.isAddon(S[n])); return addonMemo.get(n); };
+  const isAddonRow = (i) => addonOf(ROWS[i]);
   const vatUnknown = (i) => ROWS[i][12] === 0;
   const cmpOk = (i) => !vatUnknown(i) && !isAddonRow(i);
   // the part of a branch list that the summary numbers are taken from (all of it when no branch has a comparable price)
@@ -357,7 +364,7 @@
   function classOf(i, k) {
     const r = ROWS[i];
     if (k == null) { const id = (S[r[7]] || "").split(" ").find((x) => KI[x] != null); k = id ? KI[id] : null; }
-    return Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags: (S[r[6]] || "").split("·").filter(Boolean), keyLabel: k != null ? KEYS[k].label : "",
+    return Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags: (S[r[6]] || "").split("·").filter(Boolean), keyLabel: k != null ? KEYS[k].label : "", addon: addonOf(r),
       mix: k != null ? mixFor(k) : null, price: r[14] / Math.min(r[8] || 1, 98), median: k != null ? keyMed(k) : 0 });
   }
   const CLS_K = { direct: "k ok", caution: "k kx", reference: "k k4", never: "k kx" };
@@ -411,7 +418,7 @@
   const md2 = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
   const kindBadge = (r) => {
     const out = [];
-    if (Classify.isAddon(S[r[2]])) out.push(h("span", { class: "k k4", title: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 범위·중간값 계산에서 빼요" }, "추가 옵션"));
+    if (addonOf(r)) out.push(h("span", { class: "k k4", title: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 범위·중간값 계산에서 빼요" }, "추가 옵션"));
     if (r[15] === 1) out.push(h("span", { class: "k kx" }, "기간 끝남"));
     if (r[17] === 1) out.push(h("span", { class: "k kx" }, "방문일엔 안 됨"));
     if (r[17] === 2) out.push(h("span", { class: "k kx", title: "병원 사이트에 시간대가 적혀 있지 않아요" }, "시간 확인 필요"));
@@ -707,14 +714,16 @@
   // add one real price row of a branch, as it is (compared with rows of the same name elsewhere) or as its procedure
   // ---------------- price facts: why a price is what it is (conditions, VAT, source) — for the '가격 확인' sheet
   // conditions read from the clinic's own option name (and the tags clean.py found); nothing here is guessed
+  const ADDON_COND = "추가 옵션이에요(본 시술과 함께)";
   const COND_WORDS = [[/(\d[\d,]*\s*만?\s*원)\s*이상\s*(결제|구매|시술|시)/, "최소 결제 금액 조건이 있어요"], [/\d+\s*(샷|cc|U|회|부위)\s*이상\s*(시|구매|결제)?/i, "최소 수량 조건이 있어요"],
-    [/단독\s*(불가|시술\s*불가|사용\s*불가)/, "단독으로는 못 받아요(다른 시술과 함께)"], [/(^|\s|\(|\])옵션\s*\d*\)|추가\s*(시|구매|결제)|\d\s*(샷|cc|U)\s*추가|(^|\s)추가(\s|$)/, "추가 옵션이에요(본 시술과 함께)"],
+    [/단독\s*(불가|시술\s*불가|사용\s*불가)/, "단독으로는 못 받아요(다른 시술과 함께)"], [/(^|\s|\(|\])옵션\s*\d*\)|추가\s*(시|구매|결제)|\d\s*(샷|cc|U)\s*추가|(^|\s)추가(\s|$)/, ADDON_COND],
     [/동시\s*시술|함께\s*시술|(진행|구매|결제|이용)\s*(고객|시)/, "다른 시술을 받거나 산 사람만"], [/첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매/, "첫 방문(신규) 조건"],
     [/1\s*인\s*(당\s*)?1\s*회/, "1인 1회"], [/선착순|한정\s*수량/, "선착순·수량 한정"], [/평일|주말|타임\s*세일|\d\s*시\s*(이전|전|까지)|프라임\s*타임/, "요일·시간 조건"],
     [/팁\s*(별도|미포함)|별도\s*(구매|비용)/, "추가 비용이 따로 있어요"]];
   function priceConds(i) {
     const r = ROWS[i], n = S[r[2]], out = new Set();
-    for (const [rx, t] of COND_WORDS) if (rx.test(n)) out.add(t);
+    // the add-on line: with the build's add-on field the sheet says what the badge says (addonOf), the name only in older files
+    for (const [rx, t] of COND_WORDS) if ((t === ADDON_COND && ADDON_COL) ? addonOf(r) : rx.test(n)) out.add(t);
     for (const t of (S[r[6]] || "").split("·").filter(Boolean)) out.add(t === "첫 방문" ? "첫 방문(신규) 조건" : t === "1인 1회" ? "1인 1회" : `${t} 조건`);
     if (r[5] === 1) out.add("체험가(보통 1인 1회)");
     if (r[5] === 2) out.add("한정가(기간·수량·첫 방문 등 조건)");
