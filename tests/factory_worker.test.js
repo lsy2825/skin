@@ -131,3 +131,73 @@ test("factory script: modes in the Worker and in tools/factory.sh are the same l
   const sh = require("fs").readFileSync(path.join(__dirname, "../tools/factory.sh"), "utf8");
   for (const m of R.MODES) assert.ok(new RegExp(`^\\s+${m}\\)`, "m").test(sh), `factory.sh handles ${m}`);
 });
+
+// run only save() from tools/factory.sh in a throw-away git setup: a bare "origin" with main, the factory's clone, and a
+// second clone that moves main underneath it. No git identity anywhere (empty HOME, no global/system config), like a
+// bare Actions runner. A pre-receive hook on origin can reject the first N pushes to exercise the retry.
+function runSave({ moveMain = true, rejectPushes = 0, nothing = false } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "factory-save-"));
+  const env = { ...process.env, HOME: path.join(dir, "home"), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+  for (const k of Object.keys(env)) if (/^GIT_(AUTHOR|COMMITTER)_/.test(k)) delete env[k];
+  fs.mkdirSync(env.HOME);
+  const git = (cwd, ...args) => {
+    const r = spawnSync("git", args, { cwd, env, encoding: "utf8" });
+    if (r.status !== 0) throw new Error(`git ${args.join(" ")} in ${cwd}: ${r.stderr}`);
+    return r.stdout.trim();
+  };
+  const ident = ["-c", "user.name=seed", "-c", "user.email=seed@example.com"];
+  const origin = path.join(dir, "origin.git"), a = path.join(dir, "factory"), b = path.join(dir, "other");
+  git(dir, "init", "-q", "--bare", "-b", "main", origin);
+  git(dir, "clone", "-q", origin, a);
+  fs.writeFileSync(path.join(a, "README"), "seed\n");
+  git(a, "add", "README"); git(a, ...ident, "commit", "-q", "-m", "seed"); git(a, "push", "-q", "origin", "HEAD:main");
+  git(dir, "clone", "-q", origin, b);
+  if (moveMain) {                                                // someone else pushes to main after the factory cloned
+    fs.writeFileSync(path.join(b, "other.txt"), "moved\n");
+    git(b, "add", "other.txt"); git(b, ...ident, "commit", "-q", "-m", "main moved"); git(b, "push", "-q", "origin", "HEAD:main");
+  }
+  if (rejectPushes > 0) {                                        // reject the first N pushes, then accept
+    fs.mkdirSync(path.join(origin, "hooks"), { recursive: true });
+    fs.writeFileSync(path.join(origin, "hooks", "pre-receive"),
+      `#!/usr/bin/env bash\nn=$(cat "${origin}/rejects" 2>/dev/null || echo 0)\nif [ "$n" -lt ${rejectPushes} ]; then echo $((n+1)) > "${origin}/rejects"; echo "fake: rejected $((n+1))" >&2; exit 1; fi\nexit 0\n`, { mode: 0o755 });
+  }
+  if (!nothing) fs.writeFileSync(path.join(a, "app-data.json"), '{"built":1}\n');
+  const sh = fs.readFileSync(path.join(__dirname, "../tools/factory.sh"), "utf8");
+  const fn = sh.slice(sh.indexOf("save() {"), sh.indexOf("\n}", sh.indexOf("save() {")) + 2);
+  const script = `set -euo pipefail\nMODE=test\nBOT_NAME="weekly-prices bot"\nBOT_EMAIL="actions@users.noreply.github.com"\n` +
+    `log() { echo "== factory[$MODE]: $*"; }\nsleep() { :; }\n${fn}\nsave "Weekly prices" app-data.json missing.json\necho after-save\n`;
+  const r = spawnSync("bash", ["-c", script], { cwd: a, env, encoding: "utf8" });
+  git(b, "fetch", "-q", "origin", "main");
+  const mainLog = git(b, "log", "--format=%an|%s", "origin/main").split("\n");
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, out: r.stdout + r.stderr, mainLog };
+}
+
+test("factory save: main moved meanwhile, no git identity on the runner → the commit is replayed on top and pushed", () => {
+  const r = runSave({ moveMain: true });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /saved: [0-9a-f]+ Weekly prices \d{4}-\d{2}-\d{2}/);
+  assert.match(r.out, /after-save/);
+  assert.deepEqual(r.mainLog.slice(0, 2).map((l) => l.split("|")[1]).map((s) => s.replace(/ \d{4}-\d{2}-\d{2}$/, "")),
+    ["Weekly prices", "main moved"], "bot commit on top of the moved main");
+  assert.equal(r.mainLog[0].split("|")[0], "weekly-prices bot");
+});
+
+test("factory save: a rejected push is retried; three rejections fail the save", () => {
+  const ok = runSave({ moveMain: false, rejectPushes: 2 });
+  assert.equal(ok.status, 0, ok.out);
+  assert.equal((ok.out.match(/rejected \(it moved again\) — try/g) || []).length, 2);
+  assert.match(ok.out, /saved: /);
+  const bad = runSave({ moveMain: false, rejectPushes: 3 });
+  assert.notEqual(bad.status, 0, "three rejections → the save fails");
+  assert.match(bad.out, /could not push to main after 3 tries/);
+  assert.doesNotMatch(bad.out, /after-save/);
+  assert.equal(bad.mainLog[0].split("|")[1], "seed", "nothing reached main");
+});
+
+test("factory save: nothing changed → no commit, no push", () => {
+  const r = runSave({ nothing: true, moveMain: false });
+  assert.equal(r.status, 0, r.out);
+  assert.match(r.out, /nothing new to save/);
+  assert.equal(r.mainLog.length, 1);
+});
