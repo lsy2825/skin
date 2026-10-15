@@ -50,10 +50,14 @@
     return gap != null && gap >= 1 && gap <= RETURN_DAYS ? ["return_7d", "open"] : ["open"];
   }
 
-  // the sender the app uses. io = { load(), save(state), beacon(url, body) → true when queued, today() → YYYY-MM-DD }.
-  // Off (no endpoint): every call returns at once — load, save and beacon are never called.
+  // the sender the app uses. io = { load(), save(state), beacon(url, body) → true when queued, today() → YYYY-MM-DD,
+  // off() → true when the person switched it off on this phone (마이 → 내 설정; user decision 2026-10-15: the switch
+  // exists, on by default) }. Off — no endpoint, or switched off — every call returns at once: load, save and beacon are
+  // never called.
   function make(cfg, io) {
     const url = endpoint(cfg);
+    const optedOut = () => { try { return !!(io.off && io.off()); } catch (e) { return false; } };
+    const live = () => !!url && !optedOut();
     // a copy in memory as well: storage that is blocked or full (io.load gives nothing back) must not turn 'once a day' into
     // 'on every scroll' — without storage it is once per page load
     let mem = null;
@@ -70,7 +74,7 @@
     const send = (name) => { try { return !!io.beacon(url, body(name)); } catch (e) { return false; } };
     // send `name` unless it went today; true when it went now. A beacon the browser did not queue is tried again next time.
     const hit = (name) => {
-      if (!url || !STAGES.includes(name)) return false;
+      if (!live() || !STAGES.includes(name)) return false;
       const day = io.today();
       let s = load();
       const w = when(s, day);
@@ -95,13 +99,16 @@
       return true;
     };
     return {
-      on: !!url,
+      // sending now (set up and not switched off on this phone)
+      get on() { return live(); },
+      // set up by the operator (config.js) — the phone's switch is shown only then
+      available: !!url,
       hit,
       // app start, or the app shown again (a tab or a home-screen app left open since an earlier day)
       opened() { return hit("open"); },
       // true while this step has not gone out today — lets the app skip work (the first-price check) when it has, or when off
       pending(name) {
-        if (!url) return false;
+        if (!live()) return false;
         const s = load(), w = when(s, io.today());
         return w === "new" || (w === "same" && !s.s.includes(name));
       },

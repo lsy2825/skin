@@ -4,6 +4,8 @@
 //  2. turned on (config.js and the page's CSP rewritten in the test only, the server faked): each of the seven steps goes
 //     once, the body is only {"s":"<step>"}, a reload the same day sends nothing again, and a last visit 3 days ago
 //     sends 'return_7d' with 'open' (the date stays on the phone)
+//  3. the phone's switch (마이 → 내 설정 '익명 이용 집계 보내기', user decision 2026-10-15): hidden when not set up; set up
+//     and switched off = the same walk sends nothing and stores nothing; switched back on = steps go again
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/metrics.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -48,6 +50,10 @@ async function walk(p) {
   return p.evaluate(() => ({ cart: (JSON.parse(localStorage.getItem('pc:carts') || '[]')[0] || { items: [] }).items.length, favs: (JSON.parse(localStorage.getItem('pc:favs') || '{"k":[]}').k || []).length,
     alerts: JSON.parse(localStorage.getItem('pc:alerts') || '[]').length, hash: location.hash }));
 }
+// 마이 → 내 설정's switch, or null when it is not there
+const optSwitch = async (p) => { await p.evaluate(() => { location.hash = '#me'; }); await p.waitForTimeout(500);
+  const sw = p.locator('#main label.switch', { hasText: '익명 이용 집계 보내기' });
+  return (await sw.count()) ? sw.first() : null; };
 const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } catch (e) { return `?${x.body}`; } });
 
 (async () => { const b = await chromium.launch();
@@ -60,6 +66,7 @@ const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } c
     ok('꺼짐: sendBeacon 0번, /v1/m 요청 0건', beacons === 0 && hits.length === 0, `beacons=${beacons} hits=${hits.length}`);
     ok('꺼짐: 집계용으로 저장한 것 없음(pc:metrics 없음)', await p.evaluate(() => localStorage.getItem('pc:metrics') === null));
     ok('꺼짐: 다른 주소로 나간 요청 없음', other.length === 0, other.slice(0, 3).join(' '));
+    ok('꺼짐: 내 설정에 집계 스위치 없음(운영 설정이 꺼져 있으면 보이지 않음)', !(await optSwitch(p)));
     ok('꺼짐: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
 
@@ -96,6 +103,30 @@ const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } c
       localStorage.setItem('pc:metrics', JSON.stringify({ d: s, s: [] })); });
     await home(p); await p.waitForTimeout(300);
     ok('켜짐: 8일 전이면 return_7d 없음', steps(hits).includes('open') && !steps(hits).includes('return_7d'), steps(hits).join(','));
+    const sw = await optSwitch(p);
+    ok('켜짐: 내 설정에 집계 스위치가 있고 기본은 켜짐', !!sw && await sw.locator('input').isChecked());
+    // switched off while the app runs: nothing more goes and nothing new is written; the day's record is kept as it was
+    const before = await p.evaluate(() => localStorage.getItem('pc:metrics'));
+    await sw.click(); await p.waitForTimeout(300); hits.length = 0;
+    await p.locator('#tabs button[data-tab="saved"]').click(); await p.waitForTimeout(300);
+    await p.evaluate(() => { location.hash = '#compare?k=X12'; }); await p.waitForTimeout(800);
+    await p.locator('.cmphead .favbtn').click(); await p.waitForTimeout(300);
+    await p.locator('#tabs button[data-tab="cart"]').click(); await p.waitForTimeout(500);
+    ok('켜짐 → 스위치 끔: 그 뒤 /v1/m 0건, pc:metricsOff=true, 그날 기록은 그대로(새로 쓰지 않음)', hits.length === 0
+      && await p.evaluate((b) => localStorage.getItem('pc:metricsOff') === 'true' && localStorage.getItem('pc:metrics') === b, before), steps(hits).join(','));
     ok('켜짐: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+
+  // 3) set up, but switched off on this phone: nothing goes, nothing is stored; switched on again: steps go
+  { const { ctx, p, hits, errs } = await start(b, true);
+    await p.goto(BASE); await p.waitForTimeout(500); await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:metricsOff', 'true'); }); hits.length = 0; await p.reload(); await unlock(p);
+    await walk(p); await p.waitForTimeout(500);
+    ok('스위치 꺼짐: 같은 걷기에 /v1/m 0건, sendBeacon 0번, pc:metrics 없음', hits.length === 0 && await p.evaluate(() => window.__beacons.length === 0 && localStorage.getItem('pc:metrics') === null), steps(hits).join(','));
+    const sw = await optSwitch(p);
+    ok('스위치 꺼짐: 내 설정 스위치가 꺼짐으로 보임', !!sw && !(await sw.locator('input').isChecked()));
+    await sw.click(); await p.waitForTimeout(300);
+    await p.locator('#tabs button[data-tab="cart"]').click(); await p.waitForTimeout(500);
+    ok('스위치 다시 켬: 그 뒤 단계는 다시 감(open·cart_open)', steps(hits).includes('open') && steps(hits).includes('cart_open') && await p.evaluate(() => localStorage.getItem('pc:metricsOff') === 'false'), steps(hits).join(','));
+    ok('스위치: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();
