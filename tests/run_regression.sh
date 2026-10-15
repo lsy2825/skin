@@ -26,7 +26,11 @@ run "brand collectors (parsers on saved public pages)" python3 tests/brand_parse
 run "spec labels (no price/date/promo words, nothing we glued)" python3 tests/labels_test.py
 run "branch addresses (own address, loose forms, on saved public pages)" python3 tests/branch_addr_test.py
 run "backup / restore" bash tests/db/backup_restore_test.sh
-for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus; do
+# first_screens (B4 #12), metrics (B5 #16) and push (B6 #19) are B-owned e2e files still in open PRs: listed now so the suite
+# runs them the day they merge; until then their line says SKIP (never OK), so nobody reads a missing test as a pass.
+PLANNED=" first_screens metrics push "
+for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push; do
+  if [ ! -f "tests/e2e/$t.js" ] && [[ "$PLANNED" == *" $t "* ]]; then echo "SKIP | e2e $t | tests/e2e/$t.js is not on this branch yet (B PR #12/#16/#19)"; continue; fi
   run "e2e $t" node tests/e2e/$t.js
 done
 exit $fail
