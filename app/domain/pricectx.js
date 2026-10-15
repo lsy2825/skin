@@ -1,4 +1,5 @@
-// The price context premium reports read (app/domain/premium.js ctx): built from data.json (server, tests) or from the app's
+// The price context (once read by the 5.0 premium reports, removed in 6.0; now by Jomi's chat checks in node — jomichat.js
+// ctxFromData, tools/jomi_chat_eval.js — and tests): built from data.json or from the app's
 // already-loaded rows (the app passes its own accessors). Only collected prices: no estimate, no fill-in, no model output.
 // Raw data.json row (build2/appdata.py ROW_FIELDS): 0 branch · 2 name · 3 listed price · 5 kind (1/2 special) · 6 conditions ·
 // 7 key ids (space separated) · 8 sessions · 10 until · 12 VAT (1 included, 2 별도) · 13 jump waiting for review.

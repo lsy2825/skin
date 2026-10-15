@@ -1,6 +1,6 @@
 // Round-2 R01/R16 in the browser: two accounts on one phone never see, merge or upload each other's data.
 // The real sign-in module (app/auth.js + Supabase) is replaced by a stand-in with the same interface, so the app's own
-// account logic is what is tested; nothing here talks to Supabase. Server-side RLS is tested in server/test/round2.test.mjs.
+// account logic is what is tested; nothing here talks to Supabase. Server-side RLS is chat A's (supabase/, tests/db/).
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/accounts_r2.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';

@@ -1,5 +1,8 @@
 # 죠미 심화 질문 안전장치
 
+> **없어진 기능(6.0, 2026-10-15).** 크레딧·AI 심화 질문을 없애며 `app/domain/jomiqa.js`(B7)와 서버 AI 호출(A3)을 지웠어요. 아래는 기록이에요.
+> 지금의 무료 죠미 대화 규칙은 `app/domain/jomichat.js` 하나예요(시험: `tests/jomichat.test.js`, 점수: `node tools/jomi_chat_eval.js`).
+
 원천: `app/domain/jomiqa.js`(앱·서버 공용), `server/src/ai/jomi.mjs`(AI 호출). 테스트: `tests/commerce.test.js` 4번, `server/test/api.test.mjs` 9번, e2e C17·C18.
 
 ## 1. 세 겹

@@ -2,6 +2,8 @@
 // payment fees, store commission and AI cost per job are written next to the number as 가정 and replaced by measured values
 // (orders, payment_refunds, ai_usage_records, service_cost_records → commerce_economics) once the server runs.
 // Used by the ops screen card, tools/unit_economics.js and tests. Pure functions.
+// 6.0: no credits — the server side (ledger, payments) was removed in chat A's A3; this file stays only until A6 takes the
+// credit card off the ops screen (app/screens/ops.js), then it goes with app.js's loader (OPS_ECON_JS).
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.Economics = factory();

@@ -71,3 +71,9 @@
 - 사용자 결정(2026-10-15): '장바구니' → '내 견적'으로 바꿈(B4). 비교 화면 '가격과 함께 꼭 확인하세요'는 접지 않고 가격 바로 아래
   (OBJECTIVE_DISPLAY_POLICY.md 그대로). 13px 미만 글자(배지)는 따로 작업으로 13px에.
 - 이 클라우드 환경에는 APP_PIN이 없어서 e2e는 잠금 해제 상태(sessionStorage)를 미리 넣는 방식으로 돌렸음 — 공식 결과는 APP_PIN으로 다시 확인할 것.
+- 2026-10-15 사용자 결정(둘째): `tests/fixtures/jomi_chat_*.json`은 B. `docs/IMPLEMENTATION_STATUS.md`는 공동(자기 절만 덧붙임). `tools/eval_offers.js`·
+  `tools/unit_economics.js`는 지움 — eval_offers·offerparse.js·offer.test.js는 #20에서, unit_economics는 A6 뒤 demowallet·economics와 함께.
+  푸시(B6)는 A5 값 → C6 처리방침 → 사용자 승인 뒤에 켬(집계 B5와 같은 순서).
+- PR: B4 #12, B3.5 #13, B5 #16(집계, 꺼짐), B6 #19(푸시, 꺼짐), B7 #17(frame.js)·#20(크레딧 흔적), #21(jomi e2e 들쭉날쭉: 전체 대사 교체 전후 경합),
+  #22(가격 범위 숫자 `.hp.range`가 입력칸 `.range` grid와 이름 충돌 → 겹침·320px 넘침, main부터 있던 것).
+

@@ -1,5 +1,6 @@
-// 5.0 domain modules shared by the app and the server: demo wallet rules (same as the SQL ledger), the demo catalog equals
-// supabase/commerce_seed.sql, report builders refuse what the data cannot support, Jomi guardrails, unit economics.
+// What is left of the 5.0 credit modules until chat A's A6 takes the credit card off the ops screen (app/screens/ops.js
+// loads demowallet.js and economics.js): demo wallet rules, the demo catalog equals supabase/commerce_seed.sql, unit
+// economics. The report builders (premium.js) and the paid Jomi Q&A guard (jomiqa.js) went with the credits (6.0, B7).
 // Run: node --test tests/commerce.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -7,11 +8,6 @@ const fs = require("fs");
 const path = require("path");
 const W = require("../app/domain/demowallet.js");
 const E = require("../app/domain/economics.js");
-const P = require("../app/domain/premium.js");
-const PC = require("../app/domain/pricectx.js");
-const J = require("../app/domain/jomiqa.js");
-const DATA = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/data.json"), "utf8"));
-const CTX = PC.fromData(DATA, "2026-10-14");
 const SEED = fs.readFileSync(path.join(__dirname, "../supabase/commerce_seed.sql"), "utf8");
 
 test("demo catalog and feature prices are the seed's (one source of truth for the numbers)", () => {
@@ -73,39 +69,6 @@ test("demo wallet: purchase once per key, promo first, reserve/capture/release, 
   assert.equal(Object.keys(poor.jobs).length, 0);
   // a tampered or foreign saved object is not trusted
   assert.equal(W.load({ v: 1, tx: [{ bucket: "PAID", eb: 999, er: 0 }] }).tx.length, 0);
-});
-
-test("reports: built only from collected prices; history needs 4 weeks; regional needs 2 regions with 3+ branches", () => {
-  assert.equal(P.available("PRICE_HISTORY_REPORT", { key: "X01" }, CTX).ok, false);
-  assert.equal(P.available("REGIONAL_PRICE_REPORT", { key: "X01" }, CTX).ok, true);
-  assert.equal(P.available("PRODUCT_DEEP_COMPARE", { a: "X01", b: "X01" }, CTX).ok, false);
-  assert.equal(P.available("QUOTATION_DECODER", { text: "가격은 상담 후" }, CTX).ok, false);
-  const rep = P.build("EVENT_URL_DECODER", { text: "국산 사각턱 보톡스 50U 19,000원\n리쥬란힐러 2cc 199,000원 VAT 포함" }, CTX);
-  const [a] = rep.payload.items;
-  const xs = CTX.prices("X01", "").map((x) => x.p).sort((p, q) => p - q);
-  assert.equal(a.compare.median, P.median(xs)); assert.equal(a.compare.n, xs.length);
-  assert.ok(P.usable(rep));
-  assert.equal(JSON.stringify(rep.share_summary).includes("VAT 포함"), false, "share summary has no pasted text");
-  const q = P.build("QUOTATION_DECODER", { text: "리쥬란힐러 2cc 199,000원" }, CTX);
-  assert.equal(q.share_summary.items[0].advertised, null, "a private quotation's price is not in the share summary");
-  // a fake 4-week history is never invented: with the real 2 dates the builder would show only 2 points
-  const h = P.build("PRICE_HISTORY_REPORT", { key: "X01" }, CTX);
-  assert.equal(h.payload.points.length, (CTX.trend.k.X01 || []).filter(Boolean).length);
-  assert.equal(P.usable(h), false);
-  const plan = P.build("ADVANCED_CART_PLANNER", { items: [{ k: "X01", q: 1 }, { k: "X24", q: 2 }], region: "서울", budget: 300000 }, CTX);
-  assert.ok(plan.payload.plans.every((p) => p.total == null || (typeof p.total === "number" ? p.total : p.total.min) > 0));
-});
-
-test("Jomi guardrails: medical questions screened; answers may only use the facts' numbers", () => {
-  for (const [q, code] of [["이거 무슨 병인가요?", "DIAGNOSIS"], ["보톡스 몇 유닛 맞아야 해요", "DOSING"], ["숨이 차요 시술 후", "URGENT"], ["임신 중인데 리쥬란 돼요?", "PREGNANCY"], ["여드름 약 추천", "PRESCRIPTION"]])
-    assert.equal(J.screen(q).code, code, q);
-  assert.equal(J.screen("리쥬란힐러 2cc 가격 알려줘").blocked, false);
-  const fx = J.facts("리쥬란힐러 2cc 가격 알려줘", CTX);
-  assert.ok(fx.groups.length >= 1);
-  assert.equal(J.check(`중간값은 ${fx.groups[0].median.toLocaleString()}원이에요`, fx).ok, true);
-  assert.equal(J.check("보통 50,000원이면 돼요", fx).ok, false);
-  assert.equal(J.check("효과가 보장돼요", fx).ok, false);
-  assert.match(J.deterministicAnswer(fx), /중간값/);
 });
 
 test("unit economics: VAT and fee come off the price; every feature keeps a positive margin under the assumptions", () => {
