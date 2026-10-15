@@ -1,0 +1,43 @@
+name: pr-build
+
+# The second gate the factory has before a deploy is the build itself (tools/factory.sh build(): build2/weekly.py --skip-scrape,
+# then tools/review_queue.js). A PR to build2/, data2/, knowledge/, scrape/ or the review queue can pass pr-checks and still
+# make that build fail after the merge, which blocks every later deploy until fixed. This runs the same two commands on such
+# PRs (a few minutes; only these paths, to spare Actions minutes). Nothing is committed or deployed: the runner is thrown away.
+# pull_request, never pull_request_target: read-only token, no secrets.
+on:
+  pull_request:
+    branches: [main]
+    paths: ["build2/**", "data2/**", "knowledge/**", "scrape/**", "tools/review_queue.js", "requirements.txt", ".github/workflows/pr-build.yml"]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - name: Python packages (exact versions in requirements.txt)
+        run: pip install -q -r requirements.txt
+      - name: Build from the saved data, as the factory does (no scraping)
+        env:
+          PYTHONUTF8: "1"
+        run: python build2/weekly.py --skip-scrape
+      - name: Review queue, as the factory does
+        run: node tools/review_queue.js

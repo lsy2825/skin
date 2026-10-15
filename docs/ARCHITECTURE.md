@@ -130,7 +130,7 @@ SEO 랜딩 페이지는 Python이 정적 HTML을 미리 만들어 같은 Pages�
   - 관리자 쓰기는 역할 + MFA(aal2)가 있어야 해요.
   - 가격·역할 변경은 감사 기록에 남고, 그 기록은 추가만 가능해요.
 - 브라우저: CSP(`script-src 'self'`), 수집 문자열은 글자로만 넣고, http(s) 링크만 만들어요.
-- CI: 작업별 최소 권한, 외부 액션 SHA 고정, 배포 전 비밀 검사, DB 보안 시험 워크플로.
+- CI: 작업별 최소 권한, 외부 액션 SHA 고정, 배포 전 비밀 검사, DB 보안 시험 워크플로. PR마다 `pr-checks.yml` → `.github/scripts/pr_checks.sh`(공장 배포 전 검사 + 회귀의 빠른 묶음 + `parse_check.sh` 문법 검사, 약 1분), 빌드에 닿는 PR은 `pr-build.yml`(공장과 같은 빌드), DB 파일 PR은 `db-security.yml`. 모두 `pull_request`·읽기 전용·비밀값 없음이고 `tests/security/pr_checks.test.js`가 목록과 안전 설정을 지켜요. 공장의 `checks()`도 같은 문법 검사를 해요.
 
 **D18. 피부 고민 찾기는 규칙 기반·검수 문장 전용으로 시작한다 (2026-10-13).** 상세: `docs/AI_CONCERN_DISCOVERY_SPEC.md`
 - 생성형 AI를 쓰지 않아요. 분류는 낱말 사전으로 기기 안에서 하고, 의학 문장은 지식 파일에 미리 쓴 것만 보여줘요. 지어내는 의학 주장, 프롬프트 인젝션, 입력 유출을 구조로 막아요.
