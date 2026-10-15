@@ -397,13 +397,14 @@
 | B7 부탁 메모: frame.js(A2) | 합쳐짐 | #17, gate.js 방어 빼기 #32 | e2e frame(헤더) |
 | B7 부탁 메모: 크레딧 흔적(A3)·운영 화면(A6) | 합쳐짐 | #20, #29 | 단위, e2e ops40 |
 | 시험 보강·버그: jomi e2e 들쭉날쭉, 가격 범위 숫자 겹침·320px 넘침 | 합쳐짐 | #21, #22 | jomi 5회 42/42, 320px 넘침 36 → 0 |
-| 처리방침 화면 문구(C6 §4 확정 문장: 집계 칸·푸시 켜짐 줄·알림 설명) | PR, 꺼진 동안 안 보임 | lsy2825/skin#40 | 단위, e2e push·metrics·clickable |
-| 가격 알림 시트 최저가를 알림이 쓰는 지역·특가로(A 메모) + ux_qa Enter 대기 | PR | #41 | e2e alert_region(새, main 5개 지역 실패 → 13/13)·ux_qa |
-| '정보' 화면에서 코드와 다른 Crawl-delay 문장('주 1회 한 페이지만') 빼기 | PR | #44 | 단위, e2e clickable·ux_qa |
-| (C 일, 사용자 지시로 B가 대신) C4 크기 가드 `build2/size_guard.py` | PR | #43 | size_guard_test 19/19, `weekly.py --skip-scrape` 실제 실행(한도 낮춰 종료 1·data.json 그대로) |
+| 처리방침 화면 문구(C6 §4 확정 문장: 집계 칸·푸시 켜짐 줄·알림 설명) | 합쳐짐, 꺼진 동안 안 보임 | lsy2825/skin#40 | 단위, e2e push·metrics·clickable |
+| 가격 알림 시트 최저가를 알림이 쓰는 지역·특가로(A 메모) + ux_qa Enter 대기 | 합쳐짐 | #41 | e2e alert_region(새, main 5개 지역 실패 → 13/13)·ux_qa |
+| '정보' 화면에서 코드와 다른 Crawl-delay 문장('주 1회 한 페이지만') 빼기 | 합쳐짐 | #44 | 단위, e2e clickable·ux_qa |
+| (C 일, 사용자 지시로 B가 대신) C4 크기 가드 `build2/size_guard.py` | 합쳐짐(공장 보고서에 크기 줄 확인) | #43 | size_guard_test 19/19, PR 검사에 한 줄(A 파일, 사용자 허락), `weekly.py --skip-scrape` 실제 실행(한도 낮춰 종료 1·data.json 그대로) |
 | (C 일, 사용자 지시로 B가 대신) C5 체인별 약관·robots 기록 `docs/legal/SITE_TERMS_REVIEW.md` | PR, C가 읽고 합침 | #39 | C 정정 6건 코드 대조 + 반박 검토 2회 |
 
 켜는 조건(사용자 결정 2026-10-15): 집계·푸시 모두 A의 주소(+푸시 공개키) → C의 개인정보 처리방침(C6, #24) → 사용자 승인 뒤에 B가
 `config.js`에서 켜요. 집계 주소는 이미 들어가 있어요(#30, `metrics: false`). 사용자는 내 설정에서 집계를 끌 수 있어요(#27, 기본 켜짐).
 기다리는 것: A5(알림 주소·공개키), C의 처리방침(#24, §3·§4 문장은 확정 → #40)과 새 데이터 칸(C1), 출시 결정(B8: 비밀번호 화면·광고 칸).
+#40·#41·#43·#44·#47은 2026-10-15 사용자 승인으로 합쳐짐. 공개 배포는 멈춤(A #48, `PUBLIC_DEPLOY`가 `on`일 때만)이라 공개 주소는 2026-10-15 판 그대로이고 관리자 주소만 바뀌어요.
 푸시를 켤 때 함께: 죠미 도움말 '알림' 답·죠미 대사 3줄(C6 §4, 그때 `jomi_chat_eval`·`jomichat.test`·`jomilines.test`). '정보' 화면 리엔장 줄의 새 문장은 C가 #45(Crawl-delay 실제로 지킴) 뒤에 정해 줌(약속 6).

@@ -82,6 +82,11 @@
 - #39를 C 정정으로 고치다 찾은 것: 공장의 파이썬 3.12 `urllib.robotparser`는 처음 맞는 규칙을 따라 `Allow: /`가 먼저인 호스트에서 뒤의 `Disallow`를 못 봄
   (3.11.17·3.12.3·3.13.16으로 직접 확인). C의 #45가 자체 판정으로 고침. 문서 사실 확인은 코드 대조 → 반박 검토를 두 번 돌려야 수렴했음(첫 고친 판에도 30곳 안팎 틀림).
 - 이 환경에서 `rm -rf $변수`는 안전 검사에 막힘 — 임시 작업 폴더는 새 이름으로 만들고 지우지 않음.
+- 2026-10-15 사용자 승인으로 #43 → #40 → #41 → #44 → #47 합침(합치기 전 최신 main 위로 다시 올려 pr-checks 초록 확인, #43은 A의 PR 검사 목록에
+  `tests/size_guard_test.py` 한 줄 — 사용자 허락). 합친 main: PR 검사 19/19, e2e clickable·first_screens·alert_region·push·metrics·ux_qa 통과,
+  공장 실행 성공·보고서에 크기 줄. 공개 배포 멈춤(A #48) 그대로라 공개 주소는 옛 app.js(pc-v29)를 계속 보냄(직접 받아 확인).
+- 사용자는 이제 PC(`C:\Users\사용자\Desktop\윤실장`)에서 작업하고 원격에 올림. 실행 도구 묶음 yoonsiljang-tools(파이썬 wheel·Playwright 1.56.1·axe-core 4.10.2,
+  설치 스크립트)는 코드 폴더 옆에 둠 — 저장소에는 없음. 화면 시험은 `PLAYWRIGHT`·`AXE`·`PLAYWRIGHT_BROWSERS_PATH` 환경 변수로 그 위치를 씀.
 
 ## 2026-10-15 (채팅 A) 사용자 결정
 - `docs/VERIFIED_FEATURE_INVENTORY.md`는 A가 맡는다(주인표 A 줄).
