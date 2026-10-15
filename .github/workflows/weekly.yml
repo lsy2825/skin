@@ -304,7 +304,7 @@ jobs:
   price_alerts:
     needs: update
     if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     permissions:
       contents: read
     timeout-minutes: 10
