@@ -1,0 +1,31 @@
+// 가격 공장 관리자 — deploy with:  npx wrangler@4.145.0 deploy --config cf/factory/wrangler.jsonc
+// Needs the Workers Paid plan (Containers, Artifacts). Secrets (set once, never in this file):
+//   npx wrangler@4.145.0 secret put RUN_SECRET        --config cf/factory/wrangler.jsonc   (for manual POST /run)
+//   npx wrangler@4.145.0 secret put CF_DEPLOY_TOKEN   --config cf/factory/wrangler.jsonc   (the box deploys app/ with it)
+//   npx wrangler@4.145.0 secret put CF_ACCOUNT_ID     --config cf/factory/wrangler.jsonc
+// DRY_RUN "1" = trial period: the box runs everything but pushes and deploys nothing (docs/CLOUDFLARE_MIGRATION.md).
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang-factory",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-13",
+  "observability": { "enabled": true },
+  "triggers": { "crons": ["0 21 * * *"] },
+  "containers": [
+    {
+      "class_name": "Factory",
+      "scheduling_policy": "durable_object",   // one Durable Object ("main") → one box at a time
+      "images": { "factory": { "dockerfile": "./Dockerfile" } }
+    }
+  ],
+  "durable_objects": { "bindings": [{ "name": "FACTORY", "class_name": "Factory" }] },
+  "exports": { "Factory": { "type": "durable-object", "storage": "sqlite" } },
+  "artifacts": [{ "binding": "ARTIFACTS", "namespace": "default" }],
+  "queues": { "consumers": [{ "queue": "skin-pushes", "max_batch_size": 10, "max_batch_timeout": 30 }] },
+  "vars": {
+    "REPO_NAME": "skin",
+    "INSTANCE": "basic",
+    "FACTORY_URL": "https://yoonsiljang-factory.lsy2825.workers.dev",
+    "DRY_RUN": "1"
+  }
+}

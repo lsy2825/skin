@@ -33,40 +33,17 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
-      - name: Decide
+      # The whole factory run is tools/factory.sh — the same script the Cloudflare factory box runs (cf/factory,
+      # docs/CLOUDFLARE_MIGRATION.md): decide (schedule only) → unit tests + secret scan → scrape/build → review queue →
+      # save to main → deploy app/ to Cloudflare when the token is set (the script hides the token from the build steps).
+      - name: Factory (decide, test, scrape/build, save, deploy to Cloudflare)
         id: decide
-        run: |
-          if [ "${{ github.event_name }}" = "schedule" ]; then python build2/needs_refresh.py; else echo "run=true" >> "$GITHUB_OUTPUT"; fi
-      - if: steps.decide.outputs.run == 'true'
-        run: pip install -r requirements.txt
-      - name: Unit tests (price calculation, comparison keys, treatment taxonomy, knowledge base, source re-check matching) + secret scan
-        if: steps.decide.outputs.run == 'true'
-        run: |
-          node --test tests/*.test.js
-          python build2/xkeys.py
-          python tests/weekly_guard_test.py
-          python build2/taxonomy.py
-          python build2/knowledge.py
-          python tests/security/scan_secrets.py
-          python tests/verify_prices_test.py
-      - name: Scrape, check, build
-        if: steps.decide.outputs.run == 'true'
-        run: python build2/weekly.py ${{ (github.event_name == 'push' || inputs.skip_scrape) && '--skip-scrape' || '' }}
+        run: bash tools/factory.sh "$FACTORY_MODE"
         env:
-          PYTHONUTF8: "1"
-      - name: Classification review queue + alias table (docs/TREATMENT_TAXONOMY.md; read-only on the data)
-        if: steps.decide.outputs.run == 'true'
-        run: node tools/review_queue.js
-      - name: Save accepted data, snapshots and report
-        if: steps.decide.outputs.run == 'true'
-        run: |
-          git config user.name "weekly-prices bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add data2/accepted data2/history data2/geocache.json data2/branches.csv data2/issues.csv data2/report.md app/data.json app/data-meta.json app/home.json app/review.json docs/CLASSIFICATION_REVIEW_QUEUE.csv docs/PRODUCT_ALIAS_MAPPING.csv
-          for f in data2/sources.json data2/review.csv; do if [ -f "$f" ]; then git add "$f"; fi; done
-          git diff --cached --quiet || git commit -m "${{ (github.event_name == 'push' || inputs.skip_scrape) && 'Rebuild app data' || 'Weekly prices' }} $(date -u +%F)"
-          git pull --rebase -X theirs origin main   # another run may have pushed meanwhile
-          git push
+          FACTORY_MODE: ${{ github.event_name == 'schedule' && 'weekly' || ((github.event_name == 'push' || inputs.skip_scrape) && 'rebuild' || 'scrape') }}
+          FACTORY_INSTALL: "1"
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
       - name: Summary
         if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
@@ -74,22 +51,6 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         with:
           path: app
-      # Cloudflare Workers static assets (wrangler.jsonc) — the same app/ folder. Runs only when the account is connected
-      # (repository secrets CLOUDFLARE_API_TOKEN with 'Edit Cloudflare Workers' and CLOUDFLARE_ACCOUNT_ID); otherwise it
-      # says so and GitHub Pages stays the only host. Wrangler pinned to a release more than two weeks old.
-      - name: Deploy to Cloudflare
-        if: steps.decide.outputs.run == 'true'
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
-          # only whether a same-named Variable exists (never its value) — the usual mistake is saving under the Variables tab
-          VAR_TOKEN_SET: ${{ vars.CLOUDFLARE_API_TOKEN != '' }}
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            s() { [ -n "$1" ] && echo set || echo missing; }
-            echo "::notice title=Cloudflare::skipped (GitHub Pages still serves) — repository secret CLOUDFLARE_API_TOKEN: $(s "$CLOUDFLARE_API_TOKEN"), CLOUDFLARE_ACCOUNT_ID: $(s "$CLOUDFLARE_ACCOUNT_ID"), Variable CLOUDFLARE_API_TOKEN exists: $VAR_TOKEN_SET"; exit 0
-          fi
-          npx --yes wrangler@4.145.0 deploy
   deploy:
     needs: update
     if: needs.update.outputs.run == 'true'

@@ -21,8 +21,9 @@ scrape/sources.py ─▶ data2/sources.json (Source Policy Registry: robots.txt 
                                           │  급변(±90%/×10) 가격 → data2/review.csv 검토 대기, 승인 data2/review_ok.csv
                                           │  초저가 원본 대조 결과 data2/price_checks.csv → meta.checks (D15)
                                           ▼
-GitHub Actions(weekly.yml) ── 매일 06:00 KST 판단(build2/needs_refresh.py): 월요일 또는 저장된 이벤트가 끝났으면 수집
-                              → 단위 테스트(node --test) → 빌드 → 커밋 → GitHub Pages 배포 / app·build2·tests·knowledge 변경 push 시 수집 없이 재배포
+tools/factory.sh(가격 공장 한 번) ── 매일 06:00 KST 판단(build2/needs_refresh.py): 월요일 또는 저장된 이벤트가 끝났으면 수집
+                              → 단위 테스트(node --test) → 빌드 → 커밋 → Cloudflare 배포 / app·build2·tests·knowledge 변경 push 시 수집 없이 재배포
+   돌리는 곳: 지금 GitHub Actions(weekly.yml, + GitHub Pages) → 이사 후 Cloudflare 상자(cf/factory) — docs/CLOUDFLARE_MIGRATION.md
 GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저가 원본 다시 읽기 → 결과 커밋 → 수집 없이 재빌드(weekly.yml skip_scrape)
                                           ▼
                  app/ (정적 PWA, 프레임워크 없음) ── 휴대폰 홈 화면 앱, 오프라인 캐시(sw.js), 비밀번호 화면(gate.js)
@@ -36,7 +37,7 @@ GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저
 |---|---|---|
 | 수집 | Python 3.12, requests, BeautifulSoup | `scrape/` (블리비·쁨·톡스앤필·리엔장, 포에버는 일시 중지) |
 | 정리·정규화 | Python | `build2/clean.py`, `xkeys.py`, `groups.py` |
-| 배포·스케줄 | GitHub Actions, GitHub Pages | `.github/workflows/weekly.yml` |
+| 배포·스케줄 | `tools/factory.sh` 하나를 GitHub Actions(지금)·Cloudflare Containers(이사 후)가 돌림. 앱은 Cloudflare Workers 정적 파일(+ 이사 전까지 GitHub Pages) | `tools/factory.sh`, `cf/factory/`, `wrangler.jsonc`, `.github/workflows/weekly.yml` |
 | 프런트 | 바닐라 JS(`app.js` 약 3,300줄 + `domain/` 약 570줄), Leaflet(OSM), Pretendard·Lucide | `app/` |
 | 사용자 데이터 | 기기 localStorage(`pc:` 접두사). Supabase(Postgres+Auth)는 준비만 | `app/auth.js`, `supabase/schema.sql` |
 | 테스트 | node:test(단위), Python 자체 테스트(xkeys·taxonomy·knowledge), Playwright(E2E·QA·접근성, 로컬 실행) | `tests/`, `tests/e2e/` |
