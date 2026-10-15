@@ -278,6 +278,15 @@
   // cheapest row for key k at branch b under the current settings (special: override st.special)
   // r[17] visit-condition state for the chosen visit date/time (Pricing.condState): 0 ok · 1 not valid then · 2 time unclear
   const live = (i) => !ROWS[i][15] && ROWS[i][17] !== 1;
+  // rows that repeat an earlier row exactly as shown (branch, product name ignoring spacing/case, price, kind, tags, end date):
+  // the same product collected from two pages. Lists and their counts skip them (audit U10, E4); computed once per data load.
+  let dupMemo = null;
+  const dupRows = () => {
+    if (dupMemo && dupMemo.rows === ROWS) return dupMemo.set;
+    const idx = ROWS.map((_, i) => i), keep = new Set(Search.uniqueRows(idx, (i) => { const r = ROWS[i]; return [r[0], S[r[2]], `${r[3]}|${r[5]}|${r[6]}|${r[10]}`]; }));
+    dupMemo = { rows: ROWS, set: new Set(idx.filter((i) => !keep.has(i))) };
+    return dupMemo.set;
+  };
   // a price that can set a group's range, middle and lowest: VAT basis known (r[12] 0 = the site's VAT note was not found,
   // so +10% may or may not apply — audit U6, E6) and not an add-on sold only with another treatment (audit U10, E5).
   // Such rows stay in every list with a badge; a branch whose only prices are such rows is still listed.
@@ -1960,7 +1969,7 @@
     const attOn = toks.length > 0 || f.cat >= 0 || f.atts.length > 0;   // the whole table's attributes say little; shown once narrowed
     const pr = [], qOn = cq && !cq.empty;
     withGate(f, () => { for (let i = 0; i < ROWS.length; i++) {
-      if (!(f.old ? ROWS[i][17] !== 1 : live(i)) || !(GATE.arr[ROWS[i][0]] & 1)) continue;
+      if (dupRows().has(i) || !(f.old ? ROWS[i][17] !== 1 : live(i)) || !(GATE.arr[ROWS[i][0]] & 1)) continue;   // a row collected twice counts once (E4)
       if (qOn && !cq.test(normBySid.get(ROWS[i][2]))) continue;   // every count below needs the words too
       const all = rowPasses(i, f, cq);
       if (all) hits.push(i);
@@ -2078,7 +2087,6 @@
     else if (f.sort === "priceDesc") hits.sort((a, b) => ROWS[b][3] - ROWS[a][3] || tie(a, b));
     else if (f.sort === "region") hits.sort((a, b) => regionCmp(ROWS[a][0], ROWS[b][0]) || S[ROWS[a][2]].localeCompare(S[ROWS[b][2]], "ko") || ROWS[a][3] - ROWS[b][3]);
     else hits.sort((a, b) => ROWS[a][3] - ROWS[b][3] || tie(a, b));
-    hits = Search.uniqueRows(hits, (i) => [ROWS[i][0], S[ROWS[i][2]], ROWS[i][3]]);   // the same product and price collected twice is one line (E4)
     if (cq && (cq.ops || cq.warn.length)) box.append(queryCard(cq));
     if (cq && cq.fixes.length) box.append(h("div", { class: "note" }, cq.fixes.map(([a, b]) => `‘${a}’ 대신 ‘${b}’로 찾았어요. `), h("button", { class: "linkbtn", type: "button", onclick: () => go({ exact: true }) }, "입력한 그대로 찾기")));
     if (unitInfo && unitInfo.units.length > 1) box.append(h("div", { class: "chips" }, unitInfo.units.map(([u, n]) => h("button", { class: "chip", type: "button", "aria-pressed": u === unitInfo.unit ? "true" : "false", onclick: () => go({ unit: u, sort: "unit" }) }, `${u === "샷" ? "100샷" : u === "U" ? "10U" : "1" + u}당 · ${n}개`))));
@@ -3288,8 +3296,7 @@
       const vm = (i) => { if (!pos.has(i)) pos.set(i, rowPos(i)); const x = pos.get(i); return x ? x.vsMed : 9; };
       const disc = (i) => ROWS[i][4] ? (ROWS[i][4] - ROWS[i][3]) / ROWS[i][4] : 0;
       const so = { cat: (a, c) => ROWS[a][1] - ROWS[c][1] || ROWS[a][3] - ROWS[c][3], price: (a, c) => ROWS[a][3] - ROWS[c][3], priceDesc: (a, c) => ROWS[c][3] - ROWS[a][3], med: (a, c) => vm(a) - vm(c), disc: (a, c) => disc(c) - disc(a) }[st.bsort];
-      const shown = Search.uniqueRows(rows.filter((i) => (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort((a, c) => (ROWS[a][15] ? 1 : 0) - (ROWS[c][15] ? 1 : 0) || so(a, c)),
-        (i) => [ROWS[i][0], S[ROWS[i][2]], ROWS[i][3]]);   // the same product and price collected twice is one line (E4)
+      const shown = rows.filter((i) => !dupRows().has(i) && (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort((a, c) => (ROWS[a][15] ? 1 : 0) - (ROWS[c][15] ? 1 : 0) || so(a, c));   // a row collected twice is one line (E4)
       list.replaceChildren(...shown.slice(0, 400).map((i) => { const r = ROWS[i];
         return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
           h("span", { class: "m" }, D.meta.cats[r[1]], listS(r), r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round((r[4] - r[3]) / r[4] * 100)}%↓`) : null, kindBadge(r),
