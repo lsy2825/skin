@@ -2509,7 +2509,7 @@
     const s2 = step(amts.length > 1 ? ++n : n, "용량·부위", amts, me.amt, (v) => v, (v) => pick({ ...me, amt: v, fix: ["kind", "amt"] }));
     const s3 = step(sesss.length > 1 ? ++n : n, "횟수", sesss, me.sess, (v) => (v === 1 ? "1회" : `${v}회 묶음`), (v) => pick({ ...me, sess: v, fix: ["kind", "amt", "sess"] }));
     return h("div", { class: "vsteps" }, s1, s2, s3, !s1 && !s2 && !s3 ? h("div", { class: "sub" }, "고를 옵션이 하나뿐이에요.") : null,
-      h("p", { class: "tiny", style: "margin:6px 0 0" }, `지금 비교: ${KEYS[cur].label} · ${byKB[cur].size}곳`));
+      h("p", { class: "tiny", style: "margin:6px 0 0" }, `지금 비교: ${KEYS[cur].label} · 전국 ${byKB[cur].size}곳에서 팔아요`));
   }
   function variantRows(groups, cur, scroll) {
     return h("div", { class: "vrows" }, groups.map(([g, xs]) => h("div", { class: "vrow" }, h("span", { class: "vg" }, g),
@@ -2821,7 +2821,7 @@
   const defaultKey = () => { for (const c of CMP_CATS) { const i = KI[CAT_START[c]]; if (i != null) return i; } return FAM.length ? FAM[0].main : 0; };
   // the price range on one track with the middle price marked (6.0 design ②: one small distribution bar in the price card)
   function rangeBar(lo, hi, med) {
-    if (!(hi > lo) || med == null) return null;
+    if (!(hi > lo) || med == null || med < lo || med > hi) return null;   // a middle outside the drawn range (low outliers) is not pinned to an edge
     const at = Math.max(0, Math.min(100, (med - lo) / (hi - lo) * 100));
     return h("div", { class: "rangebar", role: "img", "aria-label": `가격 범위 ${won(lo)}~${won(hi)} 중 중간값 ${won(med)}` },
       h("span", { class: "mid", style: `left:${at.toFixed(1)}%` }), h("span", { class: "midl", style: `left:${Math.max(12, Math.min(88, at)).toFixed(1)}%` }, `중간 ${man(med)}원`));
@@ -2835,16 +2835,16 @@
       const t = d ? d.querySelector("summary") : el.querySelector(".vchip[aria-checked=true], .vchip[aria-pressed=true], h3"); if (t) { if (!t.matches("button, summary")) t.tabIndex = -1; t.focus({ preventScroll: true }); } };
     const seg = (t, other) => h("button", { type: "button", onclick: () => jump(other), "aria-label": `${t} — ${other ? "다른 시술 고르기" : "규격 바꾸기"}로 가기` }, t);
     const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, "›");
-    const basis = N ? `${regionName()} · ${N.ptop ? "일반가" : "조건부 가격"} · ${N.prices.length}곳 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`
+    const basis = N ? `${regionName()} · ${N.ptop ? "조건 없는 가격" : "조건부 포함"} · ${N.prices.length}곳 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`
       : `${regionName()} · 이 조건의 가격이 없어요`;
     return h("section", { class: "cmphead", "aria-label": "지금 비교하는 시술" },
       h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, true), sep(), seg(fam ? fam.f.name : k.label, true),
         fam && fam.label !== k.label && fam.label !== fam.f.name ? [sep(), seg(fam.label, false)] : null),
-      h("div", { class: "tline" }, h("h1", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
+      h("div", { class: "tline" }, h("h2", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
       h("div", { class: "basis" }, basis),
       h("div", { class: "hrow" }, h("div", { class: "hmed num" }, N ? [h("span", {}, "중간값"), won(N.med)] : null),
         rk.length ? addBtn(k.i, fam ? fam.label : k.label) : null,
-        h("button", { class: "morebtn", type: "button", "aria-label": "더 보기: 알림·지도·복사·공유·체크리스트·저장·빠른 비교", onclick: () => cmpMoreSheet(k, rk, N) }, icon("ellipsis", "sm"))));
+        h("button", { class: "morebtn", type: "button", "aria-label": "더 보기", "aria-haspopup": "dialog", onclick: () => cmpMoreSheet(k, rk, N) }, icon("ellipsis", "sm"))));
   }
   // a fold of the compare screen that stays open across redraws of the same procedure (♡, 담기, settings all call render())
   function cmpFold(name, k, title, ...kids) {
@@ -2954,7 +2954,7 @@
         h("div", { class: "spec" }, h("span", { class: "k ok" }, icon("check", "xs"), "같은 조건끼리 비교")),   // the procedure's name is in the sticky header
         mixNote(k.i),
         HL ? h("div", { class: "hero" },
-          h("span", { class: "hl" }, ptop ? `현재 최저가 · 조건 없는 가격 ${plain.length}곳 중` : `조건이 붙은 가격만 있어요 · ${rk.length}곳`),
+          h("span", { class: "hl" }, ptop ? `현재 최저가 · 조건 없는 가격 ${plain.length}곳 중` : `조건이 붙은 가격만 있어요 · ${prices.length}곳`),
           h("span", { class: `hp num${tick ? " tick" : ""}` }, won(top.p)),
           h("span", { class: "hb" }, bdot(top.b), bname(top.b), top.d != null ? h("span", { class: "sub" }, km(top.d)) : null),
           h("div", { class: "meta" }, h("span", {}, S[r0[2]]), kindBadge(r0).slice(0, 3), h("span", {}, listedTxt(r0) || (st.vat === "incl" ? "부가세 포함 예상가" : "병원 표시가")), h("span", {}, `${fresh(top.b).d} 확인`)),
