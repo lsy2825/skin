@@ -7,15 +7,34 @@
     const { h, fill, icon, won, store, views, FLAGS, fresh, verified, recheckQueue, bdot, bname, kbOf, loadCommerce, nav } = App;
     const Classify = window.Classify;
     // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy) — behind the PIN screen
-    // 수집 실행 상태 (docs/ADMIN_OPERATIONS_SPEC.md §3): the last weekly-prices runs from GitHub's public API, asked only when
-    // the button is pressed (60 requests an hour per IP without a token — no token is ever put in the app)
+    // 수집 실행 상태 (docs/ADMIN_OPERATIONS_SPEC.md §3), asked only when the button is pressed, no token ever in the app:
+    // first the Cloudflare factory's /status (cf/factory, docs/CLOUDFLARE_MIGRATION.md), then — while the move is under way, or
+    // if that answers nothing — GitHub's public API for weekly.yml (60 requests an hour per IP; unreadable once the repo is private)
+    const FACTORY_STATUS = "https://yoonsiljang-factory.lsy2825.workers.dev/status";
     const RUN_API = "https://api.github.com/repos/lsy2825/skin/actions/workflows/weekly.yml/runs?per_page=5";
     const runState = (r) => r.status === "in_progress" ? "RUNNING" : r.status !== "completed" ? "QUEUED" : r.conclusion === "success" ? "SUCCESS" : "FAILED";
-    const RUN_EVT = { schedule: "예약", push: "코드 반영", workflow_dispatch: "수동" };
+    const RUN_EVT = { schedule: "예약", push: "코드 반영", workflow_dispatch: "수동", manual: "수동" };
+    const CF_STATE = { running: "RUNNING", ok: "SUCCESS", skipped: "SKIPPED", failed: "FAILED", stopped: "FAILED" };
+    const runRow = (state, when, why, link) => h("li", { class: "runst" }, h("span", { class: `k ${state === "SUCCESS" ? "ok" : state === "FAILED" ? "kx" : ""}` }, state),
+      h("span", {}, `${String(when || "").replace("T", " ").slice(0, 16)} UTC · ${RUN_EVT[why] || why || ""}`), link || "");
+    async function factoryRuns() {   // → list of rows, or null when the Cloudflare factory is not answering (not set up yet)
+      try {
+        const res = await fetch(FACTORY_STATUS, { cache: "no-store" });
+        if (!res.ok) return null;
+        const S = await res.json();
+        const all = [S.current, ...(Array.isArray(S.runs) ? S.runs : [])].filter((r) => r && typeof r === "object").slice(0, 5);
+        return all.map((r) => runRow(CF_STATE[r.state] || "FAILED", r.startedAt, r.why, r.step && r.state !== "ok" && r.state !== "running" ? h("span", { class: "tiny" }, String(r.step)) : null));
+      } catch (e) { return null; }
+    }
     function runStatusCard() {
-      const out = h("div", { "aria-live": "polite" }, h("div", { class: "sub" }, "버튼을 누르면 GitHub에서 최근 실행 5개를 한 번 읽어 와요."));
+      const out = h("div", { "aria-live": "polite" }, h("div", { class: "sub" }, "버튼을 누르면 가격 공장(Cloudflare, 없으면 GitHub)에서 최근 실행 5개를 한 번 읽어 와요."));
       const btn = h("button", { class: "btn sm gray", type: "button", onclick: async () => {
         btn.disabled = true; fill(out, h("div", { class: "sub" }, "확인하는 중…"));
+        const cf = await factoryRuns();
+        if (cf) {
+          fill(out, h("div", { class: "tiny" }, "Cloudflare 가격 공장"), cf.length ? h("ul", { class: "plain runs" }, cf) : h("div", { class: "sub" }, "실행 기록이 없어요."));
+          btn.disabled = false; return;
+        }
         try {
           const res = await fetch(RUN_API, { headers: { Accept: "application/vnd.github+json" }, cache: "no-store" });
           if (res.status === 403 || res.status === 429) {
@@ -24,17 +43,15 @@
           } else if (!res.ok) fill(out, h("div", { class: "sub" }, `확인하지 못했어요(HTTP ${res.status}). 상태를 짐작해서 보여주지 않아요.`));
           else {
             const runs = ((await res.json()).workflow_runs || []).slice(0, 5);
-            fill(out, runs.length ? h("ul", { class: "plain runs" }, runs.map((r) => { const s2 = runState(r);
-              return h("li", { class: "runst" }, h("span", { class: `k ${s2 === "SUCCESS" ? "ok" : s2 === "FAILED" ? "kx" : ""}` }, s2),
-                h("span", {}, `${(r.run_started_at || r.created_at || "").replace("T", " ").slice(0, 16)} UTC · ${RUN_EVT[r.event] || r.event}`),
-                h("a", { href: /^https:\/\/github\.com\//.test(r.html_url || "") ? r.html_url : "https://github.com/lsy2825/skin/actions", target: "_blank", rel: "noopener noreferrer" }, "자세히", icon("external-link", "xs"))); }))
+            fill(out, h("div", { class: "tiny" }, "GitHub Actions"), runs.length ? h("ul", { class: "plain runs" }, runs.map((r) => runRow(runState(r), r.run_started_at || r.created_at, r.event,
+                h("a", { href: /^https:\/\/github\.com\//.test(r.html_url || "") ? r.html_url : "https://github.com/lsy2825/skin/actions", target: "_blank", rel: "noopener noreferrer" }, "자세히", icon("external-link", "xs")))))
               : h("div", { class: "sub" }, "실행 기록이 없어요."));
           }
         } catch (e) { fill(out, h("div", { class: "sub" }, "연결이 안 돼 확인하지 못했어요. 상태를 짐작해서 보여주지 않아요.")); }
         btn.disabled = false;
       } }, icon("refresh-cw", "sm"), "최근 수집 실행 확인");
       return h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "수집 실행 상태"), h("span", { class: "sp" }), btn),
-        h("p", { class: "tiny", style: "margin:4px 0 8px" }, "QUEUED·RUNNING·SUCCESS·FAILED·RATE_LIMITED는 GitHub Actions가 알려준 그대로예요. 앱에서 수집을 시작하는 버튼은 없어요(저장소 권한이 필요해요)."), out);
+        h("p", { class: "tiny", style: "margin:4px 0 8px" }, "QUEUED·RUNNING·SUCCESS·SKIPPED(오늘은 수집할 날이 아님)·FAILED·RATE_LIMITED는 가격 공장이 알려준 그대로예요. 앱에서 수집을 시작하는 버튼은 없어요(관리 비밀키가 필요해요)."), out);
     }
     // 분류 검토 센터 (docs/ADMIN_OPERATIONS_SPEC.md §4): app/review.json from tools/review_queue.js — read-only; decisions are
     // made in the repository files named in each item, and show up after the next build

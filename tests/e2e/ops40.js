@@ -15,10 +15,21 @@ const REV = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', '
   const b = await chromium.launch();
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message));
-  const outside = []; p.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(BASE).origin && !/tile\.openstreetmap|api\.github\.com/.test(u.host)) outside.push(u.host); });
+  const outside = []; p.on('request', (r) => { const u = new URL(r.url()); if (u.origin !== new URL(BASE).origin && !/tile\.openstreetmap|api\.github\.com|yoonsiljang-factory\./.test(u.host)) outside.push(u.host); });
   await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
+  // the Cloudflare factory's /status (cf/factory): 'off' = not set up yet (404) → the screen falls back to GitHub
+  let cfMode = 'off'; let ghAsked = 0;
+  await p.route(/yoonsiljang-factory\.lsy2825\.workers\.dev/, (r) => {
+    if (cfMode === 'off') return r.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: '{}' });
+    return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({
+      current: { id: 'c', mode: 'rebuild', why: 'push', startedAt: '2026-10-20T01:00:00.000Z', state: 'running' },
+      runs: [{ id: 'b', mode: 'weekly', why: 'schedule', startedAt: '2026-10-19T21:00:00.000Z', state: 'ok', step: 'weekly' },
+        { id: 'a', mode: 'weekly', why: 'schedule', startedAt: '2026-10-18T21:00:00.000Z', state: 'skipped', step: 'weekly' },
+        { id: 'z', mode: 'price-check', why: 'manual', startedAt: '2026-10-17T21:00:00.000Z', state: 'failed', step: '<img src=x onerror=alert(1)>' }] }) });
+  });
   let mode = 'ok';
   await p.route(/api\.github\.com/, (r) => {
+    ghAsked++;
     if (mode === 'limit') return r.fulfill({ status: 403, headers: { 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': String(Math.floor(Date.UTC(2026, 9, 14, 5, 0) / 1000)), 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-ratelimit-reset' }, body: '{}' });
     if (mode === 'down') return r.abort('internetdisconnected');
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ workflow_runs: [
@@ -47,6 +58,12 @@ const REV = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', '
   mode = 'down'; await card.locator('button', { hasText: '최근 수집 실행 확인' }).click(); await p.waitForTimeout(800);
   const t3 = await card.innerText();
   ok('O5 연결 실패 → "확인하지 못했어요"(상태를 지어내지 않음)', /확인하지 못했어요/.test(t3) && await card.locator('.runst').count() === 0);
+  // Cloudflare factory answering: its states as given, GitHub not asked, text from the factory stays text
+  cfMode = 'ok'; mode = 'ok'; const ghBefore = ghAsked;
+  await card.locator('button', { hasText: '최근 수집 실행 확인' }).click(); await p.waitForTimeout(800);
+  const st4 = await card.locator('.runst .k').allTextContents(), t4 = await card.innerText();
+  ok('O5b Cloudflare 공장 → RUNNING·SUCCESS·SKIPPED·FAILED 그대로, GitHub에 묻지 않음', st4.join(',') === 'RUNNING,SUCCESS,SKIPPED,FAILED' && /Cloudflare/.test(t4) && /코드 반영/.test(t4) && /수동/.test(t4) && ghAsked === ghBefore, st4.join(',') + ' gh+' + (ghAsked - ghBefore));
+  ok('O5c 공장이 보낸 글자는 글자로만(HTML 아님)', !(await card.locator('img').count()) && t4.includes('<img src=x'));
 
   // 2) review center: read-only, numbers = review.json
   const rc = p.locator('.card', { hasText: '분류 검토 센터' });

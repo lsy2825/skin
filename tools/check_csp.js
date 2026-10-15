@@ -9,6 +9,8 @@ const dir = path.resolve(process.argv[2] || path.join(__dirname, "../app"));
 const html = fs.readFileSync(path.join(dir, "index.html"), "utf8");
 const cfgSrc = fs.readFileSync(path.join(dir, "config.js"), "utf8");
 const TOSS_ORIGINS = ["https://js.tosspayments.com", "https://api.tosspayments.com"];
+// read-only origins the app calls on its own, not the commerce API: the price factory's run status (app/screens/ops.js)
+const KNOWN_ORIGINS = ["https://yoonsiljang-factory.lsy2825.workers.dev"];
 
 function check(htmlText, cfgText) {
   const m = /<meta http-equiv="Content-Security-Policy" content="([^"]+)"/.exec(htmlText);
@@ -28,7 +30,7 @@ function check(htmlText, cfgText) {
     for (const o of TOSS_ORIGINS) if (!allows(script, o) && !allows(connect, o)) problems.push(`Toss origin ${o} is not allowed (script-src/connect-src)`);
     notes.push("Toss origins are taken from the integration guide as read on 2026-10-14 — re-check before the sandbox run");
   }
-  if (!api && connect.some((x) => /workers\.dev|yoonsiljang/.test(x))) problems.push("connect-src allows an API origin but commerce.apiBase is empty");
+  if (!api && connect.some((x) => /workers\.dev|yoonsiljang/.test(x) && !KNOWN_ORIGINS.includes(x))) problems.push("connect-src allows an API origin but commerce.apiBase is empty");
   if (script.some((x) => x === "'unsafe-inline'" || x === "'unsafe-eval'")) problems.push("script-src must not allow inline/eval scripts");
   return { ok: !problems.length, problems, notes, connect, api };
 }
