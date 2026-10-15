@@ -331,5 +331,16 @@
   }
   const attrGroup = (name) => (ATTRS.find(([, list]) => list.some(([n]) => n === name)) || [""])[0];
 
-  return { ALIASES, norm, jamo, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup, qtys, compile, hasOps, choOf, choWord };
+  // one line per (branch, product name, price): the same product collected twice (two pages, or names that differ only in
+  // spacing or letter case) is shown once (audit U10, E4·E10). idxs keep their order; key(i) → [branch, name, price].
+  function uniqueRows(idxs, key) {
+    const seen = new Set(), out = [];
+    for (const i of idxs) {
+      const [b, name, price] = key(i), k = `${b}|${String(name || "").replace(/\s+/g, "").toLowerCase()}|${price}`;
+      if (!seen.has(k)) { seen.add(k); out.push(i); }
+    }
+    return out;
+  }
+
+  return { ALIASES, norm, jamo, uniqueRows, lev, buildIndex, parse, matches, suggest, unitOf, unitPrice, interpret, ATTRS, attrsOf, attrGroup, qtys, compile, hasOps, choOf, choWord };
 });

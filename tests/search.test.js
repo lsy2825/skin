@@ -139,3 +139,11 @@ test("operators: speed — 60k names in well under a second", () => {
   assert.ok(Date.now() - t0 < 1000, `${Date.now() - t0} ms`);
   assert.ok(n > 0);
 });
+
+test("uniqueRows: the same branch, product and price is one line; spacing and case do not make a new line", () => {
+  const rows = [[0, "리쥬란 힐러 2cc", 200000], [0, "리쥬란힐러 2cc", 200000], [0, "리쥬란 힐러 2CC", 200000], [0, "리쥬란 힐러 2cc", 210000],
+    [1, "리쥬란 힐러 2cc", 200000], [0, "리쥬란 힐러 4cc", 200000]];
+  assert.deepEqual(S.uniqueRows([0, 1, 2, 3, 4, 5], (i) => rows[i]), [0, 3, 4, 5]);
+  assert.deepEqual(S.uniqueRows([3, 1, 0], (i) => rows[i]), [3, 1]);   // order kept, the first one wins
+  assert.deepEqual(S.uniqueRows([], (i) => rows[i]), []);
+});

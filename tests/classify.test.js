@@ -53,3 +53,9 @@ test("every class has a label, a comparison level and a sentence", () => {
     assert.ok(["direct", "caution", "reference", "never"].includes(v.cmp), k);
   }
 });
+
+test("isAddon: options sold only with another treatment stay out of a group's range and middle", () => {
+  for (const n of ["옵션)히알라제(필러 녹이는 주사) 추가", "옵션) 항문 제모 1회 추가", "옵션2) 큐어스템 엑소좀 1회 추가",
+    "포텐자 · 옵션1) 일반 팁 추가", "보톡스(국산 일반형) · 옵션)수면마취 추가", "[추가] 이마 보톡스"]) assert.equal(Classify.isAddon(n), true, n);
+  for (const n of ["히알라제(필러 녹이는 주사)", "리쥬란 HB 플러스 2cc", "포텐자 1회", "", undefined]) assert.equal(Classify.isAddon(n), false, String(n));
+});
