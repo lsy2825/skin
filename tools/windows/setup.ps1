@@ -102,6 +102,9 @@ $logStarted = $false
 try {
   # 바탕 화면이 OneDrive로 옮겨진 PC: 보이는 바탕 화면은 OneDrive 안이고 C:\Users\<사용자>\Desktop은 화면에 안 보인다.
   # 저장소는 OneDrive 밖(동기화가 .git을 건드리면 잠금·충돌)인 C:\Users\<사용자>\윤실장에 받고, 보이는 바탕 화면에 바로가기를 둔다.
+  # 이미 받아 둔 저장소가 있으면 그곳을 쓴다(바탕 화면 설정을 나중에 바꿔도 두 번째 사본을 받지 않게)
+  $alt = Join-Path $env:USERPROFILE '윤실장'
+  if (-not $PSBoundParameters.ContainsKey('RepoDir') -and -not (Test-Path (Join-Path $RepoDir '.git')) -and (Test-Path (Join-Path $alt '.git'))) { $RepoDir = $alt }
   $desk = [Environment]::GetFolderPath('Desktop')
   $deskMoved = $desk -and ($desk.TrimEnd('\') -ne (Join-Path $env:USERPROFILE 'Desktop'))
   if ($deskMoved -and -not $PSBoundParameters.ContainsKey('RepoDir') -and -not (Test-Path $RepoDir)) {
@@ -164,12 +167,16 @@ try {
   # 2) 저장소 받기. 줄바꿈은 저장소 그대로(core.autocrlf=false) — Windows식으로 바뀌면 bash 스크립트와 일부 시험이 멈춘다.
   Say "저장소 ($RepoUrl)"
   Close-Port
-  # .git만 있고 커밋(HEAD)이 없으면 받다가 끊긴 폴더다 → 아래 else에서 백업 이름으로 바꾸고 다시 받는다
+  # 받다가 끊긴 폴더는 아래 else에서 백업 이름으로 바꾸고 다시 받는다: .git만 있고 커밋(HEAD)이 없거나, 'Clone succeeded,
+  # but checkout failed'처럼 HEAD는 있는데 목록(index)이 안 만들어진 경우(그때는 파일 일부가 디스크에 있어도 git이 모른다)
   $haveRepo = $false
-  if (Test-Path (Join-Path $RepoDir '.git')) { $null = & $git -C $RepoDir rev-parse --verify -q HEAD; $haveRepo = ($LASTEXITCODE -eq 0) }
+  if (Test-Path (Join-Path $RepoDir '.git')) {
+    $null = & $git -C $RepoDir rev-parse --verify -q HEAD
+    $haveRepo = ($LASTEXITCODE -eq 0) -and [bool](& $git -C $RepoDir ls-files -- requirements.txt)
+  }
   if ($haveRepo) {
     if (-not (Test-Path (Join-Path $RepoDir 'requirements.txt'))) {
-      throw "저장소 파일이 다 풀리지 않았어요(받다가 끊김·디스크 부족·백신). Git Bash에서 $RepoDir 폴더를 열고 git status로 확인한 뒤 git restore --source=HEAD :/ 를 실행하고 다시 실행하세요."
+      throw "저장소 파일 일부가 디스크에 없어요(지워졌거나 디스크 부족·백신). 고친 것이 없으면 Git Bash에서 $RepoDir 폴더를 열고 git reset --hard 를 실행한 뒤 다시 실행하세요. 고친 것이 있으면 먼저 Claude에게 git status 화면을 보여 주세요."
     }
     & $git -C $RepoDir config core.autocrlf false
     Ok "이미 받은 저장소예요 — $RepoDir (최신으로 맞추기: Git Bash에서 git pull)"
@@ -200,6 +207,8 @@ try {
     $deskZip = Join-Path $desk '윤실장'
     if ((Test-Path $deskZip) -and -not (Test-Path (Join-Path $deskZip '.git'))) {
       Warn "바탕 화면의 '윤실장' 폴더는 git 저장소가 아니라 GitHub에 올릴 수 없어요. 앞으로는 $RepoDir ('윤실장 저장소' 바로가기)에서 작업하세요. 그 폴더에서 고친 파일은 2절처럼 git diff로 확인하며 옮기세요."
+    } elseif ((Test-Path (Join-Path $deskZip '.git')) -and ($deskZip.TrimEnd('\') -ne $RepoDir.TrimEnd('\'))) {
+      Warn "바탕 화면(OneDrive)의 '윤실장'도 git 저장소예요(예전에 받은 것). 그 폴더에서 git status와 git log --branches --not --remotes 로 올리지 않은 것이 없는지 보고, 있으면 push한 뒤 앞으로는 $RepoDir 에서 작업하세요."
     }
   }
   $results['저장소'] = $RepoDir

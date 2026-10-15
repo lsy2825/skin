@@ -124,7 +124,9 @@ test("second review round: another account's folder, winget text, half-finished 
   const wg = ps.slice(ps.indexOf("function Winget-Install"), ps.indexOf("function Find-Git"));
   assert.match(wg, /\[Console\]::OutputEncoding = New-Object System\.Text\.UTF8Encoding\(\$false\)/, "winget's UTF-8 text is read as UTF-8");
   assert.match(wg, /finally \{ try \{ \[Console\]::OutputEncoding = \$oldEnc \}/, "and the console encoding is put back");
-  assert.match(ps, /rev-parse --verify -q HEAD; \$haveRepo = \(\$LASTEXITCODE -eq 0\)/, "a .git folder without a commit is a half-finished clone");
+  assert.match(ps, /rev-parse --verify -q HEAD\s*\n\s*\$haveRepo = \(\$LASTEXITCODE -eq 0\) -and \[bool\]\(& \$git -C \$RepoDir ls-files -- requirements\.txt\)/, "no commit, or a commit without an index (checkout failed), is a half-finished clone");
+  assert.doesNotMatch(ps, /git restore --source=HEAD :\//, "that advice leaves the index missing; a commit after it deletes every other file");
+  assert.match(ps, /\$alt = Join-Path \$env:USERPROFILE '윤실장'\s*\n\s*if \(-not \$PSBoundParameters\.ContainsKey\('RepoDir'\) -and -not \(Test-Path \(Join-Path \$RepoDir '\.git'\)\) -and \(Test-Path \(Join-Path \$alt '\.git'\)\)\) \{ \$RepoDir = \$alt \}/, "an existing clone wins over the desktop setting");
   assert.match(ps, /if \(-not \(Test-Path \(Join-Path \$RepoDir 'requirements\.txt'\)\)\) \{\s*\n\s*throw /, "a clone whose checkout failed stops with what to do");
   assert.match(ps, /\[Environment\]::GetFolderPath\('Desktop'\)/, "the visible desktop is found (OneDrive moves it)");
   assert.match(ps, /\$RepoDir = Join-Path \$env:USERPROFILE '윤실장'/, "and the repository then goes outside OneDrive");
