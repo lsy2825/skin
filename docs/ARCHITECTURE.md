@@ -185,6 +185,83 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 - 서버와 이용 통계를 두지 않기로 해서(D1, 개인정보 최소 수집), 인기 검색어는 파는 지점이 많은 시술로 정해요.
 - 실제 검색량 순위는 서버 집계와 처리방침이 생긴 뒤에 할 수 있어요(`ADVANCED_UX_ROADMAP.md` P2).
 
+**D19. 가격 알림 푸시는 Cloudflare 무료 Worker + D1로, 내용 없는 주 1회 묶음으로 보낸다 (2026-10-15, A5).** 코드: `cf/alerts/`
+- 휴대폰(B) → `POST /v1/push/subscribe {subscription, rules}` → `{id}`(규칙 1~20개, 0개는 400). 저장하는 것은 무작위 id·푸시 endpoint·
+  규칙(시술 key·가격·지역)·보낸 날짜 몇 개뿐. 이름·전화·이메일·IP·UA·p256dh/auth는 저장하지 않아요(푸시에 내용이 없어 암호화 키가 필요 없음;
+  p256dh/auth는 모양만 검사). **구독 행에 '마지막으로 쓴 날'은 없어요**(`touched_day` 열 삭제, 2026-10-15 결정). `PUT /v1/push/rules/{id}`에
+  규칙 `[]`를 보내면 그 구독을 **삭제**해요(200 `{ok:true}`, 이후 그 id는 404 → 앱이 POST로 다시 구독). 지역은 시·도 17개 + `수도권`
+  (= 서울·경기·인천, 앱 `CAPITAL`과 같음).
+- 공장: `weekly.yml`의 **별도 job `price_alerts`**(Factory job 다음, A7의 텔레그램 job `alert` 뒤, 새 러너, 읽기 권한만, 설치 없음, 공장이
+  실패해도 돎). **코드와 데이터를 다른 곳에서 가져오고, 코드는 고정해요**: 코드(`notify.mjs`와 그것이 읽는 `app/domain/*.js`)는 저장소 변수
+  **`ALERTS_CODE_SHA`가 가리키는 커밋**이에요 — 사람이 알림 코드를 리뷰·머지한 뒤 직접 올리는 값이고, 공장의 `GITHUB_TOKEN`(`contents:
+  write`)은 main에 push할 수는 있어도 Actions 변수는 바꿀 수 없어요. `github.sha`는 쓰지 않아요(정기 실행의 `github.sha`는 main의 마지막
+  커밋이라, 공장이 리뷰 없이 올린 코드가 다음 06시 실행에서 토큰과 만나게 돼요). 변수가 비었거나 40자리 커밋 id가 아니면 job은 건너뛰고
+  notice만 남겨요. 데이터(`app/data.json`)는 main에서 일반 파일 하나만 복사해 `JSON.parse`해요(실행하지 않음, 심볼릭 링크 거절). 핀이 main
+  보다 뒤처지면(알림 코드나 `app/domain`이 main에서 달라짐) notice가 알려 줘요 — 오래된 코드는 형태 가드가 막아 무해하고, 사람이 리뷰한 뒤 변수를
+  올리면 따라잡아요. 그래서 `node code/cf/alerts/notify.mjs $RUNNER_TEMP/data.json`이 도는 코드는 늘 리뷰된 커밋이에요. Worker에서 **지켜보는 (시술, 지역) 쌍**만 받아, 앱 코드(`pricectx.js`·
+  `pricing.js`·`stats.js`)로 최저가·지점 수·중간값·3일 안에 끝나는 최저가를 계산해 숫자만 돌려보내요(쌍마다 그 key의 마지막 재분류일
+  `meta.recl`도 함께). 가격 기준은 **앱 알림 엔진과 같은 병원 표시가**(`app.js` `watchNow`가 `r[14]`로 비교, 특가 포함이 기본,
+  `ALERT_ENGINE_SPEC.md` §3) — 화면의 부가세 설정이나 `vat_policy.json` 변경으로 숫자가 움직이지 않아요. 그래서 규칙의 `max`도 병원
+  표시가예요. data.json의 key나 지점 지역이 `rules.js`의 `KEY_RE`·`REGIONS`에 안 맞으면(분류 규칙이 바뀐 경우) `::warning`만 남기고
+  **아무것도 보내지 않아요**(finish가 없어 `/health`의 `finished`가 멈추고, 2일이 지나면 `"stale":true`가 되어 A7 감시(`health_check.py`)가 텔레그램
+  경고를 보내요 — `notify.mjs`는 조용히(초록) 끝나므로 이 `stale`이 알아내는 유일한 길). `ALERTS_URL`은 https만(localhost 제외).
+  공장 job은 알림 토큰을 모릅니다. 실패해도 가격 빌드는 성공(경고만).
+- 소식 판단은 D1 SQL(`cf/alerts/src/sql.js`): `snap` 표에 기준값(m·n·med, 수집일 bu)과 아직 반영 안 된 새 값(p=1, pm·pn·pmed)을 따로
+  둬요. digest는 새 값만 쓰고, finish가 한 묶음 안에서 구독자를 표시한 **뒤에** 새 값을 기준값으로 올려요 → finish·뒷 묶음이 실패해도 소식이
+  사라지지 않고, 같은 데이터를 다시 돌려도 소식이 두 번 생기지 않아요. 통계는 종료일로 거르지 않고(발행된 data.json에서만), **같은 수집
+  (`meta.updated`) 안에서는 기준값이 좋은 쪽으로만** 움직여요(최저가 min·지점 수 max·중간값은 지점이 늘 때만) → 수집 없는 다시 빌드가 끝난
+  행을 지워도, 다음 수집에서 같은 행이 돌아와도 소식이 아니에요. **새 수집에서도 나쁜 쪽 변화(최저가 상승·가격 없음, 지점 수 감소, 중간값
+  상승, 지점이 줄며 움직인 중간값)는 연속 2번의 수집에서 보여야 기준값이 돼요**(`snap.cb/cu`가 지난 수집이 보류한 항목을 기억) — 한 브랜드
+  수집이 한 번 실패해(지난 accepted 파일 → 끝난 행 삭제 → 브랜드 전체가 data.json에서 사라짐) 다음 수집에서 같은 가격으로 돌아오면 아무
+  소식도 아니고, 진짜 상승은 한 수집 뒤에 조용히 기준값이 돼요(watch 규칙만 그때 '중간값 ±5%'로 들음). 좋은 쪽(새 최저가·지점 증가·중간값
+  하락)은 바로 반영. 남는 빈틈: 브랜드가 연속 2번 빠지면 사라진 것으로 보고 돌아올 때 소식이 돼요. **재분류**(`meta.recl`에 그 key의 새
+  날짜 g)는 앱의 `checkAlerts`처럼 소식 없이 기준값만 다시 잡아요 — **더 새로운 날짜일 때만**(`excluded.g > snap.g`; `appdata.py`는 최근 12개 재분류일만 남기므로
+  목록에서 항목이 빠져 g가 ''로 돌아가도 아무것도 다시 잡지 않고 저장된 g도 낮아지지 않아요 → 그 수집의 진짜 가격 변화는 소식). 빈틈: 같은
+  수집일의 두 번째 재분류는 같은 g라 가격 변화로 읽힘.
+  watch = 중간값 ±5% 또는 새 최저가, newmatch = 지점 수 증가, target = 최저가가 max를 위에서 아래로 넘는 순간. expiring만 매일 종료일(3일
+  안, KST)로 계산하고 **(쌍, 종료일)마다** 한 번만 알려요(`subs.exp_sent`에 알린 목록, 지난 종료일은 finish가 정리) — 늦은 종료일을 먼저
+  알렸어도 새로 생긴 더 이른 종료일은 알려요. 규칙은 정해진 순서로 저장하고, 규칙이 **빠졌을 때만** 대기 중 표시(pend_w·pend_x)를 지워요
+  (순서만 바뀌거나 규칙을 더하면 그대로). 하루 종일 못 보낸 expiring 표시(`pend_x`)는 다음 finish에서 그 폰에 끝나는 가격이 더는 없으면
+  지워져요(`CLEAR_STALE_X`: 행사가 연장됐는데 어제 표시가 남아 '곧 종료'가 나가는 일 없음). finish의 날짜는 **Worker 자기 시계**(KST)로 정하고, 공장이 보낸 today·run은 그 시계와 하루 안의
+  달력 날짜일 때만 받아요(아니면 400, 아무것도 안 지움).
+- 발송: cron `*/10 23,0-11 * * *`(UTC = 08:00–20:50 KST, 보내는 실행 77번/일). 시작 시각은 예정 시각이 아니라 **실제 시각**(늦게 돈 cron도
+  21시 뒤에 보내지 않음) + **푸시 하나마다** 시간 확인(20:45 지나면 멈춤), TTL = 그 순간부터 21시까지 − 60초. watch·newmatch·target은
+  기기당 7일에 1번으로 묶고, expiring은 종료일마다 1번·하루 1번(주간 묶음과 겹치면 한 번에). 꺼내는 순서(세 번의 claim): **실패한 적 없는
+  기기의 expiring 마감 가까운 것 먼저**, 그다음 실패한 적 없는 기기의 주간 묶음(오래 기다린 기기 먼저), 마지막으로 **실패가 쌓인 기기는
+  실행당 10칸까지만**(`FAIL_SLOTS`) — 그 안에서도 **푸시를 받은 적 있는 기기(진짜 기기의 한 번 실패)가 받은 적 없는 구독(새 구독·심은 구독)보다 먼저**,
+  그다음 실패 적은 순(색인 `subs_fail`) → 계속 실패하는 구독이 큐 앞을 차지할 수 없고, 심기가 계속돼도 진짜 기기의 재시도는 매일 일어나요. 실행당 최대 40건 → 하루 3,080건, 주
+  21,560건 → `MAX_SUBS` 8,000(기기당 주 ~2건, 여유 25%). 리다이렉트는 따라가지 않아요. 15분 넘은 claim은 다음 실행이 지워요.
+- 푸시 서비스 답: 404·410 = **즉시 삭제**. 5xx·3xx·네트워크(시간 초과) = **푸시 서비스 쪽 문제**: 같은 실행에서 그 서비스(origin)가 다른
+  푸시를 2xx로 받아 줬을 때만 그 구독의 실패로 세고(10번 연속이면 삭제), 아니면 실패로 세지 않고 풀어 줘요(`held`) — 서비스 장애 한 시간이
+  구독을 지우지 않아요. 400 등 4xx = 그 구독의 실패(바로 셈). **401·403 = 그 구독의 실패**(3번 연속이면 삭제; 다른 키로 만든 구독이나 키를
+  바꾼 뒤 남은 구독). **한 번도 푸시를 받은 적 없는 구독은 첫 401·403에 삭제**(키가 안 맞으면 영영 낫지 않음), 그 밖의 실패는 3번이면
+  삭제(`NEVER_DROP`: 심은 구독은 몇 번만 시도). 실행 전체를 멈추는 것은 **예전에 우리 푸시를 받은 기기 3대 이상이 실패 없이 있다가 401·403을
+  내고 이번 실행에 성공이 하나도 없을 때**뿐이고, 그때는 아무도 지우지 않아요 → 남이 심은 403·실패 구독으로 모두의 푸시를 막을 수 없어요(남는
+  비용: 새 구독은 모두 첫 시도 한 번을 받으므로, 하루 새 구독 예산 2,000개만큼의 첫 시도는 쓰임 — 그날 실패한 진짜 기기의 재시도는 뒤쪽 실행으로 밀림).
+- 남용 방지: 클라이언트별 60초 3번(Rate Limiting 바인딩, 키 = IPv4 주소 또는 IPv6 /64, 메모리 카운터에만 — 한 주소만으로도 하루 4,320번이
+  가능하므로 하루 예산이 진짜 상한), 하루 새 구독 2,000개(다 쓰면 429; 오늘 날짜는 Worker 시계로 같은 D1 batch의 `day` 줄에 적고 `subs_ins`
+  트리거가 `new:날짜` 카운터를 올려요 — 구독 행에 날짜 없음), 전체 8,000개. **꽉 차면 503 FULL이고 아무도 밀어내지 않아요**. 자세히
+  `SECURITY_ARCHITECTURE.md` §4.
+- **보관·삭제(2026-10-15 사용자 결정): 보관 기간은 없어요.** 구독은 ① `DELETE /v1/push/subscribe/{id}` ② 규칙 `[]` PUT ③ 푸시 서비스 404·410
+  ④ 연속 실패 규칙(위)일 때만 즉시 지워져요. 365일 정리(`PRUNE_SUBS`)·'꽉 차면 쉬는 구독 밀어내기'(`EVICT_IDLE`, `subs_idle`)·`touched_day`는
+  없앴어요(데이터 최소화). **트레이드오프:** 밀어내기가 없으니 며칠에 걸친 심기가 표를 채울 수 있어요 — 답은 자동 보관 규칙이 아니라 용량 알림
+  (`/health`의 `capacity`, 아래)과 사람이 하는 정리 또는 `MAX_SUBS` 상향이에요. 시크릿은 `VAPID_PRIVATE_JWK`·`ALERTS_SECRET`(Worker),
+  `ALERTS_SECRET`(GitHub). 배포 토큰은 앱과 같은 `CLOUDFLARE_API_TOKEN`(Workers → Admin + D1 → Edit 권한이 있어야 새 Worker를 만들고
+  마이그레이션을 적용할 수 있어요). **받아들인 결과:** 공장(`update`) job도 같은 토큰을 받으므로 이 권한으로는 알림 D1을 읽고 알림 Worker를 다시
+  배포할 수 있어요 — 공장 job과 알림 저장소를 가르는 것은 `tools/factory.sh`가 수집기 실행 전에 토큰을 환경에서 빼는 한 줄뿐(더 좁히려면 알림용
+  토큰을 따로; `SECURITY_ARCHITECTURE.md` 토큰 표). `cf-alerts.yml`은 wrangler를 토큰 없는 단계에서 설치해요.
+- 상태: `GET /health` → 200 `{"ok":true,"window","sending","finished":"YYYY-MM-DD"|null,"stale":bool,"capacity":"ok"|"nearly_full"|"full"}`, D1이
+  안 되면 503 `{"ok":false}`(A7 감시는 200 + `ok:true`만 '살아 있음'으로 셈). `finished` = 공장이 마지막으로 finish한 KST 날짜(Worker 시계, 없으면
+  null), `stale` = 그것이 2일보다 오래됨 → 공장 → Worker 연결(토큰·주소·코드·data.json 형식)이 끊긴 것. `capacity` = `stat` 카운터로 계산
+  (`MAX_SUBS`의 80% 이상 `nearly_full`, 상한 `full`, 숫자는 본문에 없음). `health_check.py`가 `capacity`가 `ok`가 아니거나 `stale`이 true이면
+  텔레그램 경고 한 줄(필드 없음·`ok`는 경고 없음). 감시가 이 Worker를 보려면 GitHub 변수 `MONITOR_WORKER_URLS`에 주소가 있어야 해요.
+- **서버가 저장하는 항목(최종):** `subs`(id·endpoint·rules·pend_w·last_w·pend_x·pend_xl·exp_sent·last_x·fails·claim), `snap`(k·r·m·n·med·p·pm·pn·
+  pmed·bu·pu·cb·cu·g·run·e·s·u), `vapid`(aud·jwt·exp: 서명한 토큰 캐시), `stat`(키 `subs`·`new:날짜`·`day`·`finish`). 구독자 개인 정보·IP·UA·
+  행마다의 '마지막 사용' 날짜는 없어요(B용 메모에 쉬운 말 목록).
+- 배포: `.github/workflows/cf-alerts.yml`(테스트 → wrangler 설치(토큰 없음) → D1 마이그레이션 → 배포). D1 id가 비어 있거나 토큰이 없으면 테스트만 하고
+  건너뛰어요 — **그때도 실행은 초록**이므로, 배포됐는지는 'Apply D1 migrations'·'Deploy the Worker' 단계가 건너뛰어지지 않고 실행됐는지(맨 위에 'tested,
+  not deployed' 공지가 없는지)로 봐요.
+
 ## 3. 프런트 구조 (app/app.js)
 - **해시 라우터**
   - 화면: `#home #map #compare #rank #versus #table #search/<q> #cart #import/<data> #me #branch/<i> #change #about #ops`

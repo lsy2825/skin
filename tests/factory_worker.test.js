@@ -916,3 +916,69 @@ test("factory build: main deleted an input file after the run started → the bu
   assert.equal(r.factoryHasOld, false, "gone from the factory's work tree as well (the build never saw it)");
   assert.equal(r.mainData, "built from prices v2 with code v1");
 });
+
+test("price alerts: their own weekly.yml job on a fresh runner after the factory job; reviewed code, published data; the factory never sees the alerts token", () => {
+  const fs = require("fs");
+  const sh = fs.readFileSync(path.join(__dirname, "../tools/factory.sh"), "utf8");
+  assert.equal(/ALERTS|notify/.test(sh), false, "factory.sh knows nothing about price alerts");
+  const yml = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
+  const code = yml.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");      // comments may name anything
+  // jobs: two-space keys under 'jobs:'
+  const jobsText = code.slice(code.indexOf("\njobs:\n") + 7);
+  const jobs = {};
+  for (const part of jobsText.split(/\n(?=  [a-z][\w-]*:\n)/)) { const m = /^\s*([a-z][\w-]*):\n/.exec(part); if (m) jobs[m[1]] = part; }
+  assert.deepEqual(Object.keys(jobs), ["update", "alert", "price_alerts"], "the factory job, the Telegram job (A7), then the price-alerts job");
+  const { update, alert, price_alerts: pa } = jobs;
+  // a different machine: the factory job (scrapers, pip packages, build) cannot write files, $GITHUB_ENV or NODE_OPTIONS
+  // that the alerts step would use, and never holds either token
+  assert.equal(/ALERTS_|TELEGRAM_|notify/.test(update), false, "the factory job never sees ALERTS_*, TELEGRAM_* or runs notify");
+  // the Telegram job (not ours) is untouched: its own secrets only, never the alerts token
+  assert.equal(/ALERTS_|notify|cf\/alerts/.test(alert), false, "the Telegram job never sees ALERTS_*");
+  assert.match(alert, /TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \}\}/);
+  assert.equal(/secrets\.(?!TELEGRAM_)/.test(alert), false, "only TELEGRAM_* secrets in the Telegram job");
+  assert.match(pa, /\n {4}needs: update\n/);
+  // runs after the factory job whatever its result (expiring is daily; a failed factory leaves the published data on main)
+  assert.match(pa, /\n {4}if: \$\{\{ !cancelled\(\) \}\}\n/);
+  assert.match(pa, /\n {4}permissions:\n {6}contents: read\n/, "read-only token");
+  assert.match(pa, /\n {4}timeout-minutes: \d+\n/);
+  assert.match(pa, /\n {4}continue-on-error: true\n/, "never fails the price build");
+  assert.equal(/pip |requirements\.txt|npm (ci|install)|setup-python|tools\/factory\.sh|\$GITHUB_ENV/.test(pa), false, "installs nothing, runs no factory code");
+  const steps = pa.split(/\n {6}- /).slice(1);
+  // CODE = the commit a human pinned in the repository Variable ALERTS_CODE_SHA (the factory's GITHUB_TOKEN can push to main
+  // but cannot edit Actions variables), never main and never github.sha (a scheduled run's github.sha IS main's last commit,
+  // which may be a factory push nobody reviewed). DATA = main, taken as one regular file. Neither checkout keeps a credential.
+  assert.equal(/github\.sha/.test(pa), false, "github.sha is main's last commit on a schedule run: never the code");
+  const pin = steps.find((st) => /\n {8}id: pin\n/.test(st));
+  assert.ok(pin, "the pin step");
+  assert.match(pin, /PIN: \$\{\{ vars\.ALERTS_CODE_SHA \}\}/, "the variable arrives through env, not spliced into the script");
+  assert.match(pin, /grep -Eq '\^\[0-9a-f\]\{40\}\$'/, "only a full 40-hex commit id is accepted (an empty ref would fall back to the default branch)");
+  assert.match(pin, /echo "ok=false" >> "\$GITHUB_OUTPUT"/);
+  assert.equal(/\$\{\{ vars\./.test(pin.replace(/PIN: \$\{\{ vars\.ALERTS_CODE_SHA \}\}/, "")), false, "no expression inside the script text");
+  const checkouts = steps.filter((st) => /^uses: actions\/checkout@/.test(st));
+  assert.equal(checkouts.length, 2);
+  for (const c of checkouts) {
+    assert.match(c, /persist-credentials: false/);
+    assert.match(c, /\n {8}if: steps\.pin\.outputs\.ok == 'true'\n/, "nothing is fetched without a valid pin");
+  }
+  assert.match(checkouts[0], /\n {10}ref: \$\{\{ steps\.pin\.outputs\.sha \}\} *(#[^\n]*)?\n {10}path: code\n/, "the code = the pinned commit");
+  assert.match(checkouts[1], /\n {10}ref: main *(#[^\n]*)?\n {10}path: published\n/, "the data = main");
+  const run = steps.filter((st) => /\brun:/.test(st));
+  assert.equal(run.length, 3, "the pin check, taking the data, then notify");
+  const [, take, step] = run;
+  // taking the data: one regular file (not a symlink, not under a symlinked directory), copied out; no secret in these steps
+  assert.match(take, /\n {8}id: data\n/);
+  assert.match(take, /\[ -f "\$F" \] && \[ ! -L "\$F" \] && \[ "\$\(realpath "\$F"\)" = "\$\(realpath published\)\/app\/data\.json" \]/);
+  assert.match(take, /F=published\/app\/data\.json/);
+  assert.match(take, /cp "\$F" "\$RUNNER_TEMP\/data\.json"/, "the data file is copied out of the main checkout");
+  assert.match(take, /echo "ok=false" >> "\$GITHUB_OUTPUT"/);
+  assert.equal(/ALERTS_(URL|SECRET)/.test(pin + take), false, "the pin and data steps have no secret");
+  assert.equal(/node |bash |python|\.\/|source |\. /.test(take.replace(/echo "[^"]*"/g, "").replace(/#.*$/gm, "")), false, "nothing from the checkout of main is executed");
+  // the notify step: only with a valid pin AND the data taken; the pinned code on the copied data, the two env values only
+  assert.match(step, /\n {8}if: steps\.pin\.outputs\.ok == 'true' && steps\.data\.outputs\.ok == 'true'\n/);
+  assert.match(step, /\n {8}run: node code\/cf\/alerts\/notify\.mjs "\$RUNNER_TEMP\/data\.json"\n/);
+  assert.match(step, /\n {8}timeout-minutes: \d+\n/);
+  assert.match(step, /\n {8}continue-on-error: true\n/);
+  const env = step.slice(step.indexOf("        env:\n") + 13).split("\n").filter((l) => /^ {10}\w+:/.test(l)).map((l) => l.trim().split(":")[0]);
+  assert.deepEqual(env, ["ALERTS_URL", "ALERTS_SECRET"]);
+  assert.equal(/CLOUDFLARE_|GITHUB_TOKEN|github\.token|secrets\.(?!ALERTS_)/.test(pa.replace(/secrets\.ALERTS_URL \|\| vars\.ALERTS_URL/, "")), false, "no other secret in the price-alerts job");
+});

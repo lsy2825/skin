@@ -12,7 +12,9 @@ Checks (each returns problems as short Korean lines; no problem → no message, 
   live       (watchdog) the app URL answers 200 and its data-meta.json parses; the live file is then used for freshness —
              only when PUBLIC_DEPLOY is "on"; while public hosting is paused the frozen public copy is skipped and freshness
              is judged on the repository's app/data-meta.json
-  workers    (watchdog) each URL in MONITOR_WORKER_URLS (space/comma separated, empty = skipped) answers below HTTP 500
+  workers    (watchdog) each URL in MONITOR_WORKER_URLS (space/comma separated, empty = skipped) answers GET /health with 200
+             {"ok": true}; an alive alerts Worker whose body says capacity != "ok" (table nearly full / full) or stale: true
+             (no factory finish for 2+ days) adds a warning line
 
 Messages hold brand names, dates, counts and the run link only — no personal data, no secrets. Standard library only.
 --send without the Telegram secrets prints a ::notice and sends nothing. Exit 0 unless the arguments are wrong.
@@ -174,6 +176,24 @@ def worker_urls(text):
     return [u for u in re.split(r"[\s,]+", text or "") if u]
 
 
+def worker_warnings(host, data):
+    """Warning lines from an ALIVE Worker's /health body (a missing field = no warning; no numbers in the message).
+    capacity: the alerts Worker (cf/alerts) never evicts a subscription, so a full table needs a person: 'nearly_full'
+    (>= 80% of MAX_SUBS) or 'full' (503 FULL for new phones). stale: the price factory has not finished a run into that
+    Worker for more than 2 days (cf/alerts/notify.mjs sends nothing when it fails, the job stays green)."""
+    out = []
+    cap = data.get("capacity")
+    if cap == "nearly_full":
+        out.append(f"알림 Worker 구독 표가 거의 찼어요 ({host}): 정리하거나 MAX_SUBS를 올리세요")
+    elif cap == "full":
+        out.append(f"알림 Worker 구독 표가 가득 찼어요 — 새 구독을 못 받아요 ({host}): 정리하거나 MAX_SUBS를 올리세요")
+    elif cap is not None and cap != "ok":
+        out.append(f"알림 Worker 구독 표 상태를 알 수 없어요 ({host}): capacity={str(cap)[:20]}")
+    if data.get("stale") is True:
+        out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계를 확인하세요")
+    return out
+
+
 def check_workers(fetch, urls_text):
     """(problems, notes). Each Worker answers GET <url>/health with 200 {"ok": true} after touching its bindings; anything
     else — 404 included — counts as down, because an API Worker can answer '/' while its real routes throw."""
@@ -188,12 +208,15 @@ def check_workers(fetch, urls_text):
             continue
         try:
             status, body = fetch(u.rstrip("/") + "/health", {})
+            data = None
             try:
-                healthy = status == 200 and json.loads(body.decode("utf-8")).get("ok") is True
+                data = json.loads(body.decode("utf-8")) if status == 200 else None
+                healthy = isinstance(data, dict) and data.get("ok") is True
             except (ValueError, AttributeError):
                 healthy = False
             if healthy:
                 notes.append(f"Worker 살아 있음: {host}")
+                out += worker_warnings(host, data)
             else:
                 out.append(f"Worker 상태 확인 실패: {host} (GET /health → HTTP {status})")
         except Exception as e:

@@ -1,0 +1,79 @@
+name: cf-alerts
+
+# Price-alert Worker (cf/alerts, Cloudflare free plan): test → apply D1 migrations → deploy. The app itself is deployed by
+# weekly.yml; this never touches app/. Skips deploying (with a notice) until the D1 database id is in wrangler.jsonc and
+# the CLOUDFLARE_API_TOKEN secret exists — the SAME token weekly.yml (app deploy) uses, so there is one token to look
+# after. Creating a Worker that does not exist yet needs the token's Workers permission at Admin (Editor cannot create a
+# new Worker), and `d1 migrations apply` needs D1 → Edit. Worker secrets (VAPID_PRIVATE_JWK, ALERTS_SECRET) are set in the
+# dashboard, never here.
+# A GREEN run is NOT proof the Worker was deployed: with a placeholder D1 id or a missing token this workflow is green on
+# purpose (tests only). Deployed = the steps 'Apply D1 migrations' and 'Deploy the Worker' ran (not skipped) and the run
+# shows no "tested, not deployed" notice.
+# wrangler is installed in a step WITHOUT the token (npm resolves and runs install scripts of its dependencies there); the
+# token only reaches the pinned copy that then runs migrations and the deploy (same pattern as cf-workers.yml).
+# Accepted consequence of one token (docs/SECURITY_ARCHITECTURE.md token table): the factory job in weekly.yml receives the
+# same secret, and with Workers Admin + D1 Edit it could read the alerts D1 and redeploy this Worker. tools/factory.sh
+# unsets it before any scraper or pip package runs; nothing else stands in between.
+on:
+  push:
+    branches: [main]
+    # notify.mjs imports the app's price code (app/domain/pricectx.js → pricing, match → search, classify, spec; stats) and
+    # reads data.json made by build2/appdata.py; its tests guard the app's alert-engine price basis and CAPITAL list in
+    # app/app.js and docs/ALERT_ENGINE_SPEC.md §3, and that every compare key (build2/taxonomy.py, build2/xkeys.py) and
+    # branch region (data2/branch_region_hint.json) in app/data.json matches cf/alerts/src/rules.js KEY_RE/REGIONS. The
+    # tests run whenever any of those change (not only when cf/ does).
+    paths: ["cf/alerts/**", ".github/workflows/cf-alerts.yml", "app/domain/**", "app/app.js", "docs/ALERT_ENGINE_SPEC.md",
+            "build2/appdata.py", "build2/taxonomy.py", "build2/xkeys.py", "data2/branch_region_hint.json"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cf-alerts
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"     # node:sqlite runs the SQL tests on the real schema
+      - name: Test (rules, SQL on the schema, send rules, factory side, console guard)
+        run: node --test cf/alerts/test/*.test.mjs
+      - name: Ready to deploy?
+        id: ready
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ (secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID) != '' }}
+        run: |
+          if grep -q '"REPLACE_WITH_D1_ID"' cf/alerts/wrangler.jsonc; then
+            echo "::notice title=cf-alerts::D1 database id not set in cf/alerts/wrangler.jsonc — tested, not deployed"; echo "go=false" >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_TOKEN" != "true" ] || [ "$HAS_ACCOUNT" != "true" ]; then
+            echo "::notice title=cf-alerts::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID missing — tested, not deployed (the token needs Workers → Admin and D1 → Edit)"; echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Install wrangler (and its install scripts) in a step WITHOUT the token; the steps below run that copy with it.
+      - name: Install wrangler (no secrets in this step)
+        if: steps.ready.outputs.go == 'true'
+        run: npm install --no-save --no-fund --no-audit --prefix "$RUNNER_TEMP/wr" wrangler@4.145.0
+      - name: Apply D1 migrations
+        if: steps.ready.outputs.go == 'true'
+        run: '"$RUNNER_TEMP/wr/node_modules/.bin/wrangler" d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+      - name: Deploy the Worker
+        if: steps.ready.outputs.go == 'true'
+        run: '"$RUNNER_TEMP/wr/node_modules/.bin/wrangler" deploy --config cf/alerts/wrangler.jsonc'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"

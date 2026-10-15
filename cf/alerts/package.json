@@ -1,0 +1,6 @@
+{
+  "name": "yoonsiljang-alerts",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker + D1 for price-alert Web Push (free plan): subscriptions, weekly bundling, 08-21 KST sending. Design: docs/ARCHITECTURE.md (가격 알림)."
+}
