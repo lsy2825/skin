@@ -104,8 +104,8 @@
       return data;
     },
     async deleteCart(id, uid) { const u = await as(uid); if (!u) return; const { error } = await sb.from("carts").delete().eq("id", id).eq("user_id", u.id); if (error) throw error; },
-    // closes the account (supabase/monetization.sql delete_me → commerce_close_account): personal data deleted now; with a
-    // purchase history the ledger alone is kept (no name or contact) → {mode: 'DELETED' | 'CLOSED'}
+    // closes the account (supabase/schema.sql delete_me): personal data deleted now. 6.0 has no credit ledger, so nothing is
+    // kept and the function returns nothing → {mode: 'DELETED'} (the 'CLOSED' answer of the 5.0 ledger no longer comes)
     async deleteAccount() {
       await load();
       if (!user) return null;

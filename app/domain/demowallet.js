@@ -1,4 +1,6 @@
-// 시연 지갑 (DEMO mode only — docs/MONETIZATION_ARCHITECTURE.md §DEMO). No money moves and nothing here is a paid credit:
+// 6.0: no credits — the server ledger it mirrored (supabase/monetization.sql) was removed in chat A's A3. Kept only until A6
+// takes the credit card off the ops screen (app/screens/ops.js); then it goes with app.js's loader (OPS_ECON_JS).
+// 시연 지갑 (DEMO mode only — docs/MONETIZATION_ARCHITECTURE.md §DEMO, removed). No money moves and nothing here is a paid credit:
 // it lets the store and premium screens be tried on one phone before the server exists. It follows the same rules as the
 // server ledger (supabase/monetization.sql) so the screens behave the same later: an append-only list of entries, orders
 // with a price snapshot, promo credits spent first, reserve → capture on a usable result / release otherwise, one job per
