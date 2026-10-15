@@ -1,0 +1,47 @@
+// 이용 단계 집계 (A4) — deploys from .github/workflows/cf-workers.yml on push to main, or by hand:
+//   npx --yes wrangler@4.145.0 d1 migrations apply yoonsiljang-metrics --remote --config cf/metrics/wrangler.jsonc
+//   npx --yes wrangler@4.145.0 deploy --config cf/metrics/wrangler.jsonc
+// Fits the Workers Free plan: 1 accepted beacon = 1 Worker request + 1 D1 written row; the table holds at most 8 rows a day (day, stage, count).
+// Local check (no account needed): bash cf/metrics/test/local_dev.sh
+// Nothing here is a secret: database_id and the Access AUD tag are identifiers. Fill them in this file (not in the dashboard:
+// every wrangler deploy replaces dashboard vars with the ones below).
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang-metrics",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-13",
+  "workers_dev": true,
+  // Preview hosts (<version>-yoonsiljang-metrics.…) would serve /v1/m/daily on a host the Access app does not cover.
+  "preview_urls": false,
+  // No request log anywhere: Workers Logs is ON by default for a new Worker and its invocation logs keep request metadata and
+  // headers (client IP included, as far as the docs say). Left out, the first deploy would get that default; spelled out, every
+  // deploy turns it off again even if someone switches it on in the dashboard. Do not add tail_consumers, and do not use
+  // `wrangler tail` / dashboard Live on this Worker (not stored, but the viewer sees client IPs).
+  "logpush": false,
+  "observability": {
+    "enabled": false,
+    "head_sampling_rate": 0,
+    "logs": { "enabled": false, "invocation_logs": false, "head_sampling_rate": 0, "persist": false },
+    "traces": { "enabled": false, "head_sampling_rate": 0, "persist": false },
+    "issues": { "enabled": false }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yoonsiljang-metrics",
+      // Chat A fills this in when the database is created (npx --yes wrangler@4.145.0 d1 create yoonsiljang-metrics).
+      // While it is the placeholder, the deploy workflow skips with a notice. Local dev works with the placeholder.
+      "database_id": "REPLACE_WITH_D1_ID",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    // Only the app may count (browsers always send Origin on a POST beacon). Comma-separated for more than one;
+    // local testing: wrangler dev --var ALLOWED_ORIGIN:http://localhost:8766
+    "ALLOWED_ORIGIN": "https://yoonsiljang.lsy2825.workers.dev",
+    // Cloudflare Access for GET /v1/m/daily. Empty = not configured = the daily view always answers 403 (fail closed).
+    // ACCESS_TEAM_DOMAIN: "<team>.cloudflareaccess.com"; ACCESS_AUD: the Access application's AUD tag.
+    "ACCESS_TEAM_DOMAIN": "",
+    "ACCESS_AUD": ""
+  }
+}

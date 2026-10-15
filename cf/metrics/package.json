@@ -1,0 +1,6 @@
+{
+  "name": "yoonsiljang-metrics",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker that counts 8 anonymous app stages per day (POST /v1/m) and shows the totals to admins behind Cloudflare Access (GET /v1/m/daily). No dependencies; tests: node --test cf/metrics/test/*.test.mjs"
+}
