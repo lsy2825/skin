@@ -11,7 +11,7 @@
 | 코드 보관 | GitHub `lsy2825/skin` | **Artifacts** 저장소 `skin` (git 그대로: clone·push) | developers.cloudflare.com/artifacts |
 | 가격 공장 | GitHub Actions `weekly.yml` | **Containers**: `cf/factory` Worker가 매일 06:00 KST에 상자를 켬 | /containers, "Cron container" 예제 |
 | 코드가 바뀌면 다시 만들기 | `push` 트리거 | Artifacts `pushed` 이벤트 → Queue `skin-pushes` → `rebuild` | /artifacts/guides/event-subscriptions |
-| 앱 주소 | GitHub Pages + `yoonsiljang.lsy2825.workers.dev` | **Workers 정적 파일** `yoonsiljang` 하나 (`wrangler.jsonc`) | /workers/static-assets |
+| 앱 주소 | `yoonsiljang.lsy2825.workers.dev` (GitHub Pages는 비공개 전환으로 2026-10-15 종료) | **Workers 정적 파일** `yoonsiljang` 하나 (`wrangler.jsonc`) | /workers/static-assets |
 | 수동 실행(가격 재확인·출처 재확인) | `price-check.yml`·`source-check.yml` 버튼 | `POST /run {mode}` (비밀키 필요) | `cf/factory/src/index.js` |
 | 운영 화면의 수집 상태 | GitHub API(공개 저장소일 때만 읽힘) | `GET /status` (공장 관리자) | `app/screens/ops.js` |
 | 의존성 업데이트 알림 | Dependabot | 없음 → 분기마다 직접 확인(`requirements.txt`, wrangler, 상자 이미지 digest) | — |
@@ -43,12 +43,12 @@ tools/factory.sh   공장 한 번 (GitHub weekly.yml도 이 스크립트를 부�
 
 | 단계 | 내용 | 누가 | 상태 |
 |---|---|---|---|
-| 0 | GitHub 저장소 **비공개**로 전환(이사 중 추가 유출 막기) | 사용자 | 대기 |
+| 0 | GitHub 저장소 **비공개**로 전환(이사 중 추가 유출 막기) | 사용자 | **완료** (2026-10-15, GitHub Pages 배포 단계 제거) |
 | 1 | 공장 스크립트 하나로 통일(`tools/factory.sh`), 상자·관리자 코드 작성, 로컬 시험 | Claude | **완료** (§4) |
 | 2 | Cloudflare **Workers Paid**($5/월) 가입 → Artifacts·Containers 사용 가능 | 사용자 | 대기 |
 | 3 | Artifacts 저장소 `skin` 만들고 GitHub 전체 이력 가져오기(import) → 커밋 수·최신 해시 대조 | Claude+사용자 | 대기 |
 | 4 | 공장 관리자 배포, `DRY_RUN=1`(저장·배포 안 함)로 2~3주 GitHub 공장과 나란히 실행 → 결과 비교 | Claude | 대기 |
-| 5 | 전환일: GitHub 일정 끄기 → 마지막 이력 다시 가져오기 → `DRY_RUN=0` → Queue 이벤트 연결 → GitHub Pages 끄기 | Claude+사용자 | 대기 |
+| 5 | 전환일: GitHub 일정 끄기 → 마지막 이력 다시 가져오기 → `DRY_RUN=0` → Queue 이벤트 연결 | Claude+사용자 | 대기 |
 | 6 | 사용자 컴퓨터에 Claude Code 설치, Artifacts 저장소 clone, 작업 확인 | 사용자(안내: Claude) | 대기 |
 | 7 | 백업 확인 후 GitHub 저장소 삭제 | 사용자 | 대기 |
 
@@ -66,6 +66,8 @@ tools/factory.sh   공장 한 번 (GitHub weekly.yml도 이 스크립트를 부�
 | 상자 실패 경로 | 잘못된 입력 → `failed`, 쉬는 날 → `skipped`, 원격 저장소 못 받음 → `failed (clone)` |
 | `wrangler deploy --dry-run` (공장 관리자) | 설정 검사·코드 묶기 통과. 이미지 빌드 단계는 이 작업 환경의 인증서 차단으로 실패했다. 같은 Dockerfile을 인증서를 넣어 직접 빌드하면 성공한다 |
 | 단위 테스트 | 130/130 (`tests/factory_worker.test.js` 6개 포함) |
+| GitHub에서 `weekly.yml` → `factory.sh rebuild` (run 38669693769) | 공장 단계 성공(시험·빌드·저장·Cloudflare 배포). 같은 실행의 GitHub Pages 배포는 비공개 전환으로 실패 → 단계 제거 |
+| 운영 화면 `tests/e2e/ops40.js` | 18/18. Cloudflare `/status` 응답이면 그 상태 그대로(GitHub에 안 물음), 없으면 GitHub로. 공장이 보낸 글자는 글자로만 |
 
 **아직 시험하지 못한 것:** 실제 Cloudflare에서 상자 켜기, Artifacts 토큰 발급, 이벤트 Queue 연결.
 유료 플랜이 있어야 하고, 이 작업 환경에서는 `api.cloudflare.com` 접속이 막혀 있다. 2~4단계에서 확인한다.

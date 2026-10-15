@@ -1,8 +1,8 @@
 # 윤실장 (피부과 가격비교) — Claude 작업 안내
 
 공장형 피부과 브랜드(블리비·쁨·톡스앤필·리엔장)의 지점별 시술 가격을 모아 비교하는 PWA.
-프레임워크·번들러 없음(순수 JS). `app/`은 Cloudflare Workers 정적 파일(`wrangler.jsonc`, https://yoonsiljang.lsy2825.workers.dev)과
-GitHub Pages 두 곳에 배포된다. **Cloudflare로 이사 중**(2026-10-15 사용자 결정: 코드·공장·주소 모두 Cloudflare, 끝나면 GitHub 삭제) —
+프레임워크·번들러 없음(순수 JS). `app/`은 Cloudflare Workers 정적 파일(`wrangler.jsonc`, https://yoonsiljang.lsy2825.workers.dev)로만
+배포된다(GitHub 저장소는 2026-10-15 비공개 전환, GitHub Pages 없음). **Cloudflare로 이사 중**(2026-10-15 사용자 결정: 코드·공장·주소 모두 Cloudflare, 끝나면 GitHub 삭제) —
 순서와 상태는 `docs/CLOUDFLARE_MIGRATION.md`. 가격 공장 한 번 = `tools/factory.sh`(GitHub `weekly.yml`과 Cloudflare 상자 `cf/factory`가
 같은 스크립트를 돌린다). 공장 순서를 바꿀 때는 이 스크립트만 고치고 `tests/factory_worker.test.js`를 돌린다.
 
@@ -42,7 +42,7 @@ GitHub Pages 두 곳에 배포된다. **Cloudflare로 이사 중**(2026-10-15 �
   미뤄 준다. `change`·`blur`·`focusout`에서 `#main`을 직접 `replaceChildren`/`innerHTML`로 갈지 않는다. 필터를 바꾸는
   `go()`류는 그려질 때의 `params`가 아니라 지금 주소(`location.hash`)에 덧붙인다. 화면·입력칸을 바꾸면
   `tests/e2e/clickable.js`(회귀에 포함)를 돌린다.
-- `app/`이나 `build2/`를 push하면 Pages가 다시 배포된다. push 전에 사용자에게 확인한다.
+- `app/`이나 `build2/`를 main에 push하면 앱이 다시 배포된다(Cloudflare). push 전에 사용자에게 확인한다.
 - 규격 이름이 깨지지 않게(2026-10-14 사고): 수집기는 상품명을 사이트 그대로 저장하고, 칸·묶음 제목을 앞에 붙이는 일은
   `build2/clean.py`(`title_words`)만 한다. 비교 규격 이름 규칙은 `build2/labels.py`(빌드 가드) — 수집기·정리·분류 규칙을
   바꾸면 `python3 tests/labels_test.py`를 돌린다.

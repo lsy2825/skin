@@ -47,20 +47,11 @@ jobs:
       - name: Summary
         if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
-      - if: steps.decide.outputs.run == 'true'
-        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
-        with:
-          path: app
-  deploy:
-    needs: update
-    if: needs.update.outputs.run == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      pages: write       # publish to GitHub Pages
-      id-token: write    # Pages deployment identity
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - id: deploy
-        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346  # v5.0.1
+      # GitHub Pages deploy removed 2026-10-15: the repository is private now (free plan: no Pages), the app lives only on
+      # Cloudflare (factory.sh → wrangler deploy). Without the deploy token the run fails here instead of silently not deploying.
+      - name: Check the app was deployed to Cloudflare
+        if: steps.decide.outputs.run == 'true'
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then echo "::error title=Cloudflare::CLOUDFLARE_API_TOKEN secret missing — the app was not deployed anywhere"; exit 1; fi
