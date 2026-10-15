@@ -368,6 +368,30 @@ for j, r in enumerate(tw):
     r.update(cat="제모", sale=str(300000 if j % 2 == 0 else 450000), url="https://example.invalid/face")
 rk, ks, fs, st = taxonomy.build(tw)
 ok("괄호만 다른 두 상품('얼굴전체 (이마제외)' / '얼굴전체')은 같은 이름 두 가격이 아님 — 키를 잃지 않음", all(rk), rk)
+# 검증 8차 (제모)
+ok("소문자 'u라인'도 묶음 이름(괄호 목록으로 쪼개지 않음)", hv("[EVENT] [남자제모] u라인 5회 (인중+입술밑+앞턱+턱라인+구렛나루)")["sig"] == hv("남자 U라인 제모 5회")["sig"])
+ok("브라질리언 괄호의 다른 부위도 함께('(회음부, 항문 포함)' → 브라질리언+항문+회음부, '(항문,사타구니포함)' → +사타구니)",
+   hv("여성 브라질리언 (회음부, 항문 포함) 제모 5회")["area"] == "브라질리언+항문+회음부"
+   and hv("브라질리언 제모(항문,사타구니포함)")["area"] == "브라질리언+사타구니+항문")
+ok("괄호 없는 '브라질리언 항문포함'·닫는 괄호 없는 '(항문포함 1회'도 브라질리언+항문",
+   hv("브라질리언 항문포함 1회 (1회체험가)")["area"] == hv("브라질리언(항문포함 1회")["area"] == "브라질리언+항문")
+ok("얼굴 제모의 괄호가 고를 부위('(인중/미간/3자 이마 택1)')나 한 부위('(이마전체)')면 그 부위 — 얼굴 전체 아님, '(목 포함/이마제외)'는 얼굴",
+   hv("얼굴제모 5회 (인중/미간/3자 이마 택1)")["area"] == "3자이마/미간/인중" and hv("얼굴제모 5회 (이마전체)")["area"] == "이마"
+   and hv("얼굴제모 5회 (목 포함/이마제외)")["area"] == "얼굴")
+dv = fake_g([("셀린", f"{i}점", "여성 인중 + 겨드랑이 제모 5회", "제모") for i in range(3) for _ in range(2)])
+for j, r in enumerate(dv):
+    r.update(cat="제모", sale=str(150000 if j % 2 == 0 else 55000), url=f"https://example.invalid/{j % 2}",
+             option=("[젠틀맥스] " if j % 2 == 0 else "[아포지] ") + r["name"])
+rk, ks, fs, st = taxonomy.build(dv)
+ok("이름에 기기가 없으면 묶음 제목·'[젠틀맥스]' 머리표의 기기 하나를 받음 — 한 지점 두 기기가 한 키에 섞이지 않음",
+   len(set(rk)) == 2 and all(rk) and sorted(k["label"] for k in ks) == ["여성 겨드랑이+인중 제모 아포지 플러스 5회", "여성 겨드랑이+인중 제모 젠틀맥스 프로 플러스 5회"],
+   [k["label"] for k in ks])
+ok("'젠맥'은 젠틀맥스", hv("[젠맥 여성] 겨드랑이 5회")["label"] == hv("젠틀맥스 여성 겨드랑이 제모 5회")["label"])
+sx = fake_g([("닥터에버스", f"{i}점", f"젠틀맥스 프로플러스 남성 제모 {a} 5회", "월간 레이저") for i in range(3) for a in ("미간", "미간", "허벅지", "허벅지")])
+for j, r in enumerate(sx):
+    r.update(cat="제모", sale=str((100000, 30000, 410000, 260000)[j % 4]), url="https://example.invalid/month")
+rk, ks, fs, st = taxonomy.build(sx)
+ok("성별이 붙은 이름도 한 페이지에 같은 이름·다른 가격이면(두 메뉴) 키 없음(닥터에버스 미사점)", not any(rk), rk)
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
