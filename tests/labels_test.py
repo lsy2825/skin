@@ -309,6 +309,9 @@ rk, ks, fs, st = taxonomy.build(fake_g([("밴스", f"{i}점", "THE 미희주사 
                                         + [("밴스", f"{i}점", "미희주사 팔자 1회", "") for i in range(3, 7)]))
 ok("되살린 이름이 같은 상품의 기존 규격과 같으면 한 묶음('(표기 1)/(표기 2)' 없음)", len(ks) == 1 and ks[0]["label"] == "미희주사 팔자" and len(set(rk)) == 1 and ks[0]["n"] == 7,
    [(k["label"], k["n"]) for k in ks])
+rk, ks, fs, st = taxonomy.build(fake_g([("밴스", f"{i}점", "퀵제로팻 · 얼굴 1부위", "퀵제로팻") for i in range(3)]))
+ok("되살린 이름의 시술군 찾기 규칙은 상품 낱말('얼굴'만으로 지점의 얼굴 시술 전부를 잡지 않음)",
+   [(f["name"], f["rx"]) for f in fs if f["keys"]] == [("퀵제로팻 얼굴", "퀵제로팻")], [(f["name"], f["rx"]) for f in fs])
 rk, ks, fs, st = taxonomy.build(fake_g([("블리비", f"{i}점", "트리플 바디 1회", "") for i in range(3)]
                                         + [("블리비", f"{i}점", "트리플 바디(셀룰라이트 파괴 및 지방배출) 1회", "") for i in range(3, 6)]))
 ok("설명이 없는 쪽 하나는 '(표기 n)' 없이 그대로", sorted(k["label"] for k in ks) == ["트리플 바디", "트리플 바디 (셀룰라이트 파괴 및 지방배출)"], [k["label"] for k in ks])

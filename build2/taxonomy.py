@@ -762,7 +762,10 @@ def build(rows, min_branches=3):
                 # '티타늄리프팅 티타늄 리프팅 포함 패키지'), and a package family keeps its name (2026-10-15)
                 has = lambda t: loose_text(head) in loose_text(t)
                 fname = v["famname"] if v["fam"] == "package" or has(v["famname"]) else fam_tidy(f"{head} {v['famname']}")
-                v = dict(v, famname=fname, label=v["label"] if has(v["label"]) else f"{head} {v['label']}")
+                # an exact name's family pattern becomes the product word: '얼굴' alone matched every face row at a branch (검증 6차:
+                # '퀵제로팻 얼굴' family with rx '얼굴'); the app tests it on names whose ' · ' parts stay apart
+                v = dict(v, famname=fname, label=v["label"] if has(v["label"]) else f"{head} {v['label']}",
+                         rx=re.escape(comp(head)) if v.get("fam") == "generic" else v["rx"])
                 bad = labels.problems(v["label"], names + [head])
                 if not bad:
                     rescued.append(dict(label=v["label"], n=len(branches)))
