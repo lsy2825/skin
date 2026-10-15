@@ -345,6 +345,7 @@ ok("'브라질리언 (항문 포함)'은 브라질리언+항문, '(항문 미포
    and hv("[여성] 브라질리언(항문 미포함) 1회")["area"] == "브라질리언")
 ok("이름 붙은 부위 묶음은 괄호가 부위('수염라인(인중+앞턱)' → 앞턱+인중, '손 전체 (손가락 + 손등)' → 손가락+손등)",
    hv("남성 수염라인(인중+앞턱) 제모 1회")["area"] == "앞턱+인중" and hv("[남성] 손 전체 (손가락 + 손등) 1회")["area"] == "손가락+손등")
+ok("'택1 5회'의 택1은 부위가 아님('배/가슴 택1 5회' → 가슴·배)", hv("바디제모(여성) 여성 배/가슴 택1 5회", "바디제모(여성) · 여성 배/가슴 택1 5회")["area"] == "가슴/배")
 ok("'택1회'의 1회는 횟수('인중/앞턱 택1회' → 부위 앞턱·인중)", hv("인중/앞턱 택1회 제모")["area"] == "앞턱/인중", hv("인중/앞턱 택1회 제모")["area"])
 ok("목록에 없던 부위 낱말(힙·음경·유룬)도 제모 부위", hv("(남자) 힙 제모 1회")["label"] == "남성 힙 제모" and hv("남성 유룬 제모 1회")["area"] == "유륜")
 ok("제모 밖에서도 'or'는 '/'와 같은 규격('미희주사 옆볼or앞볼' = '옆볼/앞볼')",
@@ -362,6 +363,11 @@ for i, r in enumerate(dup):
     r.update(cat="제모", sale=str(13000 if i < 3 else 65000 if i < 6 else 9000), url="https://example.invalid/month")
 rk, ks, fs, st = taxonomy.build(dup)
 ok("한 페이지에 같은 이름·다른 가격(성별 제목을 못 읽음)인 제모 줄은 성별 없는 부위 키에 넣지 않음", rk[:6] == [""] * 6 and all(rk[6:9]), rk)
+tw = fake_g([("톡스앤필", f"{i}점", n, "얼굴제모") for i in range(3) for n in ("얼굴전체 (이마제외) 5회", "얼굴전체 5회")])
+for j, r in enumerate(tw):
+    r.update(cat="제모", sale=str(300000 if j % 2 == 0 else 450000), url="https://example.invalid/face")
+rk, ks, fs, st = taxonomy.build(tw)
+ok("괄호만 다른 두 상품('얼굴전체 (이마제외)' / '얼굴전체')은 같은 이름 두 가격이 아님 — 키를 잃지 않음", all(rk), rk)
 
 # data-meta.json changes (build2/datameta.py): a price still at the branch under the same name is not 'gone' or 'new'
 import datameta  # noqa: E402
