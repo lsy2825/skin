@@ -31,6 +31,14 @@ jobs:
           note "metrics preflight from the app origin" "$(curl -s -o /dev/null -D - --max-time 20 -X OPTIONS -H "Origin: $APP" -H 'Access-Control-Request-Method: POST' "$MET/v1/m" | tr -d '\r' | grep -iE '^(HTTP|access-control-allow-origin|access-control-allow-credentials)' | tr '\n' ' ')"
           note "metrics POST from another origin (expect 403, nothing counted)" "HTTP $(code -X POST -H 'Origin: https://evil.example' -H 'Content-Type: text/plain' --data '{"s":"open"}' "$MET/v1/m")"
           note "metrics POST without Origin (expect 403, nothing counted)" "HTTP $(code -X POST -H 'Content-Type: text/plain' --data '{"s":"open"}' "$MET/v1/m")"
+      - name: Live checks, part 2
+        run: |
+          APP=https://yoonsiljang.lsy2825.workers.dev
+          MET=https://yoonsiljang-metrics.lsy2825.workers.dev
+          ADM=https://yoonsiljang-admin.lsy2825.workers.dev
+          note() { echo "::notice title=$1::$2"; }
+          code() { curl -s -o /dev/null -w '%{http_code}' --max-time 20 "$@"; }
+          hdr() { curl -sI --max-time 20 "$1" | tr -d '\r' | grep -iE "^(content-security-policy|strict-transport-security|x-content-type-options|referrer-policy):" | tr '\n' ' '; }
           note "metrics daily view without Access (expect 403)" "HTTP $(code "$MET/v1/m/daily")"
           note "metrics unknown path (expect 404)" "HTTP $(code "$MET/nope")"
           # admin Worker: closed until Access is configured
