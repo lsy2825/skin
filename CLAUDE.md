@@ -1,8 +1,10 @@
 # 윤실장 (피부과 가격비교) — Claude 작업 안내
 
 공장형 피부과 브랜드(블리비·쁨·톡스앤필·리엔장)의 지점별 시술 가격을 모아 비교하는 PWA.
-프레임워크·번들러 없음(순수 JS). `app/`을 GitHub Pages로 배포하고, Cloudflare Workers(정적 파일, `wrangler.jsonc`)로도
-배포할 준비가 돼 있다 — 저장소 시크릿 `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`가 생기면 `weekly.yml`이 함께 올린다(2026-10-15).
+프레임워크·번들러 없음(순수 JS). `app/`은 Cloudflare Workers 정적 파일(`wrangler.jsonc`, https://yoonsiljang.lsy2825.workers.dev)과
+GitHub Pages 두 곳에 배포된다. **Cloudflare로 이사 중**(2026-10-15 사용자 결정: 코드·공장·주소 모두 Cloudflare, 끝나면 GitHub 삭제) —
+순서와 상태는 `docs/CLOUDFLARE_MIGRATION.md`. 가격 공장 한 번 = `tools/factory.sh`(GitHub `weekly.yml`과 Cloudflare 상자 `cf/factory`가
+같은 스크립트를 돌린다). 공장 순서를 바꿀 때는 이 스크립트만 고치고 `tests/factory_worker.test.js`를 돌린다.
 
 ## 대화 규칙
 - 한국어로 답한다.
