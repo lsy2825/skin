@@ -535,20 +535,41 @@ ok(f"C8 다른 구현 확인용 예시 {n_v}줄이 지금 규칙과 같음(tests
 _rk, _lo = rowid.repeat_key, rowid.loose
 _wrong = {"주소 무시": lambda r: (_rk(r)[1], _rk(r)[2]), "정가 무시": lambda r: (_rk(r)[0], _rk(r)[2]),
           "판매가를 정가보다 먼저": lambda r: (_rk(r)[0], _rk(r)[2], _rk(r)[1]), "데이터 순서만": lambda r: (),
-          "비싼 순": lambda r: (_rk(r)[0], -_rk(r)[1], -_rk(r)[2])}
+          "비싼 순": lambda r: (_rk(r)[0], -_rk(r)[1], -_rk(r)[2]),
+          "정가 없음을 맨 뒤로": lambda r: (_rk(r)[0], _rk(r)[1] or float("inf"), _rk(r)[2]),
+          "주소 대소문자 무시(localeCompare 비슷)": lambda r: (_rk(r)[0].lower(), _rk(r)[1], _rk(r)[2])}
+_ro = rowid.roots_of
+
+
+def _roots_utf16(bs):                  # the clash rule with bases in UTF-16 unit order (what JS '<' and sort() give)
+    out, owner = {}, set()
+    for b in sorted(set(bs), key=lambda s: s.encode("utf-16-be")):
+        h = rowid.short_id(b)
+        while h in owner:
+            h += "x"
+        owner.add(h)
+        out[b] = h
+    return out
+
+
+_wrong_roots = {"겹침 무시": lambda bs: {b: rowid.short_id(b) for b in bs}, "UTF-16 순(JS '<'·sort())": _roots_utf16}
 _caught = {}
 try:
     for _name, _key in _wrong.items():
         rowid.repeat_key = _key
         _caught[_name] = len(rowid.check()[0])
     rowid.repeat_key = _rk
+    for _name, _f in _wrong_roots.items():
+        rowid.roots_of = _f
+        _caught[_name] = len(rowid.check()[0])
+    rowid.roots_of = _ro
     for _name, _f in {"파이썬 \\s": lambda s: re.sub("[A-Z]", lambda m: m.group().lower(), re.sub(r"\s", "", s or "")),
                       "전체 lower()": lambda s: rowid.SPACE.sub("", s or "").lower()}.items():
         rowid.loose = _f
         _caught[_name] = len(rowid.check()[0])
 finally:
-    rowid.repeat_key, rowid.loose = _rk, _lo
-ok("C8 예시가 틀린 구현을 잡음(주소·정가 무시, 판매가 먼저, 데이터 순서만, 비싼 순, 파이썬 \\s, 전체 lower())", all(_caught.values()), _caught)
+    rowid.repeat_key, rowid.loose, rowid.roots_of = _rk, _lo, _ro
+ok(f"C8 예시가 틀린 구현 {len(_caught)}가지를 모두 잡음", all(_caught.values()), _caught)
 import appdata  # noqa: E402
 prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
         "keys": [["X14", 0, "울쎄라 300샷"]]}
