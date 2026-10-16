@@ -106,7 +106,10 @@ FAMILIES = [
     dict(id="ulthera", cat="리프팅", name="울쎄라", rx=r"울쎄라", stop=r"울쎄라피|울쎄라|리프팅", tags=[EYE, T("파워", r"파워"), T("프라임", r"프라임", "post"), BODY("울쎄라")]),
     dict(id="thermage", cat="리프팅", name="써마지 FLX", rx=r"써마지", stop=r"써마지|FLX|리프팅", tags=[EYE, BODY("써마지")]),
     dict(id="inmode", cat="리프팅", name="인모드", rx=r"(?<!라)인모드", stop=r"인모드|리프팅|모드",
-         tags=[T("파워", r"파워"), T("FX+FORMA", r"2가지|듀얼|FX\+FORMA|FORMA\+FX", "post"), T("FX", r"FX", "post"), T("FORMA", r"FORMA", "post"),
+         # the two modes also when only the bracket lists them ('고주파 리프팅 인모드(FORMA+FX-풀페이스) 3회', '풀페이스 인모드(FX + FORMA)',
+         # '(대표X)인모드리프팅(FX+포마)'): read as plain 인모드 they shared keys with one-mode prices (C1 후속, 2026-10-16)
+         tags=[T("파워", r"파워"), T("FX+FORMA", r"2가지|듀얼|FX\+(?:FORMA|포르?마)|(?:FORMA|포르?마)\+F[Xx]", "post", scope="full"),
+               T("FX", r"FX", "post"), T("FORMA", r"FORMA", "post"),
                T("얼굴전체", r"얼굴전체|풀페이스", "post"), T("이중턱", r"이중턱", "post"), BODY("인모드")]),
     dict(id="onda", cat="리프팅", name="온다 리프팅", rx=r"온다", stop=r"온다|리프팅|페이스|얼굴", tags=[BODY("온다 리프팅")]),
     dict(id="oligio", cat="리프팅", name="올리지오", rx=r"올리지오", stop=r"올리지오|리프팅", tags=[EYE, T("X", r"(?<=올리지오)X", "post")]),
@@ -318,6 +321,74 @@ HAIR_EXTRA = r"전체|라인|상부|하부|앞|뒤|위|아래|밑|주위|주변|
 HAIR_WORDS = re.compile(f"(?:{HAIR_PART}|{HAIR_EXTRA})+")
 
 
+# products a bracket list names that no family rx covers (filler brands, the thread of 하이코, HIFU, 울쎄라 spelt 울세라): only for
+# telling a listed product from a mode or a care step ('슈퍼 하이코(PDO실 2줄 + 국산 뉴라미스 1cc)' is 실 + 필러)
+PIECE_PRODUCTS = [("filler", re.compile(r"아띠에르|뉴라미스|아말리안|더채움|벨라스트|순수필|이브아르|레볼락스|엘라스티")),
+                  ("thread", re.compile(r"PDO실|코그실|(?<![가-힣])실\d*줄?$|^실(?:\d+줄)?$")), ("hifu", re.compile(r"하이푸")),
+                  ("ulthera", re.compile(r"울세라")), ("gouri", re.compile(r"고우리"))]
+
+
+def _fams(text):
+    """the family ids whose rx is in comp(text), a shadowed one aside (the '토닝' of '피코토닝' is not 레이저토닝)"""
+    c = comp(text)
+    ids = {f["id"] for f in FAMILIES if f["_rx"].search(c)}
+    ids |= {fid for fid, rx in PIECE_PRODUCTS if rx.search(re.sub(r"\d+(?:\.\d+)?(?:cc|ml|샷|줄|U)?$", "", c) if fid == "thread" else c)}
+    return ids - {g for f in ids for g in SHADOW.get(f, [])}
+
+
+# a bracket piece that names what a procedure does, not a product: '울써마지 프로그램 (윤곽+피부결)', '카프리레이저 (피지토닝+스탬핑+
+# 블루라이트)' (윤곽 and 토닝 are family words, here the effect and the 카프리 mode)
+EFFECT_PIECE = re.compile(r"(?:윤곽|피부결|탄력|재생|보습|진정|미백|톤업|색소|모공|홍조|혈관|리프팅|피지)+(?:모드|토닝)?")
+
+
+# a bracket piece that is only where on the face or body ('턱', '자갈턱', '안쪽 눈가', '국산/이마 전체'), origin words aside
+AREA_PIECE = re.compile(f"(?:{HAIR_PART}|눈가|콧등|자갈턱|나비존|콧볼|코끝|콧끝|콧대|코기둥|옆볼|팔자|앞광대|광대|사각턱|턱근육|승모근|발목|"
+                        f"눈꺼풀|목주름|입꼬리|얼굴위쪽|얼굴아래쪽|안쪽|바깥쪽|위쪽|아래쪽|{HAIR_EXTRA}|[/,·])+")
+ORIGIN_WORDS = re.compile(r"국산|국내산|수입|외국산|독일산|미국산|프리미엄|고순도|\*")
+
+
+def bracket_bundle(raw, fam):
+    """True when a '(…+…)' explanation lists another product, read from what its pieces name — not from the spaces around '+'
+    (C1 후속, 2026-10-16: only ' + ' made a bundle, so '듀얼토닝(제네시스 토닝 + 레이저토닝)' was a package and '듀얼토닝(피코토닝+
+    제네시스)' the plain '듀얼 레이저토닝' spec that also held '듀얼토닝 1회'; the plain reading drops the bracket, and '슈퍼 하이코(PDO실
+    2줄+국산 뉴라미스 1cc)' would have shared a key with the 벨로테로 and 레스틸렌 ones).
+    A bundle: two pieces that name different products ('리쥬란힐러 2cc + 물광주사 2cc', '피코토닝+제네시스', '제네시스 토닝 + 레이저토닝'),
+    or one that names a family other than the name's own ('하이코(실4줄+국산필러)', '에토좀 골드 PTT(압출+에토좀+제네시스 레이저)') —
+    except in a note of what comes with it ('(압출+염증주사 포함)'). Not a bundle: areas ('얼굴위쪽 (이마+미간+눈가+콧등)', '(앞볼 + 옆볼)'),
+    modes and tips of one device ('(FX + FORMA)', '(울트라F 300샷 + 울트라부스터 200샷)'), care that comes with it ('(크라이오+모델링)'),
+    effects ('(속건조개선+탄력+재생)'), a deal ('(5+1)', '(태반주사 10회 + 태반주사 1회)') and a '+' in a product's name ('NAD+',
+    '(ASCE+)'): those stay one product, read as before."""
+    # the name's own family and the ones it shadows ('피코토닝' is a 토닝); a bracket naming a narrower one ('가을 톤업 토닝 (피코토닝 +
+    # 크라이오 + 모델링팩)') says the product is that one, not the name's family — read whole
+    own = {fam["id"]} | set(SHADOW.get(fam["id"], [])) if fam else set()
+    for x in re.findall(r"\(([^()]*\+[^()]*)\)", raw or ""):
+        # '+3만원' is a surcharge ('(*아기주사3cc 추가시 +3만원)'), '5+1' a deal, the '+' of 'NAD+' / '(ASCE+)' part of a name: none
+        # joins two things ('(+ 이마,미간보톡스)' adds one)
+        x = re.sub(r"\+\s*\d[\d,.]*\s*만?\s*원|(?<=NAD)\+|\+\s*$", " ", x)
+        pieces = re.sub(r"(?<=\d)\s*\+\s*(?=\d)", " ", x).split("+")
+        if len(pieces) < 2:
+            continue
+        # a footnote before the first piece or after the last is not part of the list ('(🌟 3회 시술시 더모톡신 1회 PLUS ※ 올리지오
+        # 페이스팁+아이팁 섞어 가능)': the '+' joins two tips)
+        pieces[0], pieces[-1] = re.split(r"[※*]", pieces[0])[-1], re.split(r"[※*]", pieces[-1])[0]
+        things = {}      # what each piece is ('태반주사 10회' and '태반주사 1회' are one), areas and effects aside
+        for p in pieces:
+            what = re.sub(r"\d+(?:\.\d+)?", "", AMOUNT.sub("", KINDWORDS.sub("", comp(p))))
+            if re.sub(r"[^\w가-힣]", "", what) and not EFFECT_PIECE.fullmatch(what) and not AREA_PIECE.fullmatch(ORIGIN_WORDS.sub("", what)):
+                things[what] = _fams(p)
+        named = [ids for ids in things.values() if ids]
+        if len(named) >= 2:
+            return True
+        if re.search(r"(?<![미불])포함", x) or not named:
+            continue
+        # a name no family covers ('여드름 완전정복', '울긋불긋 홍조 피부 탈출') with one product and the steps that come with it
+        # ('(PDT + 스케일링 + 여드름압출 + 재생레이저)', '(엑셀V 레이저 3회+진정관리 3회)') is a package; with areas only ('노메스턱
+        # (턱+침샘보톡스)') or no product the families know ('(아르기닌+L-카르니틴+덱스판테놀)') it is read whole as one name
+        if any(ids - own for ids in named) if fam else len(things) >= 2:
+            return True
+    return False
+
+
 def hair_area(text, need_part=True, strict=False):
     """True when text holds only 제모 body-area words ('겨드랑이', '손등 + 손가락', '얼굴제모(헤어라인 제외)'), sex, device and session
     words aside. strict: only sex words aside — a label with a sale word ('[바디제모 특가]') is not an area"""
@@ -407,7 +478,7 @@ def variant(name, addon=False, kind="", cat="", display=None):
     if sess >= 99:
         return None, "이용권·무제한"
     fam, n = family_of(raw)
-    # a bundle: two families, '+'/패키지 in the short name, or ' + ' between parts in the explanation ('환절기 스킨 리커버리(A + B)').
+    # a bundle: two families, '+'/패키지 in the short name, or another product listed in the explanation ('환절기 스킨 리커버리(A + B)').
     # On a 제모 page '+' between body areas lists the areas of one option, not two products ('손등 + 손가락제모 5회', '男) 인중 + 앞턱
     # 1회', '[여성]손 5회 (손등 + 손가락)'): read by the 제모 rule, which keeps 여성 and 남성 apart — as a package key they shared one key
     # (2026-10-15, 개선 보고서 E3). Only when every piece is an area: '얼굴전체 제모 + 빙하팩', '네오빔 + 스케일링' stay bundles, and '+'
@@ -427,10 +498,11 @@ def variant(name, addon=False, kind="", cat="", display=None):
     # on a 제모 page only the option decides (a '+' in the section title, '젠틀맥스프로+', is not a bundle), and '10+1회' is a course of
     # eleven sessions (sessions()), not two products
     plain = re.sub(r"(?<=\d)\+(?=\d+회)", "", comp(_strip(last))) if areas_only else comp(_strip(raw))
-    # a bracket '+' makes a bundle on a 제모 page only when it is not an area list; elsewhere only ' + ' with spaces, as before round 5
-    # ('에토좀PTT(압출+염증주사 포함/…)', '얼굴위쪽(이마+미간+눈가+콧등)' are one product — 검증 6차: 에토좀 PTT 48 → 24 branches)
+    # a bracket '+' makes a bundle on a 제모 page only when it is not an area list; elsewhere when it lists another product
+    # (bracket_bundle — written with or without spaces), not areas or what comes with it ('에토좀PTT(압출+염증주사 포함/…)',
+    # '얼굴위쪽(이마+미간+눈가+콧등)' are one product — 검증 6차: 에토좀 PTT 48 → 24 branches)
     bundle = n >= 2 or (bool(PACKAGE.search(plain)) and not (plus_only and not PACKAGE.search(plain.replace("+", "")))) \
-        or ((bool(listed) and not listed_areas) if areas_only else bool(re.search(r"\([^()]*\s\+\s[^()]*\)", raw)))
+        or ((bool(listed) and not listed_areas) if areas_only else bracket_bundle(raw, fam))
     v = None
     if fam and not bundle:
         v, why = _family_variant(raw, fam, sess, display)
@@ -672,6 +744,8 @@ def _family_variant(raw, fam, sess, display=None):
         elif t["split"] and t["split"][0] != famname and t["where"] == "hide":
             t = dict(t, where="post")          # a second area ('스킨보톡스 … 주름'): show it, it changes the product
         tags.append(t)
+    if any(t["label"] == "FX+FORMA" for t in tags):     # both modes named in the bracket, one in the name ('인모드 Forma(풀페이스)
+        tags = [t for t in tags if t["label"] not in ("FX", "FORMA")]     # ([인모드Forma + Fx])'): the two modes, not 'FX+FORMA FORMA'
     lab = [t["label"] for t in tags]
     if "국산" in lab and ({"수입", "독일산", "미국산"} & set(lab)):
         return None, "원산지 둘 이상"
