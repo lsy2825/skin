@@ -162,6 +162,18 @@
     return { key: best, honored: honored && !!specText(sp) };
   }
 
+  // a place asked ('홍대 제모 싼 곳'): of the treatments tied for the best score, the one with the most prices in that place
+  // comes first. Branch count alone picked a body part ('배 제모') that has no price there at all (2026-10-15, C1 data).
+  // Only the tie is reordered (at most 40 of it); with equal counts the order stays.
+  function byPlace(fams, sp, c, where) {
+    const tied = [];
+    for (const r of fams) { if (r.score < fams[0].score || tied.length >= 40) break; tied.push(r); }
+    if (tied.length < 2) return fams;
+    const here = (r) => c.price(pickKey(r.f, sp, c, where).key.id, where).n || 0;
+    const ranked = tied.map((r, i) => ({ r, i, n: here(r) })).sort((a, b) => b.n - a.n || a.i - b.i).map((x) => x.r);
+    return [...ranked, ...fams.slice(tied.length)];
+  }
+
   function understand(text, c, memo = memory()) {
     const raw = String(text || "").slice(0, MAX_LEN), sq = raw.replace(/\s+/g, "");
     const res = { text: raw, kind: "unknown", safety: [], personal: false, fams: [], concerns: [], help: null, chit: null, key: null, spec: "", specHonored: false,
@@ -223,6 +235,7 @@
       res.suggestions = suggest(raw, c);
       return res;
     }
+    if (!res.followUp && c.price && Object.keys(res.where).length) fams = byPlace(fams, sp, c, res.where);
     res.fams = fams.slice(0, 3).map((r) => r.f);
     res.guess = fams[0].guess || null;
     const f = res.fams[0];
