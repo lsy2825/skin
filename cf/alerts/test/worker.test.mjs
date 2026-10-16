@@ -1052,11 +1052,12 @@ test("logs stay counts-only in every error and abuse branch too (429 rate limit/
     assert.equal((await call(worker, env, "GET", "/v1/push/nothing/UNKNOWNID_abcdefghijk", undefined, { headers })).status, 404);
     assert.equal((await call(worker, env, "POST", "/v1/internal/finish", { run: "2026-10-19|9999-12-31", today: "9999-12-31" }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
     assert.equal((await call(worker, env, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: [{ k: "X24", r: "", id: "LEAKID" }] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
-    // the factory's key set: a malformed one (400 BAD_KEYS), then rules naming a key outside it (400 UNKNOWN_KEY)
+    // the factory's key set: a malformed one (400 BAD_KEYS); then rules naming a key outside it — stored, named in "unknown"
     assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24", "TLEAKKEY"] }, { headers: { ...headers, ...AUTH, origin: null } })).body.error, "BAD_KEYS");
     assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24"] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 200);
-    assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.error, "UNKNOWN_KEY");
-    assert.equal((await call(worker, env, "PUT", "/v1/push/rules/UNKNOWNID_abcdefghijkl", { rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.error, "UNKNOWN_KEY");
+    assert.deepEqual((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.unknown, ["TLEAKKEY"]);
+    assert.equal((await call(worker, env, "PUT", "/v1/push/rules/UNKNOWNID_abcdefghijkl", { rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).status, 404);
+    assert.equal((await call(worker, env, "GET", `/v1/internal/watched?at=0&data=${"Z".repeat(64)}`, undefined, { headers: { ...headers, ...AUTH, origin: null } })).body.error, "BAD_PAGE");
     // push service answers 404 / 410 / 429 / 302 / network error
     for (const [i, host] of ["fcm.googleapis.com", "web.push.apple.com", "updates.push.services.mozilla.com", "wns2-par02p.notify.windows.com", "fcm.googleapis.com"].entries()) {
       const s = subscription(host, `push/abuse-ep-${i + 2}`);
@@ -1656,22 +1657,31 @@ test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of p
   assert.deepEqual(w2.body, { pairs: [{ k: "X24", r: "" }], next: null });
   assert.equal((await call(worker, e2, "GET", "/health")).body.pairs, "ok");
   for (const bad of ["-1", "abc", "1.5", "6", "1e3"]) assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=${bad}`)).body, { error: "BAD_PAGE" }, bad);
-  // more than one page (PAGE 2,000): 105 phones × 20 distinct pairs = 2,100 pairs, read in two pages, nothing twice
+  // one page holds the whole list at the default PAIR_CAP (6th review: every page groups subs × rules again — ≈ 435,000 rows
+  // read at the ceiling, measured on a local D1): 105 phones × 20 distinct pairs = 2,100 pairs in ONE page
   const { env: e3 } = await setup();
   for (let i = 0; i < 105; i++) await sub(e3, keys(1000 + i * 20, 20));
   const p1 = await internal(e3, "GET", "/v1/internal/watched?at=0");
-  assert.deepEqual([p1.body.pairs.length, p1.body.next], [2000, 2000]);
-  const p2 = await internal(e3, "GET", `/v1/internal/watched?at=${p1.body.next}`);
-  assert.deepEqual([p2.body.pairs.length, p2.body.next, p2.body.capped], [100, null, undefined]);
-  assert.equal(new Set([...p1.body.pairs, ...p2.body.pairs].map((p) => p.k + p.r)).size, 2100);
-  assert.ok(PAIR_CAP >= 2100 && PAIR_CAP <= 5000, `PAIR_CAP ${PAIR_CAP}`);
+  assert.deepEqual([p1.body.pairs.length, p1.body.next, p1.body.capped], [2100, null, undefined]);
+  assert.ok(PAIR_CAP <= 5000, `PAIR_CAP ${PAIR_CAP} fits one page (PAGE 5,000)`);
+  // a PAIR_CAP raised past PAGE: two pages, nothing twice
+  const { env: e4 } = await setup({ PAIR_CAP: "6000" });
+  for (let i = 0; i < 260; i++) await sub(e4, keys(10000 + i * 20, 20));
+  const q1 = await internal(e4, "GET", "/v1/internal/watched?at=0");
+  assert.deepEqual([q1.body.pairs.length, q1.body.next], [5000, 5000]);
+  const q2 = await internal(e4, "GET", `/v1/internal/watched?at=${q1.body.next}`);
+  assert.deepEqual([q2.body.pairs.length, q2.body.next, q2.body.capped], [200, null, undefined]);
+  assert.equal(new Set([...q1.body.pairs, ...q2.body.pairs].map((p) => p.k + p.r)).size, 5200);
   // the arithmetic (src/worker.js, rows written per statement measured on a local D1): pushes (≤ 8 a push: claim 2 +
   // RETRY of a row with pend_w 1 and pend_x set 4 + a delete 2) + new subscriptions (5 each; a D1 day spans two KST budget
-  // days) + the finish's marks on a full table (≤ 5 per row) + the snap side of a factory run (≤ 2 × (PAIR_CAP + 500))
-  // stays under D1 Free's 100,000 rows a day, a manual re-run included (cf/metrics shares the limit: not in this sum)
+  // days) + ONE full factory computation a D1 day (weekly.yml: ALERTS_MODE full only on the daily schedule; its finish's
+  // marks on a full table ≤ 5 per row, its snap side ≤ 2 × (PAIR_CAP + 500)) + the key-set-only runs (≤ 1 row each; 26–29
+  // runs a day were counted) + the three stat rows a finish may write stays under D1 Free's 100,000 rows a day
+  // (cf/metrics shares the limit: not in this sum)
   const worst = 77 * SEND_LIMIT * 8 + 2 * NEW_PER_DAY * 5 + MAX_SUBS * 5 + 2 * (PAIR_CAP + 500);
   assert.equal(worst, 91640, "the worst D1 day the docs quote (≈ 91,600)");
-  assert.ok(worst + 2 * (PAIR_CAP + 500) < 100000, "a second factory run the same day still fits");
+  assert.ok(worst + 30 + 3 < 100000, "plus up to 30 key-set-only runs and the finish's stat rows");
+  assert.ok(worst + 2 * (PAIR_CAP + 500) + MAX_SUBS * 5 > 100000, "a SECOND full computation the same D1 day would not fit — why push and Run workflow send the key set only");
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.equal(/"PAIR_CAP":\s*"(\d+)"/.exec(cfg)[1], String(PAIR_CAP), "wrangler.jsonc vars.PAIR_CAP = the code's default");
 });
@@ -2006,7 +2016,7 @@ test("4th review (first come keeps the list): pairs that filled the list first m
   assert.deepEqual(w.pairs[0], { k: "X24", r: "" }, "a phone that took a push puts its pair first for good");
 });
 
-test("4th/5th review (cleanup queries): the narrow query the docs give first (SECURITY_ARCHITECTURE §4) removes only never-pushed subscriptions none of whose keys is in the factory's key set — nothing while no set is stored; the wide one (a user decision) removes every subscription that never received a push; neither touches a row a send run holds or a phone that took a push", T, async () => {
+test("4th/5th/6th review (cleanup queries): the narrow query the docs give first (SECURITY_ARCHITECTURE §4; a user decision right after a reclassification) removes only never-pushed subscriptions none of whose keys is in the factory's key set — nothing while no set is stored; the wide one (a user decision) removes every subscription that never received a push; neither touches a row a send run holds or a phone that took a push", T, async () => {
   const doc = readFileSync(new URL("../../../docs/SECURITY_ARCHITECTURE.md", import.meta.url), "utf8");
   const all = (re) => [...doc.matchAll(re)].map((m) => m[1]);
   const dels = all(/`(DELETE FROM subs WHERE [^`]+)`/g), counts = all(/`(SELECT count\(\*\) FROM subs WHERE [^`]+)`/g);
@@ -2016,6 +2026,12 @@ test("4th/5th review (cleanup queries): the narrow query the docs give first (SE
   assert.ok(narrowDel && narrowCount && wideDel && wideCount, "all four queries are in the doc");
   assert.ok(doc.indexOf(narrowDel) < doc.indexOf(wideDel), "the narrow one comes first");
   assert.match(doc, /넓은 쿼리[^\n]*사용자 결정/, "the doc says the wide one needs a user decision");
+  // 6th review: real phones can hold only old keys for a few days after a reclassification, and B's app turns push off on a
+  // 404 instead of subscribing again — the doc says both, and makes the narrow query a user decision then
+  assert.match(doc, /좁은 쿼리[^\n]*재분류 직후[^\n]*사용자 결정/, "the narrow one is a user decision right after a reclassification");
+  assert.match(doc, /재분류\(data\.json `meta\.recl`\) 뒤 며칠은 진짜 휴대폰도/);
+  assert.match(doc, /다시 구독하지 않고 푸시를 '꺼짐'으로 바꿔요/);
+  assert.equal(/404 → 앱이 다시 구독/.test(doc), false, "the old wording (the app subscribes again on a 404) is gone");
   for (const [c, d] of [[narrowCount, narrowDel], [wideCount, wideDel]])
     assert.equal(c.replace(/^SELECT count\(\*\)/, "").trim(), d.replace(/^DELETE/, "").trim(), "the count and the delete name the same rows");
   const run = (db, sql) => db.rows(sql.replace(/;$/, ""))[0]["count(*)"];
@@ -2046,7 +2062,9 @@ test("4th/5th review (cleanup queries): the narrow query the docs give first (SE
 });
 
 // ---- 5th review: keys the factory cannot compute (not in the data.json it reads) never take a place in the watched list;
-// once the factory's key set is stored, subscribe/PUT refuse them (400 UNKNOWN_KEY); the set is one row written on change
+// the set is one row written on change. 6th review: subscribe/PUT never refuse them (B's app treats a non-2xx as a failed
+// subscribe, and a lost PUT also loses the deletes it carried): the rules are stored and the answer names such keys in an
+// informational "unknown" field — fields are only added (지시서 공통 규칙 6)
 
 const putKeys = (env, keys, now) => internal(env, "POST", "/v1/internal/keys", { keys }, now);
 const written = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
@@ -2080,39 +2098,46 @@ test("5th review (key set): POST /v1/internal/keys stores ONE row, rewritten onl
   assert.deepEqual((await putKeys(env, max)).body, { keys: 20000, changed: true });
 });
 
-test("5th review (subscribe/PUT): before the first key set every key of the right shape is taken; afterwards a rule naming a key outside it is 400 UNKNOWN_KEY {keys} — nothing written, the budget untouched, the same endpoint keeps its row and id; PUT [] still deletes; an unknown id with known keys is still 404", T, async () => {
+test("6th review (subscribe/PUT, additive): before the first key set no answer has \"unknown\"; afterwards a rule naming a key outside it is STORED and the 201/200 answer adds \"unknown\": [those keys] — the budget counts it like any subscription, the same endpoint takes its new rules, PUT [] still deletes, an unknown id is 404", T, async () => {
   const { env, db } = await setup();
   const now = kst("2026-10-19T12:00:00");
   const sa = subscription();
-  const a = await sub(env, [{ kind: "watch", key: "T0000ABC" }], sa, { now });
-  assert.ok(a.id, "no key set yet: accepted as before");
+  const a0 = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000ABC" }] }, { now });
+  assert.deepEqual([a0.status, Object.keys(a0.body)], [201, ["id"]], "no key set yet: nothing is unknown");
+  const a = a0.body;
   assert.equal((await putKeys(env, ["X01", "X24"], now)).status, 200);
-  const w = written(db), budget = () => db.rows("SELECT n FROM stat WHERE k = 'new:2026-10-19'")[0].n;
-  // a new phone naming unknown keys (with a known one): refused, every unknown key listed once
+  const budget = () => db.rows("SELECT n FROM stat WHERE k = 'new:2026-10-19'")[0].n;
+  // a new phone naming unknown keys (with a known one): stored, every unknown key listed once, ascending
   const s = subscription();
   const rules = [{ kind: "watch", key: "X24" }, { kind: "target", key: "T0000ZZZ", max: 1 }, { kind: "newmatch", key: "T0000AAA" }, { kind: "watch", key: "T0000ZZZ", region: "부산" }];
   const r = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: s, rules }, { now });
-  assert.deepEqual([r.status, r.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000AAA", "T0000ZZZ"] }]);
+  assert.equal(r.status, 201);
+  assert.deepEqual(Object.keys(r.body), ["id", "unknown"]);
+  assert.deepEqual(r.body.unknown, ["T0000AAA", "T0000ZZZ"]);
+  assert.match(r.body.id, /^[A-Za-z0-9_-]{22}$/);
   assert.equal(r.headers.get("access-control-allow-origin"), APP, "the app can read the answer");
-  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint = ?", s.endpoint)[0].c, 0);
-  assert.equal(budget(), 1, "today's budget is not used");
-  // the same endpoint as phone a again, with an unknown key: refused, a keeps its id and rules
-  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).body.error, "UNKNOWN_KEY");
-  assert.deepEqual(db.rows("SELECT id, rules FROM subs WHERE endpoint = ?", sa.endpoint), [{ id: a.id, rules: '[{"kind":"watch","key":"T0000ABC"}]' }]);
-  // PUT: its old rule (its key is no longer in the set) plus a known one → refused, the row unchanged; the known one alone → 200
-  const p1 = await call(worker, env, "PUT", `/v1/push/rules/${a.id}`, { rules: [{ kind: "watch", key: "T0000ABC" }, { kind: "watch", key: "X24" }] }, { now });
-  assert.deepEqual([p1.status, p1.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000ABC"] }]);
-  assert.equal(db.rows("SELECT rules FROM subs WHERE id = ?", a.id)[0].rules, '[{"kind":"watch","key":"T0000ABC"}]');
-  assert.equal(written(db) - w, 0, "the refused requests wrote nothing");
-  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${a.id}`, { rules: [{ kind: "watch", key: "X24" }] }, { now })).body, { ok: true });
-  // an unknown id: known keys → 404 (subscribe again), unknown keys → 400 (subscribing again would be refused too)
-  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key: "X01" }] }, { now })).status, 404);
-  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).body.error, "UNKNOWN_KEY");
-  // known keys: subscribe works as before; PUT [] deletes whatever the stored rules name
-  const b = await sub(env, [{ kind: "watch", key: "X01" }, { kind: "target", key: "X24", max: 100000, region: "수도권" }], subscription(), { now });
-  db.raw.prepare("UPDATE subs SET rules = ? WHERE id = ?").run('[{"kind":"watch","key":"T0000ABC"}]', b.id);
-  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${b.id}`, { rules: [] }, { now })).body, { ok: true });
-  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE id = ?", b.id)[0].c, 0);
+  assert.deepEqual(JSON.parse(db.rows("SELECT rules FROM subs WHERE id = ?", r.body.id)[0].rules).map((x) => x.key).sort(), ["T0000AAA", "T0000ZZZ", "T0000ZZZ", "X24"], "every rule stored as sent");
+  assert.equal(budget(), 2, "a new subscription like any other");
+  // the same endpoint as phone a again, with an unknown key: a new id and the new rules (as for any key)
+  const again = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000AAA" }] }, { now });
+  assert.deepEqual([again.status, again.body.unknown], [201, ["T0000AAA"]]);
+  assert.notEqual(again.body.id, a.id);
+  assert.deepEqual(db.rows("SELECT rules FROM subs WHERE endpoint = ?", sa.endpoint), [{ rules: '[{"kind":"watch","key":"T0000AAA"}]' }]);
+  // PUT: an unknown key plus a known one → 200 {ok, unknown}, stored; the known one alone → {ok:true} exactly as before
+  const p1 = await call(worker, env, "PUT", `/v1/push/rules/${again.body.id}`, { rules: [{ kind: "watch", key: "T0000ABC" }, { kind: "watch", key: "X24" }] }, { now });
+  assert.deepEqual([p1.status, p1.body], [200, { ok: true, unknown: ["T0000ABC"] }]);
+  assert.equal(db.rows("SELECT rules FROM subs WHERE id = ?", again.body.id)[0].rules, '[{"kind":"watch","key":"T0000ABC"},{"kind":"watch","key":"X24"}]');
+  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${again.body.id}`, { rules: [{ kind: "watch", key: "X24" }] }, { now })).body, { ok: true });
+  // an unknown id: 404 whatever the keys
+  for (const key of ["X01", "T0000AAA"]) assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key }] }, { now })).status, 404, key);
+  // PUT [] deletes whatever the stored rules name (no "unknown" field: nothing is stored)
+  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${r.body.id}`, { rules: [] }, { now })).body, { ok: true });
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE id = ?", r.body.id)[0].c, 0);
+  // a full table / used-up budget answer as before, unknown keys or not
+  const { env: e2 } = await setup({ MAX_SUBS: "1" });
+  assert.equal((await putKeys(e2, ["X24"], now)).status, 200);
+  assert.equal((await call(worker, e2, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).status, 201);
+  assert.deepEqual((await call(worker, e2, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).body, { error: "FULL" });
 });
 
 test("5th review (no cap slot): pairs of keys outside the factory's key set are never ranked — planted before the first set, watched by more phones than the real pairs, they no longer cut the list or come first", T, async () => {
@@ -2137,12 +2162,12 @@ test("5th review (no cap slot): pairs of keys outside the factory's key set are 
   assert.deepEqual((await internal(env, "GET", "/v1/internal/watched?at=2")).body, { pairs: [{ k: "X24", r: "서울" }], next: null });
 });
 
-test("5th review (flood + new real pair): a flood of unknown-key pairs planted before the first key set (more than PAIR_CAP, 2 phones each) and a real phone that subscribes the next day — its pair is computed on that day's factory run and gets its news; the flood never enters snap; /health pairs stays ok", T, async () => {
+test("5th/6th review (flood + new real pair): a flood of unknown-key pairs (more than PAIR_CAP, 2 phones each) before AND after the first key set, and a real phone that subscribes the next day — its pair is computed on that day's factory run and gets its news; the flood never enters snap or takes a cap slot; a rule whose key a later key set holds starts being computed; /health pairs stays ok", T, async () => {
   const CAP = 200;
   const { env, db } = await setup({ PAIR_CAP: String(CAP) });
   for (let rep = 0; rep < 2; rep++) for (let s = 0; s < CAP / 20 + 2; s++) await sub(env, Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: fake(s * 20 + j) })), subscription(), { now: kst("2026-10-18T12:00:00") });
   // one factory run as notify.mjs does it: the key set of its data.json first, then the watched pages, digest, finish
-  const KEYS = ["X01", "X07", "X24"];
+  let KEYS = ["X01", "X07", "X24"];
   const factory = async (today, x24m = 100000) => {
     const now = kst(`${today}T06:00:00`), run = `${today}|${today}`, pairs = [];
     assert.equal((await putKeys(env, KEYS, now)).status, 200);
@@ -2163,14 +2188,58 @@ test("5th review (flood + new real pair): a flood of unknown-key pairs planted b
     return pairs;
   };
   assert.deepEqual(await factory("2026-10-19"), [], "day 1: the flood is not in the list");
-  // day 2: a real phone subscribes (X24 nationwide); planting more made-up keys is refused now
+  // day 2: a real phone subscribes (X24 nationwide); more made-up keys are planted after the key set (stored, named
+  // "unknown" — 6th review), again more than PAIR_CAP pairs with 2 phones each
   const real = await sub(env, [{ kind: "newmatch", key: "X24" }, { kind: "watch", key: "X24" }], subscription(), { now: kst("2026-10-19T12:00:00") });
-  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "newmatch", key: fake(9999) }] }, { now: kst("2026-10-19T12:00:00") })).body.error, "UNKNOWN_KEY");
+  for (let rep = 0; rep < 2; rep++) for (let s = 0; s < CAP / 20 + 2; s++) {
+    const r = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: fake(5000 + s * 20 + j) })) }, { now: kst("2026-10-19T12:00:00") });
+    assert.deepEqual([r.status, r.body.unknown.length], [201, 20]);
+  }
+  // a phone that already watches a key the next data.json will have (T0009077, made up today, real later)
+  const early = await sub(env, [{ kind: "newmatch", key: fake(9077) }], subscription(), { now: kst("2026-10-19T12:00:00") });
   assert.deepEqual(await factory("2026-10-20"), [{ k: "X24", r: "" }]);
   assert.deepEqual(db.rows("SELECT k, added FROM snap"), [{ k: "X24", added: "2026-10-20" }], "computed the next morning; nothing of the flood in snap");
   await factory("2026-10-21", 90000);                                   // a 10% lower lowest price
   assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", real.id)[0].pend_w, 1, "the real phone has its news");
   assert.equal((await send(env, kst("2026-10-21T09:00:00"), { fetch: pushService().f })).sent, 1);
   for (const d of ["2026-10-19", "2026-10-20", "2026-10-21"]) assert.equal((await call(worker, env, "GET", "/health", undefined, { now: kst(`${d}T09:30:00`) })).body.pairs, "ok", d);
-  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 2 * (CAP / 20 + 2) + 1, "the flood rows stay until a person runs the narrow cleanup query");
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 4 * (CAP / 20 + 2) + 2, "the flood rows stay until a person deletes them (cleanup queries, docs/SECURITY_ARCHITECTURE.md §4)");
+  // the next data.json has T0009077 (a new treatment variant): the early phone's pair is ranked and computed from that day on
+  KEYS = ["T0009077", "X01", "X07", "X24"];
+  assert.deepEqual((await factory("2026-10-22")).map((p) => p.k).sort(), ["T0009077", "X24"]);
+  assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["T0009077", "X24"], "the early phone's pair is in snap; the flood is not");
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE id = ?", early.id)[0].c, 1);
+});
+
+// ---- 6th review (D1 budget): a factory run of a data.json already finished today stops at its first watched page
+
+test("6th review (same data, same day): finish notes the KST day and the data.json (sha256 tag); the first watched page of the same data the same day answers done; another data, no data or the next day get the list; a bad sha is 400; a second finish the same day writes nothing", T, async () => {
+  const { env, db } = await setup();
+  await sub(env, [{ kind: "watch", key: "X24" }]);
+  const A = "a".repeat(64), B = "b".repeat(64), now = kst("2026-10-19T06:00:00"), later = kst("2026-10-19T15:00:00"), run = "2026-10-19|2026-10-19";
+  const list = { pairs: [{ k: "X24", r: "" }], next: null };
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${A}`, undefined, now)).body, list, "nothing finished yet");
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run, entries: [{ k: "X24", r: "", m: 1000, n: 3, med: 2000 }] }, now)).status, 200);
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-19", data: A }, now)).status, 200);
+  assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('finish', 'data') ORDER BY k"), [{ k: "data", n: parseInt(A.slice(0, 13), 16) }, { k: "finish", n: 20261019 }]);
+  const w = written(db);
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${A}`, undefined, later)).body, { pairs: [], next: null, done: true });
+  assert.equal(written(db) - w, 0, "done writes nothing (no stat 'capped' either)");
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${B}`, undefined, later)).body, list, "another data.json");
+  assert.deepEqual((await internal(env, "GET", "/v1/internal/watched?at=0", undefined, later)).body, list, "a caller that does not name its data");
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${A}`, undefined, kst("2026-10-20T06:00:00"))).body, list, "the next KST day: computed again (expiring counts days)");
+  // only the first page answers done (a later page of a run that started before the finish goes on)
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=1&data=${A}`, undefined, later)).body, { pairs: [], next: null });
+  for (const bad of ["A".repeat(64), "a".repeat(63), "g".repeat(64), ""]) {
+    assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${bad}`, undefined, later)).body, { error: "BAD_PAGE" }, bad);
+    assert.deepEqual((await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-19", data: bad }, later)).body, { error: "BAD_FINISH" }, bad);
+  }
+  // the same finish again that day: no row written (STAT_FINISH and STAT_DATA write only on change, the marks found nothing)
+  const w2 = written(db);
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-19", data: A }, later)).status, 200);
+  assert.equal(written(db) - w2, 0);
+  // a finish that does not name its data forgets the stamp: nothing can be taken for done afterwards
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-19" }, later)).status, 200);
+  assert.deepEqual(db.rows("SELECT count(*) c FROM stat WHERE k = 'data'"), [{ c: 0 }]);
+  assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${A}`, undefined, later)).body, list);
 });

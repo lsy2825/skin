@@ -82,11 +82,12 @@ CREATE TABLE snap (
   PRIMARY KEY (k, r)
 ) STRICT;
 
--- the compare keys of the data.json the factory last read (notify.mjs → POST /v1/internal/keys, before it asks for the
--- watched pairs): ONE row, a JSON array in ascending order (src/rules.js keySetJson), rewritten only when the set changes
--- (src/sql.js SET_KEYS: a few rows written a week). The factory computes only those keys, so the watched list ranks only
--- pairs whose key is in it, and once it exists subscribe/PUT refuse a rule whose key is not (400 UNKNOWN_KEY; src/sql.js
--- WATCHED, UNKNOWN_KEYS). Public treatment keys only — nothing about a person. INTEGER PRIMARY KEY: no separate index.
+-- the compare keys of the data.json the factory last read (notify.mjs → POST /v1/internal/keys, on every run after a deploy,
+-- before it asks for the watched pairs): ONE row, a JSON array in ascending order (src/rules.js keySetJson), rewritten only
+-- when the set changes (src/sql.js SET_KEYS: a few rows written a week). The factory computes only those keys, so the
+-- watched list ranks only pairs whose key is in it (src/sql.js WATCHED). Subscribe/PUT store a rule whose key is not in it
+-- and list that key in an informational "unknown" field of the answer (src/sql.js UNKNOWN_KEYS). Public treatment keys
+-- only — nothing about a person. INTEGER PRIMARY KEY: no separate index.
 CREATE TABLE keyset (id INTEGER PRIMARY KEY CHECK (id = 1), keys TEXT NOT NULL) STRICT;
 
 -- VAPID JWT per push origin (a signed token, not a secret; 12 h). Re-signed only when < 1 h is left.
@@ -98,6 +99,8 @@ CREATE TABLE vapid (aud TEXT PRIMARY KEY, jwt TEXT NOT NULL, exp INTEGER NOT NUL
 --   'day'             the Worker's own KST day (yyyymmdd) of the last subscribe call: the Worker writes it in the same D1
 --                     batch right before the INSERT, and the subs_ins trigger names today's counter from it (no row holds a date)
 --   'finish'          KST day (yyyymmdd, the Worker's clock) of the last factory finish (GET /health "finished")
+--   'data'            the data.json that finish was computed from: the first 52 bits of its sha256 (no row = not told).
+--                     With 'finish' it lets a factory run of the same data on the same day stop at once (src/sql.js SAME_DATA)
 --   'refusing'        KST day (yyyymmdd) of the last send run in which phones that took our pushes refused our VAPID
 --                     token at a push service that took nothing else (GET /health "refusing" that day and the next)
 --   'capped'          KST day (yyyymmdd) the factory's watched list was last cut at PAIR_CAP (GET /health "pairs")

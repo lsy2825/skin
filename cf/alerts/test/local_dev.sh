@@ -2,7 +2,8 @@
 # Local check of the alerts Worker in the real runtime (workerd via wrangler dev) with a local D1:
 #   bash cf/alerts/test/local_dev.sh
 # migrate a throw-away local D1 → wrangler dev on a free port (8795-8799) → subscribe / rules / delete / factory export
-# with curl → notify.mjs on app/data.json against it → stop wrangler by its process group. Needs node + npx (no account,
+# with curl → notify.mjs on app/data.json against it (full, the same data again = done, ALERTS_MODE=keys) → stop wrangler
+# by its process group. Needs node + npx (no account,
 # no network to Cloudflare). The factory secret is made up for this run only.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
@@ -80,19 +81,32 @@ grep -q '^price alerts: 3 watched pairs' "$STATE/notify.log" || fail "notify did
 SNAP=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c FROM snap WHERE p = 0" 2>/dev/null) || fail "could not read the local D1"
 case "$SNAP" in *'"c": 3'*|*'"c":3'*) ;; *) fail "baselines were not stored: $SNAP";; esac
 echo "ok   baselines stored for the 3 watched pairs"
+# the same data.json again the same KST day (6th review): the Worker answers done at the first watched page — no digest,
+# no finish (stat 'finish' + 'data' name today's finished data.json)
 ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify2.log"
-grep -q '^price alerts: 3 watched pairs (0 skipped, 0 changed' "$STATE/notify2.log" || fail "the same data again must not change anything"
-echo "ok   same data again: nothing changed"
+grep -q '^price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do$' "$STATE/notify2.log" || fail "the same data again the same day must stop at once"
+DS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT n FROM stat WHERE k = 'data'" 2>/dev/null) || fail "could not read the local D1 data stamp"
+WANT=$(node -e 'const h=require("crypto").createHash("sha256").update(require("fs").readFileSync("app/data.json")).digest("hex");console.log(parseInt(h.slice(0,13),16))')
+case "$DS" in *'"n": '"$WANT"*|*'"n":'"$WANT"*) ;; *) fail "stat 'data' should hold the tag of app/data.json's sha256 ($WANT): $DS";; esac
+echo "ok   same data again the same day: done at the first page (stat data = the file's sha256 tag)"
+# a push-started run (ALERTS_MODE=keys): only the key set
+ALERTS_MODE=keys ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify3.log"
+grep -q '^price alerts: key set sent ([0-9]* keys, unchanged) — a push-started run computes nothing (the daily run does)$' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should send only the key set"
+echo "ok   ALERTS_MODE=keys: key set only"
 # notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
-# does not have is refused (400 UNKNOWN_KEY, the unknown keys listed), and a malformed key set is 400 BAD_KEYS
+# does not have is still stored (the API only adds — 6th review) and named in "unknown"; a malformed key set is 400 BAD_KEYS
 KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"
 NKEYS=$(node -e 'const d=JSON.parse(require("fs").readFileSync("app/data.json","utf8"));console.log(new Set(d.keys.map((k)=>k[0])).size)')
 case "$KS" in *'"c": 1'*'"n": '"$NKEYS"*|*'"c":1'*'"n":'"$NKEYS"*) ;; *) fail "the key set should be one row of $NKEYS keys: $KS";; esac
 echo "ok   key set stored: one row, $NKEYS keys"
 # (a PUT, so the subscribe rate limit of 3 a minute stays for the subscriptions below; POST takes the same path: node tests)
 U=$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"},{"kind":"watch","key":"TZZZZZZZ"}]}' -H "origin: $APP")
-expect 400 "$U" "a rule naming a key data.json does not have"
-case "$U" in *'"error":"UNKNOWN_KEY","keys":["TZZZZZZZ"]'*) ;; *) fail "should answer UNKNOWN_KEY with the unknown key: $U";; esac
+expect 200 "$U" "a rule naming a key data.json does not have: stored"
+case "$U" in *'{"ok":true,"unknown":["TZZZZZZZ"]}'*) ;; *) fail "should answer {ok:true, unknown:[that key]}: $U";; esac
+RU=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT rules FROM subs WHERE endpoint LIKE '%local-dev-1'" 2>/dev/null) || fail "could not read the local D1 rules"
+case "$RU" in *TZZZZZZZ*) ;; *) fail "the rule with the unknown key should be stored: $RU";; esac
+expect 200 "$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"}]}' -H "origin: $APP")" "known keys only: no unknown field"
+case "$(cat "$STATE/out")" in '{"ok":true}') ;; *) fail "known keys should answer {\"ok\":true}: $(cat "$STATE/out")";; esac
 expect 400 "$(req POST /v1/internal/keys '{"keys":["X24","X01"]}' -H "authorization: Bearer $SECRET")" "a key set out of order (BAD_KEYS)"
 expect 401 "$(req POST /v1/internal/keys '{"keys":["X01"]}')" "key set without the secret"
 

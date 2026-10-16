@@ -4,8 +4,8 @@ name: cf-alerts
 # (main only: apply D1 migrations → deploy → the one-time key setup or the ALERTS_SECRET sync, below).
 # The app itself is deployed by weekly.yml; this never touches app/. Skips deploying (with a notice) until the D1 database
 # id is in wrangler.jsonc. Uses the SAME CLOUDFLARE_API_TOKEN as weekly.yml's app deploy, so there is one token to look
-# after: the deploy job names the GitHub Environment `cloudflare`, like weekly.yml's deploy job and cf-workers.yml (PR
-# platform/deploy-job) — once the owner moves the token into that Environment (Deployment branches: main only) and deletes
+# after: the deploy job names the GitHub Environment `cloudflare`, like weekly.yml's deploy job and cf-workers.yml (#82,
+# merged 2026-10-16) — once the owner moves the token into that Environment (Deployment branches: main only) and deletes
 # the repository secret, only jobs that name it get the token, and this one still does. With the D1 id set and no token
 # the deploy job is RED (a setup error, never a quiet green). Creating a Worker that does not exist yet needs the token's
 # Workers permission at Admin (Editor cannot create a new Worker), and `d1 migrations apply` needs D1 → Edit.
@@ -18,8 +18,9 @@ name: cf-alerts
 # One token (docs/SECURITY_ARCHITECTURE.md token table): with Workers Admin + D1 Edit it can read the alerts D1 and redeploy
 # this Worker (and so read its secrets). Any code that runs in a job holding it can read it — an `unset` in a script is no
 # wall (/proc/<pid>/environ of the parent shell still has it) — so it belongs only in jobs that run no scraper, pip package
-# or build code. As long as weekly.yml hands it to the factory (update) job — before the app deploy moved to a job of its
-# own (platform/deploy-job) — the scrapers and pip packages there can read it.
+# or build code. weekly.yml gives it only to its deploy job since the deploy split (#82); a Re-run of a weekly-prices run
+# that started before that still hands it to the factory (update) job, where the scrapers and pip packages could read it,
+# until the token lives only in the Environment `cloudflare`. weekly.yml's price_alerts job never gets it.
 #
 # Only main is deployed: "Run workflow" on any other branch only tests (a notice says so; setup_keys / sync_secret there are
 # a red run, nothing stored).
@@ -109,7 +110,7 @@ jobs:
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
-    # the Cloudflare token's home, as in weekly.yml's deploy job and cf-workers.yml (PR platform/deploy-job): after the owner
+    # the Cloudflare token's home, as in weekly.yml's deploy job and cf-workers.yml (#82): after the owner
     # moves CLOUDFLARE_API_TOKEN into the Environment `cloudflare` (main only) and deletes the repository secret, only jobs
     # naming it get the token. Until then it changes nothing (a missing Environment is created without rules on first use).
     environment: cloudflare
