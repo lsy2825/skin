@@ -266,7 +266,7 @@ test("weekly.yml: deploy job — code from the run's start, data from the saved 
   for (const p of codePaths) assert.ok(pushPaths.includes(p) || pushPaths.includes(`${p}/**`), `on.push.paths has ${p}`);
   assert.match(deploy, /\n    outputs:\n {6}skipped: \$\{\{ steps\.data\.outputs\.skipped \}\}/, "the reason for a skip is handed on (redeploy job)");
   // alert job: scripts from the run's start commit, only the report taken from main (regular files), read as data
-  assert.match(alert, /needs: \[update, deploy, redeploy\]/);
+  assert.match(alert, /needs: \[update, deploy, redeploy, price_alerts\]/);
   assert.match(alert, /needs\.deploy\.result == 'failure' \|\| needs\.deploy\.result == 'cancelled'/, "a failed deploy also sends the Telegram alert");
   assert.match(alert, /ref: \$\{\{ github\.sha \}\}/, "the alert scripts that get the bot token come from the run's start commit");
   assert.doesNotMatch(alert, /ref: main/);
@@ -355,7 +355,7 @@ test("weekly.yml redeploy job: a deploy skipped for newer deploy code starts a f
   assert.doesNotMatch(r, /\n    continue-on-error:/);
   // the alert job waits for it and reports a failed or cancelled redeploy
   const alert = stripComments(job(wf, "alert"));
-  assert.match(alert, /needs: \[update, deploy, redeploy\]/);
+  assert.match(alert, /needs: \[update, deploy, redeploy, price_alerts\]/);
   assert.match(alert, /needs\.redeploy\.result == 'failure' \|\| needs\.redeploy\.result == 'cancelled'/);
 });
 
@@ -890,7 +890,7 @@ test("factory build: main deleted an input file after the run started → the bu
   assert.equal(r.mainData, "built from prices v2 with code v1");
 });
 
-test("price alerts: their own weekly.yml job on a fresh runner after the job(s) that deploy; reviewed code, the public app's data (sha256-checked); the factory never sees the alerts token", () => {
+test("price alerts: their own weekly.yml job after the deploy job deployed (or a no-build schedule day); reviewed code, the deployed commit's data checked against the public app; full only on the schedule; the factory and the deploy token never meet the alerts token", () => {
   const fs = require("fs");
   const sh = fs.readFileSync(path.join(__dirname, "../tools/factory.sh"), "utf8");
   assert.equal(/ALERTS|notify/.test(sh), false, "factory.sh knows nothing about price alerts");
@@ -900,83 +900,98 @@ test("price alerts: their own weekly.yml job on a fresh runner after the job(s) 
   const jobsText = code.slice(code.indexOf("\njobs:\n") + 7);
   const jobs = {};
   for (const part of jobsText.split(/\n(?=  [a-z][\w-]*:\n)/)) { const m = /^\s*([a-z][\w-]*):\n/.exec(part); if (m) jobs[m[1]] = part; }
-  for (const j of ["update", "alert", "price_alerts"]) assert.ok(jobs[j], `job ${j}`);
+  for (const j of ["update", "deploy", "redeploy", "alert", "price_alerts"]) assert.ok(jobs[j], `job ${j}`);
   const { update, alert, price_alerts: pa } = jobs;
   // a different machine: the factory job (scrapers, pip packages, build) cannot write files, $GITHUB_ENV or NODE_OPTIONS
   // that the alerts step would use, and never holds either token
   assert.equal(/ALERTS_|TELEGRAM_|notify/.test(update), false, "the factory job never sees ALERTS_*, TELEGRAM_* or runs notify");
-  // the Telegram job (not ours) is untouched: its own secrets only, never the alerts token
-  assert.equal(/ALERTS_|notify|cf\/alerts/.test(alert), false, "the Telegram job never sees ALERTS_*");
+  for (const [name, text] of Object.entries(jobs)) if (name !== "price_alerts") assert.equal(/ALERTS_|notify\.mjs|cf\/alerts/.test(text), false, `${name} never sees ALERTS_* or runs the alerts code`);
+  // the Telegram job: its own secrets only; it waits for price_alerts and reports one that did not reach its end
   assert.match(alert, /TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \}\}/);
   assert.equal(/secrets\.(?!TELEGRAM_)/.test(alert), false, "only TELEGRAM_* secrets in the Telegram job");
-  // after EVERY job that builds or deploys the app (today the factory job; a deploy job of its own, if the deploy moves
-  // there): the public copy is then the newest one being served when this job downloads it
+  assert.match(alert, /\n {4}needs: \[update, deploy, redeploy, price_alerts\]\n/);
+  assert.match(alert, /needs\.price_alerts\.result == 'failure' \|\| needs\.price_alerts\.result == 'cancelled' \|\|\n\s+\(needs\.price_alerts\.result == 'success' && needs\.price_alerts\.outputs\.done != 'true'\)/,
+    "a failed, cancelled, or (continue-on-error) unfinished price-alerts job is reported, whichever way GitHub shows its result");
+  // after every job that builds or deploys the app (the factory job, the deploy job)
   const needsM = /\n {4}needs: (\[[^\]\n]*\]|[\w-]+)\n/.exec(pa);
   assert.ok(needsM, "price_alerts has needs");
   const needs = needsM[1].replace(/^\[|\]$/g, "").split(",").map((x) => x.trim());
-  assert.ok(needs.includes("update"));
+  assert.deepEqual(needs, ["update", "deploy"]);
   for (const [name, text] of Object.entries(jobs)) {
     if (name !== "price_alerts" && /CLOUDFLARE_API_TOKEN|tools\/factory\.sh|wrangler/.test(text)) assert.ok(needs.includes(name), `price_alerts must also need ${name} (it builds or deploys the app)`);
   }
-  // runs whatever their result (expiring is daily; after a failed or skipped deploy the public copy is the one still served)
-  assert.match(pa, /\n {4}if: \$\{\{ !cancelled\(\) \}\}\n/);
+  // WHEN: the deploy job deployed in this run (green, not skipped), or a schedule run had nothing to build (no deploy job)
+  assert.match(pa, /\n {4}if: >-\n {6}!cancelled\(\) && needs\.update\.result == 'success' &&\n {6}\(\(needs\.deploy\.result == 'success' && needs\.deploy\.outputs\.skipped == ''\) \|\|\n {6}\(github\.event_name == 'schedule' && needs\.update\.outputs\.run == 'false' && needs\.deploy\.result == 'skipped'\)\)\n/);
+  assert.match(jobs.deploy, /\n {6}skipped: \$\{\{ steps\.data\.outputs\.skipped \}\}/, "the deploy job says when it skipped (the condition above reads it)");
   assert.match(pa, /\n {4}permissions:\n {6}contents: read\n/, "read-only token");
   assert.match(pa, /\n {4}timeout-minutes: \d+ *(#[^\n]*)?\n/);
-  assert.match(pa, /\n {4}continue-on-error: true\n/, "never fails the price build");
-  assert.equal(/pip |requirements\.txt|npm (ci|install)|setup-python|tools\/factory\.sh|\$GITHUB_ENV/.test(pa), false, "installs nothing, runs no factory code");
+  assert.match(pa, /\n {4}continue-on-error: true\n/, "never fails the run");
+  assert.match(pa, /\n {4}outputs:\n {6}done: \$\{\{ steps\.end\.outputs\.done \}\}/);
+  assert.equal(/\n {4}environment:/.test(pa), false, "not the Cloudflare environment: the deploy token can never reach this job");
+  assert.equal(/pip |requirements\.txt|npm (ci|install)|setup-python|tools\/factory\.sh|\$GITHUB_ENV|wrangler/.test(pa), false, "installs nothing, runs no factory code");
   const steps = pa.split(/\n {6}- /).slice(1);
   // CODE = the commit a human pinned in the repository Variable ALERTS_CODE_SHA (the factory's GITHUB_TOKEN can push to main
   // but cannot edit Actions variables), never main and never github.sha (a scheduled run's github.sha IS main's last commit,
-  // which may be a factory push nobody reviewed). DATA = what the phones see: the public app's data.json, kept only when its
-  // sha256 is the one the public data-meta.json names. main is checked out only for a hint. No checkout keeps a credential.
+  // which may be a factory push nobody reviewed). DATA = the deployed commit (needs.update.outputs.sha) or main on a no-build
+  // day — two files, checked. main's alerts code is checked out only for a hint. No checkout keeps a credential.
   assert.equal(/github\.sha/.test(pa), false, "github.sha is main's last commit on a schedule run: never the code");
   const pin = steps.find((st) => /\n {8}id: pin\n/.test(st));
   assert.ok(pin, "the pin step");
   assert.match(pin, /PIN: \$\{\{ vars\.ALERTS_CODE_SHA \}\}/, "the variable arrives through env, not spliced into the script");
   assert.match(pin, /grep -Eq '\^\[0-9a-f\]\{40\}\$'/, "only a full 40-hex commit id is accepted (an empty ref would fall back to the default branch)");
   assert.match(pin, /echo "ok=false" >> "\$GITHUB_OUTPUT"/);
-  assert.equal(/\$\{\{ vars\./.test(pin.replace(/PIN: \$\{\{ vars\.ALERTS_CODE_SHA \}\}/, "")), false, "no expression inside the script text");
   const checkouts = steps.filter((st) => /^uses: actions\/checkout@/.test(st));
-  assert.equal(checkouts.length, 2);
+  assert.equal(checkouts.length, 3, "the pinned code, main's alerts code (hint), the data commit's two files");
   for (const c of checkouts) {
     assert.match(c, /persist-credentials: false/);
-    assert.match(c, /\n {8}if: steps\.pin\.outputs\.ok == 'true'\n/, "nothing is fetched without a valid pin");
+    assert.match(c, /\n {8}if: steps\.pin\.outputs\.ok == 'true'( && steps\.which\.outputs\.ok == 'true')?\n/, "nothing is fetched without a valid pin");
   }
   assert.match(checkouts[0], /\n {10}ref: \$\{\{ steps\.pin\.outputs\.sha \}\} *(#[^\n]*)?\n {10}path: code\n/, "the code = the pinned commit");
   assert.match(checkouts[1], /\n {10}ref: main *(#[^\n]*)?\n {10}path: published\n/, "main, for the hint only");
-  assert.match(checkouts[1], /\n {10}sparse-checkout: \|\n {12}\/cf\/alerts\/\n {12}\/app\/domain\/\n {10}sparse-checkout-cone-mode: false\b/, "only main's alerts code (cf/alerts, app/domain) — no data from main");
+  assert.match(checkouts[1], /\n {10}sparse-checkout: \|\n {12}\/cf\/alerts\/\n {12}\/app\/domain\/\n {10}sparse-checkout-cone-mode: false\b/, "only main's alerts code (cf/alerts, app/domain) — no data from main here");
+  assert.match(checkouts[2], /\n {8}if: steps\.pin\.outputs\.ok == 'true' && steps\.which\.outputs\.ok == 'true'\n/);
+  assert.match(checkouts[2], /\n {10}ref: \$\{\{ steps\.which\.outputs\.ref \}\} *(#[^\n]*)?\n {10}path: data\n/, "the data = the commit the which step chose");
+  assert.match(checkouts[2], /\n {10}sparse-checkout: \|\n {12}\/app\/data\.json\n {12}\/app\/data-meta\.json\n {10}sparse-checkout-cone-mode: false\b/, "exactly the two data files");
   const run = steps.filter((st) => /\brun:/.test(st));
-  assert.equal(run.length, 4, "the pin check, the 'main is newer' hint, taking the data, then notify");
-  const [, hint, take, step] = run;
+  assert.equal(run.length, 6, "the pin check, the 'main is newer' hint, which data, taking the data, notify, the end mark");
+  const [, hint, which, take, step, end] = run;
   // the hint: two diffs and a notice, nothing from either checkout is run
   assert.match(hint, /diff -rq code\/cf\/alerts published\/cf\/alerts/);
   assert.equal(/node |bash |python|source |\. \S/.test(hint.replace(/echo "[^"]*"/g, "")), false, "the hint runs nothing from a checkout");
-  // taking the data: the public app's two files over https (no redirect, size and time capped), data.json only when its
-  // sha256 equals data-meta.json's; never anything from a checkout; no secret
+  // which data: the deployed commit (the same one the deploy job took its files from), main on a no-build day, nothing while
+  // public hosting is paused; every value through env
+  assert.match(which, /\n {8}id: which\n/);
+  assert.match(which, /\n {10}DEPLOYED: \$\{\{ needs\.deploy\.result == 'success' && needs\.deploy\.outputs\.skipped == '' \}\}\n/);
+  assert.match(which, /\n {10}SAVED: \$\{\{ needs\.update\.outputs\.sha \}\}\n/, "the commit the factory saved = the one the deploy job took its data from");
+  assert.match(which, /\n {10}PUBLIC: \$\{\{ vars\.PUBLIC_DEPLOY \}\}\n/);
+  assert.match(which, /\[\[ \$SAVED =~ \^\[0-9a-f\]\{40\}\$ \]\]/);
+  assert.equal(/\$\{\{/.test(which.slice(which.indexOf("run: |"))), false, "no expression inside the script text");
+  // taking the data: regular files + checksums + the public app's data-meta.json; nothing run from a checkout; no secret
   assert.match(take, /\n {8}id: data\n/);
   assert.match(take, /\n {8}timeout-minutes: \d+ *(#[^\n]*)?\n/, "the data step has its own time limit");
   assert.match(take, /\n {10}APP_URL: \$\{\{ vars\.PUBLIC_APP_URL \|\| 'https:\/\/yoonsiljang\.lsy2825\.workers\.dev' \}\}\n/, "the public app address: a repository variable, default the public app");
+  assert.match(take, /mode=\$\(git -C data ls-tree HEAD -- "\$f" \| cut -d' ' -f1\)/);
+  assert.match(take, /if \[ "\$mode" != 100644 \] \|\| \[ ! -f "data\/\$f" \] \|\| \[ -L "data\/\$f" \]; then skip/);
+  assert.match(take, /hashlib\.sha256\(raw\)\.hexdigest\(\) != want or meta\.get\("bytes"\) != len\(raw\)/, "the deploy job's own check: sha256 and bytes");
   const curl = /curl [^\n]*\\\n[^\n]*/.exec(take)[0];
-  for (const flag of ["--fail", "--proto '=https'", "--max-redirs 0", "--max-time 60", '--max-filesize "$2"', '"$APP_URL/$1"']) assert.ok(curl.includes(flag), `curl ${flag}`);
-  assert.match(take, /get data-meta\.json \d+ \|\|/);
-  assert.match(take, /get data\.json \d+ \|\|/);
+  for (const flag of ["--fail", "--proto '=https'", "--max-redirs 0", "--max-time 60", "--max-filesize 1000000", '"$APP_URL/data-meta.json"']) assert.ok(curl.includes(flag), `curl ${flag}`);
   assert.match(take, /\[ "\$code" = 200 \]/, "HTTP 200 only (a redirect answer is not followed and not taken)");
-  assert.match(take, /python3 -I - "\$D\/data-meta\.json" "\$D\/data\.json"/);
-  assert.match(take, /h = hashlib\.sha256\(\)/);
-  assert.match(take, /if h\.hexdigest\(\) != want:\n\s+print\("[^"]*"\); sys\.exit\(1\)/, "data.json is refused unless its sha256 is data-meta.json's");
-  assert.ok(take.indexOf('mv "$D/data.json" "$RUNNER_TEMP/data.json"') > take.indexOf("h.hexdigest()"), "the file is handed on only after the check");
-  assert.match(take, /echo "ok=false" >> "\$GITHUB_OUTPUT"/);
-  assert.equal(/published|code\//.test(take), false, "nothing from either checkout is read or run in the data step");
-  assert.equal(/ALERTS_(URL|SECRET)|secrets\./.test(pin + hint + take), false, "the pin, hint and data steps have no secret");
-  // the notify step: only with a valid pin AND the data taken; the pinned code on the downloaded data, the two env values only
+  assert.ok(take.indexOf('cp data/app/data.json "$RUNNER_TEMP/data.json"') > take.indexOf('if [ "$served" = "$want" ]'), "the file is handed on only after the public app's data-meta.json named it");
+  assert.equal(/code\/|published\/|node /.test(take), false, "nothing from the code or hint checkout is read or run in the data step");
+  assert.equal(/ALERTS_(URL|SECRET|MODE)|secrets\./.test(pin + hint + which + take), false, "the pin, hint, which and data steps have no secret");
+  // the notify step: only with a valid pin AND the data taken; the pinned code on the data file; three env values. FULL
+  // only for the daily schedule (one computation per D1 day — cf/alerts/src/worker.js arithmetic), the key set otherwise
   assert.match(step, /\n {8}if: steps\.pin\.outputs\.ok == 'true' && steps\.data\.outputs\.ok == 'true'\n/);
   assert.match(step, /\n {8}run: node code\/cf\/alerts\/notify\.mjs "\$RUNNER_TEMP\/data\.json"\n/);
   assert.match(step, /\n {8}timeout-minutes: \d+\n/);
   assert.match(step, /\n {8}continue-on-error: true\n/);
   const env = step.slice(step.indexOf("        env:\n") + 13).split("\n").filter((l) => /^ {10}\w+:/.test(l)).map((l) => l.trim().split(":")[0]);
-  assert.deepEqual(env, ["ALERTS_URL", "ALERTS_SECRET"]);
+  assert.deepEqual(env, ["ALERTS_MODE", "ALERTS_URL", "ALERTS_SECRET"]);
+  assert.match(step, /\n {10}ALERTS_MODE: \$\{\{ github\.event_name == 'schedule' && 'full' \|\| 'keys' \}\}/, "full only on the daily schedule; a push or Run workflow sends the key set only");
   assert.match(step, /\n {10}ALERTS_URL: \$\{\{ secrets\.ALERTS_URL \|\| vars\.ALERTS_URL \|\| 'https:\/\/yoonsiljang-alerts\.lsy2825\.workers\.dev' \}\}\n/, "ALERTS_URL defaults to the alerts Worker");
-  assert.match(step, /\n {10}ALERTS_SECRET: \$\{\{ secrets\.ALERTS_SECRET \}\}\n/);
+  assert.match(step, /\n {10}ALERTS_SECRET: \$\{\{ secrets\.ALERTS_SECRET \}\}(\n|$)/);
+  assert.match(end, /\n {8}id: end\n {8}run: echo "done=true" >> "\$GITHUB_OUTPUT"/);
+  assert.ok(steps.indexOf(end) === steps.length - 1, "the end mark is the last step");
   assert.equal(/CLOUDFLARE_|GITHUB_TOKEN|github\.token|secrets\.(?!ALERTS_)/.test(pa.replace(/secrets\.ALERTS_URL \|\| vars\.ALERTS_URL/, "")), false, "no other secret in the price-alerts job");
 });
 
@@ -994,84 +1009,122 @@ function priceAlertsStepScript(id) {
   return body.join("\n").replace(/\n+$/, "") + "\n";
 }
 
-test("price alerts data step (run as written, fake curl): data.json is handed on only when its sha256 is data-meta.json's; anything else is a ::warning and nothing is sent", () => {
-  const script = priceAlertsStepScript("data");
+test("price alerts which/data steps (run as written, a real git checkout, fake curl): the deployed commit or main; regular files with matching checksums; handed on only when the public app serves that data-meta.json", () => {
+  const which = priceAlertsStepScript("which"), script = priceAlertsStepScript("data");
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alerts-data-"));
   try {
-    const bin = path.join(dir, "bin"), fix = path.join(dir, "fix"), bad = path.join(dir, "bad"), nosha = path.join(dir, "nosha"), big = path.join(dir, "big");
-    for (const d of [bin, fix, bad, nosha, big]) fs.mkdirSync(d);
+    // which: every case
+    const runWhich = (env) => {
+      const out = path.join(dir, "which-out");
+      fs.writeFileSync(out, "");
+      const r = spawnSync("bash", ["-e", "-c", which], { cwd: dir, encoding: "utf8", env: { PATH: process.env.PATH, GITHUB_OUTPUT: out, ...env } });
+      return { status: r.status, out: r.stdout + r.stderr, output: fs.readFileSync(out, "utf8") };
+    };
+    const SHA = "a".repeat(40);
+    assert.equal(runWhich({ DEPLOYED: "true", SAVED: SHA, PUBLIC: "on" }).output, `ref=${SHA}\nok=true\n`, "this run deployed: the saved commit");
+    assert.equal(runWhich({ DEPLOYED: "false", SAVED: "", PUBLIC: "on" }).output, "ref=main\nok=true\n", "a no-build schedule day: main's copy");
+    for (const bad of ["", "abc", `${SHA}\nref=evil`, SHA.toUpperCase()]) {
+      const r = runWhich({ DEPLOYED: "true", SAVED: bad, PUBLIC: "on" });
+      assert.equal(r.output, "ok=false\n", JSON.stringify(bad));
+      assert.match(r.out, /::warning title=price alerts::the factory job named no valid commit/);
+    }
+    for (const p of ["", "off", "On", "on "]) {
+      const r = runWhich({ DEPLOYED: "true", SAVED: SHA, PUBLIC: p });
+      assert.equal(r.output, "ok=false\n", JSON.stringify(p));
+      assert.match(r.out, /::notice title=price alerts::public hosting is paused/);
+    }
+    // data: a git checkout named data/ holding app/data.json + app/data-meta.json at HEAD, and a fake curl serving the public app
+    const bin = path.join(dir, "bin"), pub = path.join(dir, "pub");
+    for (const d of [bin, pub]) fs.mkdirSync(d);
     const dataJson = JSON.stringify({ meta: { updated: "2026-10-12", rows: 1 }, s: ["", "X24"] });
     const sha = require("crypto").createHash("sha256").update(dataJson).digest("hex");
-    const meta = (h) => JSON.stringify({ schema: 1, updated: "2026-10-12", bytes: dataJson.length, sha256: h });
-    fs.writeFileSync(path.join(fix, "data.json"), dataJson);
-    fs.writeFileSync(path.join(fix, "data-meta.json"), meta(sha));
-    fs.writeFileSync(path.join(bad, "data.json"), dataJson + " ");                        // a different build
-    fs.writeFileSync(path.join(bad, "data-meta.json"), meta(sha));
-    fs.writeFileSync(path.join(nosha, "data.json"), dataJson);
-    fs.writeFileSync(path.join(nosha, "data-meta.json"), JSON.stringify({ updated: "2026-10-12" }));
-    fs.writeFileSync(path.join(big, "data-meta.json"), " ".repeat(1000001));                // over the cap (this fake curl ignores --max-filesize)
-    // fake curl: logs its arguments, serves $FIX/<last path part> (from the 3rd call on, $FIX_LATER when set) into -o,
-    // prints the -w status; FAKE_CURL=fail → a network error, FAKE_CURL=redirect → a 302 answer (exit 0, nothing followed)
+    const meta = (h, bytes = dataJson.length) => JSON.stringify({ schema: 1, updated: "2026-10-12", bytes, sha256: h });
+    const g = (...a) => { const r = spawnSync("git", ["-C", path.join(dir, "data"), ...a], { encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.com" } }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+    const commit = (files) => {
+      fs.rmSync(path.join(dir, "data"), { recursive: true, force: true });
+      fs.mkdirSync(path.join(dir, "data", "app"), { recursive: true });
+      g("init", "-q");
+      for (const [f, t] of Object.entries(files)) {
+        if (typeof t === "object") fs.symlinkSync(t.link, path.join(dir, "data", f));
+        else fs.writeFileSync(path.join(dir, "data", f), t);
+      }
+      g("add", "-A");
+      g("commit", "-q", "-m", "data");
+    };
     fs.writeFileSync(path.join(bin, "curl"), [
       "#!/usr/bin/env bash",
       'echo "$*" >> "$CURL_LOG"',
       'out=""; url=""',
       'while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2;; -w|--max-time|--max-filesize|--max-redirs|--proto) shift 2;; -*) shift;; *) url="$1"; shift;; esac; done',
       'case "${FAKE_CURL:-}" in fail) echo "curl: (6) fake network error" >&2; exit 6;; redirect) printf 302; exit 0;; esac',
-      'src="$FIX"; [ -n "${FIX_LATER:-}" ] && [ "$(wc -l < "$CURL_LOG")" -gt 2 ] && src="$FIX_LATER"',
+      'src="$PUB"; [ -n "${PUB_LATER:-}" ] && [ "$(wc -l < "$CURL_LOG")" -gt 1 ] && src="$PUB_LATER"',
       'f="$src/${url##*/}"; [ -f "$f" ] || { echo "curl: (22) The requested URL returned error: 404" >&2; exit 22; }',
       'cp "$f" "$out"; printf 200',
     ].join("\n") + "\n", { mode: 0o755 });
     fs.writeFileSync(path.join(bin, "sleep"), '#!/usr/bin/env bash\necho "$*" >> "$SLEEP_LOG"\n', { mode: 0o755 });
     let n = 0;
-    const run = (env) => {
+    const run = (env = {}) => {
       const rt = path.join(dir, `rt${++n}`), out = path.join(dir, `out${n}`), clog = path.join(dir, `curl${n}`), slog = path.join(dir, `sleep${n}`);
       fs.mkdirSync(rt);
-      fs.writeFileSync(out, "");
-      fs.writeFileSync(clog, "");
-      fs.writeFileSync(slog, "");
+      for (const f of [out, clog, slog]) fs.writeFileSync(f, "");
       const r = spawnSync("bash", ["-e", "-c", script], { cwd: dir, encoding: "utf8",
-        env: { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: rt, GITHUB_OUTPUT: out, CURL_LOG: clog, SLEEP_LOG: slog, FIX: fix, APP_URL: "https://app.example.test/", ...env } });
+        env: { PATH: `${bin}:${process.env.PATH}`, RUNNER_TEMP: rt, GITHUB_OUTPUT: out, CURL_LOG: clog, SLEEP_LOG: slog, PUB: pub, APP_URL: "https://app.example.test/", ...env } });
       const taken = path.join(rt, "data.json");
       return { status: r.status, out: r.stdout + r.stderr, output: fs.readFileSync(out, "utf8"), curl: fs.readFileSync(clog, "utf8").trim().split("\n").filter(Boolean),
         sleeps: fs.readFileSync(slog, "utf8").trim().split("\n").filter(Boolean).length, taken: fs.existsSync(taken) ? fs.readFileSync(taken, "utf8") : null };
     };
-    // the matching pair: taken, after one try
-    let r = run({});
+    // the deployed pair, and the public app serves its data-meta.json: taken after one download
+    commit({ "app/data.json": dataJson, "app/data-meta.json": meta(sha) });
+    fs.writeFileSync(path.join(pub, "data-meta.json"), meta(sha));
+    let r = run();
     assert.equal(r.status, 0, r.out);
-    assert.equal(r.output, "ok=true\n");
-    assert.equal(r.taken, dataJson);
-    assert.match(r.out, /^price alerts: public data of 2026-10-12 \(sha256 checked\)$/m);
-    assert.deepEqual(r.curl.map((l) => l.split(" ").pop()), ["https://app.example.test/data-meta.json", "https://app.example.test/data.json"]);
-    for (const l of r.curl) {
-      assert.match(l, /--fail/);
-      assert.match(l, /--proto =https --max-redirs 0 --max-time 60 --max-filesize \d+ /);
-    }
-    assert.equal(r.sleeps, 0);
-    // a data.json that is not the one data-meta.json names: three tries, then a ::warning, nothing handed on
-    r = run({ FIX: bad });
-    assert.equal(r.status, 0, r.out);
-    assert.equal(r.output, "ok=false\n");
-    assert.equal(r.taken, null);
-    assert.match(r.out, /^::warning title=price alerts::the public data\.json does not match data-meta\.json's sha256 \(a deploy in progress\?\) — nothing sent today \(the next run tries again\)$/m);
-    assert.equal(r.curl.length, 6);
-    assert.equal(r.sleeps, 2);
-    // caught halfway through a deploy, then whole: the next try takes it
-    r = run({ FIX: bad, FIX_LATER: fix });
     assert.equal(r.output, "ok=true\n", r.out);
     assert.equal(r.taken, dataJson);
-    assert.equal(r.sleeps, 1);
-    // data-meta.json without a sha256, a network error, a redirect answer: never taken
-    for (const [env, why] of [[{ FIX: nosha }, /the public data-meta\.json has no sha256/], [{ FAKE_CURL: "fail" }, /could not download data-meta\.json from the public app/],
-      [{ FAKE_CURL: "redirect" }, /could not download data-meta\.json from the public app/], [{ FIX: path.join(dir, "missing") }, /could not download data-meta\.json/],
-      [{ FIX: big }, /could not download data-meta\.json/]]) {
+    assert.match(r.out, /^price alerts: the data commit's data\.json is the one the public app serves \(sha256 checked\)$/m);
+    assert.deepEqual(r.curl.map((l) => l.split(" ").pop()), ["https://app.example.test/data-meta.json"], "only the small data-meta.json is downloaded");
+    assert.match(r.curl[0], /--fail --proto =https --max-redirs 0 --max-time 60 --max-filesize 1000000 /);
+    assert.equal(r.sleeps, 0);
+    // the public app serves another build (a deploy that did not reach it, public hosting paused): three tries, a ::warning
+    fs.writeFileSync(path.join(pub, "data-meta.json"), meta("b".repeat(64)));
+    r = run();
+    assert.equal(r.output, "ok=false\n");
+    assert.equal(r.taken, null);
+    assert.match(r.out, /^::warning title=price alerts::the public app does not serve this data\.json \(a deploy that did not reach it, or a newer one\) — nothing sent \(the next run tries again\)$/m);
+    assert.deepEqual([r.curl.length, r.sleeps], [3, 2]);
+    // ... and serves it from the second try on (a deploy that just finished)
+    const later = path.join(dir, "later");
+    fs.mkdirSync(later);
+    fs.writeFileSync(path.join(later, "data-meta.json"), meta(sha));
+    r = run({ PUB_LATER: later });
+    assert.equal(r.output, "ok=true\n", r.out);
+    assert.deepEqual([r.curl.length, r.sleeps], [2, 1]);
+    // a network error, a redirect answer, no file, not JSON: never taken
+    fs.writeFileSync(path.join(pub, "data-meta.json"), meta(sha));
+    for (const env of [{ FAKE_CURL: "fail" }, { FAKE_CURL: "redirect" }, { PUB: path.join(dir, "missing") }]) {
       r = run(env);
-      assert.equal(r.status, 0, r.out);
       assert.equal(r.output, "ok=false\n", JSON.stringify(env));
       assert.equal(r.taken, null);
-      assert.match(r.out, new RegExp(`::warning title=price alerts::.*${why.source}`));
     }
+    fs.writeFileSync(path.join(later, "data-meta.json"), "not json");
+    assert.equal(run({ PUB: later }).output, "ok=false\n");
+    // the data commit's own pair does not match (another build's data.json, wrong bytes, no sha256): refused before any download
+    for (const files of [{ "app/data.json": dataJson + " ", "app/data-meta.json": meta(sha) }, { "app/data.json": dataJson, "app/data-meta.json": meta(sha, 1) },
+      { "app/data.json": dataJson, "app/data-meta.json": JSON.stringify({ updated: "2026-10-12" }) }, { "app/data.json": dataJson, "app/data-meta.json": "{" }]) {
+      commit(files);
+      r = run();
+      assert.equal(r.output, "ok=false\n", JSON.stringify(files).slice(0, 80));
+      assert.match(r.out, /::warning title=price alerts::app\/data\.json of the data commit does not match its data-meta\.json/);
+      assert.equal(r.curl.length, 0);
+    }
+    // a symlink in the data commit (it could point at a file of this machine): refused by its git mode
+    fs.writeFileSync(path.join(dir, "secret.json"), dataJson);
+    commit({ "app/data.json": { link: path.join(dir, "secret.json") }, "app/data-meta.json": meta(sha) });
+    r = run();
+    assert.equal(r.output, "ok=false\n");
+    assert.match(r.out, /::warning title=price alerts::app\/data\.json in the data commit is not a regular file \(mode '120000'\)/);
+    assert.equal(r.taken, null);
     // PUBLIC_APP_URL that is not one https address: refused before any download
+    commit({ "app/data.json": dataJson, "app/data-meta.json": meta(sha) });
     for (const u of ["http://app.example.test", "https://app.example.test\nhttps://evil.example", "https://app.example.test/x?y=1", "https://user@app.example.test", "file:///etc/passwd", ""]) {
       r = run({ APP_URL: u });
       assert.equal(r.output, "ok=false\n", JSON.stringify(u));

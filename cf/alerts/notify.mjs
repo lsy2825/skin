@@ -1,19 +1,23 @@
-// Price alerts, factory side (가격 알림 — 공장 쪽): node cf/alerts/notify.mjs [app/data.json]
-// Run by .github/workflows/weekly.yml in its own job ('price_alerts', a fresh runner after the job(s) that deploy the app
-// — also on days the factory had nothing to do or failed: expiring is daily). That job runs the CODE of ONE reviewed commit
-// named by the repository Variable ALERTS_CODE_SHA (a human sets it when alerts code is merged; the factory's GITHUB_TOKEN
-// cannot change variables) and reads only the DATA: the data.json the phones download from the public app address, kept
-// only when its sha256 is the one the public data-meta.json names (the app's own check), parsed as JSON, never run. Only
-// that job gets ALERTS_URL and ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on its
-// machine. Plain node, no npm packages.
+// Price alerts, factory side (가격 알림 — 공장 쪽): ALERTS_MODE=full|keys node cf/alerts/notify.mjs [app/data.json]
+// Run by .github/workflows/weekly.yml in its own job ('price_alerts', a fresh runner after the deploy job deployed the app
+// in that run, or on the daily schedule's 'nothing to build' days with the copy already deployed). That job runs the CODE
+// of ONE reviewed commit named by the repository Variable ALERTS_CODE_SHA (a human sets it when alerts code is merged; the
+// factory's GITHUB_TOKEN cannot change variables) and reads only the DATA: app/data.json of the commit the deploy job took
+// it from (or main's copy on a no-build day), used only when its sha256 is the one data-meta.json names and the public app
+// serves that same data-meta.json — what the phones were given — parsed as JSON, never run. Only that job gets ALERTS_URL
+// and ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on its machine. Plain node, no
+// npm packages.
+// ALERTS_MODE=keys (a run started by a push to main — merged code, data rebuilt from saved prices; weekly.yml sets it): only
+// step 1, ≤ 1 D1 row written. full (the daily schedule, Run workflow): steps 1–5. A full run of a data.json the Worker
+// already finished today (same sha256, same KST day) stops after step 2's first page (done): no digest, no finish.
 //   1. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
-//      row (rewritten only when they change), ranks only pairs of these keys in (2) and refuses rules naming any other key
-//      at subscribe/PUT (400 UNKNOWN_KEY) — a key the data does not have can never be computed, so its pair must never take
-//      a place in the list (5th review)
+//      row (rewritten only when they change) and ranks only pairs of these keys in (2) — a key the data does not have can
+//      never be computed, so its pair must never take a place in the list (5th review); rules naming another key are
+//      still stored (subscribe/PUT answer "unknown": [keys], 6th review)
 //   2. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
-//      at most the Worker's PAIR_CAP (most important first); a pair whose key is not in this data.json is still skipped
-//      here (it would be one D1 row written a day for nothing)
-//   3. compute each pair from that data.json (the copy the public app serves) with the app's own code
+//      at most the Worker's PAIR_CAP (most important first), in one page; data = this file's sha256 (done: already finished
+//      today); a pair whose key is not in this data.json is still skipped here (it would be one D1 row written for nothing)
+//   3. compute each pair from that data.json (the copy the phones were given) with the app's own code
 //      (app/domain/pricectx.js, pricing.js, stats.js — read only) on the price basis of the app's alert engine (병원 표시가)
 //      → digest entries (numbers only)
 //   4. POST /v1/internal/digest    500 entries at a time (a pair new to the Worker is kept only while its table has room
@@ -21,6 +25,7 @@
 //      Worker marks who has news
 // Prints counts only (never keys, ids or endpoints). A failure prints a ::warning and exits 0: alerts never fail the price
 // build, and the next run catches up (news waits in D1 until a finish consumes it).
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -44,7 +49,7 @@ const CHUNK = 500;
 export const listedPrice = (r) => r[3];
 
 // per-branch lowest listed prices of the published rows (the app's PriceCtx), leaving out only rows waiting for review
-// (r[13]). NOT filtered by event end date: the public data.json changes only when a new build is deployed, so the numbers
+// (r[13]). NOT filtered by event end date: the deployed data.json changes only when a new build is deployed, so the numbers
 // (and the news) change only then — a day passing never moves the baseline (and within one collection the Worker keeps the
 // baseline from moving the bad way when a rebuild drops ended rows: src/sql.js DIGEST).
 export function priceIndex(data, today) {
@@ -126,9 +131,13 @@ async function call(f, url, secret, path, body, { tries = 3, timeoutMs = 20000, 
   throw err;
 }
 
-export async function notify({ data, today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs }) {
+// mode 'full' (default) | 'keys'; sha = the data.json's sha256 (hex) — sent so the Worker can say done (see above); without
+// it a full run always computes
+export async function notify({ data, sha, mode = "full", today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs }) {
   checkUrl(url);
   url = url.replace(/\/+$/, "");
+  if (mode !== "full" && mode !== "keys") throw new Error("ALERTS_MODE must be full or keys");
+  if (sha !== undefined && !/^[0-9a-f]{64}$/.test(sha)) throw new Error("the data sha256 is not 64 hex digits");
   // a data.json the Worker would refuse: say so and call nothing — no finish, so GET /health "finished" stops advancing and
   // after 2 days "stale": true, which the monitor (.github/scripts/health_check.py) turns into a Telegram line; the phones'
   // rules are not silently dropped
@@ -140,13 +149,23 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   const run = `${data.meta.updated}|${today}`;
   const opt = waitMs === undefined ? {} : { waitMs };
   // the keys this data.json has, sent first: the Worker ranks only pairs of these keys (a key it cannot compute never takes
-  // a place in the list) and refuses rules naming any other key. Ascending, each once (rules.js keySetJson)
+  // a place in the list); a rule naming another key is stored and named in "unknown". Ascending, each once (rules.js
+  // keySetJson)
   const keySet = [...new Set(data.keys.map((k) => k[0]))].sort();
-  await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
+  const ks = await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
+  if (mode === "keys") {
+    const keysChanged = ks && ks.changed ? "changed" : "unchanged";
+    log(`price alerts: key set sent (${keySet.length} keys, ${keysChanged}) — a push-started run computes nothing (the daily run does)`);
+    return { mode, keys: keySet.length, changed: !!(ks && ks.changed) };
+  }
   const watched = [];
   let capped = false;
   for (let at = 0; at !== null;) {
-    const page = await call(f, url, secret, `/v1/internal/watched?at=${at}`, undefined, opt);
+    const page = await call(f, url, secret, `/v1/internal/watched?at=${at}${at === 0 && sha ? `&data=${sha}` : ""}`, undefined, opt);
+    if (at === 0 && page.done === true) {
+      log("price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do");
+      return { mode, pairs: 0, entries: [], done: true };
+    }
     watched.push(...page.pairs);
     capped = capped || page.capped === true;
     at = Number.isInteger(page.next) && page.next > at ? page.next : null;
@@ -170,11 +189,11 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
     if (waiting) log("::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today (GET /health pairs: capped)");
   }
   // finish even with no pairs: it also clears yesterday's marks and records the day for GET /health "finished"
-  const done = await call(f, url, secret, "/v1/internal/finish", { run, today }, opt);
+  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, ...(sha ? { data: sha } : {}) }, opt);
   const ending = entries.filter((e) => e.e != null).length;
   const skipped = watched.length - pairs.length;
   log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring`);
-  return { pairs: pairs.length, entries, ...done };
+  return { mode, pairs: pairs.length, entries, ...done };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -186,10 +205,15 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!secret) { console.log("::warning title=price alerts::ALERTS_SECRET is not set (ALERTS_URL is) — price alerts skipped. Create the repository secret ALERTS_SECRET (Settings → Secrets and variables → Actions → New repository secret), then run the cf-alerts workflow (Run workflow, branch main) so the Worker gets the same value: setup_keys the first time, sync_secret afterwards (it keeps the VAPID keys)"); process.exit(0); }
   if (!url) { console.log("::warning title=price alerts::ALERTS_URL is not set (ALERTS_SECRET is) — price alerts skipped. Set ALERTS_URL (an Actions secret or variable) to the alerts Worker's https address"); process.exit(0); }
   const file = process.argv[2] || "app/data.json";
-  // the data file is READ AS DATA (in weekly.yml: downloaded from the public app address): a parse error never echoes its
-  // content (JSON.parse messages quote it)
-  const readData = () => { try { return JSON.parse(readFileSync(file, "utf8")); } catch { throw new Error("the data file is not readable JSON"); } };
-  (async () => { checkUrl(url); return notify({ data: readData(), url, secret }); })().catch((e) => {
+  const mode = process.env.ALERTS_MODE || "full";
+  // the data file is READ AS DATA (in weekly.yml: app/data.json of the deployed commit): a parse error never echoes its
+  // content (JSON.parse messages quote it). Its sha256 is of the bytes read
+  const readData = () => {
+    let raw;
+    try { raw = readFileSync(file); } catch { throw new Error("the data file is not readable"); }
+    try { return { data: JSON.parse(raw.toString("utf8")), sha: createHash("sha256").update(raw).digest("hex") }; } catch { throw new Error("the data file is not readable JSON"); }
+  };
+  (async () => { checkUrl(url); return notify({ ...readData(), mode, url, secret }); })().catch((e) => {
     // never fail the price build; the message is a path + status or a network error (no secret, no ids)
     console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next run catches up`);
     process.exit(0);

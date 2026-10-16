@@ -295,8 +295,9 @@ check("workers: sending true, refusing false → no warning", probs == [], str(p
 # pairs capped: the factory's watched list was cut at PAIR_CAP (D1 write bound) — some alerts not computed
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":false,"pairs":"capped"}')
 check("workers: pairs capped → one warning line", len(probs) == 1 and "PAIR_CAP" in probs[0] and "심은 구독" in probs[0], str(probs))
-check("workers: pairs capped → the narrow cleanup query first, the wide one only after a user decision",
-      len(probs) == 1 and "좁은 정리 쿼리" in probs[0] and "넓은 정리 쿼리" in probs[0] and "사용자 결정" in probs[0], str(probs))
+check("workers: pairs capped → the narrow cleanup query (a user decision after a recent reclassification), the wide one only after a user decision",
+      len(probs) == 1 and "좁은 정리 쿼리" in probs[0] and "넓은 정리 쿼리" in probs[0] and "사용자 결정" in probs[0]
+      and "재분류" in probs[0], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":false,"pairs":"ok"}')
 check("workers: pairs ok → no warning", probs == [], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"full","sending":false,"refusing":true,"finished":null,"stale":true}')

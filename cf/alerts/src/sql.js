@@ -11,20 +11,20 @@ const RULE_PAIR = "d.k = j.value->>'$.key' AND d.r = coalesce(j.value->>'$.regio
 const RULES_DROPPED = (old, nu) => `EXISTS (SELECT 1 FROM json_each(${old}) o WHERE o.value NOT IN (SELECT value FROM json_each(${nu})))`;
 
 // ---- the factory's key set (table keyset, ONE row): the compare keys of the data.json the factory last read, a JSON array
-// (rules.js keySetJson). notify.mjs sends it before it asks for the watched pairs (POST /v1/internal/keys, src/worker.js
-// keys). The factory computes those keys only, so a pair whose key is not in it would never be computed: it is left out
-// of WATCHED, and once a set is stored subscribe and PUT refuse a rule naming such a key (400 UNKNOWN_KEY). Until the
-// first set is stored both take every key of the right shape, as before.
+// (rules.js keySetJson). notify.mjs sends it on every run after a deploy (POST /v1/internal/keys, src/worker.js storeKeys;
+// a push-started run sends only this). The factory computes those keys only, so a pair whose key is not in it would never
+// be computed: it is left out of WATCHED. Subscribe and PUT still STORE such a rule (6th review: the API only adds — the
+// app keeps sending rules as before) and name its key in an informational "unknown" list of their answer (UNKNOWN_KEYS);
+// the pair starts being ranked as soon as a later key set holds the key. No set stored yet: every key is ranked.
 // ?1 the set's JSON. Written only when it differs (an unchanged set writes 0 rows; a change 1 row — INTEGER PRIMARY KEY,
 // no index entry): a few rows a week.
 export const SET_KEYS = "INSERT INTO keyset (id, keys) VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET keys = excluded.keys WHERE keys <> excluded.keys";
 // rule j's key is in the stored set ks: one search in the one row for '"KEY"' (a KEY_RE key has no quote, so it matches that
 // array element only). Reads the keyset row once and ≤ MAX_RULES rule entries, however many keys the set holds.
 const KNOWN_J = `instr(ks.keys, '"' || (j.value->>'$.key') || '"') > 0`;
-// a rule list (normalized JSON) names a key the stored set does not hold — false while no set is stored
-const HAS_UNKNOWN = (rules) => `EXISTS (SELECT 1 FROM keyset ks, json_each(${rules}) j WHERE NOT ${KNOWN_J})`;
-// ?1 rules (normalized JSON): its keys that the stored set does not hold (none while no set is stored) — why SUBSCRIBE or
-// PUT_RULES returned nothing; the 400 UNKNOWN_KEY body lists them so the app can keep those rules on the phone
+// ?1 rules (normalized JSON): its keys that the stored set does not hold (none while no set is stored), each once, ascending.
+// Run in the same D1 batch as SUBSCRIBE / PUT_RULES; when not empty the answer carries them as "unknown" — information only,
+// the rules were stored (a key the factory's data.json has not got yet, or lost in a regroup; src/worker.js subscribe)
 export const UNKNOWN_KEYS = `SELECT DISTINCT j.value->>'$.key' AS k FROM keyset ks, json_each(?1) j WHERE NOT ${KNOWN_J} ORDER BY 1`;
 
 // ?1 yyyymmdd — the Worker's own KST day, written in the same D1 batch right before SUBSCRIBE: the subs_ins trigger (migration)
@@ -32,12 +32,11 @@ export const UNKNOWN_KEYS = `SELECT DISTINCT j.value->>'$.key' AS k FROM keyset 
 export const SET_DAY = "INSERT INTO stat (k, n) VALUES ('day', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 // ?1 id ?2 endpoint ?3 rules ?4 today ?5 MAX_SUBS ?6 NEW_PER_DAY. Same endpoint again → new id (the old one stops working),
 // allowed even when full or over today's budget; last_w/last_x/exp_sent stay (subscribing again never gets around once a
-// week), pending marks are reset only when a rule was removed. No row back = a rule names a key the stored key set does not
-// hold (nothing written, the same endpoint's row and id stay as they were), or the table is full or today's budget used up
+// week), pending marks are reset only when a rule was removed. No row back = the table is full or today's budget used up
 // (nothing is ever evicted to make room: a full table answers 503 FULL and /health "capacity" says so).
 export const SUBSCRIBE = `INSERT INTO subs (id, endpoint, rules)
-  SELECT ?1, ?2, ?3 WHERE NOT ${HAS_UNKNOWN("?3")} AND (EXISTS (SELECT 1 FROM subs WHERE endpoint = ?2)
-    OR ((SELECT n FROM stat WHERE k = 'subs') < ?5 AND coalesce((SELECT n FROM stat WHERE k = 'new:' || ?4), 0) < ?6))
+  SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM subs WHERE endpoint = ?2)
+    OR ((SELECT n FROM stat WHERE k = 'subs') < ?5 AND coalesce((SELECT n FROM stat WHERE k = 'new:' || ?4), 0) < ?6)
   ON CONFLICT(endpoint) DO UPDATE SET id = excluded.id, rules = excluded.rules,
     pend_w = CASE WHEN ${RULES_DROPPED("subs.rules", "excluded.rules")} THEN 0 ELSE subs.pend_w END,
     pend_x = CASE WHEN ${RULES_DROPPED("subs.rules", "excluded.rules")} THEN NULL ELSE subs.pend_x END,
@@ -46,13 +45,12 @@ export const SUBSCRIBE = `INSERT INTO subs (id, endpoint, rules)
 // ?1 today — why SUBSCRIBE returned nothing: total (MAX_SUBS) or today's new rows (NEW_PER_DAY)
 export const SUBS_COUNTS = "SELECT (SELECT n FROM stat WHERE k = 'subs') AS total, coalesce((SELECT n FROM stat WHERE k = 'new:' || ?1), 0) AS today";
 // ?1 id ?2 rules (≥ 1; a PUT with none is DELETE_SUB_RETURNING) — a removed rule resets the pending marks; send history
-// (last_w, last_x, exp_sent) stays. No row back = unknown id, or a rule names a key the stored key set does not hold (the
-// row is left as it was)
+// (last_w, last_x, exp_sent) stays. No row back = unknown id
 export const PUT_RULES = `UPDATE subs SET rules = ?2,
     pend_w = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN 0 ELSE pend_w END,
     pend_x = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN NULL ELSE pend_x END,
     pend_xl = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN NULL ELSE pend_xl END
-  WHERE id = ?1 AND NOT ${HAS_UNKNOWN("?2")} RETURNING id`;
+  WHERE id = ?1 RETURNING id`;
 export const DELETE_SUB = "DELETE FROM subs WHERE id = ?1";
 // PUT with no rules = the phone switched everything off: the row goes (an unknown id gets no row back → 404)
 export const DELETE_SUB_RETURNING = "DELETE FROM subs WHERE id = ?1 RETURNING id";
@@ -195,8 +193,19 @@ export const CLEAR_STALE_X = `UPDATE subs SET pend_x = NULL, pend_xl = NULL
 export const PROMOTE = "UPDATE snap SET m = pm, n = pn, med = pmed, bu = coalesce(pu, bu), p = 0, pm = NULL, pn = NULL, pmed = NULL, pu = NULL WHERE p = 1";
 // unchanged numbers from a new collection: the baseline now belongs to that collection
 export const ROLL_BU = "UPDATE snap SET bu = pu, pu = NULL WHERE pu IS NOT NULL";
-// ?1 today as yyyymmdd: the last finish, shown by GET /health ("finished") so a monitor sees the factory → Worker link stop
-export const STAT_FINISH = "INSERT INTO stat (k, n) VALUES ('finish', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n";
+// ?1 today as yyyymmdd: the last finish, shown by GET /health ("finished") so a monitor sees the factory → Worker link stop.
+// Written only when the day changes (a second finish the same day writes no row)
+export const STAT_FINISH = "INSERT INTO stat (k, n) VALUES ('finish', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
+// ?1 the data.json the finish was computed from: the first 52 bits of its sha256 (src/worker.js dataTag). With 'finish' it
+// says "this data.json was finished today" (SAME_DATA). Written only when it changes; a finish that does not name its data
+// removes the row (CLEAR_DATA), so nothing can be taken for done
+export const STAT_DATA = "INSERT INTO stat (k, n) VALUES ('data', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
+export const CLEAR_DATA = "DELETE FROM stat WHERE k = 'data'";
+// ?1 today as yyyymmdd ?2 the data tag: the last finish was today and from this same data.json → 1. A factory run
+// of the same data on the same KST day then stops at its first watched page (src/worker.js watched: done) — no digest, no
+// finish: it would write every pair again and change nothing (6th review: weekly.yml runs many times a day). Two stat
+// rows read by primary key.
+export const SAME_DATA = "SELECT coalesce((SELECT n FROM stat WHERE k = 'finish') = ?1 AND (SELECT n FROM stat WHERE k = 'data') = ?2, 0) AS same";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
 // PAIR_CAP (src/worker.js watched; sql.js WATCHED says which pairs make way)
 export const PRUNE_SNAP = "DELETE FROM snap WHERE run <> ?1";

@@ -6,7 +6,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import http from "node:http";
 import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
@@ -819,7 +821,7 @@ test("vapid-keygen.mjs: a failed wrangler drops the key (exit 1, no public key f
   } finally { sb.done(); }
 });
 
-test("review finding (D1 write limit) + 5th review: made-up keys cost no D1 writes and take no place in the list — planted before the first key set, watched by more phones than the real pairs; a real phone that never took a push is computed the same day; afterwards made-up keys are refused (400 UNKNOWN_KEY)", T, async () => {
+test("review finding (D1 write limit) + 5th/6th review: made-up keys cost no D1 writes and take no place in the list — planted before the first key set, watched by more phones than the real pairs; a real phone that never took a push is computed the same day; afterwards a made-up key is stored but named in \"unknown\" (the API only adds) and still takes no place", T, async () => {
   const db = makeDb(), env = makeEnv(db, { PAIR_CAP: "4" });
   // 2 × 4 phones × 20 rules on keys of the right shape that data.json does not have (one POST each, no browser), before
   // the factory ever stored a key set (accepted as before): each made-up pair is watched by 2 phones
@@ -836,12 +838,15 @@ test("review finding (D1 write limit) + 5th review: made-up keys cost no D1 writ
   assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X24"], "D1 holds rows for the real pairs only");
   assert.deepEqual(logs, [logs.find((l) => l.startsWith("price alerts: 2 watched pairs (0 skipped, "))], "the list was not cut: no ::warning, nothing skipped");
   assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-12T09:30:00+09:00") })).body.pairs, "ok");
-  // the key set is stored now: a made-up key is refused at subscribe, a real one taken and computed the next day
-  const bad = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }, { kind: "watch", key: "T0000099" }] });
-  assert.deepEqual([bad.status, bad.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000099"] }]);
-  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }] })).status, 201);
+  // the key set is stored now: a rule naming a made-up key is stored all the same (6th review: B's app treats any non-2xx
+  // as a failure, so nothing is refused) and the answer names that key in "unknown"; its pair is never ranked, the real one
+  // is computed the next day
+  const mixed = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }, { kind: "watch", key: "T0000099" }] });
+  assert.deepEqual([mixed.status, Object.keys(mixed.body).sort(), mixed.body.unknown], [201, ["id", "unknown"], ["T0000099"]]);
+  const plain = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }] });
+  assert.deepEqual([plain.status, Object.keys(plain.body)], [201, ["id"]], "no unknown key: the answer is {id} as before");
   assert.equal((await run(env, WEEK1, "2026-10-13")).pairs, 3);
-  assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X02", "X24"]);
+  assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X02", "X24"], "the made-up pair never reaches D1");
 });
 
 test("review finding (D1 budget): a pair new to the Worker waits for a row the finish frees when its table is at PAIR_CAP — the day's run says so (::warning, /health pairs: capped), the next day computes it", T, async () => {
@@ -863,11 +868,122 @@ test("review finding (D1 budget): a pair new to the Worker waits for a row the f
   assert.equal(next.some((l) => l.startsWith("::warning")), false);
 });
 
+// ---- 6th review (D1 budget): weekly.yml runs on every push to main (26–29 runs a day were counted on 2026-10-15/16). A
+// push-started run sends only the key set; a full run of a data.json already finished today stops at its first watched
+// page. D1 rows written are counted with sqlite's total_changes() (row changes, not index entries — the local workerd D1
+// measurement is in src/worker.js).
+const sha = (d) => createHash("sha256").update(JSON.stringify(d)).digest("hex");
+const changes = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
+
+test("6th review (push-started run): ALERTS_MODE keys sends ONLY the key set — one request, at most one D1 row written, no watched/digest/finish; the phones keep their news for the next full run", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  const { phones } = await phonesWith(env, db, { A: [{ kind: "target", key: "X24", max: 95000 }] });
+  await run(env, WEEK1, "2026-10-12", { sha: sha(WEEK1) });
+  const w = wire(env, undefined, "2026-10-19");
+  let c = changes(db);
+  const logs = [];
+  const r = await notify({ data: WEEK2, sha: sha(WEEK2), mode: "keys", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
+  assert.deepEqual(r, { mode: "keys", keys: 4, changed: false });
+  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/keys"], "the key set only");
+  assert.equal(changes(db) - c, 0, "an unchanged key set writes nothing");
+  assert.deepEqual(logs, ["price alerts: key set sent (4 keys, unchanged) — a push-started run computes nothing (the daily run does)"]);
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phones.A.id)[0].pend_w, 0, "nothing marked by a push-started run");
+  // a changed key set: one row
+  const fewer = { ...WEEK2, keys: WEEK2.keys.slice(0, 3) };
+  c = changes(db);
+  assert.equal((await notify({ data: fewer, mode: "keys", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {}, waitMs: 0 })).changed, true);
+  assert.equal(changes(db) - c, 1, "one row (the keyset row)");
+  // the daily full run of that day computes WEEK2: A's target crossed
+  const full = await run(env, WEEK2, "2026-10-19", { sha: sha(WEEK2) });
+  assert.equal(full.weekly, 1);
+  await assert.rejects(notify({ data: WEEK2, mode: "push", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {} }), /ALERTS_MODE must be full or keys/);
+});
+
+test("6th review (same data, same day): a second full run of the same data.json on the same KST day stops at the first watched page — no digest, no finish, no D1 row written; another data.json that day is computed; the same data the next day is computed again (expiring is daily)", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  const { phones } = await phonesWith(env, db, { A: [{ kind: "watch", key: "X01" }], D: [{ kind: "expiring", key: "X24", region: "서울" }] });
+  await run(env, WEEK1, "2026-10-12", { sha: sha(WEEK1) });
+  const first = await run(env, WEEK2, "2026-10-19", { sha: sha(WEEK2) });
+  assert.deepEqual([first.weekly, first.expiring], [1, 1]);
+  assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('finish', 'data') ORDER BY k"), [{ k: "data", n: parseInt(sha(WEEK2).slice(0, 13), 16) }, { k: "finish", n: 20261019 }]);
+  // the same file again that day (a push-started run would only send keys; this is a second Run workflow of the same data)
+  const w = wire(env, undefined, "2026-10-19");
+  const c = changes(db), logs = [];
+  const again = await notify({ data: WEEK2, sha: sha(WEEK2), today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
+  assert.deepEqual(again, { mode: "full", pairs: 0, entries: [], done: true });
+  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname + new URL(x.url).search), ["/v1/internal/keys", `/v1/internal/watched?at=0&data=${sha(WEEK2)}`]);
+  assert.equal(changes(db) - c, 0, "nothing written: no pair rewritten, no finish");
+  assert.deepEqual(logs, ["price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do"]);
+  // another data.json the same day (a price check rebuilt it): computed — its finish is the one now noted
+  const fixed = data("2026-10-19", [[0, 90000, 1, 6], [1, 120000, 1, 7], [2, 110000, 1, 8], [0, 50000, 2], [1, 30000, 2], [0, 200000, 3], [2, 210000, 3]]);
+  const other = await run(env, fixed, "2026-10-19", { sha: sha(fixed) });
+  assert.equal(other.done, undefined);
+  assert.ok(other.pairs > 0);
+  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'data'")[0].n, parseInt(sha(fixed).slice(0, 13), 16));
+  // the next KST day, the same data: computed again (expiring counts days), and D's ending price is still pending
+  const next = wire(env, undefined, "2026-10-20");
+  const r3 = await notify({ data: fixed, sha: sha(fixed), today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: next.f, log: () => {}, waitMs: 0 });
+  assert.equal(r3.done, undefined);
+  assert.ok(next.sent.some((x) => new URL(x.url).pathname === "/v1/internal/finish"));
+  assert.equal(db.rows("SELECT pend_x FROM subs WHERE id = ?", phones.D.id)[0].pend_x, "2026-10-21");
+  // without a sha (an older caller) a full run always computes, and its finish forgets the noted data
+  const nosha = wire(env, undefined, "2026-10-20");
+  await notify({ data: fixed, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: nosha.f, log: () => {}, waitMs: 0 });
+  assert.ok(nosha.sent.some((x) => new URL(x.url).pathname === "/v1/internal/digest"));
+  assert.deepEqual(db.rows("SELECT count(*) c FROM stat WHERE k = 'data'"), [{ c: 0 }]);
+  await assert.rejects(notify({ data: fixed, sha: "ABC", today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: nosha.f, log: () => {} }), /64 hex/);
+});
+
+test("CLI: ALERTS_MODE picks the run (keys = the key set only; full or unset = all steps) and the sha256 sent is of the data file's bytes", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
+  const seen = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    seen.push(req.url);
+    const r = await worker.fetch(new Request(`https://alerts.local${req.url}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? undefined : Buffer.concat(chunks) }), env, { waitUntil() {} });
+    res.writeHead(r.status, { "content-type": "application/json" });
+    res.end(await r.text());
+  });
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), "notify-mode-"));
+  const runCli = (mode) => new Promise((ok) => {
+    const child = spawn(process.execPath, [cli, join(dir, "data.json")], { env: { PATH: process.env.PATH, ALERTS_URL: `http://127.0.0.1:${server.address().port}`, ALERTS_SECRET: SECRET_VALUE, ...(mode === undefined ? {} : { ALERTS_MODE: mode }) } });
+    let out = "";
+    child.stdout.on("data", (d) => { out += d; });
+    child.on("close", (code) => ok({ code, out }));
+  });
+  try {
+    const bytes = JSON.stringify(WEEK1, null, 1) + "\n";               // not the bytes JSON.stringify(data) would give
+    writeFileSync(join(dir, "data.json"), bytes);
+    const want = createHash("sha256").update(bytes).digest("hex");
+    const k = await runCli("keys");
+    assert.equal(k.code, 0);
+    assert.match(k.out, /^price alerts: key set sent \(4 keys, changed\)/m);
+    assert.deepEqual(seen.splice(0), ["/v1/internal/keys"]);
+    const f = await runCli(undefined);
+    assert.equal(f.code, 0);
+    assert.deepEqual(seen.splice(0).map((u) => u.split("?")[0]), ["/v1/internal/keys", "/v1/internal/watched", "/v1/internal/digest", "/v1/internal/finish"]);
+    const today = Number(new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, ""));
+    assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = 'data'"), [{ n: parseInt(want.slice(0, 13), 16) }], "the tag of the file's own bytes");
+    assert.equal(db.rows("SELECT n FROM stat WHERE k = 'finish'")[0].n, today);
+    const again = await runCli("full");
+    assert.match(again.out, /already finished today/);
+    assert.deepEqual(seen.splice(0), ["/v1/internal/keys", `/v1/internal/watched?at=0&data=${want}`]);
+    const bad = await runCli("everything");
+    assert.equal(bad.code, 0);
+    assert.match(bad.out, /^::warning title=price alerts::price alert check failed \(ALERTS_MODE must be full or keys\)/m);
+    assert.deepEqual(seen.splice(0), [], "an unknown mode calls nothing");
+  } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("everything notify.mjs logged in this file holds counts only: no secret, URL, host, id, endpoint, key or region name", () => {
   assert.ok(ALL_LOGS.length >= 8, `only ${ALL_LOGS.length} log lines were collected`);
   const text = ALL_LOGS.join("\n");
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: key set sent \(\d+ keys, (changed|unchanged)\) — a push-started run computes nothing \(the daily run does\)|price alerts: this data\.json was already finished today \(same sha256, same KST day\) — nothing more to do|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });
