@@ -80,11 +80,12 @@ TAGS = [("평일 낮", r"프라임\s*타임|평일\s*(낮|오전|오후|한정)|
         ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"), ("1인 1회", r"1인\s*1회|1인당\s*1회")]
 # The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as TAGS
 # (group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
-#   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written
-#   hours = 'HH:MM-HH:MM' (24 h), '' = no hours written; 'N시 이전/까지' = '00:00-HH:MM', 'N시 이후' = 'HH:MM-24:00'
+#   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written (every day is 0 too)
+#   hours = 'HH:MM-HH:MM' (24 h), '' = no hours written (all day is '' too); 'N시 이전/까지' = '00:00-HH:MM', 'N시 이후' = 'HH:MM-24:00'
 # Only what is written: '해피아워' / '프라임 타임' / '평일 오후' give no hours, a holiday ('공휴일') is no weekday and is not kept.
 WEEK = "월화수목금토일"
 ALL_DAYS = 127
+ALL_HOURS = "00:00-24:00"
 _D = "[월화수목금토일]"
 # one item of a day list: a word for a set of days, a range ('월~금'), a run of day letters in week order ('화수목', '월목금'), one
 # day letter with or without 요일. A lone day letter counts only with 요일 ('21(화) 입고', '앞 목 5회' are not days).
@@ -198,7 +199,8 @@ def visit_hours(text):
     if not spans:
         return ""
     a, b = max(s[0] for s in spans), min(s[1] for s in spans)
-    return _span(a, b) if a < b else _span(*spans[0])
+    out = _span(a, b) if a < b else _span(*spans[0])
+    return "" if out == ALL_HOURS else out                   # '0시~24시' = all day: no hours, like 월~일 = no days
 
 
 def _hours_and(x, y):
@@ -226,7 +228,9 @@ def visit_merge(a, b):
         hours = _span(min(a1, a2), max(b1, b2))
     else:
         hours = ""
-    return days, hours
+    # a 평일 page and a 주말 page together are every day (an '00:00-14:00' and a '14:00-24:00' page all day): no limit, as
+    # visit_days / visit_hours give — else the price would stay out of the plain prices (groups.plain, rule 2) for nothing
+    return (0 if days == ALL_DAYS else days), ("" if hours == ALL_HOURS else hours)
 
 
 EMOJI = re.compile(r"[♥️❤♡]+")

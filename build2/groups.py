@@ -6,7 +6,10 @@ price levels, branch-vs-branch comparison and price changes work on ~60% of all 
 
   group key   xkeys.comp(name) (spaces removed, units unified) — only rows that are not 구독권 / add-ons
   kept when   sold at >= MIN_BRANCHES branches
-  regular     kind 일반/고시가 without condition tags (체험가·한정가·평일 낮 … are 'special')
+  regular     plain(): kind 일반/고시가 without condition tags (체험가·한정가·평일 낮 … are 'special') and, from 2026-10-16
+              (PLAIN_RULE 2), without a weekday or hour limit written on the site (row days 0, hours '': 닥터에버스
+              '토요일이벤트', 톡스앤필 청주 '주말제외' carry no tag but are not valid every day — the app's '특가 제외' leaves
+              them out too). The same rule picks the weekly snapshot's plain lowest (build2/appdata.py)
   branch level geometric mean of (branch's lowest regular price / median of the branches' lowest regular prices)
               over groups sold at >= LEVEL_BRANCHES branches; needs >= LEVEL_MIN groups (per category >= CAT_MIN)
 """
@@ -15,10 +18,46 @@ from collections import Counter, defaultdict
 from xkeys import comp
 
 MIN_BRANCHES, LEVEL_BRANCHES, LEVEL_MIN, CAT_MIN, CHEAP_BRANCHES = 3, 8, 10, 5, 5
+# achg 'gone' entries kept. Cut after the rule-moved ones are dropped (2026-10-16: cut before, the plain-rule change pushed
+# 4 real '없어짐' entries out of the list while its own were dropped)
+GONE_MAX = 500
+
+
+# the rule for a plain (regular) price, by version. data.json meta.plainRules = [[version, first collection built with it], …]
+# (a file without it, and every snapshot before its first entry: 1). The next build judges the previous rows by the rule
+# their build or snapshot used, so a rule change is not read as price changes (build2/appdata.py reclassified / group_moved).
+#   1  kind 일반/고시가, no condition tag
+#   2  … and no weekday or hour limit (days 0, hours '') — 2026-10-16, chat B's decision for the app's '특가 제외'
+PLAIN_RULE = 2
+
+
+def plain(kind, tags, days=0, hours="", rule=PLAIN_RULE):
+    """a plain price under that rule version: kind 일반/고시가 with no condition tag (and, rule 2, no days / hours limit)"""
+    if kind not in ("일반", "고시가") or tags:
+        return False
+    return rule < 2 or (not int(days or 0) and not hours)
+
+
+def rule_at(marks, date):
+    """the plain rule the build of the collection `date` used; marks = meta.plainRules of a data.json (None: all were 1)"""
+    v = 1
+    for ver, since in marks or []:
+        if since <= date:
+            v = ver
+    return v
+
+
+def rule_marks(prev_marks, collected):
+    """meta.plainRules for this build: the previous file's list, plus [PLAIN_RULE, collected] the first time this rule is used"""
+    m = [list(x) for x in prev_marks or []]
+    if not m or m[-1][0] != PLAIN_RULE:
+        m.append([PLAIN_RULE, collected])
+    return m
 
 
 def regular(r):
-    return r["kind"] in ("일반", "고시가") and not r["tags"]
+    """plain() of a clean.csv row (days / hours missing in rows from before 2026-10-16: none written)"""
+    return plain(r["kind"], r["tags"], r.get("days"), r.get("hours"))
 
 
 def median(v):
@@ -89,7 +128,8 @@ def build(rows, bi, cats):
 def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_files):
     """write data2/history/<date>.auto.json.gz = {group key: [label, {"brand|branch": lowest regular price}]} and
     compare with the newest older one. returns (changes [[gid, branch, before, after]], new [[gid, branch, price]],
-    gone [[label, branch, before, group key]] (options no longer listed), prev date)"""
+    gone [[label, branch, before, group key]] (options no longer listed — all of them: the caller drops the ones a rule moved
+    out of the group, then keeps GONE_MAX), prev date)"""
     snap = {k: [groups[g][0], {bkeys[b]: p for b, p in low_reg[g].items()}] for g, k in enumerate(keep) if low_reg[g]}
     body = json.dumps(snap, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     with open(os.path.join(hist, f"{date}.auto.json.gz"), "wb") as raw:      # mtime=0: same data -> same bytes
@@ -115,4 +155,4 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
         for bk, p in before.items():
             if bk not in now and bk in bidx:
                 gone.append([label, bidx[bk], p, k])
-    return changes, new, gone[:500], os.path.basename(older[-1])[:10]
+    return changes, new, gone, os.path.basename(older[-1])[:10]
