@@ -37,7 +37,7 @@ test("run_regression.sh: every tests/e2e/*.js screen check runs (named loop + ca
   }
   for (const n of names) assert.ok(scripts.includes(n), `the loop names tests/e2e/${n}.js, which does not exist`);
   assert.match(sh, /^E2E_LISTED=" \$\(sed -n 's\/\^for t in /m, "the catch-all reads the named list from this same file");
-  assert.match(sh, /^for f in tests\/e2e\/\*\.js; do\n  t=\$\(basename "\$f" \.js\)\n  case "\$E2E_LISTED\$E2E_HELPERS" in \*" \$t "\*\) continue ;; esac\n  run "e2e \$t \(not yet in the list above\)" node "\$f"\ndone$/m);
+  assert.match(sh, /^for f in tests\/e2e\/\*\.js; do\n  t=\$\(basename "\$f" \.js\)\n  case "\$E2E_LISTED\$E2E_HELPERS" in \*" \$t "\*\) continue ;; esac\n  run "e2e \$t \(not yet in the list above\)" node "tests\/e2e\/\$t\.js"\ndone$/m, "the catch-all runs tests/e2e/<name>.js (tests/security/pr_checks.test.js reads that path as a browser check)");
   // run the catch-all's selection for real: it must pick exactly the scripts the named loop and the helpers leave out
   const pick = spawnSync("bash", ["-c", `cd "${root}"; ${sh.match(/^E2E_LISTED=.*$/m)[0].replace('"$0"', '"tests/run_regression.sh"')}; ${sh.match(/^E2E_HELPERS=.*$/m)[0]}; for f in tests/e2e/*.js; do t=$(basename "$f" .js); case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac; echo "$t"; done`], { encoding: "utf8" });
   assert.equal(pick.status, 0, pick.stderr);

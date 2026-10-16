@@ -49,6 +49,6 @@ E2E_HELPERS=" rows "
 for f in tests/e2e/*.js; do
   t=$(basename "$f" .js)
   case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac
-  run "e2e $t (not yet in the list above)" node "$f"
+  run "e2e $t (not yet in the list above)" node "tests/e2e/$t.js"
 done
 exit $fail
