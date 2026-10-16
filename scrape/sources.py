@@ -20,30 +20,32 @@ OUT = os.path.join(ROOT, "data2", "sources.json")
 ACC = os.path.join(ROOT, "data2", "accepted")
 
 # key: scraper name (scrape/<key>.py). terms_reviewed: date a person read the site's terms (None = not yet)
-# rate: the request pace as the app's 정보 screen shows it. The scrapers do not read it, so it states the code's values
-# (scrape/<key>.py --gap/--workers defaults, Fetcher(gap=…)); tests/crawl_manners_cases.py checks every 'N초 간격' and
-# 'N곳 동시' against them. 리엔장 waits out the site's own Crawl-delay (scrape/common.py host clock).
+# rate: the request pace as the app's 정보 screen shows it. The scrapers do not read it, so it states the code's values: '최소 N초'
+# = Fetcher(gap=N), the least time from one request's start to the next on one Fetcher (one per branch); 'N곳 동시' = --workers.
+# tests/crawl_manners_cases.py holds what each chain really does (a gap that never applies — one page per branch — is not
+# written) and checks both this text and the scraper's defaults against it. 리엔장 waits out the site's own Crawl-delay
+# per branch host (scrape/common.py host clock).
 REGISTRY = OrderedDict([
-    ("velyb", {"brand": "블리비", "method": "공개 HTML (지점별 이벤트 페이지 7쪽)", "rate": "요청 사이 1초 간격, 하나씩",
+    ("velyb", {"brand": "블리비", "method": "공개 HTML (지점별 이벤트 페이지 7쪽)", "rate": "요청 시작 사이 최소 1초, 하나씩",
                "seeds": ["https://www.velyb.kr/", "https://www.velyb.kr/community/community02.php"], "terms_reviewed": None}),
-    ("ppeum", {"brand": "쁨", "method": "공개 HTML (지점별 온라인 예약 페이지)", "rate": "지점마다 1쪽, 4곳 동시 (지점 찾기는 0.5초 간격)",
+    ("ppeum", {"brand": "쁨", "method": "공개 HTML (지점별 온라인 예약 페이지)", "rate": "지점마다 가격 1쪽, 4곳 동시 — 옛 사이트 지점은 한 서버(event.ppeum.com)에 간격 없이 (지점 찾기는 요청 시작 사이 최소 0.5초)",
                "seeds": ["https://www.ppeum1.com/", "https://event.ppeum.com/"], "terms_reviewed": None}),
-    ("toxnfill", {"brand": "톡스앤필", "method": "공개 HTML (시술안내/가격 상세)", "rate": "지점마다 0.7초 간격, 6곳 동시",
+    ("toxnfill", {"brand": "톡스앤필", "method": "공개 HTML (시술안내/가격 상세)", "rate": "지점마다 요청 시작 사이 최소 0.7초, 6곳 동시",
                   "seeds": ["https://www.toxnfill1.com/"], "terms_reviewed": None}),
-    ("lienjang", {"brand": "리엔장", "method": "공개 HTML (비급여 진료비 고시표)", "rate": "사이트가 정한 요청 간격(robots.txt Crawl-delay)을 지켜 하나씩",
+    ("lienjang", {"brand": "리엔장", "method": "공개 HTML (비급여 진료비 고시표)", "rate": "같은 지점 사이트에는 사이트가 정한 요청 간격(robots.txt Crawl-delay)을 두고, 지점끼리는 간격 없이 하나씩",
                   "seeds": [], "terms_reviewed": None}),
-    ("forever", {"brand": "포에버", "method": "공개 HTML (Next.js 내장 데이터) — 일시 중지", "rate": "지점마다 0.8초 간격, 4곳 동시",
+    ("forever", {"brand": "포에버", "method": "공개 HTML (Next.js 내장 데이터) — 일시 중지", "rate": "지점마다 요청 시작 사이 최소 0.8초, 4곳 동시",
                  "seeds": ["https://www.4-ever.co.kr/", "https://gn.4-ever.co.kr/ko/treatments"], "terms_reviewed": None}),
     # added 2026-10-14 after a robots-first probe (scrape/probe.py); seeds = the pages the collectors start from
-    ("vands", {"brand": "밴스", "method": "공개 HTML (지점별 시술소개 카테고리)", "rate": "지점마다 1초 간격, 6곳 동시",
+    ("vands", {"brand": "밴스", "method": "공개 HTML (지점별 시술소개 카테고리)", "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
                "seeds": ["https://www.vandsclinics.com/", "https://yeongdeungpo.vandsclinics.com/web/product"], "terms_reviewed": None}),
-    ("uandi", {"brand": "유앤아이", "method": "공개 HTML (지점 홈 이벤트 가격 영역)", "rate": "지점마다 1쪽, 6곳 동시",
+    ("uandi", {"brand": "유앤아이", "method": "공개 HTML (지점 홈 이벤트 가격 영역)", "rate": "지점마다 홈 1쪽, 6곳 동시",
                "seeds": ["https://www.uni114.co.kr/"], "terms_reviewed": None}),
-    ("daybeau", {"brand": "데이뷰", "method": "공개 HTML (지점별 이벤트 페이지)", "rate": "지점마다 1초 간격, 6곳 동시",
+    ("daybeau", {"brand": "데이뷰", "method": "공개 HTML (지점별 이벤트 페이지)", "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
                  "seeds": ["https://daybeauclinic08.com/branch/index.php", "https://daybeauclinic08.com/branch/event.php"], "terms_reviewed": None}),
-    ("drevers", {"brand": "닥터에버스", "method": "공개 HTML (지점별 이벤트 페이지의 항목 데이터)", "rate": "지점마다 1초 간격, 6곳 동시",
+    ("drevers", {"brand": "닥터에버스", "method": "공개 HTML (지점별 이벤트 페이지의 항목 데이터)", "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
                  "seeds": ["https://drevers.com/", "https://bucheon.drevers.com/event/"], "terms_reviewed": None}),
-    ("cellin", {"brand": "셀린", "method": "공개 HTML (지점별 '시술 안내/가격' 목록 + 항목을 누를 때 페이지가 보내는 상세 요청)", "rate": "지점마다 1초 간격, 4곳 동시",
+    ("cellin", {"brand": "셀린", "method": "공개 HTML (지점별 '시술 안내/가격' 목록 + 항목을 누를 때 페이지가 보내는 상세 요청)", "rate": "지점마다 요청 시작 사이 최소 1초, 4곳 동시",
                 "seeds": ["https://www.cellinclinic10.com/clinicPriceSide/clinicSideList.php"], "terms_reviewed": None}),
 ])
 VAT = re.compile(r"(부가세|부가가치세|VAT|vat)[^가-힣A-Za-z]{0,6}(\d{1,2}\s*%\s*)?[^.\n]{0,12}?(별도|포함|미포함)")

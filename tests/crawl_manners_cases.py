@@ -69,6 +69,7 @@ def reset():
             os.remove(p)
     common._clock = None
     common._busy.clear()
+    common._slowed.clear()
     sleeps.clear()
     T[0] = 1000.0
 
@@ -83,12 +84,15 @@ common.stamp("slow.example")                      # a request made at t=1000
 T[0] = 1100
 common.wait_turn("slow.example")
 ok("a host with Crawl-delay 180 is not asked again before 180 s have passed (waited the missing 80 s)", abs(sum(sleeps) - 80) < 1e-6 and T[0] == 1180, (sleeps, T[0]))
-common.stamp("slow.example")                      # that request ended at t=1180
+common.stamp("slow.example", end=True)            # that request ended at t=1180
 T[0] = 1400
 sleeps.clear()
 common.wait_turn("slow.example")
 ok("after the delay no more waiting", not sleeps, sleeps)
-common.stamp("slow.example")
+common.stamp("slow.example")                      # a request that did not take the turn …
+ok("… does not give back the turn another request holds", "slow.example" in common._busy, common._busy)
+common.stamp("slow.example", end=True)
+ok("the request that took the turn gives it back", "slow.example" not in common._busy, common._busy)
 common.wait_turn("other.example")
 ok("a host without a delay never waits, whatever the clock says", not sleeps, sleeps)
 
@@ -98,7 +102,13 @@ common.set_delay("stuck.example", 5)
 common.wait_turn("stuck.example")                 # takes the turn at t=1000, no stamp
 common.wait_turn("stuck.example")
 ok("a turn nobody gave back is given up after BUSY_MAX seconds", abs(T[0] - 1000 - common.BUSY_MAX) <= 1, (T[0], len(sleeps)))
-common.stamp("stuck.example")
+common.stamp("stuck.example", end=True)
+reset()
+common.set_delay("stuck2.example", 180)
+common.wait_turn("stuck2.example")                # a stuck request began at t=1000 (the clock had nothing before)
+common.wait_turn("stuck2.example")
+ok("after a stuck turn is given up, the next request still waits Crawl-delay from when that turn began", T[0] >= 1180, T[0])
+common.stamp("stuck2.example", end=True)
 
 # threads reading one host with a Crawl-delay at the same time go one by one (2026-10-16 검토: before, they all went together)
 reset()
@@ -176,10 +186,18 @@ fq = fetcher({"https://q.example/p": Resp(500)}, retries=3)
 fq.get("https://q.example/p")
 ok("a host without a long delay still gets its retries", sum(1 for _, u in fq.s.log if u == "https://q.example/p") == 3, fq.s.log)
 for code in (401, 403, 429):
-    fz = fetcher({f"https://z.example/{code}": Resp(code)}, retries=3)
+    reset()
+    fz = fetcher({f"https://z.example/{code}": Resp(code), "https://z.example/next": Resp(200, "ok")}, retries=3)
     fz.get(f"https://z.example/{code}")
-    ok(f"a page answering {code} is asked once, not again with the same name in this run",
+    ok(f"a page answering {code} is asked once, not retried in that fetch",
        sum(1 for _, u in fz.s.log if u == f"https://z.example/{code}") == 1 and fz.last_error == f"HTTP {code}", fz.s.log)
+    got = fz.get("https://z.example/next")
+    if code == 429:
+        ok("after a 429 nothing more is asked of that host in this run", got is None
+           and all(u != "https://z.example/next" for _, u in fz.s.log) and "429" in fz.last_error, fz.s.log)
+    else:
+        ok(f"a {code} on one page does not stop other pages of the host", got is not None, fz.s.log)
+reset()
 
 # --- shared robots answer between steps
 reset()
@@ -292,19 +310,37 @@ except SystemExit:
     raised = True
 ok("branches: an unreadable 블리비 address page stops the step (the old branches.csv stays)", raised)
 
-# the registry's rate text (shown on the app's 정보 screen) states the code's own numbers
+# the registry's rate text (shown on the app's 정보 screen) says what each chain really does (2026-10-16 검토: a check that only
+# looked for the numbers somewhere in the file passed '쁨 1초 간격', a gap that never applies). What each chain does:
+#   gap     the --gap of the branch Fetcher, written only where a branch Fetcher makes more than one request
+#   workers the --workers default (None = one branch after another)
+#   extra   other gaps that apply: 쁨's branch search Fetcher(gap=0.5)
+#   delay   the chain waits out the site's Crawl-delay (리엔장)
 import re  # noqa: E402
 import sources  # noqa: E402
 
+DOES = {"velyb": dict(gap=1.0), "ppeum": dict(workers=4, extra=[0.5], one_page=True), "toxnfill": dict(gap=0.7, workers=6),
+        "lienjang": dict(delay=True), "forever": dict(gap=0.8, workers=4), "vands": dict(gap=1.0, workers=6),
+        "uandi": dict(workers=6, one_page=True), "daybeau": dict(gap=1.0, workers=6), "drevers": dict(gap=1.0, workers=6),
+        "cellin": dict(gap=1.0, workers=4)}
+ok("every registry chain has a line in this test", set(DOES) == set(sources.REGISTRY), set(DOES) ^ set(sources.REGISTRY))
 for key, reg in sources.REGISTRY.items():
+    e, rate = DOES.get(key, {}), reg["rate"]
     code = open(os.path.join(ROOT, "scrape", f"{key}.py"), encoding="utf-8").read()
-    gaps = {float(x) for x in re.findall(r'"--gap",[^)]*default=([\d.]+)', code) + re.findall(r"Fetcher\(gap=([\d.]+)", code)}
-    workers = {int(x) for x in re.findall(r'"--workers",[^)]*default=(\d+)', code)}
-    said_gap = {float(x) for x in re.findall(r"([\d.]+)초 간격", reg["rate"])}
-    said_workers = {int(x) for x in re.findall(r"(\d+)곳 동시", reg["rate"])}
-    ok(f"sources.py REGISTRY rate of {key} matches scrape/{key}.py ({reg['rate']})",
-       said_gap <= gaps and said_workers <= workers and (said_workers or "하나씩" in reg["rate"] or not workers)
-       and "req/s" not in reg["rate"], (gaps, workers, reg["rate"]))
+    d_gap = re.findall(r'"--gap",[^)]*default=([\d.]+)', code)
+    d_workers = re.findall(r'"--workers",[^)]*default=(\d+)', code)
+    code_ok = ((not e.get("gap") or [float(x) for x in d_gap] == [e["gap"]])
+               and ([int(x) for x in d_workers] == ([e["workers"]] if e.get("workers") else []))
+               and all(f"Fetcher(gap={x:g})" in code for x in e.get("extra", []))
+               and (not e.get("delay") or "robots=True" in code))
+    ok(f"scrape/{key}.py does what this test says ({e})", code_ok, (d_gap, d_workers))
+    said_gap = sorted(float(x) for x in re.findall(r"최소 ([\d.]+)초", rate))
+    said_workers = [int(x) for x in re.findall(r"(\d+)곳 동시", rate)]
+    text_ok = (said_gap == sorted(([e["gap"]] if e.get("gap") else []) + e.get("extra", []))
+               and said_workers == ([e["workers"]] if e.get("workers") else [])
+               and (e.get("workers") or "하나씩" in rate) and (not e.get("delay") or "Crawl-delay" in rate)
+               and (not e.get("one_page") or "1쪽" in rate) and "req/s" not in rate and "간격," not in rate)
+    ok(f"sources.py REGISTRY rate of {key} says what the code does ({rate})", text_ok, (said_gap, said_workers, e))
 
 print("crawl manners", "OK" if not fails else f"{fails} FAIL")
 sys.exit(1 if fails else 0)
