@@ -29,6 +29,42 @@ $results = [ordered]@{}
 function Say([string]$m) { Write-Host ''; Write-Host "== $m" -ForegroundColor Cyan }
 function Ok([string]$m) { Write-Host "  OK  $m" -ForegroundColor Green }
 function Warn([string]$m) { Write-Host "  !!  $m" -ForegroundColor Yellow; [void]$script:warnings.Add($m) }
+# 다른 프로그램이 아직 쥐고 있는 파일도 읽는다(쓰기·지우기 공유로 열기, 0.5초 간격 10번). 끝내 못 읽으면 $null.
+# 2026-10-16 사용자 PC: node --test가 끝난 뒤 ReadAllText가 'being used by another process'로 설치 전체를 멈췄음 —
+# 시험이 띄운 자식 프로세스(Git Bash의 bash·git 등)가 출력 파일 핸들을 물려받아 남아 있었던 것으로 봄(추측).
+function Read-Shared([string]$path) {
+  $script:readSharedError = ''
+  for ($i = 0; $i -lt 10; $i++) {
+    try {
+      $fs = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete')
+      try {
+        $sr = New-Object IO.StreamReader($fs, (New-Object System.Text.UTF8Encoding($false)), $true)
+        return $sr.ReadToEnd()
+      } finally { $fs.Dispose() }
+    } catch {
+      $script:readSharedError = $_.Exception.Message
+      Start-Sleep -Milliseconds 500
+    }
+  }
+  return $null
+}
+# $rootId(이미 끝난 프로세스)에서 시작해 $since 뒤에 생긴 자손 중 아직 살아 있는 것. 끄지는 않고 이름만 알린다.
+function Leftover-Children([int]$rootId, [datetime]$since) {
+  $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+  $ids = New-Object 'System.Collections.Generic.HashSet[int]'
+  [void]$ids.Add($rootId)
+  $found = New-Object System.Collections.ArrayList
+  $grew = $true
+  while ($grew) {
+    $grew = $false
+    foreach ($p in $all) {
+      if ($ids.Contains([int]$p.ParentProcessId) -and (-not $ids.Contains([int]$p.ProcessId)) -and ($p.CreationDate -ge $since)) {
+        [void]$ids.Add([int]$p.ProcessId); [void]$found.Add($p); $grew = $true
+      }
+    }
+  }
+  return $found   # unrolled into the pipeline: the caller wraps it in @() (no leftovers = empty array)
+}
 function Refresh-Path {
   $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
 }
@@ -317,13 +353,31 @@ try {
     Write-Host '  단위 테스트(node --test tests/*.test.js) 도는 중...'
     $env:Path = (Join-Path $gitRoot 'bin') + ';' + (Join-Path $gitRoot 'usr\bin') + ';' + $env:Path   # bash·git을 Git Bash 것으로(WSL bash 말고)
     $out = Join-Path $Tools 'unit-test-output.txt'; $err = Join-Path $Tools 'unit-test-errors.txt'
-    $t = Start-Process -FilePath $node -ArgumentList @('--test', 'tests/*.test.js') -WorkingDirectory $RepoDir -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-    $text = [IO.File]::ReadAllText($out)
-    $pass = '?'; $fail = '?'
-    if ($text -match '(?m)^# pass (\d+)') { $pass = $Matches[1] }
-    if ($text -match '(?m)^# fail (\d+)') { $fail = $Matches[1] }
-    $results['검사: 단위 테스트'] = "통과 $pass / 실패 $fail (전체 출력: $out)"
-    if ($t.ExitCode -eq 0) { Ok "단위 테스트 통과 $pass" } else { Warn "단위 테스트 실패 ${fail}개 — Windows에서 처음 돌린 결과예요. $out 파일을 Claude에게 보여 주면 고칠게요." }
+    # 이 단계에서 무엇이 실패해도 설치는 멈추지 않는다: '확인할 것'(노란 줄)으로 남기고 INSTALLED.md까지 쓴다.
+    try {
+      $testStart = Get-Date
+      $t = Start-Process -FilePath $node -ArgumentList @('--test', 'tests/*.test.js') -WorkingDirectory $RepoDir -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+      $left = @()
+      try { $left = @(Leftover-Children $t.Id $testStart) } catch { Warn "단위 테스트 뒤 남은 프로그램을 확인하지 못했어요: $($_.Exception.Message)" }
+      if ($left.Count -gt 0) {
+        $names = ($left | ForEach-Object { "$($_.Name)(PID $($_.ProcessId))" }) -join ', '
+        Warn "단위 테스트가 끝난 뒤에도 남은 프로그램이 있어요: $names — 이 줄을 Claude에게 보여 주세요(끄지는 않았어요)."
+      }
+      $text = Read-Shared $out
+      if ($null -eq $text) {
+        $results['검사: 단위 테스트'] = "확인할 것 — 출력 파일을 읽지 못함(종료 코드 $($t.ExitCode), 파일: $out)"
+        Warn "단위 테스트 출력 파일을 읽지 못했어요($($script:readSharedError)). 종료 코드는 $($t.ExitCode)예요. 나중에 $out 파일을 직접 열어 Claude에게 보여 주세요."
+      } else {
+        $pass = '?'; $fail = '?'
+        if ($text -match '(?m)^# pass (\d+)') { $pass = $Matches[1] }
+        if ($text -match '(?m)^# fail (\d+)') { $fail = $Matches[1] }
+        $results['검사: 단위 테스트'] = "통과 $pass / 실패 $fail (전체 출력: $out)"
+        if ($t.ExitCode -eq 0) { Ok "단위 테스트 통과 $pass" } else { Warn "단위 테스트 실패 ${fail}개 — Windows에서 처음 돌린 결과예요. $out 파일을 Claude에게 보여 주면 고칠게요." }
+      }
+    } catch {
+      $results['검사: 단위 테스트'] = "확인할 것 — 검사 중 오류: $($_.Exception.Message)"
+      Warn "단위 테스트 검사 중 오류가 났어요: $($_.Exception.Message) — 설치는 계속했어요. 이 줄을 Claude에게 보여 주세요."
+    }
   }
   Pop-Location
 

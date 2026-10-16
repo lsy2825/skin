@@ -74,6 +74,10 @@
 - 받다가 끊겼으면(창을 닫음, 인터넷 끊김) 그냥 다시 실행한다. 받다 만 폴더는 `_zip_backup_날짜`로 비켜 두고 새로 받는다.
 - 다른 위치를 쓰려면 PowerShell에서: `powershell -ExecutionPolicy Bypass -File setup.ps1 -RepoDir D:\work\윤실장 -Tools D:\yoonsiljang-tools`
 - 단위 테스트를 건너뛰려면 `-SkipTests`를 붙인다.
+- 단위 테스트 단계는 무엇이 실패해도 설치를 멈추지 않는다(2026-10-16 고침). 결과 파일(`unit-test-output.txt`)을 다른 프로그램이
+  쥐고 있어도 공유 모드로 다시 읽고, 끝내 못 읽거나 오류가 나면 노란 줄('확인할 것')로 남긴 뒤 `INSTALLED.md`까지 쓴다.
+  시험이 끝난 뒤에도 남은 프로그램이 있으면 그 이름도 노란 줄에 적는다(끄지는 않는다) — 그 줄을 Claude에게 보여 준다.
+  예전 판에서 'ReadAllText … being used by another process'로 멈췄다면 `git pull` 뒤 `setup.bat`을 다시 실행한다(받은 것은 건너뛴다).
 
 ## 3. 매일 쓰는 법
 
