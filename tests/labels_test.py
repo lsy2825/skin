@@ -887,7 +887,7 @@ _gfile = lambda mem, updated=_D: {"s": _gs, "branches": [[0, 2], [0, 3], [1, 4],
                                                **({"reclGroups": mem} if mem is not None else {}))}
 # the file before #83, built after this field: an earlier build of the collection found '포텐자 펌핑팁' (prev index 2 = 부천점)
 prev_g0 = _gfile([_D, _P, [[_k3, 2, 50000]]])
-moved_g1 = appdata.achg_moved(prev_g0, prow_g0, now_g, gid_g, gkeys_g, _D, _P, asnap_g)
+moved_g1 = appdata.achg_moved(prev_g0, prow_g0, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, new_g)
 keep_g1 = appdata.achg_keep(chg_g, new_g, gone_g, moved_g1, bk_g, gkeys_g)
 rg1 = appdata.recl_groups(moved_g1, _D, _P, asnap_g, bk_g)
 _real = ([[0, 1, 100000, 110000]], [], [x for x in gone_g if x[1] == 1])     # 강남본점: the clinic's
@@ -897,28 +897,41 @@ ok("#83 다음 빌드: 태그가 붙은 울산점 79,000(가짜 인상)·첫 방
    and rg1 == [_D, _P, sorted([[_k1, 0, 79000], [_k2, 2, 59000], [_k3, 3, 50000]])], (moved_g1, keep_g1, rg1))
 # the next build of the same collection: its previous file (the build above) already has the tags. Branch indices of that file
 prev_g1 = _gfile([_D, _P, [[k, {0: 1, 2: 0, 3: 2}[b], p] for k, b, p in rg1[2]]])
-moved_g2 = appdata.achg_moved(prev_g1, prow_g1, now_g, gid_g, gkeys_g, _D, _P, asnap_g)
+moved_g2 = appdata.achg_moved(prev_g1, prow_g1, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, new_g)
 ok("같은 수집 다시 빌드: group_moved는 아무것도 못 찾지만(예전엔 가짜 5건이 돌아온 까닭) meta.reclGroups로 같은 것을 빼서 같은 결과·같은 칸",
    appdata.group_moved(prev_g1, prow_g1, now_g, gid_g, _P) == set() and moved_g2 == moved_g1
    and appdata.achg_keep(chg_g, new_g, gone_g, moved_g2, bk_g, gkeys_g) == _real and appdata.recl_groups(moved_g2, _D, _P, asnap_g, bk_g) == rg1,
    moved_g2)
 ok("... 예전처럼 기억 없이 거르면 가짜 울산점 인상·부평점 새로 생김·부천점 없어짐이 돌아옴(고치기 전 main)",
    appdata.achg_keep(chg_g, new_g, gone_g, appdata.group_moved(prev_g1, prow_g1, now_g, gid_g, _P), bk_g, gkeys_g) == (chg_g, new_g, gone_g))
+_new_r = new_g + [[1, 0, 70000]]          # + a new price the clinic added (울산점, 슈링크 유니버스 울트라 100샷 70,000)
+ok("... 기억이 있으면 진짜 새로 생김(울산점 70,000)은 남김 — 다 빼는 것은 칸이 없는 파일 위 한 번뿐",
+   appdata.achg_moved(prev_g1, prow_g1, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, _new_r) == moved_g1
+   and appdata.achg_keep(chg_g, _new_r, gone_g, moved_g1, bk_g, gkeys_g)[1] == [[1, 0, 70000]])
 prev_g1o = _gfile(None)
-moved_o = appdata.achg_moved(prev_g1o, prow_g1, now_g, gid_g, gkeys_g, _D, _P, asnap_g)
+moved_o = appdata.achg_moved(prev_g1o, prow_g1, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, new_g)
 ok("이전 파일에 칸이 없으면(이 고침 전 data.json, 같은 수집) 스냅숏 가격이 같은 이름으로 아직 팔리는데 일반가가 아닌 것(태그·추가 옵션)을 뺌 — "
-   "울산점 인상·부천점 없어짐은 빠지고, 강남본점은 남음. 지금 일반가가 된 줄(부평점 새로 생김)은 스냅숏으로 알 수 없어 남음",
+   "울산점 인상·부천점 없어짐은 빠지고, 강남본점은 남음. 지금 일반가가 된 줄(부평점 새로 생김)은 스냅숏에 없어 가릴 수 없으니 새로 생김은 모두 뺌"
+   "(검토 2026-10-16: 그 파일의 38건 모두 규칙 탓 — 블리비 37건은 잘못 붙은 '평일 낮'을 잃음)",
    appdata.group_memory(prev_g1o, _D, _P) is None
-   and moved_o == {("쁨|울산점", _k1, 79000), ("톡스앤필|부천점", _k3, 50000)}
-   and appdata.achg_keep(chg_g, new_g, gone_g, moved_o, bk_g, gkeys_g) == ([[0, 1, 100000, 110000]], new_g, _real[2]), moved_o)
+   and moved_o == {("쁨|울산점", _k1, 79000), ("톡스앤필|부천점", _k3, 50000), ("쁨|부평점", _k2, 59000)}
+   and appdata.achg_keep(chg_g, new_g, gone_g, moved_o, bk_g, gkeys_g) == ([[0, 1, 100000, 110000]], [], _real[2]), moved_o)
+_mo_r = appdata.achg_moved(prev_g1o, prow_g1, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, _new_r)
+_rg_r = appdata.recl_groups(_mo_r, _D, _P, asnap_g, bk_g)
+_mem_r = appdata.group_memory(_gfile([_D, _P, [[k, {0: 1, 2: 0, 3: 2}[b], p] for k, b, p in _rg_r[2]]]), _D, _P)
+ok("... 그 한 번은 진짜 새로 생김(울산점 70,000)도 함께 빠지고(알면서 고른 값), meta.reclGroups에 적혀 다음 다시 빌드에서도 빠짐",
+   _mo_r == moved_o | {("쁨|울산점", _k2, 70000)} and appdata.achg_keep(chg_g, _new_r, gone_g, _mo_r, bk_g, gkeys_g)[1] == []
+   and _mem_r == _mo_r, (_mo_r, _mem_r))
 ok("... 다른 스냅숏을 기준으로 적힌 칸도 못 믿음(None) → 같은 대체",
    appdata.group_memory(_gfile(["2026-10-14", "2026-10-12", [[_k1, 3, 100000]]]), _D, _P) is None
-   and appdata.achg_moved(_gfile(["2026-10-14", "2026-10-12", [[_k1, 3, 100000]]]), prow_g1, now_g, gid_g, gkeys_g, _D, _P, asnap_g) == moved_o)
+   and appdata.achg_moved(_gfile(["2026-10-14", "2026-10-12", [[_k1, 3, 100000]]]), prow_g1, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g,
+                          new_g) == moved_o)
 prev_gp = _gfile([_P, "2026-10-06", [[_k1, 3, 100000]]], updated=_P)        # the last build of the 10-13 collection (rows as in prev_g0)
-ok("다음 수집의 첫 빌드: 이전 파일(지난 수집)의 칸은 쓰지 않음(그 스냅숏 기준) — 지난 판 줄과 직접 견줘서(group_moved) 찾음, 강남본점 100,000은 안 뺌",
+ok("다음 수집의 첫 빌드: 이전 파일(지난 수집)의 칸은 쓰지 않음(그 스냅숏 기준) — 지난 판 줄과 직접 견줘서(group_moved) 찾음, 강남본점 100,000·"
+   "진짜 새로 생김은 안 뺌",
    appdata.group_memory(prev_gp, _D, _P) == set()
-   and appdata.achg_moved(prev_gp, prow_g0, now_g, gid_g, gkeys_g, _D, _P, asnap_g) == {("쁨|울산점", _k1, 79000), ("쁨|부평점", _k2, 59000)}
-   and appdata.achg_moved(None, [], now_g, gid_g, gkeys_g, _D, _P, asnap_g) == set())
+   and appdata.achg_moved(prev_gp, prow_g0, now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, _new_r) == {("쁨|울산점", _k1, 79000), ("쁨|부평점", _k2, 59000)}
+   and appdata.achg_moved(None, [], now_g, gid_g, gkeys_g, bk_g, _D, _P, asnap_g, _new_r) == set())
 _sl = appdata.still_listed([_gr("쁨", "울산점", "국산 얼굴전체 스킨보톡스", 79000, "평일 낮", "12"), _gr("쁨", "울산점", "국산 얼굴전체스킨보톡스", 79000),
                             _gr("쁨", "강남본점", "국산 얼굴전체 스킨보톡스", 99000, "첫 방문"), _gr("쁨", "강남본점", "국산 얼굴전체 스킨보톡스", 90000)],
                            [0, 0, 0, 0], [_k1], {_k1: {"쁨|울산점": 79000, "쁨|강남본점": 100000}})
@@ -1291,7 +1304,9 @@ vp = os.path.join(ROOT, "data2", "variants.json")
 if os.path.exists(vp):
     rej = json.load(open(vp, encoding="utf-8"))["stats"].get("label_rejected", [])
     print(f"INFO | 이번 빌드에서 이상한 이름이라 뺀 규격 {len(rej)}개", [r["label"] for r in rej[:5]])
-# meta.reclGroups in the data that ships (2026-10-16; a data.json built before has none — the next factory build adds it)
+# meta.reclGroups in the data that ships (2026-10-16; a data.json built before has none — the next factory build adds it): format and
+# consistency only — achg was filtered by these same prices in the build that wrote them, so this cannot catch a build that forgot
+# what an earlier one moved (검토 2026-10-16). That is the unit tests' job above (achg_moved · group_memory · still_listed)
 if "reclGroups" in D["meta"]:
     _rg, _a = D["meta"]["reclGroups"], D["achg"]
     _bk = [f"{D['meta']['brands'][b[0]][0]}|{D['s'][b[1]]}" for b in D["branches"]]
@@ -1303,7 +1318,7 @@ if "reclGroups" in D["meta"]:
             + [c for c in _a["new"] if (_bk[c[1]], _gk[c[0]], c[2]) in _mv]
             + [c for c in _a["gone"] if (_bk[c[1]], xkeys.comp(D["s"][c[0]]), c[2]) in _mv])
     ok(f"app/data.json meta.reclGroups: 수집 {_rg[0] if _rg else '-'} · 기준 {_rg[1] if len(_rg) > 1 else '-'} · 규칙이 옮긴 가격 {len(_mv)}개 — "
-       "형식대로, 자동 묶음 변동(achg)에 그 가격의 항목 없음", _ok and not _hit, _hit[:5])
+       "형식·일관성(같은 수집·같은 기준, achg에 그 가격의 항목 없음)", _ok and not _hit, _hit[:5])
 else:
     print("INFO | app/data.json에 meta.reclGroups 없음(이 칸 전 빌드) — 다음 공장 빌드에서 더해짐")
 # days·hours in the data that ships: 18 fields; a data.json built before 2026-10-16 has 16 (the next factory build adds them)
