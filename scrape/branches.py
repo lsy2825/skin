@@ -119,7 +119,9 @@ def others(f):
                              ("셀린", "cellin", "/clinicPriceSide/clinicSideList.php")):   # 셀린: the branch address is in the page footer
         for p in from_log(brand, key).get("pages", []):
             if p.get("rows") and p.get("site"):
-                out.append((brand, p["branch"], vands_addrs(f, p["site"]) if key == "vands" else page_addrs(f, p["site"] + path)))
+                # addr_url: a page the collector names for the address (셀린 new-platform branches, 2026-10-16: the old list
+                # address only redirects there)
+                out.append((brand, p["branch"], vands_addrs(f, p["site"]) if key == "vands" else page_addrs(f, p.get("addr_url") or p["site"] + path)))
     return out
 
 

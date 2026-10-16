@@ -117,8 +117,9 @@ def main():
     picked, seen = [], set()
     for i, r in enumerate(rows):
         url, name = S[r[11]], S[r[2]]
-        if not url or urlparse(url).hostname not in ok_hosts:
-            continue
+        host = urlparse(url).hostname if url else None
+        if not host or host not in ok_hosts or (host.endswith(".cellinclinic.com") and host != "www.cellinclinic.com"):
+            continue  # 셀린 새 사이트(<지점>.cellinclinic.com)는 가격이 페이지 자료에만 있어 화면 글자로 확인할 수 없음
         ks = [k for k in S[r[7]].split() if k in med]
         share = min((r[3] / med[k] for k in ks), default=None)
         reason = "asked" if r[3] in also else "low" if (share is not None and share <= 0.3) or r[3] < 3000 else ""
