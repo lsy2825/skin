@@ -86,6 +86,25 @@ SIDO = [("전남광주", "광주"), ("서울", "서울"), ("경기", "경기"), 
         ("전라남|전남", "전남"), ("경상북|경북", "경북"), ("경상남|경남", "경남"), ("제주", "제주")]
 
 
+def spec_keys(specs, vkeys, live, families=(), labels=None):
+    """each spec note (knowledge/specs.json) → the comparison keys of this data.json whose signature carries that word in that
+    family. The app attaches a note by these ids, not by matching text: '국산' is inside '미국산', and many words sit only in
+    the family name or inside a longer word (C7 검토, 2026-10-16)"""
+    tok = defaultdict(set)
+    for k in vkeys:
+        for part in k["sig"].split("|")[2:]:
+            for w in part.split(","):
+                if w.strip():
+                    tok[(k["fam"], w.strip())].add(k["id"])
+    # hand-made keys (X01 '국산 사각턱 보톡스 50U'): the words of their label, in the family they are filed under
+    for f in families:
+        for cid in f.get("curated", []):
+            for w in re.split(r"[\s·()/]+", (labels or {}).get(cid, "")):
+                if w:
+                    tok[(f["fam"], w)].add(cid)
+    return [dict(e, keys=sorted(tok.get((e["fid"], e["spec"]), set()) & live)) for e in specs]
+
+
 def variant_keys():
     """hand-made keys (xkeys.X) + variant keys from build2/taxonomy.py (data2/variants.json, written by clean.py)"""
     vp = os.path.join(ROOT, "data2", "variants.json")
@@ -592,6 +611,9 @@ def main():
                     changes.append([kid[k], bi[(brand, branch)], before, after])
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
+    vp = os.path.join(ROOT, "data2", "variants.json")
+    vj = json.load(open(vp, encoding="utf-8")) if os.path.exists(vp) else {"keys": [], "families": []}
+    KB["specs"] = spec_keys(KB["specs"], vj["keys"], {k[0] for k in ALLK}, vj.get("families", []), {k[0]: k[2] for k in ALLK})
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     moved = group_moved(prev_data, prev_rows, rows, gid)

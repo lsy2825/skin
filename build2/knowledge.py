@@ -24,7 +24,9 @@ CONCERNS = os.path.join(ROOT, "knowledge", "concerns.json")
 SPECS = os.path.join(ROOT, "knowledge", "specs.json")
 FIELDS = ["one_liner", "purpose", "areas", "method", "kinds", "evidence_note"]
 # a spec note says what a word means; these turn it into a promise, a safety claim or advice (지시서 C7: 효과·안전 판단 없이)
-SPEC_BAN = re.compile(r"효과|개선|안전|부작용|통증|좋아|좋은|확실|추천|권해|강력|더\s*오래|오래\s*가|탄력|동안|젊어|최고|최신|우수|뛰어")
+SPEC_BAN = re.compile(r"효과|효능|개선|안전|부작용|통증|덜\s*아|아프지|좋아|좋은|나은|낫게|확실|추천|권해|권장|강력|더\s*오래|오래\s*가|유지돼|지속|"
+                      r"탄력|동안\s*(?:얼굴|피부|효과)|어려\s*보|젊어|최고|최신|우수|뛰어|자연스|회복|다운타임|없애|작아져|갸름|밝아져|맑아져|"
+                      r"흉터\s*없|멍이?\s*(?:적|없)|내성|가성비|등급")   # 2026-10-16 C7 검토: paraphrases of effect / pain / recovery / rank
 
 
 def load(path=PATH):
@@ -197,10 +199,11 @@ if __name__ == "__main__":
     print(f"규격 낱말 설명 {len(se)}개 · 참고 주소 있음 {sum(1 for e in se if e.get('sources') or e.get('refs'))} · "
           f"검수 상태 {dict(sorted(Counter(e.get('review', {}).get('status', '') for e in se).items()))}")
     # the ban list itself: a note that promises or advises is refused, a plain one passes
-    bad = check_specs({"entries": [{"fid": "x", "spec": "a", "one_liner": "효과가 더 오래가요", "review": {"status": "draft"}},
-                                   {"fid": "x", "spec": "b", "one_liner": "턱 옆 씹는 근육 부위에 놓아요", "review": {"status": "draft"}}]},
+    refused = ["효과가 더 오래가요", "덜 아픈 제품이에요", "자연스러운 결과가 나와요", "회복이 빠른 장비예요", "다운타임이 짧고 갸름해져요", "프리미엄 등급이에요"]
+    passed = ["턱 옆 씹는 근육 부위에 놓아요", "시술하는 동안 마취 크림을 발라요", "병원이 붙이는 이름이에요"]
+    bad = check_specs({"entries": [{"fid": "x", "spec": str(i), "one_liner": s, "review": {"status": "draft"}} for i, s in enumerate(refused + passed)]},
                       kb["statuses"], kb["sources"])
-    if len(bad) != 1:
+    if len(bad) != len(refused) or any(f"x/{len(refused) + i}" in b for i in range(len(passed)) for b in bad):
         errors.append(f"규격 설명 검사 자체가 이상해요: {bad}")
     if "--schema" in sys.argv and not errors:
         print(json.dumps(schema_records()[1], ensure_ascii=False, indent=1))
