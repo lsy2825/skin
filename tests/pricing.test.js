@@ -260,6 +260,129 @@ test("line: cheapest, tie prefers regular price, special only for the first sess
   assert.equal(P.lineCost([row(1, 500)], [row(1, 500)], 2, null).total, 1000);
 });
 
+// ---- once / repeat (B, 2026-10-16): a once price is one time per person, a repeat price holds on every visit that fits its
+// day / time — the visit date filter (condState) checks that condition
+test("condition split: 체험가·한정가·첫 방문·1인 1회·타임세일 are once; 평일 낮·시간대·일요일·the site's days/hours are repeat", () => {
+  assert.equal(P.condClass(1, "", 0, ""), "once");                 // 체험가
+  assert.equal(P.condClass(2, "", 0, ""), "once");                 // 한정가
+  for (const t of ["첫 방문", "1인 1회", "타임세일"]) assert.equal(P.condClass(0, t, 0, ""), "once", t);
+  assert.equal(P.condClass(0, "새 태그", 0, ""), "once", "a tag the app does not know is never repeated on a guess");
+  for (const t of ["평일 낮", "시간대", "일요일"]) assert.equal(P.condClass(0, t, 0, ""), "repeat", t);
+  assert.equal(P.condClass(0, "", 32, ""), "repeat", "untagged '토요일이벤트' (days 토)");
+  assert.equal(P.condClass(0, "", 0, "12:00-15:00"), "repeat", "untagged hours as text");
+  assert.equal(P.condClass(0, "", 0, P.hoursCode("12:00-15:00")), "repeat", "… and as the app's hoursCode");
+  assert.equal(P.condClass(3, "평일 낮", 31, ""), "repeat", "a 회차 price for weekdays");
+  // both reasons: once
+  assert.equal(P.condClass(0, "평일 낮·첫 방문", 31, ""), "once");
+  assert.equal(P.condClass(0, "평일 낮·1인 1회", 0, ""), "once");
+  assert.equal(P.condClass(1, "", 32, ""), "once");
+  assert.equal(P.condClass(2, "일요일", 64, ""), "once");
+  // plain: no kind 1/2, no tag, no day/time limit (all seven days is no limit)
+  for (const [k, d, hr] of [[0, 0, ""], [3, 0, ""], [4, 0, ""], [0, 127, ""], [0, 0, "bad"]]) assert.equal(P.condClass(k, "", d, hr), "", `${k} ${d} ${hr}`);
+  assert.deepEqual([...P.ONCE_TAGS, ...P.REPEAT_TAGS].sort(), ["1인 1회", "시간대", "일요일", "첫 방문", "타임세일", "평일 낮"].sort());
+});
+
+test("condition split covers every tag the data build writes (build2/clean.py TAGS + TIME_TAGS)", () => {
+  const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "../build2/clean.py"), "utf8");
+  const block = /^TAGS = \[([\s\S]*?)\]\s*$/m.exec(src);
+  assert.ok(block, "TAGS list found in build2/clean.py");
+  const tags = [...block[1].matchAll(/\("([^"]+)",\s*r"/g)].map((m) => m[1]);
+  const only = /^TIME_ONLY = "([^"]+)"/m.exec(src), time = /^TIME_TAGS = \("([^"]+)", TIME_ONLY\)/m.exec(src);
+  assert.ok(tags.length >= 4 && only && time, "tag ids read");
+  for (const t of [...tags, only[1], time[1]]) assert.ok(P.ONCE_TAGS.includes(t) || P.REPEAT_TAGS.includes(t), `build tag '${t}' is classified`);
+});
+
+test("condition split agrees with the app's special rule (kind 1/2, any tag, or a day/time limit)", () => {
+  for (const k of [0, 1, 2, 3, 4]) for (const t of ["", "평일 낮", "첫 방문", "평일 낮·첫 방문", "시간대"]) for (const d of [0, 32, 31, 127]) for (const hr of ["", "10:00-16:00"]) {
+    const special = k === 1 || k === 2 || t !== "" || P.whenLimited(d, hr);
+    assert.equal(P.condClass(k, t, d, hr) !== "", special, `${k} ${t} ${d} ${hr}`);
+  }
+});
+
+const rep = (i, p) => ({ i, p, special: true, repeat: true });
+test("line: a repeat price counts for every session — q × price, with or without a regular price", () => {
+  let l = P.lineCost([rep(1, 300)], [], 1, null);
+  assert.equal(l.total, 300); assert.equal(l.repeat, true); assert.equal(l.incomplete, undefined);
+  l = P.lineCost([rep(1, 300)], [], 3, null);                       // no regular price: no longer '2회째부터 가격 없음'
+  assert.equal(l.total, 900); assert.deepEqual(l.rows, [1]); assert.equal(l.units, 3);
+  assert.equal(l.incomplete, undefined); assert.equal(l.unpriced, undefined); assert.equal(l.repeat, true); assert.equal(l.laterRegular, false);
+  l = P.lineCost([rep(1, 300), row(2, 500)], [row(2, 500)], 3, null);   // cheaper than the regular price: every session at it
+  assert.equal(l.total, 900); assert.deepEqual(l.rows, [1]); assert.equal(l.repeat, true); assert.equal(l.laterRegular, false);
+  l = P.lineCost([rep(1, 600), row(2, 500)], [row(2, 500)], 3, null);   // the regular price is cheaper: it wins as before
+  assert.equal(l.total, 1500); assert.equal(l.repeat, false); assert.equal(l.special, false);
+  // a once price first, then the cheapest price that repeats — a repeat one when it is below the regular one
+  l = P.lineCost([row(1, 100, true), rep(2, 300), row(3, 500)], [row(3, 500)], 3, null);
+  assert.equal(l.total, 100 + 300 * 2); assert.deepEqual(l.rows, [1, 2]); assert.equal(l.repeat, true); assert.equal(l.laterRegular, false);
+  l = P.lineCost([row(1, 100, true), rep(2, 300)], [], 3, null);       // … also with no regular price at all
+  assert.equal(l.total, 700); assert.equal(l.incomplete, undefined);
+  // the full-cart comparison counts such a line
+  assert.equal(P.compareClinics([{ b: 0, lines: [P.lineCost([rep(1, 300)], [], 3, null)] }]).full[0].total, 900);
+});
+
+test("line: once prices keep the R14 rule — counted once, never once × q", () => {
+  const once = P.lineCost([row(1, 100, true)], [], 3, null);            // a special with no repeat flag is once (older callers)
+  assert.equal(once.total, 100); assert.equal(once.incomplete, true); assert.equal(once.unpriced, 2); assert.equal(once.repeat, undefined);
+  const flagged = P.lineCost([{ i: 1, p: 100, special: true, repeat: false }], [], 3, null);
+  assert.equal(flagged.incomplete, true); assert.notEqual(flagged.total, 300);
+  const reg = P.lineCost([row(1, 100, true), row(2, 300)], [row(2, 300)], 3, null);
+  assert.equal(reg.total, 700); assert.equal(reg.laterRegular, true); assert.equal(reg.repeat, false);
+  // a repeat flag on a plain price means nothing (only specials are once or repeat)
+  assert.equal(P.lineCost([{ i: 1, p: 100, special: false, repeat: true }], [{ i: 1, p: 100, special: false, repeat: true }], 2, null).repeat, false);
+});
+
+test("had it before (cart item switch): once prices leave the candidates, the next cheapest price is used", () => {
+  const cands = [row(1, 100, true), rep(2, 300), row(3, 500)], regular = [row(3, 500)];
+  assert.deepEqual(P.withoutOnce(cands).map((x) => x.i), [2, 3]);
+  assert.equal(P.isOnce(row(1, 100, true)), true); assert.equal(P.isOnce(rep(2, 300)), false); assert.equal(P.isOnce(row(3, 500)), false);
+  let l = P.lineCost(P.withoutOnce(cands), P.withoutOnce(regular), 3, null);
+  assert.equal(l.total, 900); assert.deepEqual(l.rows, [2]);
+  l = P.lineCost(P.withoutOnce([row(1, 100, true), row(3, 500)]), [row(3, 500)], 1, null);
+  assert.equal(l.total, 500); assert.equal(l.special, false);
+  // only once prices: no price for this person at that branch (never the once price)
+  assert.equal(P.lineCost(P.withoutOnce([row(1, 100, true)]), [], 1, null), null);
+  assert.deepEqual(P.withoutOnce([]), []);
+});
+
+test("line: a once price first says so for the later sessions (laterOther), whatever price they use", () => {
+  let l = P.lineCost([row(1, 100, true), row(3, 500)], [row(3, 500)], 3, null);
+  assert.equal(l.laterOther, true); assert.equal(l.laterRegular, true); assert.equal(l.repeat, false);
+  l = P.lineCost([row(1, 100, true), rep(2, 300), row(3, 500)], [row(3, 500)], 3, null);
+  assert.equal(l.laterOther, true); assert.equal(l.laterRegular, false); assert.equal(l.repeat, true); assert.deepEqual(l.rows, [1, 2]);
+  l = P.lineCost([rep(2, 300), row(3, 500)], [row(3, 500)], 3, null);     // a repeat price alone: nothing 'later' to say
+  assert.equal(l.laterOther, false); assert.equal(l.repeat, true);
+  assert.equal(P.lineCost([row(1, 100, true), row(3, 500)], [row(3, 500)], 1, null).laterOther, undefined);
+});
+
+test("line: at the same price a plain price wins, then a repeat one, then a once one", () => {
+  assert.deepEqual(P.lineCost([row(1, 300, true), rep(2, 300)], [], 3, null).rows, [2], "a once/repeat tie is no '체험가 첫 회 + …' line");
+  assert.equal(P.lineCost([row(1, 300, true), rep(2, 300)], [], 3, null).laterOther, false);
+  assert.deepEqual(P.lineCost([rep(2, 300), row(1, 300, true)], [], 3, null).rows, [2], "whatever the order");
+  assert.deepEqual(P.lineCost([row(1, 300, true), rep(2, 300), row(3, 300)], [row(3, 300)], 1, null).rows, [3]);
+  assert.equal(P.cheapest([row(1, 300, true), rep(2, 300), row(3, 300)]).i, 3);
+  assert.equal(P.cheapest([row(1, 300, true), rep(2, 300)]).i, 2);
+  assert.equal(P.cheapest([row(1, 200, true), rep(2, 300)]).i, 1, "a lower price still wins");
+});
+
+test("line: a once price picked for a branch keeps the R14 rule (first session only)", () => {
+  const ov = { i: 9, p: 100, sess: 1, special: true };
+  let l = P.lineCost([row(1, 300, true), row(3, 500)], [row(3, 500)], 3, ov);
+  assert.equal(l.total, 100 + 500 * 2); assert.deepEqual(l.rows, [9, 3]); assert.equal(l.ov, true); assert.equal(l.laterOther, true);
+  assert.notEqual(l.total, 300, "never the picked once price × 3");
+  l = P.lineCost([row(1, 300, true), rep(2, 400), row(3, 500)], [row(3, 500)], 3, ov);   // later sessions: the cheapest repeating price
+  assert.equal(l.total, 100 + 400 * 2); assert.deepEqual(l.rows, [9, 2]); assert.equal(l.repeat, true);
+  l = P.lineCost([row(1, 300, true)], [], 3, ov);                       // nothing repeats: later sessions unpriced
+  assert.equal(l.total, 100); assert.equal(l.incomplete, true); assert.equal(l.unpriced, 2); assert.equal(l.ov, true);
+  assert.equal(P.compareClinics([{ b: 0, lines: [l] }]).full.length, 0);
+  assert.equal(P.lineCost([], [], 1, ov).total, 100, "one session: the picked price");
+  // a package or a pass picked by hand is its own price (bundles), also when it is a special
+  assert.equal(P.lineCost([], [], 5, { i: 9, p: 300000, sess: 3, special: true }).total, 600000);
+  assert.equal(P.lineCost([], [], 5, { i: 9, p: 300000, sess: 99, special: true }).total, 300000);
+  // a picked visit day / time price repeats like an automatic one, and the line says so
+  l = P.lineCost([], [], 3, { i: 9, p: 300, sess: 1, special: true, repeat: true });
+  assert.equal(l.total, 900); assert.equal(l.repeat, true); assert.equal(l.incomplete, undefined);
+  assert.equal(P.lineCost([], [], 3, { i: 9, p: 300, sess: 1 }).repeat, false, "a plain pick is no repeat line");
+});
+
 test("line: user-chosen package covers sessions in bundles", () => {
   assert.equal(P.lineCost([], [], 5, { i: 9, p: 300000, sess: 3 }).total, 600000);   // 5 sessions → two 3-session packages
   assert.equal(P.lineCost([], [], 5, { i: 9, p: 300000, sess: 99 }).total, 300000);  // unlimited pass

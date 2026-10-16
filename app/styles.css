@@ -561,6 +561,9 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .ci .cx:hover { background: var(--fill); color: var(--ink); }
 .ci .cs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; color: var(--muted); }
 .ci .cf { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.ci .cdone { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 6px; }
+.ci .cdone .sub { font-size: 13px; }
+.cartsum .whenask { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; }
 .ci .cp { margin-left: auto; text-align: right; font-weight: 720; letter-spacing: -0.02em; white-space: nowrap; }
 .ci .cp small { display: block; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
 .qty { display: inline-flex; align-items: center; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 2px; }

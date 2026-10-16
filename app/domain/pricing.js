@@ -135,31 +135,65 @@
     return w ? COND_LABEL["시간대"] : "";
   }
 
+  // ---- why a price is conditional (B, 2026-10-16 — the user: ask whether the person had the treatment before, and when
+  // they will visit). One price row → "once", "repeat" or "" (a plain price); a row with both reasons is "once".
+  // - "once": one time per person — kind 1 체험가, kind 2 한정가, the tags '첫 방문' and '1인 1회', and '타임세일': every such
+  //   row in the data is a 체험가/한정가 that ends within days (a short sale, not an hour of the day — the hours of a time
+  //   window come as '시간대' or the site's hours). A tag the app does not know is "once" too: never repeated on a guess.
+  // - "repeat": a visit day / time only — the tags '평일 낮', '시간대', '일요일', or days / hours the site wrote with no tag
+  //   ('토요일이벤트'). The visit date (condState) decides whether it applies, and when it does it is the same price every visit.
+  // kind = row field 5, tags = '평일 낮·첫 방문' (field 6), days / hours as in whenLimited.
+  const ONCE_TAGS = ["첫 방문", "1인 1회", "타임세일"], REPEAT_TAGS = ["평일 낮", "시간대", "일요일"];
+  function condClass(kind, tags, days, hours) {
+    const t = tags ? tags.split("·").filter(Boolean) : [];
+    if (kind === 1 || kind === 2 || t.some((x) => !REPEAT_TAGS.includes(x))) return "once";
+    return t.length || whenLimited(days, hours) ? "repeat" : "";
+  }
+
   // ---- one cart line: q sessions of one item at one branch
-  // cands / regular: [{i, p, special}] (regular = cands without special prices); override: {i, p, sess} chosen by the user
-  const better = (a, b) => !b || a.p < b.p || (a.p === b.p && b.special && !a.special);
+  // cands / regular: [{i, p, special, repeat}] (regular = cands without special prices; repeat = a special whose condition is
+  // the visit day / time only, condClass "repeat" — a special without it counts as once); override: {i, p, sess, special, repeat}
+  // chosen by the user. At the same price a plain price wins, then a repeat one, then a once one (so a tie never reads as
+  // '체험가 첫 회 + …' and is never counted as a first-visit line by limitOnce).
+  const rank = (x) => (!x.special ? 0 : x.repeat ? 1 : 2);
+  const better = (a, b) => !b || a.p < b.p || (a.p === b.p && rank(a) < rank(b));
   function cheapest(list) {
     let best = null;
     for (const x of list) if (better(x, best)) best = x;
     return best;
   }
+  const isOnce = (x) => !!x.special && !x.repeat;
+  // the person had this treatment before (cart item switch '전에 이 시술을 받아 봤어요'): once prices are not theirs any more
+  const withoutOnce = (list) => list.filter((x) => !isOnce(x));
+  // a once price counts once; later sessions use the cheapest price that repeats: a regular one, or one whose only condition
+  // is the visit day / time (repeat — the visit date filter checks that condition, and it holds on every such visit, so
+  // a repeat price alone is q × its price). Whether a once price can be repeated is not known from the clinic page, so with
+  // NO repeating price the later sessions stay unpriced — never the once price × q (round-2 R14: 100원 special ×3 was shown
+  // as a firm 300원), also when the user picked that once price for the branch. An incomplete line is not a total anyone
+  // can compare. Line flags: laterOther = a once price first, later sessions at another price (laterRegular: a plain one);
+  // repeat = the sessions after the first (all of them when there is one row) are at a visit day / time price.
+  function onceThen(first, again, q, extra) {
+    if (!again) return { total: first.p, rows: [first.i], units: 1, ...extra, special: true, unpriced: q - 1, incomplete: true };
+    return { total: first.p + again.p * (q - 1), rows: [first.i, again.i], units: q, ...extra, special: true,
+      laterOther: true, laterRegular: !again.special, repeat: !!(again.special && again.repeat) };
+  }
   function lineCost(cands, regular, q, override) {
     q = Math.max(1, q || 1);
+    const repeating = () => cheapest([...regular, ...cands.filter((x) => x.special && x.repeat)]);
     if (override) {
+      // a once price picked for one session: still the first session only (a package or a pass is its own price)
+      if (q > 1 && isOnce(override) && (override.sess || 1) <= 1) return onceThen(override, repeating(), q, { ov: true });
       const units = override.sess >= 99 ? 1 : Math.ceil(q / Math.max(1, override.sess || 1));
-      return { total: override.p * units, rows: [override.i], units, ov: true, special: !!override.special };
+      return { total: override.p * units, rows: [override.i], units, ov: true, special: !!override.special, repeat: !!(override.special && override.repeat) };
     }
     const first = cheapest(cands);
     if (!first) return null;
-    if (q === 1) return { total: first.p, rows: [first.i], units: 1, special: !!first.special };
-    // a special price counts once; later sessions use the regular price. Whether a special can be repeated is not
-    // known from the clinic page, so with NO regular price the later sessions stay unpriced — never the special × q
-    // (round-2 R14: 100원 special ×3 was shown as a firm 300원). An incomplete line is not a total anyone can compare.
-    const reg = cheapest(regular);
-    if (!reg && first.special) return { total: first.p, rows: [first.i], units: 1, special: true, unpriced: q - 1, incomplete: true };
-    const rest = reg || first;
+    if (q === 1) return { total: first.p, rows: [first.i], units: 1, special: !!first.special, repeat: !!(first.special && first.repeat) };
+    if (isOnce(first)) return onceThen(first, repeating(), q, {});
+    // a plain or repeat price first: it repeats itself, so the cheapest repeating price is that same price
+    const rest = repeating() || first;
     return { total: first.p + rest.p * (q - 1), rows: first.i === rest.i ? [first.i] : [first.i, rest.i], units: q, special: !!first.special,
-      laterRegular: !!(first.special && reg) };
+      laterOther: false, laterRegular: false, repeat: !!(rest.special && rest.repeat) };
   }
 
   // ---- whole cart across branches
@@ -266,5 +300,5 @@
   const weekendOnly = (days) => { const d = (days || 0) & ALL_DAYS; return d !== 0 && (d & 31) === 0; };
 
   return { weekdayHoliday, weekendOnly, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
-    condLabel, condTitle, whenBadge, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
+    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, cheapest, isOnce, withoutOnce, lineCost, compareClinics, limitOnce, matchPackage };
 });
