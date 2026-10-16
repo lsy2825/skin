@@ -176,4 +176,25 @@ const log = (p) => p.evaluate(() => window.__push);
       && (await log(p)).unsub === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), hits.map((x) => x.m + ' ' + x.u).join(','));
     ok('시작: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
+  // 9) '끄기' while the Worker is down (DELETE 503): the id waits on the phone (pc:pushDel) and goes again at the next start
+  //    (chat A's request 2026-10-16) — the screen is off at once, the server row does not stay behind
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const failDel = (route) => (route.request().method() === 'DELETE' ? route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: '' }) : route.fallback());
+    await ctx.route(`${API}/**`, failDel);
+    hits.length = 0;
+    await pushBtn(p, '가격 알림 끄기').click(); await p.waitForTimeout(800);
+    const queued = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('끄기 중 서버 오류(503): 화면은 바로 꺼짐, id는 pc:pushDel에 남음', hits.some((x) => x.m === 'DELETE') && queued.length === 1 && queued[0] === SUB_ID
+      && (await pushBtn(p, '가격 알림 받기').count()) === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), JSON.stringify(queued));
+    await ctx.unroute(`${API}/**`, failDel);
+    // the next start, from home (a reload would stay on #saved, which has no home cards)
+    hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    const left = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('다음 시작: 남은 id를 다시 DELETE → 성공하면 목록 비움, 새 구독·POST 없음', hits.filter((x) => x.m === 'DELETE' && x.u === `/v1/push/subscribe/${SUB_ID}`).length === 1
+      && left.length === 0 && !hits.some((x) => x.m === 'POST'), hits.map((x) => x.m + ' ' + x.u).join(',') + ' left=' + JSON.stringify(left));
+    ok('끄기 다시 보내기: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();

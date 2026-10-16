@@ -1330,10 +1330,21 @@
       throw e;
     }
   }
+  // DELETE one subscription id at the Worker. When it does not get there (offline, 5xx) the id waits in 'pushDel' (this
+  // phone) and goes again at the next start — a '끄기' that failed must not leave the subscription on the server.
+  async function pushDelete(id) {
+    const req = Push.unsubscribeReq(CFG, id);
+    if (!req) return;
+    let done = false;
+    try { done = Push.delDone((await pushFetch(req)).status); } catch (e) { /* offline */ }
+    const q = Push.cleanDel(store.get("pushDel", []));
+    store.set("pushDel", done ? q.filter((x) => x !== id) : Push.addDel(q, id));
+  }
+  async function pushRetryDeletes() { for (const id of Push.cleanDel(store.get("pushDel", []))) await pushDelete(id); }
   async function pushUnsubscribe() {
-    const s = pushState(), req = s && Push.unsubscribeReq(CFG, s.id);
+    const s = pushState();
     store.set("push", null);
-    if (req) await pushFetch(req).catch(() => {});
+    if (s) await pushDelete(s.id);
     const reg = await swReg(), sub = reg && reg.pushManager ? await reg.pushManager.getSubscription().catch(() => null) : null;
     if (sub) await sub.unsubscribe().catch(() => {});
   }
@@ -1370,7 +1381,9 @@
   // at start: the browser may have dropped the subscription (permission taken back) or renewed it — follow it
   async function pushCheck() {
     const s = pushState();
-    if (!PUSH || !pushSupported()) return;
+    if (!PUSH) return;
+    pushRetryDeletes().catch(() => {});   // an earlier '끄기' whose DELETE did not get through
+    if (!pushSupported()) return;
     try {
       if (!s) {
         // subscribed in this browser but not known here (an earlier '받기' whose answer was lost): take it back
@@ -1388,7 +1401,7 @@
       if (sub.endpoint !== s.ep) {
         // renewed by the browser: POST the new one first; the old id goes only once that worked (offline: next start)
         await pushSubscribe();
-        const old = Push.unsubscribeReq(CFG, s.id); if (old) pushFetch(old).catch(() => {});
+        pushDelete(s.id).catch(() => {});
         return;
       }
       pushSync();
@@ -1494,7 +1507,7 @@
       else if (Notification.permission === "denied") kids.push(h("div", { class: "sub" }, "브라우저 설정에서 이 사이트의 알림이 꺼져 있어요. 켜려면 브라우저 설정에서 바꿔 주세요."));
       else if (PUSH) {
         const s = pushState(), { rules, local, cut } = pushRules();
-        const note = [local ? `${local}개는 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
+        const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·특가 빼고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
         if (s && Notification.permission === "granted") {
           kids.push(h("div", { class: "sub" }, `켜짐 — 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 보낸 조건 ${rules.length}개.`),
             note ? h("div", { class: "tiny" }, note) : null);
