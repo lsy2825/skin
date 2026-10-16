@@ -113,9 +113,9 @@ create index offers_group_idx on offers (auto_group);
 create index offers_valid_until_idx on offers (valid_until);
 create index offers_name_trgm_idx on offers using gin (name gin_trgm_ops);
 
-create table offer_conditions (                       -- 구조화한 조건: 평일 낮 · 일요일 · 첫 방문 · 1인 1회 …
+create table offer_conditions (                       -- 구조화한 조건: 평일 낮 · 시간대 · 일요일 · 첫 방문 · 1인 1회 …
   offer_id    bigint not null references offers(id) on delete cascade,
-  condition   text not null check (condition in ('평일 낮', '일요일', '타임세일', '첫 방문', '1인 1회')),
+  condition   text not null check (condition in ('평일 낮', '시간대', '일요일', '타임세일', '첫 방문', '1인 1회')),
   detail      text,                                   -- '17:00 이전' 같은 원문
   primary key (offer_id, condition)
 );
