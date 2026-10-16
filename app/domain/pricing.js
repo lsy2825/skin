@@ -30,36 +30,109 @@
     if (hr >= 1 && hr <= 8) hr += 12;
     return hr * 60 + (m[2] ? parseInt(m[2], 10) : 0);
   }
-  // tags: "평일 낮·일요일·…" ; when: {date: "YYYY-MM-DD", time: "HH:MM" | ""} or null.
+  // ---- the site's own visit days and hours: data.json row fields 16 days · 17 hours (C #71, 2026-10-16).
+  // days = weekday bits 월=1 화=2 수=4 목=8 금=16 토=32 일=64 (0 = not stated; all seven days is 0 too); hours = 'HH:MM-HH:MM'
+  // (24h, the end not included; 'N시 이전' = '00:00-HH:MM', 'N시 이후' = 'HH:MM-24:00') or ''. Files from before have 16 or
+  // fewer fields, so neither: checked once per file, like Classify.hasAddonField.
+  const WHEN_FIELD = 17;
+  const hasWhenFields = (d) => !!d && (Array.isArray(d.cols) ? d.cols.length > WHEN_FIELD
+    : Array.isArray(d.rows) && Array.isArray(d.rows[0]) && d.rows[0].length > WHEN_FIELD);
+  const ALL_DAYS = 127, WEEKDAYS = 31, WEEKEND = 96;
+  // 'HH:MM-HH:MM' → one number, start × 10000 + end in minutes from midnight (0 = no window, the whole day, or unreadable)
+  function hoursCode(text) {
+    const m = /^(\d{1,2}):(\d{2})-(\d{1,2}):(\d{2})$/.exec(text || "");
+    if (!m) return 0;
+    const from = +m[1] * 60 + +m[2], to = +m[3] * 60 + +m[4];
+    return from < to && to <= 1440 && to - from < 1440 ? from * 10000 + to : 0;
+  }
+  // hours as text or as hoursCode → [from, to] in minutes, or null
+  const hoursWin = (x) => { const c = typeof x === "string" ? hoursCode(x) : x > 0 ? x : 0; return c ? [Math.floor(c / 10000), c % 10000] : null; };
+  const hhmm = (min) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
+  // days → the words on screen: 31 '평일', 96 '주말', 14 '화·수·목', 95 '평일·일요일'; 0 and all seven days → '' (no day limit)
+  const DAY_NAMES = "월화수목금토일";
+  function dayList(days) {
+    const d = (days || 0) & ALL_DAYS;
+    if (!d || d === ALL_DAYS) return "";
+    if ((d & WEEKDAYS) === WEEKDAYS) return ["평일", d & 32 ? "토요일" : "", d & 64 ? "일요일" : ""].filter(Boolean).join("·");
+    if (d === WEEKEND) return "주말";
+    return [...DAY_NAMES].filter((_, k) => (d >> k) & 1).join("·");
+  }
+  const dayWords = (dl) => (dl.length === 1 ? `${dl}요일` : dl);     // one day reads '토요일'
+  // the price sheet's lines for what the site wrote: ['되는 요일: 화·수·목', '되는 시간: 12:00~15:00'] (nothing guessed);
+  // a window from midnight reads '16:00 이전', one to midnight '18:00 이후' (the site's own 'N시 이전/이후')
+  function whenLines(days, hours) {
+    const out = [], dl = dayList(days), w = hoursWin(hours);
+    if (dl) out.push(`되는 요일: ${dayWords(dl)}`);
+    if (w) out.push(`되는 시간: ${w[0] === 0 ? `${hhmm(w[1])} 이전` : w[1] === 1440 ? `${hhmm(w[0])} 이후` : `${hhmm(w[0])}~${hhmm(w[1])}`}`);
+    return out;
+  }
+  // a price the site limits to some weekdays or hours is not a plain price, with or without a condition tag (B, 2026-10-16:
+  // C #71 left the ~420 untagged ones, e.g. '토요일이벤트', to the app)
+  const whenLimited = (days, hours) => { const d = (days || 0) & ALL_DAYS; return (d !== 0 && d !== ALL_DAYS) || !!hoursWin(hours); };
+
+  // tags: "평일 낮·시간대·일요일·…" ; when: {date: "YYYY-MM-DD", time: "HH:MM" | ""} or null ; opt: {days, hours, holidays}
+  // (the site's days bits and hours as text or hoursCode) — or, the older call shape, the holiday table itself.
   // returns 0 ok · 1 not valid on that visit · 2 valid by day but the app doesn't know the time window (check with the clinic).
-  // A name that says the hour does not matter ('[화수목 해피아워] 시간 상관 없이 …') has no time limit.
+  // - days stated: only those weekdays; a weekday-only price (no 토·일 bit, or no days and '평일 낮') not on a public holiday.
+  //   '시간대' (C #83: a time window not limited to weekdays) with no days: any day.
+  // - a visit time with the hours known: inside [from, to) ok, outside 1. Hours not known: '평일 낮' reads a '…시 이전' cutoff
+  //   from the name, '평일 낮'/'시간대' are 2 unless the name says the hour does not matter ('[화수목 해피아워] 시간 상관 없이 …'),
+  //   '타임세일' is 2.
   const ANY_TIME = /시간\s*(상관\s*(없이|없음|없는)|무관)/;
-  function condState(tags, name, when, holidays = KR_HOLIDAYS) {
-    if (!when || !when.date || !tags) return 0;
-    const t = tags.split("·");
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  function condState(tags, name, when, opt) {
+    const o = opt && typeof opt === "object" && (own(opt, "days") || own(opt, "hours") || own(opt, "holidays")) ? opt : { holidays: opt };
+    const days = (o.days || 0) & ALL_DAYS, win = hoursWin(o.hours), holidays = o.holidays || KR_HOLIDAYS;
+    const t = tags ? tags.split("·") : [];
+    if (!when || !when.date || (!t.length && !days && !win)) return 0;
     const day = new Date(when.date + "T12:00:00Z").getUTCDay();      // 0 = Sunday
     const holiday = !!holidays[when.date];
-    const weekday = day >= 1 && day <= 5 && !holiday;
-    let state = 0;
-    if (t.includes("평일 낮")) {
-      if (!weekday) return 1;
-      const cut = parseCutoff(name);
-      if (when.time) {
-        const [hh, mm] = when.time.split(":").map(Number);
-        if (cut == null) { if (!ANY_TIME.test(name || "")) state = 2; }
-        else if (hh * 60 + mm >= cut) return 1;
-      }
-    }
+    const wk = t.includes("평일 낮"), slot = t.includes("시간대");
+    if (days && days !== ALL_DAYS) {
+      if (!((days >> ((day + 6) % 7)) & 1)) return 1;               // bit 0 = Monday
+      if (holiday && !(days & WEEKEND)) return 1;
+    } else if (wk && (day === 0 || day === 6 || holiday)) return 1;
     if (t.includes("일요일") && day !== 0) return 1;
-    if (t.includes("타임세일") && when.time) state = 2;
+    if (!when.time) return 0;
+    const [hh, mm] = when.time.split(":").map(Number), at = hh * 60 + mm;
+    if (win) return at >= win[0] && at < win[1] ? 0 : 1;
+    let state = 0;
+    if (wk) {
+      const cut = parseCutoff(name);
+      if (cut != null) { if (at >= cut) return 1; } else if (!ANY_TIME.test(name || "")) state = 2;
+    }
+    if (slot && !ANY_TIME.test(name || "")) state = 2;
+    if (t.includes("타임세일")) state = 2;
     return state;
   }
   // condition tag → the words on its badge. The tag is the id shared with the data build (build2/clean.py TAGS) and
-  // condState above, so only the screen text changes here. Since 2026-10-15 (C1b) '평일 낮' also marks 해피아워·화수목·
-  // '평일 한정'·'12시~17시' prices: its badge says what is true of all of them — weekdays only, often only some days or hours.
-  const COND_LABEL = { "평일 낮": "평일·시간 한정" };
+  // condState above, so only the screen text changes here. '평일 낮' marks weekday-only prices (평일 낮·화수목·평일 해피아워…),
+  // '시간대' (C #83) a time window on any day or on days with 토·일 — never '한정' in its words (the price sheet drops those).
+  const COND_LABEL = { "평일 낮": "평일·시간 한정", "시간대": "정해진 시간만" };
   function condLabel(tag) {
-    return Object.prototype.hasOwnProperty.call(COND_LABEL, tag) ? COND_LABEL[tag] : tag;
+    return own(COND_LABEL, tag) ? COND_LABEL[tag] : tag;
+  }
+  // the badge's title: what the tag means, after the days/hours the site wrote when there are any; '' for other tags
+  const COND_HINT = {
+    "평일 낮": "평일 중 정해진 요일·시간에만 되는 가격이에요(평일 낮·화수목·평일 해피아워 등). 정확한 요일·시간은 병원에 확인하세요",
+    "시간대": "정해진 시간에만 되는 가격이에요. 요일은 사이트에 없어요 — 병원에 확인하세요",
+  };
+  const WHEN_HINT = "사이트에 적힌 요일·시간에만 되는 가격이에요. 병원에 확인하세요";
+  function condTitle(tag, days, hours) {
+    const lines = whenLines(days, hours);
+    let t = tag ? (own(COND_HINT, tag) ? COND_HINT[tag] : "") : WHEN_HINT;
+    if (!t) return "";
+    if (tag === "시간대" && dayList(days)) t = "정해진 시간에만 되는 가격이에요. 병원에 확인하세요";   // the site did write the days
+    return lines.length ? `${lines.join(", ")}. ${t}` : t;
+  }
+  // badge of a row whose days/hours have no condition tag saying so: '토요일만', '화·수·목만', '평일만'; hours only '정해진 시간만'.
+  // Days and hours both: the badge of the tag C #83 gives such a row, so the hours are not hidden behind '평일만' —
+  // weekdays only '평일·시간 한정' ('평일 낮'), days with 토·일 '정해진 시간만' ('시간대'); the title lists both
+  function whenBadge(days, hours) {
+    const d = (days || 0) & ALL_DAYS, dl = dayList(d), w = hoursWin(hours);
+    if (dl && w) return COND_LABEL[d & WEEKEND ? "시간대" : "평일 낮"];
+    if (dl) return `${dayWords(dl)}만`;
+    return w ? COND_LABEL["시간대"] : "";
   }
 
   // ---- one cart line: q sessions of one item at one branch
@@ -182,5 +255,6 @@
     return { parts, matched, extras, full: matched.length > 0 && matched.every((m) => m.state === "match") && !extras.length };
   }
 
-  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, condState, condLabel, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
+  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
+    condLabel, condTitle, whenBadge, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
 });
