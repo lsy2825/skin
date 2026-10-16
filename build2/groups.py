@@ -129,7 +129,8 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
     """write data2/history/<date>.auto.json.gz = {group key: [label, {"brand|branch": lowest regular price}]} and
     compare with the newest older one. returns (changes [[gid, branch, before, after]], new [[gid, branch, price]],
     gone [[label, branch, before, group key]] (options no longer listed — all of them: the caller drops the ones a rule moved
-    out of the group, then keeps GONE_MAX), prev date)"""
+    out of the group, then keeps GONE_MAX), prev date, that snapshot {group key: {"brand|branch": price}}: a group key it does
+    not have has no change, new or gone entry against it)"""
     snap = {k: [groups[g][0], {bkeys[b]: p for b, p in low_reg[g].items()}] for g, k in enumerate(keep) if low_reg[g]}
     body = json.dumps(snap, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
     with open(os.path.join(hist, f"{date}.auto.json.gz"), "wb") as raw:      # mtime=0: same data -> same bytes
@@ -137,7 +138,7 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
             f.write(body)
     older = sorted(p for p in prev_date_files if os.path.basename(p)[:10] < date)
     if not older:
-        return [], [], [], ""
+        return [], [], [], "", {}
     with gzip.open(older[-1], "rt", encoding="utf-8") as f:
         prev = json.load(f)
     bidx = {v: i for i, v in enumerate(bkeys)}
@@ -155,4 +156,4 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
         for bk, p in before.items():
             if bk not in now and bk in bidx:
                 gone.append([label, bidx[bk], p, k])
-    return changes, new, gone, os.path.basename(older[-1])[:10]
+    return changes, new, gone, os.path.basename(older[-1])[:10], {k: m for k, (_, m) in prev.items()}
