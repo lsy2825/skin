@@ -33,7 +33,7 @@
 
 ## 2. 비밀값이 새었을 때
 
-1. **교체가 먼저예요.** 기록을 지워도 이미 복사된 것은 남아요. 2026-10-15 이전에 커밋된 것은 공개됐다고 봐요.
+1. **교체가 먼저예요.** 기록을 지워도 이미 복사된 것은 남아요. 저장소가 공개라서(§0, 2026-10-16 사용자 결정) 커밋된 것은 모두 공개됐다고 봐요.
 2. 어디에 나갔는지 확인해요. `python3 tests/security/scan_secrets.py --history`(전체 기록), GitHub 비밀값 검사 알림(켜 두었다면).
 3. 종류별로 이렇게 해요.
 
@@ -42,7 +42,7 @@
 | **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 넣어요: Environment `cloudflare`로 옮겼다면 Settings → **Environments → cloudflare → Environment secrets**의 `CLOUDFLARE_API_TOKEN`(Repository secrets에 다시 만들지 않아요 — 이름이 같으면 Environment 값이 이기고, Repository secret이 생기면 합치기 전 실행의 Re-run을 막는 장치가 사라져요). 옮기기 전이면 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
 | **VAPID 비밀키(푸시)** | ① 새 키 쌍을 만들어요(`node cf/alerts/vapid-keygen.mjs`, A5 이후). ② `wrangler secret put`으로 Worker에 넣어요. ③ 공개키를 B에게 부탁 메모로 보내 `config.js`를 바꾸게 해요. 기존 구독은 새 키로 다시 구독해야 해요 |
 | **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
-| **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 새 번호의 해시로 `app/gate.js`의 `HASH`를 바꾸고 `app/sw.js`의 `VER`를 올려요(B 파일 → 부탁 메모, 급하면 §1 예외). **예전 번호는 공개 기록에 남아 있어요** |
+| **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 사용자가 PC에서 `tools/windows/pin.bat`을 실행해요(#81, `docs/LOCAL_SETUP_WINDOWS.md` 4-1). 번호는 화면에 안 보이게 입력하고 채팅·저장소에 남지 않아요. 도구가 `app/gate.js`의 `HASH`와 `app/sw.js`의 `VER`(날짜·시각 숫자, 지금보다 100 이상) 두 줄만 바꾼 `pin/…` PR을 열고, 그 PR을 합치면 끝이에요. **예전 번호는 공개 기록에 남아 있어요** |
 | **Supabase 키**(켠 뒤) | 대시보드에서 키를 교체해요. service_role이 나갔으면 JWT secret까지 바꿔요. Auth 로그와 `audit_logs`에서 이상 변경을 찾아요 |
 | **GitHub 토큰·계정** | §5 |
 
@@ -85,7 +85,7 @@
 3. 저장소 Settings → Collaborators·Deploy keys·Secrets를 점검해요. **Secrets는 모두 교체해요**(Cloudflare 토큰은 §2).
 4. 최근 커밋·PR·워크플로 실행을 검토하고, 변조된 커밋은 revert해요(§3).
 5. 워크플로 파일이 바뀌었는지 확인해요: `git log -p .github/workflows`(외부 액션, 권한, 비밀값 출력).
-6. 저장소가 다시 공개로 바뀌지 않았는지 확인해요: Settings → General → Danger Zone의 visibility.
+6. 저장소 공개 여부가 바뀌지 않았는지 확인해요: Settings → General → Danger Zone의 visibility. 지금은 **공개가 맞아요**(§0, 2026-10-16 사용자 결정). 비공개로 바뀌어 있으면 누가 바꿨는지 감사 기록에서 찾아요 — GitHub 무료 요금제에서 비공개 저장소는 Environment secret을 못 써서, Environment `cloudflare`로 옮긴 배포 토큰을 deploy job이 받지 못해요.
 
 ## 6. Cloudflare 계정이 손상됐을 때
 

@@ -94,6 +94,7 @@ checks() {
   bash .github/scripts/parse_check.sh   # every app/*.js and *.py parses (the unit tests never load app.js)
   python build2/xkeys.py
   python tests/weekly_guard_test.py
+  python tests/labels_test.py           # spec-label build guard + price row numbers (build2/rowid.py, C8 #54) — pr-checks runs it too
   python build2/taxonomy.py
   python build2/knowledge.py
   python tests/security/scan_secrets.py

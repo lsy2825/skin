@@ -451,7 +451,7 @@ C8(#54) 줄 번호 함수는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | A2 보안 헤더(`app/_headers`) | 합쳐짐, 실제 응답 헤더로 확인(모니터) | #6, 문서 #33 | — |
 | A3 서버·DB 쪽 크레딧 제거 | 합쳐짐 | #9, #35 | — |
 | A4 익명 집계 Worker(`cf/metrics`, D1) | 합쳐짐. 앱 쪽은 꺼짐(`metrics: false`) | #15, #26 | 켜기(아래 순서) |
-| A5 푸시 알림 Worker(`cf/alerts`, D1) | 브랜치 `platform/alerts-worker`, 아직 안 합침 | — | 합치기·배포·VAPID 키 → B에게 `alertsApi`·`pushPublicKey` |
+| A5 푸시 알림 Worker(`cf/alerts`, D1) | 초안 PR, 아직 안 합침 | #85 | D1 `yoonsiljang-alerts` 만들기(사용자) → 합치기·배포·VAPID 키 → B에게 `alertsApi`·`pushPublicKey` |
 | A6 관리자 주소(운영 현황은 Cloudflare Access 뒤) | 합쳐짐 | #23 | Access 설정(사용자). 설정 전에는 관리자 주소도 403 |
 | A7 텔레그램 모니터링 | 합쳐짐 | #14, #18 | — |
 | A8 사고 대응 문서 | 합쳐짐 | #10 | — |
@@ -459,18 +459,29 @@ C8(#54) 줄 번호 함수는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | 공장·검사 보강 | 합쳐짐 | #31, #36, #38, #46, #49, #56, #60 | — |
 | 공개 주소 배포 멈춤(`PUBLIC_DEPLOY`) | 합쳐짐 | #48 | 다시 켤지 사용자 결정 |
 | Windows PC 준비(`tools/windows/`) | 합쳐짐 | #57 | Windows PC에서 직접 돌려 보지 못함 |
-| 사용자 결정 기록 | 2026-10-15 합쳐짐, 2026-10-16(저장소 공개 등)은 이 PR | #34 | — |
-| 비밀번호 화면 번호 바꾸기 도구(`tools/windows/pin.bat`) | 별도 PR(`platform/pin-tool`) | — | 사용자가 PC에서 실행 |
+| 사용자 결정 기록 | 2026-10-15·2026-10-16(저장소 공개 등) 합쳐짐 | #34, #73 | — |
+| 비밀번호 화면 번호 바꾸기 도구(`tools/windows/pin.bat`) | 합쳐짐 | #81 | 사용자가 PC에서 실행 |
+| 배포 나누기(Cloudflare 토큰은 deploy job만) | 합쳐짐, 첫 실행에서 실제 배포 확인 | #82 | 토큰을 Environment `cloudflare`로 옮기기(사용자) |
+| 전체 회귀에 B의 새 화면 시험 + 빠진 시험 잡기 | 합쳐짐 | #76 | `APP_PIN`으로 전체 회귀 한 번 |
+| DB 가격 조건 '시간대'(C #83 부탁) | 합쳐짐 | #87 | — |
 
 **2026-10-16 사용자 결정(자세히는 NOTES.md).** 저장소는 공개로 둔다(`docs/SECURITY_ARCHITECTURE.md` §0). 익명 집계·푸시 알림 켜기 승인.
 켜는 순서: A5 배포 → B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 공개 배포(`PUBLIC_DEPLOY`=`on`)를 다시 켜야 실제 사용자에게 닿음
 (두 Worker는 공개 주소에서 온 요청만 받음). 변호사·의료 검수는 사용자가 맡김(의뢰 자료는 저장소 밖). 그 밖의 일은 나중에(가족이 이어받음).
 
-**이어받는 분께 — A의 남은 일(짧게)**
-1. A5 알림 Worker 합치고 배포, 공개키를 B에게.
-2. 배포 작업 나누기: Cloudflare 토큰을 수집·빌드 작업에서 빼고 따로 떼어 낸 배포 작업에만 줌(`weekly.yml`·`tools/factory.sh`, 별도 PR `platform/deploy-job`).
-3. 공개 배포 다시 켜기(GitHub 저장소 변수 `PUBLIC_DEPLOY`=`on`) — 사용자 결정.
-4. 비밀번호 화면 번호 바꾸기(`platform/pin-tool` 합친 뒤 PC에서 실행).
-5. 사용자 설정: Cloudflare Access(관리자 주소), GitHub 비밀 검사·push protection(Settings → Code security).
+**이어받는 분께 — A의 남은 일(짧게, 2026-10-16 오후 기준)**
+1. A5 알림 Worker: PR #85(초안, `platform/alerts-worker`). 합치기 전에 사용자가 Cloudflare 대시보드 → Storage & Databases → D1 → Create로
+   `yoonsiljang-alerts`를 만들고, 그 Database ID를 `cf/alerts/wrangler.jsonc`의 `REPLACE_WITH_D1_ID` 자리에 넣어요(채팅에서 만들기는 막혔음).
+   배포 뒤 공개키·주소를 B에게(`config.js`의 `alertsApi`·`pushPublicKey`).
+2. ~~배포 작업 나누기~~ — 합쳐짐(#82, 2026-10-16). 합친 뒤 첫 실행(push 38870353095)은 새 배포 코드라 deploy를 건너뛰고 redeploy가 재빌드를 띄움 → 그 실행(38870836337)의 deploy job이 토큰을 받아 실제 배포까지 성공.
+   **사용자 할 일:** GitHub Settings → Environments → New environment `cloudflare` → Deployment branches를 `main`만 →
+   Environment secret `CLOUDFLARE_API_TOKEN` 추가(GitHub에 저장된 값은 다시 볼 수 없으니 Cloudflare → API Tokens에서 새로 만들거나 Roll한 값) → Actions → weekly-prices → Run workflow(skip_scrape)로 deploy job이 초록인지 확인 → 그다음에 Repository secret `CLOUDFLARE_API_TOKEN` 지우기(순서를 바꾸면 그 사이 배포가 토큰 없이 실패). 저장소는 공개로 둬요(무료 요금제의 Environment secret은 공개 저장소에서만 동작).
+   자세히는 `docs/SECURITY_ARCHITECTURE.md` §5.
+3. 공개 배포 다시 켜기(GitHub 저장소 변수 `PUBLIC_DEPLOY`=`on` → Actions → weekly-prices → Run workflow(skip_scrape) 한 번) — 사용자 결정. 집계·푸시 두 Worker는 공개 주소 Origin만 받아서, 켜기 전에는 실제 사용자 요청이 없어요.
+4. 비밀번호 화면 번호 바꾸기: 도구 합쳐짐(#81). PC의 Git Bash에서 `git switch main && git pull`(pin.bat 파일 받기) → `tools\windows\pin.bat` 실행 → 열린 `pin/…` PR이 초록이고 05:30~06:30 KST가 아니면 합치기(`docs/LOCAL_SETUP_WINDOWS.md` 4-1). 그 뒤 화면 검사의 `APP_PIN`은 새 번호. 공개 주소는 3번 전까지 예전 번호예요.
+5. 사용자 설정: Cloudflare Access(관리자 주소 — Zero Trust에서 만든 AUD·팀 도메인은 비밀이 아니라서 PR로 `cf/admin/wrangler.jsonc`에), GitHub 비밀 검사·push protection(Settings → Code security).
 6. A9 전용 도메인과 요청 제한(도메인을 산 뒤).
-7. 문서에 남은 '비공개' 표현(`.github/workflows/weekly.yml` 주석, `docs/ARCHITECTURE.md`의 배포·스케줄 줄)은 같은 줄을 고치는 `platform/deploy-job` PR에서 함께 고침.
+7. ~~문서의 '비공개' 표현~~ — #73·#82로 고침.
+   위 '사용자 결정·자료가 필요한 것'(2026-10-13) 표의 PIN 줄('새 PIN 4자리 → 해시 교체')은 #81로 바뀜: 번호를 채팅으로 주지 않고 4번 도구를 써요.
+8. 시험 브랜치 지우기(C 부탁): `probe/c-robots-more`, `probe/c-drevers-tabs`, `probe/c-cellin-new` — 채팅에서는 브랜치 삭제가 막혀 사용자가 GitHub → Branches에서 지워요.
+9. 전체 회귀(e2e 포함, `APP_PIN` 필요): 번호를 바꾼 뒤 `APP_PIN` 환경 변수를 둔 곳에서 `bash tests/run_regression.sh`.

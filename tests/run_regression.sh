@@ -44,7 +44,10 @@ for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_
 done
 # A screen check added later (tests/e2e/ belongs to chat B; this file to A) runs too, without waiting for this list to name
 # it: every other tests/e2e/*.js except helper modules (E2E_HELPERS — they only export code). The PR checks run no browser.
-E2E_LISTED=" $(sed -n 's/^for t in \(.*\); do$/\1/p' "$0" | head -1) "
+# Read from the repository root (the cd above), not "$0": run as `cd tests && bash run_regression.sh`, "$0" no longer resolves
+# and every named check would run a second time.
+E2E_LISTED=" $(sed -n 's/^for t in \(.*\); do$/\1/p' tests/run_regression.sh | head -1) "
+case "$E2E_LISTED" in "  ") echo "FAIL | catch-all could not read the named e2e list from tests/run_regression.sh"; fail=1 ;; esac
 E2E_HELPERS=" rows "
 for f in tests/e2e/*.js; do
   t=$(basename "$f" .js)

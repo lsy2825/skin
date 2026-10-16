@@ -27,6 +27,10 @@ test("run_regression.sh: commerce50/admin51 are out (they expect #ops cards that
 // screen check from chat B runs without waiting for A to edit the list; helper modules are skipped by name.
 test("run_regression.sh: every tests/e2e/*.js screen check runs (named loop + catch-all), helpers skipped, no stale names", () => {
   const sh = read("tests/run_regression.sh");
+  // the catch-all reads the named list from the repo root (the script cd's there), never through "$0" — run as
+  // `cd tests && bash run_regression.sh`, "$0" would not resolve and every named check would run twice
+  assert.match(sh.match(/^E2E_LISTED=.*$/m)[0], /tests\/run_regression\.sh/);
+  assert.doesNotMatch(sh.match(/^E2E_LISTED=.*$/m)[0], /\$0/);
   const names = sh.match(/^for t in (.+?); do$/m)[1].split(/\s+/);
   const helpers = sh.match(/^E2E_HELPERS=" (.*) "$/m)[1].split(/\s+/).filter(Boolean);
   const scripts = fs.readdirSync(path.join(root, "tests/e2e")).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
@@ -39,7 +43,7 @@ test("run_regression.sh: every tests/e2e/*.js screen check runs (named loop + ca
   assert.match(sh, /^E2E_LISTED=" \$\(sed -n 's\/\^for t in /m, "the catch-all reads the named list from this same file");
   assert.match(sh, /^for f in tests\/e2e\/\*\.js; do\n  t=\$\(basename "\$f" \.js\)\n  case "\$E2E_LISTED\$E2E_HELPERS" in \*" \$t "\*\) continue ;; esac\n  run "e2e \$t \(not yet in the list above\)" node "tests\/e2e\/\$t\.js"\ndone$/m, "the catch-all runs tests/e2e/<name>.js (tests/security/pr_checks.test.js reads that path as a browser check)");
   // run the catch-all's selection for real: it must pick exactly the scripts the named loop and the helpers leave out
-  const pick = spawnSync("bash", ["-c", `cd "${root}"; ${sh.match(/^E2E_LISTED=.*$/m)[0].replace('"$0"', '"tests/run_regression.sh"')}; ${sh.match(/^E2E_HELPERS=.*$/m)[0]}; for f in tests/e2e/*.js; do t=$(basename "$f" .js); case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac; echo "$t"; done`], { encoding: "utf8" });
+  const pick = spawnSync("bash", ["-c", `cd "${root}"; ${sh.match(/^E2E_LISTED=.*$/m)[0]}; ${sh.match(/^E2E_HELPERS=.*$/m)[0]}; for f in tests/e2e/*.js; do t=$(basename "$f" .js); case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac; echo "$t"; done`], { encoding: "utf8" });
   assert.equal(pick.status, 0, pick.stderr);
   assert.deepEqual(pick.stdout.split("\n").filter(Boolean), scripts.filter((n) => !names.includes(n) && !helpers.includes(n)));
 });

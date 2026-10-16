@@ -11,7 +11,7 @@
 - 그래서 코드·데이터·git 기록 전체·Actions 실행 로그를 누구나 읽어요. 복사본 `leebackcoding/skin`(2026-10-14)도 있어요.
 - 2026-10-16 전체 기록 비밀 검사(`python3 tests/security/scan_secrets.py --history`, 브랜치 84개): **진짜 비밀값은 없었어요.**
   - 걸린 것 ①: `server/test/api.test.mjs` 옛 판의 시험용 가짜 값 2개.
-  - 걸린 것 ②: 예전 비밀번호 화면 번호(R1·R-open-1). 번호를 바꿔서 해결해요(PC 도구 `tools/windows/pin.bat`, 별도 PR).
+  - 걸린 것 ②: 예전 비밀번호 화면 번호(R1·R-open-1). 번호를 바꿔서 해결해요(PC 도구 `tools/windows/pin.bat`, #81 합쳐짐 — 사용자 실행 대기).
 - 남의 복사본(fork)에서 온 PR에는 비밀값이 가지 않아요. PR 검사는 `pull_request`만 쓰고 `pull_request_target`은 안 써요. 비밀값은 push·예약·수동 실행에서만 써요.
 - 검사가 비밀값을 찾아도 값은 로그에 쓰지 않아요(종류·위치·길이만). Actions 로그도 공개이기 때문이에요.
 - 비용: 공개 저장소는 GitHub Actions 표준 러너가 무료이고, 비공개의 월 2,000분 한도가 없다고 알고 있어요. 리드의 이해이고, 이 작업에서 결제 화면으로 **확인하지 않았어요.**
@@ -115,7 +115,7 @@
   - 찾은 값은 로그에 쓰지 않아요. 공개 저장소의 CI 로그도 공개이기 때문이에요.
   - GitHub 자체 기능(secret scanning·push protection)은 이 환경에서 켤 수 없었어요. **사용자가 켜야 해요.**
 - **개발·운영 분리:** Supabase 프로젝트를 둘로 나눠요(dev / prod). 키는 각각의 GitHub Environment secret에 둬요. **미해결**(프로젝트 없음).
-- **노출된 자격 증명 교체:** PIN이 git 기록에 남아 있어요. 교체 절차는 `INCIDENT_RESPONSE_PLAN.md` §2. **미해결**(사용자 결정 필요).
+- **노출된 자격 증명 교체:** 예전 PIN이 git 기록에 남아 있어요. 2026-10-16 사용자가 바꾸기로 정했고 도구 `tools/windows/pin.bat`이 합쳐졌어요(#81). 사용자가 PC에서 실행하고 그 PR을 합치면 끝이에요(`SECURITY_REMEDIATION.md` R-open-1, `INCIDENT_RESPONSE_PLAN.md` §2). **사용자 실행 대기.**
 
 ## 6. 데이터 무결성 (Phase 6)
 | 기능 | 방법 | 상태 |
@@ -187,7 +187,7 @@
 
 | 무엇을 | 어디서 | 언제 |
 |---|---|---|
-| 가격 공장 실패·중단 | `weekly.yml` 마지막 단계(`failure() \|\| cancelled()`) | 그 실행 직후 |
+| 가격 공장 실패·중단, Cloudflare 배포 실패, 다시 배포 요청 실패 | `weekly.yml` alert job(`needs: [update, deploy, redeploy]`, `if: always()` — 세 job 중 실패·중단이 있을 때만 보냄, 2026-10-16 #82) | 그 실행 직후 |
 | 데이터 가드 발동(`data2/report.md`의 "지난 자료 유지", "수집 실패, 이전 자료도 없음", robots.txt 차단, 출처 정책 확인 실패, "지난 자료로 배포", 급변 가격 검토 대기) | `weekly.yml`(`health_check.py --report-only`) | 자료를 새로 만든 실행 직후 |
 | 브랜드 수집일이 오늘(KST)보다 8일 넘게 지남, 지난 자료를 쓰는 지점 | 두 곳 모두(`app/data-meta.json`; 감시 작업은 `PUBLIC_DEPLOY`=`on`일 때 배포된 파일 우선, 공개 배포가 멈춘 동안은 저장소 파일) | 실행 직후 + 매일 |
 | 공장이 26시간 넘게 성공 못함, 예약 실행이 없음, 3시간 넘게 멈춤, 마지막 실행 실패(다시 알림) | `monitor.yml`(GitHub API, `actions: read`) | 매일 09:30 KST |

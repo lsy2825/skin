@@ -155,7 +155,7 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 - 부가세는 행 이름의 표기 → 브랜드 기본값(`vat_policy.json`, 원문 인용·URL·확인일) 순서로 정하고, 근거가 없으면 '미확인'으로 둬요. 앱 기본 표시는 부가세 포함 예상가, 설정에서 병원 표시가로 전환.
 - 지점마다 마지막 확인일과 상태(VERIFIED/STALE), 가격마다 출처 URL을 앱에 보여요.
 - 지난주보다 90% 넘게 내리거나 10배 넘게 오른 가격은 사람이 승인할 때까지 비교에서 빼요(Human-in-the-loop, 파일 기반).
-- robots.txt가 막으면 그 주 수집을 건너뛰고 지난 자료를 유지해요. crawl-delay를 요구하는 호스트는 주 1회 한 페이지만 읽어요.
+- robots.txt가 막으면 그 주 수집을 건너뛰고 지난 자료를 유지해요. robots.txt에 Crawl-delay가 있는 호스트는, 한 번 실행하는 동안 단계(출처 확인·가격 수집·지점 목록)를 통틀어 그 호스트로 가는 두 요청 사이를 Crawl-delay초 이상 띄워요(`scrape/common.py`, 마지막 요청 시각은 `data2/.host_clock.json`).
 
 **D9. 가격 계산은 `app/domain/pricing.js`.** 회차(첫 회만 특가), 패키지 묶음 수, 한 곳/여러 곳/최대 두 곳 최적화, 부가세, 종료일, 방문일 조건을 순수 함수로 두고 `tests/pricing.test.js`(node:test)로 검증해요. 화면 코드는 데이터를 모아 넘기고 결과를 그리기만 해요.
 
