@@ -292,19 +292,37 @@ except SystemExit:
     raised = True
 ok("branches: an unreadable 블리비 address page stops the step (the old branches.csv stays)", raised)
 
-# the registry's rate text (shown on the app's 정보 screen) states the code's own numbers
+# the registry's rate text (shown on the app's 정보 screen) says what each chain really does (2026-10-16 검토: a check that only
+# looked for the numbers somewhere in the file passed '쁨 1초 간격', a gap that never applies). What each chain does:
+#   gap     the --gap of the branch Fetcher, written only where a branch Fetcher makes more than one request
+#   workers the --workers default (None = one branch after another)
+#   extra   other gaps that apply: 쁨's branch search Fetcher(gap=0.5)
+#   delay   the chain waits out the site's Crawl-delay (리엔장)
 import re  # noqa: E402
 import sources  # noqa: E402
 
+DOES = {"velyb": dict(gap=1.0), "ppeum": dict(workers=4, extra=[0.5], one_page=True), "toxnfill": dict(gap=0.7, workers=6),
+        "lienjang": dict(delay=True), "forever": dict(gap=0.8, workers=4), "vands": dict(gap=1.0, workers=6),
+        "uandi": dict(workers=6, one_page=True), "daybeau": dict(gap=1.0, workers=6), "drevers": dict(gap=1.0, workers=6),
+        "cellin": dict(gap=1.0, workers=4)}
+ok("every registry chain has a line in this test", set(DOES) == set(sources.REGISTRY), set(DOES) ^ set(sources.REGISTRY))
 for key, reg in sources.REGISTRY.items():
+    e, rate = DOES.get(key, {}), reg["rate"]
     code = open(os.path.join(ROOT, "scrape", f"{key}.py"), encoding="utf-8").read()
-    gaps = {float(x) for x in re.findall(r'"--gap",[^)]*default=([\d.]+)', code) + re.findall(r"Fetcher\(gap=([\d.]+)", code)}
-    workers = {int(x) for x in re.findall(r'"--workers",[^)]*default=(\d+)', code)}
-    said_gap = {float(x) for x in re.findall(r"([\d.]+)초 간격", reg["rate"])}
-    said_workers = {int(x) for x in re.findall(r"(\d+)곳 동시", reg["rate"])}
-    ok(f"sources.py REGISTRY rate of {key} matches scrape/{key}.py ({reg['rate']})",
-       said_gap <= gaps and said_workers <= workers and (said_workers or "하나씩" in reg["rate"] or not workers)
-       and "req/s" not in reg["rate"], (gaps, workers, reg["rate"]))
+    d_gap = re.findall(r'"--gap",[^)]*default=([\d.]+)', code)
+    d_workers = re.findall(r'"--workers",[^)]*default=(\d+)', code)
+    code_ok = ((not e.get("gap") or [float(x) for x in d_gap] == [e["gap"]])
+               and ([int(x) for x in d_workers] == ([e["workers"]] if e.get("workers") else []))
+               and all(f"Fetcher(gap={x:g})" in code for x in e.get("extra", []))
+               and (not e.get("delay") or "robots=True" in code))
+    ok(f"scrape/{key}.py does what this test says ({e})", code_ok, (d_gap, d_workers))
+    said_gap = sorted(float(x) for x in re.findall(r"최소 ([\d.]+)초", rate))
+    said_workers = [int(x) for x in re.findall(r"(\d+)곳 동시", rate)]
+    text_ok = (said_gap == sorted(([e["gap"]] if e.get("gap") else []) + e.get("extra", []))
+               and said_workers == ([e["workers"]] if e.get("workers") else [])
+               and (e.get("workers") or "하나씩" in rate) and (not e.get("delay") or "Crawl-delay" in rate)
+               and (not e.get("one_page") or "1쪽" in rate) and "req/s" not in rate and "간격," not in rate)
+    ok(f"sources.py REGISTRY rate of {key} says what the code does ({rate})", text_ok, (said_gap, said_workers, e))
 
 print("crawl manners", "OK" if not fails else f"{fails} FAIL")
 sys.exit(1 if fails else 0)
