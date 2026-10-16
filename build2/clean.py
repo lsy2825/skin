@@ -70,7 +70,8 @@ CATS = [  # first match wins; tested on category + group + option
     ("바디", r"바디|비만|지방|다이어트|셀룰|체형|복부|팔뚝|허벅지|종아리"),
     ("피부·레이저", r"토닝|레이저|제네시스|포텐자|여드름|필링|점|아쿠아필|모공|기미|색소|홍조|흉터|피부|관리|스킨"),
 ]
-# Condition tags read from the group title + option. The time-of-day ones come from time_tags() below (they need the days / hours):
+# Condition tags read from the group title + option. The time-of-day ones come from time_tags() below (they need the days / hours;
+# they also read the site's category — CAT_UNPAIRED below):
 #   '평일 낮'  — a price for weekdays only (often some hours). Under this tag the app's visit-day filter (app/domain/pricing.js condState)
 #               drops it on weekends and holidays, so it is given only when the site limits the days (C1 시간, 2026-10-16): the
 #               item's words name weekdays (WEEKDAY_WORDS), weekdays only (row field days) stand next to a time window ('★밴스타임
@@ -97,8 +98,8 @@ TIME_WORDS = re.compile(r"해피\s*아워|happy\s*hour|뷰티\s*아워|프라임
 #                       화/수/목 next to it. The branch is open on Sunday 10:00–16:30, which the app's only day-limited tag loses —
 #                       better than showing it on a Saturday
 #   쁨 '해피아워' — 서울대입구점's section is '평일 해피아워', 울산점's '♥수목 해피아워♥'
-# Not here, so '시간대': 유앤아이 (창동점 writes '해피아워 (평일 한정)', 광주점 '화/수/목(10~17시) 해피아워' — in the category field, which
-# these rules do not read; 동탄·여의도·잠실·평택점 say nothing about the days) and 닥터에버스 (its event list has '해피아워 이벤트' next to a
+# Not here, so '시간대': 유앤아이 (창동점 writes '해피아워 (평일 한정)', 광주점 '화수목 10~17시 한정! 특가 EVENT' in the items' own group
+# title — '평일 낮' from those words; 동탄·여의도·잠실·평택점 say nothing about the days) and 닥터에버스 (its event list has '해피아워 이벤트' next to a
 # separate '평일한정 이벤트', tests/fixtures/brands/drevers_events.html; the days note on the happy-hour page could not be read again
 # from chat C's cloud session — Cloudflare 403, NOTES.md 2026-10-15; the factory did not try). A chain whose pages are found to say
 # weekdays is one line here.
@@ -106,8 +107,30 @@ DAY_WORDS = {"블리비": re.compile(r"프라임\s*타임"), "데이뷰": re.com
 WEEKEND = 96   # 토 32 · 일 64 (row field days)
 TIME_ONLY = "시간대"
 TIME_TAGS = ("평일 낮", TIME_ONLY)
-# The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as TAGS
-# (group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
+# The site's category (raw column category = row src_cat: the tab, menu or section a collector found the item under) is read for
+# the time / day condition too — time_tags and visit_when, nothing else (C1 시간 칸, 2026-10-16): 쁨 울산점 lists its happy-hour
+# prices under the section '♥수목 해피아워♥' with names that say nothing ('쥬베룩볼륨2CC'), and 16 of them were compared as plain
+# prices. Only the condition words above and the days / hours are taken from it, so a plain menu name ('리프팅', '보톡스·윤곽',
+# '이달의 이벤트') changes nothing. What each collector writes there (scrape/*.py): 블리비 one of seven menu names (피부 · 제모 · 부스터 ·
+# 리프팅 · 쁘띠성형 · 기획전 · 비만), 쁨 the depth-1 tab (new sites) or the item's own .cateName (old sites), 톡스앤필 · 밴스 the menu
+# name, 리엔장 the group title again, 데이뷰 the section or event name, 닥터에버스 the section heading over the items, 셀린 the menu
+# or '', 유앤아이 the tab button's name. In the saved data of 2026-10-16 every category with such a word is a real condition section
+# ('화수목 이벤트', '해피아워/한정이벤트', '토요일 한정 EVENT'); the menu names with look-alike words hold none ('타임 리버스 리프팅',
+# '데이타임 이벤트', '48시간 수분관리', '※시간 상관없이 적용가능' — 블리비's '프라임 타임' and 쁨's '해피아워' (DAY_WORDS) are no menu name).
+# Outside 쁨 and 유앤아이 the items repeat the section's words in their own group title, so nothing else changed.
+# The other TAGS (첫 방문 · 일요일 · 타임세일 · 1인 1회) do not read it: in the saved data their words stand only in 유앤아이 tabs
+# (below) and in 쁨 '덴서티리프팅 알파팁 신규런칭' (a new device, not a first visit).
+# Not read for (CAT_UNPAIRED):
+#   유앤아이 — scrape/uandi.py paired the tab names with the wrong product lists (saved data of 2026-10-16: on every branch most
+#             tabs hold another tab's products — 과천점's '화수목 이벤트' tab holds the 보톡스 price list, and the real items, '화수목) …'
+#             under the group title '화수목 이벤트', sit under '보톡스/윤곽'). Read, it gave a time tag to 895 prices: 869 in tabs that
+#             hold another tab's products (in 42 of 48 condition tabs the branch's real condition items carry the words in their own
+#             group title, under another tab, and are tagged without it), 8 right (선릉점 '평일 10~16시 타임이벤트' over items titled
+#             '평일 이벤트': the hours), 18 not known (명동점, 의정부점). Take 유앤아이 out of here once data from the fixed collector
+#             is in and its condition tabs hold their own items.
+CAT_UNPAIRED = {"유앤아이"}
+# The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as the
+# time tags (category + group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
 #   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written (every day is 0 too)
 #   hours = 'HH:MM-HH:MM' (24 h), '' = no hours written (all day is '' too); 'N시 이전/까지' = '00:00-HH:MM', 'N시 이후' = 'HH:MM-24:00'
 # Only what is written: '해피아워' / '프라임 타임' / '평일 오후' give no hours, a holiday ('공휴일') is no weekday and is not kept.
@@ -237,22 +260,26 @@ def _hours_and(x, y):
     return _span(a, b) if a < b else ""
 
 
-def visit_when(grp, opt):
-    """(days, hours) of one price from its group title and option. Both hold (the group's '평일' and the option's '화,수,목' =
-    화수목); when they share no day or hour, the option's — written next to the price — wins."""
-    dg, do, hg, ho = visit_days(grp), visit_days(opt), visit_hours(grp), visit_hours(opt)
-    days = (dg & do or do) if dg and do else dg or do
-    hours = (_hours_and(hg, ho) or ho) if hg and ho else hg or ho
+def visit_when(grp, opt, cat=""):
+    """(days, hours) of one price from its group title and option, and the site's category above them (cat: '' for a chain in
+    CAT_UNPAIRED). All hold (the group's '평일' and the option's '화,수,목' = 화수목; the section '♥수목 해피아워♥' over a name
+    with no days = 수목); when two share no day or hour, the text nearer the price wins (option over group title over category)."""
+    days, hours = visit_days(cat), visit_hours(cat)
+    for text in (grp, opt):
+        d, h = visit_days(text), visit_hours(text)
+        days = (days & d or d) if days and d else days or d
+        hours = (_hours_and(hours, h) or h) if hours and h else hours or h
     return days, hours
 
 
-def time_tags(brand, grp, opt, days, hours):
+def time_tags(brand, grp, opt, days, hours, cat=""):
     """the time-of-day condition of one price (see TAGS): ['평일 낮'] when the site limits the days to weekdays, ['시간대'] for a
     time limit that is not weekdays-only ('12시-3시', '해피아워', '토요일 10시~2시' — a weekend day in the days field never gives
     '평일 낮', whatever the words: the app would drop the price on the one day it is for), [] otherwise. days / hours =
-    visit_when(grp, opt). A day limit with no time window that WEEKDAY_WORDS do not name ('[평일 특가]', '토요일이벤트') gets
-    neither: a day condition, not decided here (still untagged, as before 2026-10-16)."""
-    text = f"{grp} {opt}"
+    visit_when(grp, opt, cat); cat = the site's category, '' for a chain in CAT_UNPAIRED (only its condition words count: the
+    regexes below and the days / hours). A day limit with no time window that WEEKDAY_WORDS do not name ('[평일 특가]',
+    '토요일이벤트') gets neither: a day condition, not decided here (still untagged, as before 2026-10-16)."""
+    text = f"{cat} {grp} {opt}"
     window = bool(TIME_WORDS.search(text) or hours)
     day_word = brand in DAY_WORDS and DAY_WORDS[brand].search(text)
     weekday = bool(WEEKDAY_WORDS.search(text) or day_word)
@@ -482,8 +509,9 @@ def main():
         # (a body area alone — '종아리+무릎' — is still 제모 there)
         if cat == "제모" and not re.search(CATS[0][1], f"{grp} {opt}"):
             cat = next((c for c, p in CATS if c not in ("제모", "바디") and re.search(p, f"{grp} {opt}")), cat)
-        days, hours = visit_when(grp, opt)
-        tags = time_tags(r["brand"], grp, opt, days, hours) + [t for t, p in TAGS if re.search(p, f"{grp} {opt}")]
+        cond_cat = "" if r["brand"] in CAT_UNPAIRED else norm_text(r["category"])   # the category's time / day words only
+        days, hours = visit_when(grp, opt, cond_cat)
+        tags = time_tags(r["brand"], grp, opt, days, hours, cond_cat) + [t for t, p in TAGS if re.search(p, f"{grp} {opt}")]
         if re.search(r"일요일|선데이|썬데이", grp):
             tags.append("일요일")
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
