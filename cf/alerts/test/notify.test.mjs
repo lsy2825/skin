@@ -751,18 +751,20 @@ test("cf-alerts.yml: tests run in a job with no secret; only the deploy job (nee
   assert.equal((code.match(/CLOUDFLARE_API_TOKEN/g) || []).length, (deployJob.match(/CLOUDFLARE_API_TOKEN/g) || []).length, "every use of the token is in the deploy job");
   const ready = runOf(stepNamed("Ready to deploy?"));
   assert.match(ready, /elif \[ "\$HAS_TOKEN" != "true" \] \|\| \[ "\$HAS_ACCOUNT" != "true" \]; then\n(?:[^\n]*\n)*?\s*echo "::error title=cf-alerts::[^\n]*environment: cloudflare[^\n]*"\n\s*echo "go=false" >> "\$GITHUB_OUTPUT"\n\s*exit 1\n/);
-  // run as written: placeholder id → notice (green); id set, no token → ::error, exit 1
+  // run as written: the repository's id (set 2026-10-16), no token → ::error, exit 1; a placeholder id put back → notice (green)
   const sb = keySandbox();
   try {
     const cwd = join(sb.dir, "repo");
     mkdirSync(join(cwd, "cf/alerts"), { recursive: true });
     const cfg = readFileSync(join(ROOT, "cf/alerts/wrangler.jsonc"), "utf8");
-    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg);
+    assert.match(cfg, /\n {6}"database_id": "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",\n/, "the D1 database id is set (a UUID, not secret)");
+    assert.equal(cfg.includes('"REPLACE_WITH_D1_ID"'), false);
     const go = (env) => sb.run("Ready to deploy?", { GITHUB_REF: "refs/heads/main", HAS_TOKEN: "true", HAS_ACCOUNT: "true", ...env }, cwd);
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg.replace(/"database_id": "[^"]*"/, '"database_id": "REPLACE_WITH_D1_ID"'));
     let r = go({ HAS_TOKEN: "false" });
-    assert.equal(r.status, 0, "the placeholder id comes first: a notice");
+    assert.equal(r.status, 0, "a placeholder id comes first: a notice");
     assert.match(r.stdout, /D1 database id not set/);
-    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg.replace('"REPLACE_WITH_D1_ID"', '"0123abcd-0000-0000-0000-000000000000"'));
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg);
     r = go({ HAS_TOKEN: "false" });
     assert.equal(r.status, 1);
     assert.match(r.stdout, /^::error title=cf-alerts::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not available to this job/m);
@@ -821,7 +823,7 @@ test("vapid-keygen.mjs: a failed wrangler drops the key (exit 1, no public key f
   } finally { sb.done(); }
 });
 
-test("review finding (D1 write limit) + 5th/6th review: made-up keys cost no D1 writes and take no place in the list — planted before the first key set, watched by more phones than the real pairs; a real phone that never took a push is computed the same day; afterwards a made-up key is stored but named in \"unknown\" (the API only adds) and still takes no place", T, async () => {
+test("review finding (D1 write limit) + 5th/6th review: made-up keys cost no D1 writes and take no place in the list — planted before the first key set, watched by more phones than the real pairs; a real phone that never took a push is computed the same day; afterwards a made-up key is stored, answered {id} as 약속 1 says (7th review), and still takes no place", T, async () => {
   const db = makeDb(), env = makeEnv(db, { PAIR_CAP: "4" });
   // 2 × 4 phones × 20 rules on keys of the right shape that data.json does not have (one POST each, no browser), before
   // the factory ever stored a key set (accepted as before): each made-up pair is watched by 2 phones
@@ -839,12 +841,12 @@ test("review finding (D1 write limit) + 5th/6th review: made-up keys cost no D1 
   assert.deepEqual(logs, [logs.find((l) => l.startsWith("price alerts: 2 watched pairs (0 skipped, "))], "the list was not cut: no ::warning, nothing skipped");
   assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-12T09:30:00+09:00") })).body.pairs, "ok");
   // the key set is stored now: a rule naming a made-up key is stored all the same (6th review: B's app treats any non-2xx
-  // as a failure, so nothing is refused) and the answer names that key in "unknown"; its pair is never ranked, the real one
-  // is computed the next day
+  // as a failure, so nothing is refused) and answered {id} like any other (7th review: 약속 1 word for word); its pair is
+  // never ranked, the real one is computed the next day
   const mixed = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }, { kind: "watch", key: "T0000099" }] });
-  assert.deepEqual([mixed.status, Object.keys(mixed.body).sort(), mixed.body.unknown], [201, ["id", "unknown"], ["T0000099"]]);
+  assert.deepEqual([mixed.status, Object.keys(mixed.body)], [201, ["id"]]);
   const plain = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }] });
-  assert.deepEqual([plain.status, Object.keys(plain.body)], [201, ["id"]], "no unknown key: the answer is {id} as before");
+  assert.deepEqual([plain.status, Object.keys(plain.body)], [201, ["id"]]);
   assert.equal((await run(env, WEEK1, "2026-10-13")).pairs, 3);
   assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X02", "X24"], "the made-up pair never reaches D1");
 });
@@ -869,13 +871,13 @@ test("review finding (D1 budget): a pair new to the Worker waits for a row the f
 });
 
 // ---- 6th review (D1 budget): weekly.yml runs on every push to main (26–29 runs a day were counted on 2026-10-15/16). A
-// push-started run sends only the key set; a full run of a data.json already finished today stops at its first watched
+// run that is not the daily schedule's first attempt (push, Run workflow, Re-run — 7th review) sends only the key set; a full run of a data.json already finished today stops at its first watched
 // page. D1 rows written are counted with sqlite's total_changes() (row changes, not index entries — the local workerd D1
 // measurement is in src/worker.js).
 const sha = (d) => createHash("sha256").update(JSON.stringify(d)).digest("hex");
 const changes = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
 
-test("6th review (push-started run): ALERTS_MODE keys sends ONLY the key set — one request, at most one D1 row written, no watched/digest/finish; the phones keep their news for the next full run", T, async () => {
+test("6th/7th review (push-started, Run workflow or Re-run): ALERTS_MODE keys sends ONLY the key set and says when this data is computed (a ::notice) — one request, at most one D1 row written, no watched/digest/finish; the phones keep their news for the next full run", T, async () => {
   const db = makeDb(), env = makeEnv(db);
   const { phones } = await phonesWith(env, db, { A: [{ kind: "target", key: "X24", max: 95000 }] });
   await run(env, WEEK1, "2026-10-12", { sha: sha(WEEK1) });
@@ -886,8 +888,8 @@ test("6th review (push-started run): ALERTS_MODE keys sends ONLY the key set —
   assert.deepEqual(r, { mode: "keys", keys: 4, changed: false });
   assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/keys"], "the key set only");
   assert.equal(changes(db) - c, 0, "an unchanged key set writes nothing");
-  assert.deepEqual(logs, ["price alerts: key set sent (4 keys, unchanged) — a push-started run computes nothing (the daily run does)"]);
-  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phones.A.id)[0].pend_w, 0, "nothing marked by a push-started run");
+  assert.deepEqual(logs, ["price alerts: key set sent (4 keys, unchanged) — only the daily schedule run computes", "::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST). A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day"]);
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phones.A.id)[0].pend_w, 0, "nothing marked by a key-set-only run");
   // a changed key set: one row
   const fewer = { ...WEEK2, keys: WEEK2.keys.slice(0, 3) };
   c = changes(db);
@@ -906,7 +908,7 @@ test("6th review (same data, same day): a second full run of the same data.json 
   const first = await run(env, WEEK2, "2026-10-19", { sha: sha(WEEK2) });
   assert.deepEqual([first.weekly, first.expiring], [1, 1]);
   assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('finish', 'data') ORDER BY k"), [{ k: "data", n: parseInt(sha(WEEK2).slice(0, 13), 16) }, { k: "finish", n: 20261019 }]);
-  // the same file again that day (a push-started run would only send keys; this is a second Run workflow of the same data)
+  // the same file again that day (a key-set-only run would only send keys; this is a second full run of the same data)
   const w = wire(env, undefined, "2026-10-19");
   const c = changes(db), logs = [];
   const again = await notify({ data: WEEK2, sha: sha(WEEK2), today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
@@ -962,6 +964,7 @@ test("CLI: ALERTS_MODE picks the run (keys = the key set only; full or unset = a
     const k = await runCli("keys");
     assert.equal(k.code, 0);
     assert.match(k.out, /^price alerts: key set sent \(4 keys, changed\)/m);
+    assert.match(k.out, /^::notice title=price alerts::this run sent the key set only — the alerts for this data\.json are computed by the next daily run \(06:00 KST\)/m);
     assert.deepEqual(seen.splice(0), ["/v1/internal/keys"]);
     const f = await runCli(undefined);
     assert.equal(f.code, 0);
@@ -985,5 +988,5 @@ test("everything notify.mjs logged in this file holds counts only: no secret, UR
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: key set sent \(\d+ keys, (changed|unchanged)\) — a push-started run computes nothing \(the daily run does\)|price alerts: this data\.json was already finished today \(same sha256, same KST day\) — nothing more to do|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: key set sent \(\d+ keys, (changed|unchanged)\) — only the daily schedule run computes|::notice title=price alerts::this run sent the key set only — the alerts for this data\.json are computed by the next daily run \(06:00 KST\)\. A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day|price alerts: this data\.json was already finished today \(same sha256, same KST day\) — nothing more to do|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });

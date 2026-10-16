@@ -25,9 +25,9 @@
     {
       "binding": "DB",
       "database_name": "yoonsiljang-alerts",
-      // the D1 database's id (not secret) — the user creates the database in the dashboard and A writes the id here.
-      // cf-alerts.yml skips deploying while this is still the placeholder.
-      "database_id": "REPLACE_WITH_D1_ID",
+      // the D1 database's id (not secret): the user created yoonsiljang-alerts in the dashboard (2026-10-16, location APAC).
+      // cf-alerts.yml would skip deploying if this were ever set back to the placeholder (REPLACE_WITH_D1_ID in quotes).
+      "database_id": "a70a7a62-d058-4efc-bf35-cb625d48ae93",
       "migrations_dir": "migrations"
     }
   ],

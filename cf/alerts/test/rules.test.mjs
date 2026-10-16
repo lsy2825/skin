@@ -116,7 +116,7 @@ test("bundling: weekly once per 7 KST days; expiring once per end date, once a d
   assert.equal(R.dueKinds({ pend_x: "2026-10-21" }, today).expiring, true);
   // an announced (pair, end date) never becomes pend_x again (sql.js MARK_EXPIRING leaves exp_sent's entries out), so a
   // pending end date is due whatever exp_sent holds
-  assert.equal(R.dueKinds({ pend_x: "2026-10-21", exp_sent: '["X24||2026-10-25"]' }, today).expiring, true);
+  assert.equal(R.dueKinds({ pend_x: "2026-10-21", exp_sent: '["2026-10-25|X24|"]' }, today).expiring, true);
   assert.equal(R.dueKinds({ pend_x: "2026-10-21", last_x: today }, today).expiring, false);            // once a day
   assert.equal(R.dueKinds({ pend_x: "2026-10-18" }, today).expiring, false);                            // ended
   assert.deepEqual(R.dueKinds({ pend_w: 1, pend_x: "2026-10-21", last_x: today }, today), { weekly: true, expiring: true });

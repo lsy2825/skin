@@ -1,6 +1,7 @@
 // Every SQL statement the Worker runs, as constants: the node tests run these same strings on the real schema
 // (migrations/0001_init.sql) with node:sqlite, so what is tested is what D1 runs. Deciding what is news and matching rules
 // to it is done here in SQL (json_each × snap primary-key lookups), so that work is D1's, not the Worker's 10 ms CPU.
+import { END_DAYS } from "./rules.js";
 
 // a rule's pair: key + region ('' = nationwide; '수도권' is its own pair, computed by notify.mjs from 서울+경기+인천)
 const RULE_PAIR = "d.k = j.value->>'$.key' AND d.r = coalesce(j.value->>'$.region', '')";
@@ -12,20 +13,13 @@ const RULES_DROPPED = (old, nu) => `EXISTS (SELECT 1 FROM json_each(${old}) o WH
 
 // ---- the factory's key set (table keyset, ONE row): the compare keys of the data.json the factory last read, a JSON array
 // (rules.js keySetJson). notify.mjs sends it on every run after a deploy (POST /v1/internal/keys, src/worker.js storeKeys;
-// a push-started run sends only this). The factory computes those keys only, so a pair whose key is not in it would never
-// be computed: it is left out of WATCHED. Subscribe and PUT still STORE such a rule (6th review: the API only adds — the
-// app keeps sending rules as before) and name its key in an informational "unknown" list of their answer (UNKNOWN_KEYS);
-// the pair starts being ranked as soon as a later key set holds the key. No set stored yet: every key is ranked.
+// a run that is not the daily schedule's sends only this). The factory computes those keys only, so a pair whose key is not
+// in it would never be computed: it is left out of WATCHED. Subscribe and PUT still STORE such a rule, and answer exactly
+// as for any other rule (약속 1 unchanged — 7th review: no extra answer field); the pair starts being ranked as soon as a
+// later key set holds the key, and is computed from the next daily (schedule) run on. No set stored yet: every key is ranked.
 // ?1 the set's JSON. Written only when it differs (an unchanged set writes 0 rows; a change 1 row — INTEGER PRIMARY KEY,
 // no index entry): a few rows a week.
 export const SET_KEYS = "INSERT INTO keyset (id, keys) VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET keys = excluded.keys WHERE keys <> excluded.keys";
-// rule j's key is in the stored set ks: one search in the one row for '"KEY"' (a KEY_RE key has no quote, so it matches that
-// array element only). Reads the keyset row once and ≤ MAX_RULES rule entries, however many keys the set holds.
-const KNOWN_J = `instr(ks.keys, '"' || (j.value->>'$.key') || '"') > 0`;
-// ?1 rules (normalized JSON): its keys that the stored set does not hold (none while no set is stored), each once, ascending.
-// Run in the same D1 batch as SUBSCRIBE / PUT_RULES; when not empty the answer carries them as "unknown" — information only,
-// the rules were stored (a key the factory's data.json has not got yet, or lost in a regroup; src/worker.js subscribe)
-export const UNKNOWN_KEYS = `SELECT DISTINCT j.value->>'$.key' AS k FROM keyset ks, json_each(?1) j WHERE NOT ${KNOWN_J} ORDER BY 1`;
 
 // ?1 yyyymmdd — the Worker's own KST day, written in the same D1 batch right before SUBSCRIBE: the subs_ins trigger (migration)
 // names today's 'new:<day>' counter from it, so the budget never reads a per-row date (no row holds one)
@@ -117,7 +111,13 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // stored g: the real price change of that collection is news. Left: a second regroup on the same collection day keeps the
 // same g and reads as a price change.
 // The baseline itself is never touched here — only FINISH promotes — so a digest without a finish (failed finish, failed
-// later chunk) loses nothing, and the same data again gives the same pending numbers (no second news).
+// later chunk) loses nothing. The same NEW collection digested AGAIN before a finish consumed it (REPEAT: pu already names
+// it — a chunk notify.mjs retried after D1 had committed it, a 500 after the commit, or the next day's run of the same
+// collection after a failed finish) keeps the pending numbers, cb and cu the first digest of that collection left: compared
+// again, CONFIRM would read that collection's own cu as "not confirmed yet" and flip a confirmed bad move back to held, and
+// the news it makes possible later would be lost (7th review). So digesting a collection twice = once; only run, e, s, u
+// (and g through REBASE) are this run's. A good move a later build of that same collection shows is taken by the first
+// digest after the finish (SAME) — a day later, never lost.
 // ?3 PAIR_CAP: a NEW pair is added only while snap holds fewer than PAIR_CAP rows (counted once per statement, so one chunk
 // of ≤ DIGEST_MAX 500 can pass it: snap ≤ PAIR_CAP + 500). The rows a finish prunes are free again only the next day, so
 // a day can never both add a whole list and delete one: per factory run the snap side writes ≤ 2 × (PAIR_CAP + 500) rows
@@ -125,6 +125,7 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // ?4 today (the Worker's clock): a new pair's `added` (WATCHED keeps it in the list for PAIR_KEEP_DAYS); never updated.
 const SAME = "snap.bu = excluded.bu";
 const REBASE = "excluded.g > snap.g";
+const REPEAT = `(NOT ${SAME} AND snap.pu = excluded.bu)`;
 const BAD_M = "((excluded.m IS NULL AND snap.m IS NOT NULL) OR (excluded.m IS NOT NULL AND snap.m IS NOT NULL AND excluded.m > snap.m))";
 const BAD_N = "(excluded.n < snap.n)";
 const BAD_MED = `(${BAD_N} OR (excluded.med IS NULL AND snap.med IS NOT NULL) OR (excluded.med IS NOT NULL AND snap.med IS NOT NULL AND excluded.med > snap.med))`;
@@ -148,13 +149,13 @@ export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, 
     n = CASE WHEN ${REBASE} THEN excluded.n ELSE snap.n END,
     med = CASE WHEN ${REBASE} THEN excluded.med ELSE snap.med END,
     bu = CASE WHEN ${REBASE} THEN excluded.bu ELSE snap.bu END,
-    p = CASE WHEN ${REBASE} THEN 0 ELSE ((${NEW_M}) IS NOT snap.m OR (${NEW_N}) IS NOT snap.n OR (${NEW_MED}) IS NOT snap.med) END,
-    pm = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_M} END,
-    pn = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_N} END,
-    pmed = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_MED} END,
+    p = CASE WHEN ${REBASE} THEN 0 WHEN ${REPEAT} THEN snap.p ELSE ((${NEW_M}) IS NOT snap.m OR (${NEW_N}) IS NOT snap.n OR (${NEW_MED}) IS NOT snap.med) END,
+    pm = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pm ELSE ${NEW_M} END,
+    pn = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pn ELSE ${NEW_N} END,
+    pmed = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pmed ELSE ${NEW_MED} END,
     pu = CASE WHEN ${REBASE} OR ${SAME} THEN NULL ELSE excluded.bu END,
-    cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} THEN snap.cb ELSE ${NEW_CB} END,
-    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} THEN snap.cu ELSE excluded.bu END`;
+    cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} OR ${REPEAT} THEN snap.cb ELSE ${NEW_CB} END,
+    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} OR ${REPEAT} THEN snap.cu ELSE excluded.bu END`;
 
 // finish (one batch, in this order). Weekly news = a pending pair against its baseline:
 //   watch    median moved ≥ 5% (|pmed − med| × 20 ≥ med, exact in integers) or a new lowest price — push.js watchMoved()
@@ -167,28 +168,43 @@ export const MARK_WEEKLY = `UPDATE subs SET pend_w = 1 WHERE pend_w = 0 AND EXIS
        OR (j.value->>'$.kind' = 'newmatch' AND d.pn > d.n)
        OR (j.value->>'$.kind' = 'target' AND d.pm IS NOT NULL AND d.pm <= j.value->>'$.max'
             AND (d.m IS NULL OR d.m > j.value->>'$.max')))`;
-// ?1 today: announced (key|region|end date) entries whose end date passed are forgotten (exp_sent stays small)
-export const PRUNE_XSENT = `UPDATE subs SET exp_sent = nullif((SELECT json_group_array(value) FROM json_each(exp_sent) WHERE substr(value, -10) >= ?1), '[]')
-  WHERE exp_sent IS NOT NULL AND EXISTS (SELECT 1 FROM json_each(exp_sent) WHERE substr(value, -10) < ?1)`;
+// Announced expiring entries (subs.exp_sent; pend_xl holds the ones not announced yet) are 'end date|key|region' strings in
+// a JSON array sorted by value — so by end date first. A KEY_RE key, a region and a date hold no quote, so '"<entry>"' finds
+// exactly that element with instr(): membership costs no D1 row reads (json_each would read every element of every phone's
+// list for every rule — 7th review: up to 6.5M reads in one finish).
+const X_T = "d.u || '|' || d.k || '|' || d.r";
+// the position in exp_sent of its first entry still running on ?1 (today): the first '"<date>|' among the days ?1 … ?1 +
+// END_DAYS (1e9 when there is none). No entry can end later than that: the Worker's digest refuses an end date u past its
+// own day + END_DAYS (src/worker.js digest), and an entry is announced only from a run digested on or before today. In a
+// list sorted by end date, everything before that position has ended. Scalar string functions only — no rows read.
+const FIRST_LIVE = `min(${Array.from({ length: END_DAYS + 1 }, (_, i) => `coalesce(nullif(instr(exp_sent, '"' || date(?1, '+${i} days') || '|'), 0), 1000000000)`).join(", ")})`;
+// ?1 today: announced entries whose end date passed are forgotten (exp_sent stays small; docs/legal/PRIVACY_POLICY_DRAFT.md
+// '종료일이 지나면 지움'). Only a row whose first entry has ended is rewritten — the text from its first running entry on, or
+// NULL. Reads each subscription row once (no json_each).
+export const PRUNE_XSENT = `UPDATE subs SET exp_sent = CASE WHEN ${FIRST_LIVE} = 1000000000 THEN NULL ELSE '[' || substr(exp_sent, ${FIRST_LIVE}) END
+  WHERE exp_sent IS NOT NULL AND ${FIRST_LIVE} <> 2`;
 // ?1 run. expiring (this run's numbers): a price at or below T (max, or the ending price itself) ends within 3 days and
 // nothing at or below T stays. Per (pair, end date): the ones in exp_sent were announced already (a later end date announced
-// before never hides an earlier new one). pend_x = the earliest not announced, pend_xl = all of them (announced together)
-const X_PAIRS = `SELECT DISTINCT s2.id AS id, d.u AS u, d.k || '|' || d.r || '|' || d.u AS t
+// before never hides an earlier new one). pend_x = the earliest not announced, pend_xl = all of them (announced together).
+// The rows are computed ONCE per finish (7th review: two statements each computed them before):
+const X_PAIRS = `SELECT DISTINCT s2.id AS id, d.u AS u, ${X_T} AS t
       FROM subs s2, json_each(s2.rules) j JOIN snap d ON ${RULE_PAIR} AND d.run = ?1
       WHERE j.value->>'$.kind' = 'expiring' AND d.e IS NOT NULL AND d.e <= coalesce(j.value->>'$.max', d.e)
         AND (d.s IS NULL OR d.s > coalesce(j.value->>'$.max', d.e))
-        AND d.k || '|' || d.r || '|' || d.u NOT IN (SELECT value FROM json_each(coalesce(s2.exp_sent, '[]')))`;
+        AND instr(coalesce(s2.exp_sent, ''), '"' || ${X_T} || '"') = 0`;
+// ?1 run. Every phone with something to announce gets it (pend_x, pend_xl), and a phone that still holds yesterday's
+// pend_x but has nothing ending in THIS run's numbers any more (the clinic extended the event, the row left data.json, the
+// rule was changed) loses the mark, so a wrong "ending soon" push never goes out the next morning. RETURNING says which:
+// marked 1 (an expiring notice to send) or 0 (a stale mark cleared) — src/worker.js finish counts the 1s.
 export const MARK_EXPIRING = `UPDATE subs SET pend_x = x.u, pend_xl = x.l FROM (
-    SELECT id, min(u) AS u, json_group_array(t) AS l FROM (
-      ${X_PAIRS}
-      ORDER BY s2.id, d.u, d.k, d.r)
-    GROUP BY id) x
-  WHERE subs.id = x.id AND (subs.pend_x IS NOT x.u OR subs.pend_xl IS NOT x.l)`;
-// ?1 run — right after MARK_EXPIRING: a phone that still holds yesterday's pend_x but has nothing ending in THIS run's numbers
-// any more (the clinic extended the event, the row left data.json, the rule was changed) loses the mark, so a wrong
-// "ending soon" push never goes out the next morning
-export const CLEAR_STALE_X = `UPDATE subs SET pend_x = NULL, pend_xl = NULL
-  WHERE pend_x IS NOT NULL AND id NOT IN (SELECT id FROM (${X_PAIRS}))`;
+    SELECT s.id AS id, a.u AS u, a.l AS l FROM subs s LEFT JOIN (
+      SELECT id, min(u) AS u, json_group_array(t) AS l FROM (
+        ${X_PAIRS}
+        ORDER BY s2.id, t)
+      GROUP BY id) a ON a.id = s.id
+    WHERE s.pend_x IS NOT NULL OR a.id IS NOT NULL) x
+  WHERE subs.id = x.id AND (subs.pend_x IS NOT x.u OR subs.pend_xl IS NOT x.l)
+  RETURNING pend_x IS NOT NULL AS marked`;
 // the phones are marked: the pending numbers become the baseline (with their collection date)
 export const PROMOTE = "UPDATE snap SET m = pm, n = pn, med = pmed, bu = coalesce(pu, bu), p = 0, pm = NULL, pn = NULL, pmed = NULL, pu = NULL WHERE p = 1";
 // unchanged numbers from a new collection: the baseline now belongs to that collection
@@ -215,8 +231,16 @@ export const PRUNE_STAT = "DELETE FROM stat WHERE k LIKE 'new:%' AND k < 'new:' 
 // minutes = a run that died — cleared. (claim < 0 = a row HELD BACK, rules.js HOLD: never cleared by time — CLAIM_P tries a
 // few a run, RELEASE_HELD frees them at that push origin's next 2xx.) One range of the subs_claim index.
 export const RESET_STALE = "UPDATE subs SET claim = NULL WHERE claim > 0 AND claim < ?1 - 15";
-// ?1 today (scans the subs_x partial index: rows with a pending expiring only)
-export const DROP_ENDED = "UPDATE subs SET pend_x = NULL, pend_xl = NULL WHERE pend_x IS NOT NULL AND pend_x < ?1";
+// ?1 today ?2 today as yyyymmdd: pending end dates before today are dropped (scans the subs_x partial index: rows with a
+// pending expiring only — up to MAX_SUBS rows read). Only until the day's finish ran: it rewrites or clears every pend_x
+// from that day's numbers, so once stat 'finish' is today the walk is skipped: the gate g is a one-row-or-empty table the
+// join starts from, and an empty one reads 3 rows instead of the walk (measured on a local D1; a plain WHERE condition was
+// still checked row by row — 7th review: 8,000 rows read in each of 77 runs at the ceiling otherwise). One that stays (a
+// factory a day behind may send an end date of yesterday) is never claimed — X_DUE needs pend_x ≥ today — and the next
+// finish replaces it.
+export const DROP_ENDED = `UPDATE subs SET pend_x = NULL, pend_xl = NULL
+  FROM (SELECT 1 AS go WHERE coalesce((SELECT n FROM stat WHERE k = 'finish'), 0) <> ?2) g
+  WHERE subs.pend_x IS NOT NULL AND subs.pend_x < ?1`;
 export const VAPID_CACHE = "SELECT aud, jwt, exp FROM vapid";
 // ?1 '<key tag> ' (the first 12 characters of the VAPID public key + a space): per push origin, for THIS key,
 //   'ok:<tag> <origin>'  the first KST day (yyyymmdd) that origin took a push signed with this key (STAT_OK_SINCE). A row
@@ -283,14 +307,17 @@ export const CLAIM_F = `UPDATE subs SET claim = ?1 WHERE id IN (
 // twice (it committed, but D1's answer was lost and the Worker tried again) changes nothing the second time — no
 // double-counted failure. The deletes are the same twice anyway.
 // SENT: ?1 id ?2 weekly sent (0/1) ?3 expiring sent (0/1) ?4 today ?5 the claimed pend_x ?6 the claimed pend_xl (its entries
-// are now announced: merged into exp_sent) ?7 the claim. last_x = today whenever the push carried an expiring notice,
+// are now announced: merged into exp_sent, sorted, entries that ended before today dropped — PRUNE_XSENT relies on the order;
+// these are the json_each rows a push with an expiring notice reads, ≤ 3 days × 20 + 20) ?7 the claim. last_x = today
+// whenever the push carried an expiring notice,
 // stand-alone OR riding along with the weekly bundle: so a phone gets at most one push with an expiring notice a day
 // (rules.js dueKinds), never a stand-alone one later on the day the weekly bundle carried one
 export const SENT = `UPDATE subs SET claim = NULL, fails = 0,
     pend_w = CASE WHEN ?2 THEN 0 ELSE pend_w END,
     last_w = CASE WHEN ?2 THEN ?4 ELSE last_w END,
-    exp_sent = CASE WHEN ?3 THEN (SELECT json_group_array(value) FROM (
-        SELECT value FROM json_each(coalesce(exp_sent, '[]')) UNION SELECT value FROM json_each(coalesce(?6, '[]')))) ELSE exp_sent END,
+    exp_sent = CASE WHEN ?3 THEN nullif((SELECT json_group_array(value) FROM (
+        SELECT value FROM json_each(coalesce(exp_sent, '[]')) WHERE value >= ?4 UNION SELECT value FROM json_each(coalesce(?6, '[]'))
+        ORDER BY 1)), '[]') ELSE exp_sent END,
     pend_x = CASE WHEN ?3 AND pend_x = ?5 THEN NULL ELSE pend_x END,
     pend_xl = CASE WHEN ?3 AND pend_x = ?5 THEN NULL ELSE pend_xl END,
     last_x = CASE WHEN ?3 THEN ?4 ELSE last_x END

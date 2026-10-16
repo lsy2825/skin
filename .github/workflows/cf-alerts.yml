@@ -2,14 +2,15 @@ name: cf-alerts
 
 # Price-alert Worker (cf/alerts, Cloudflare free plan). Two jobs: `test` (every run, no secret, no environment) → `deploy`
 # (main only: apply D1 migrations → deploy → the one-time key setup or the ALERTS_SECRET sync, below).
-# The app itself is deployed by weekly.yml; this never touches app/. Skips deploying (with a notice) until the D1 database
-# id is in wrangler.jsonc. Uses the SAME CLOUDFLARE_API_TOKEN as weekly.yml's app deploy, so there is one token to look
+# The app itself is deployed by weekly.yml; this never touches app/. The D1 database id is in wrangler.jsonc (the user
+# created yoonsiljang-alerts on 2026-10-16); were it ever set back to the placeholder, deploying is skipped with a notice.
+# Uses the SAME CLOUDFLARE_API_TOKEN as weekly.yml's app deploy, so there is one token to look
 # after: the deploy job names the GitHub Environment `cloudflare`, like weekly.yml's deploy job and cf-workers.yml (#82,
 # merged 2026-10-16) — once the owner moves the token into that Environment (Deployment branches: main only) and deletes
 # the repository secret, only jobs that name it get the token, and this one still does. With the D1 id set and no token
 # the deploy job is RED (a setup error, never a quiet green). Creating a Worker that does not exist yet needs the token's
 # Workers permission at Admin (Editor cannot create a new Worker), and `d1 migrations apply` needs D1 → Edit.
-# A GREEN run is NOT proof the Worker was deployed: with a placeholder D1 id (or on a branch other than main) this workflow
+# A GREEN run is NOT proof the Worker was deployed: on a branch other than main (or with a placeholder D1 id) this workflow
 # is green on purpose (tests only). Deployed = the steps 'Apply D1 migrations' and 'Deploy the Worker' ran (not skipped)
 # and the run shows no "tested, not deployed" notice.
 # wrangler is installed in a step WITHOUT the token (npm resolves and runs install scripts of its dependencies there); the

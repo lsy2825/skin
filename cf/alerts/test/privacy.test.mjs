@@ -62,7 +62,7 @@ test("every console.* call in src/*.js and notify.mjs logs only string literals,
 // notify.mjs logs through its `log` parameter. A message there may only be a string literal or a template whose every
 // placeholder is one of these count expressions (numbers from the Worker's answer and the data, or shapeProblems()'s count
 // phrases). Anything new — an id, endpoint, URL, key, region name — needs a deliberate edit of this list.
-const LOG_PLACEHOLDERS = ["pairs.length", "skipped", "done.changed", "ending", "done.weekly", "done.expiring", 'problems.join("; ")', "keySet.length", "keysChanged"];
+const LOG_PLACEHOLDERS = ["pairs.length", "skipped", "done.changed", "ending", "done.weekly", "done.expiring", "done.cleared", 'problems.join("; ")', "keySet.length", "keysChanged"];
 function logArgOk(a) {
   if (/^"(?:[^"\\]|\\.)*"$/.test(a) || /^'(?:[^'\\]|\\.)*'$/.test(a)) return true;
   if (!/^`(?:[^`\\]|\\.)*`$/.test(a)) return false;

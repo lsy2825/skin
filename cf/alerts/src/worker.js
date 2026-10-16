@@ -2,9 +2,9 @@
 //   POST   /v1/push/subscribe       {subscription, rules} → 201 {id}       (the phone keeps the id; nothing personal stored)
 //   PUT    /v1/push/rules/{id}      {rules}               → 200 {ok:true} | 404 (unknown id); rules [] DELETES the row
 //                                                            (200 {ok:true}; afterwards that id answers 404)
-//     both (6th review — fields only added, nothing refused): the rules are stored as sent; when some of their keys are not
-//           in the key set of the factory's last data.json, the answer also has "unknown": [those keys] (information only:
-//           those pairs are not computed until a later data.json has the key — sql.js UNKNOWN_KEYS, WATCHED)
+//     both (약속 1 exactly — 7th review: no extra field): the rules are stored as sent, whatever their keys; a pair whose
+//           key is not in the key set of the factory's last data.json is not ranked (sql.js WATCHED) until a later key set
+//           holds it, and is computed from the next daily (schedule) run on
 //   DELETE /v1/push/subscribe/{id}                        → 204
 //   GET    /health (= /v1/health)                         → 200 {ok:true, window, sending, key, finished, stale, refusing,
 //                                                            capacity, pairs} (health() below) | 503 {ok:false} when D1 fails
@@ -26,13 +26,16 @@
 //   subrequests per run: ≤ 40 push fetches (redirects never followed, so 1 each) of the 50 external allowed; D1 = the claim
 //         batch + one results batch per parallel group of 6 (≤ 7) + the closing one, each tried at most 3 times → ≤ ~27 of
 //         the 1,000 allowed to Cloudflare services
-//   HOW OFTEN THE FACTORY CALLS (6th review): weekly.yml runs on every push to main — 26 and 29 runs were counted on
-//         2026-10-15/16 UTC — plus the daily schedule and Run workflow. Only the daily SCHEDULE run computes (ALERTS_MODE=full:
-//         keys, watched, digest, finish); a run started by a push or by Run workflow sends only the key set (keys: 1 row read,
-//         ≤ 1 written); a full run of a data.json finished the same KST day stops at its first watched page (done: 3 rows
-//         read, 0 written — sql.js SAME_DATA; a re-run of the schedule's job). So a D1 day holds ONE full computation (the
-//         schedule's, 06:00 KST = 21:00 UTC). Left: a schedule run that only computes after 09:00 KST (a run ahead of it in
-//         the queue for more than 3 h) shares the next D1 day with that day's own — two computations (below).
+//   HOW OFTEN THE FACTORY CALLS (6th/7th review): weekly.yml runs on every push to main — 26 and 29 runs were counted on
+//         2026-10-15/16 UTC — plus the daily schedule and Run workflow. Only the FIRST attempt of the daily SCHEDULE run
+//         computes (ALERTS_MODE=full: keys, watched, digest, finish); a run started by a push, by Run workflow or a Re-run
+//         sends only the key set (keys: 1 row read, ≤ 1 written; notify.mjs leaves a ::notice that this data.json is computed
+//         by the next 06:00 run — making Run workflow compute too is a user decision: a second full computation in a D1 day
+//         does not fit the writes below unless MAX_SUBS and NEW_PER_DAY are lowered); a full run of a data.json finished the
+//         same KST day stops at its first watched page (done: 3 rows read, 0 written — sql.js SAME_DATA). So a D1 day holds
+//         ONE full computation (the schedule's, 06:00 KST = 21:00 UTC). Left: a schedule run that only computes after 09:00
+//         KST (a run ahead of it in the queue for more than 3 h) shares the next D1 day with that day's own — two
+//         computations (below).
 //   D1 writes (100,000 rows a day FOR THE WHOLE ACCOUNT, 00:00–24:00 UTC = 09:00–09:00 KST — cf/metrics shares it; since
 //         2026-09-01 a free account over it gets an error for EVERY D1 query until 09:00 KST: no finish, no send, no
 //         subscribe). D1 counts every row a statement writes plus one per index entry it changes. Rows written per
@@ -43,12 +46,12 @@
 //             delete 2 more) ≤ 8 (≈ 6 on average) → 77 runs × SEND_LIMIT 40 = 3,080 pushes × 8 = 24,640 at most
 //           a new subscription: 5 (row, primary-key and endpoint entries, the two counters; the KST day's first one 8 with
 //             the 'day' row and the new counter — measured). NEW_PER_DAY is per KST day and a D1 day spans two of them →
-//             ≤ 2 × 2,000 × 5 = 20,000. Unknown keys change nothing here (the rules are stored like any others)
-//           the factory's finish on subs: PRUNE_XSENT 1 + MARK_WEEKLY 2 (row + subs_due entry) + MARK_EXPIRING 2 or
-//             CLEAR_STALE_X 1 (row + subs_x entry) → ≤ 5 rows per subscription on a day every one of them changes every
-//             mark → ≤ MAX_SUBS 8,000 × 5 = 40,000. A row that failed before adds its subs_fail entry to each mark (≤ 7);
-//             such rows are few: a real phone's push-service trouble or suspect refusal is not counted, and a planted row
-//             has no exp_sent (never sent) and is marked weekly once in its life (pend_w stays 1 until a push gets through)
+//             ≤ 2 × 2,000 × 5 = 20,000. A rule's key outside the key set changes nothing here (stored like any other)
+//           the factory's finish on subs: PRUNE_XSENT 1 + MARK_WEEKLY 2 (row + subs_due entry) + MARK_EXPIRING 2 to mark
+//             or 1 to clear (row + subs_x entry) → ≤ 5 rows per subscription on a day every one of them changes every mark →
+//             ≤ MAX_SUBS 8,000 × 5 = 40,000. A row that failed before adds its subs_fail entry to each mark (≤ 7); such
+//             rows are few: a real phone's push-service trouble or suspect refusal is not counted, and a planted row has no
+//             exp_sent (never sent) and is marked weekly once in its life (pend_w stays 1 until a push gets through)
 //           the factory's snap: a pair digested again 1, its PROMOTE or ROLL_BU 1, a new pair 2, a pruned pair 2. Pairs are
 //             what subscriptions say (up to MAX_SUBS × 20 = 160,000), and a subscription needs no browser (one POST with a
 //             made-up endpoint on an allowed host). So (1) watched() ranks only pairs of keys in the factory's key set and
@@ -63,39 +66,47 @@
 //           a finish's own stat rows: 'finish' and 'data' only when they change, 'capped' when the list was cut → ≤ 3
 //         → a D1 day where everything peaks at once (a full table whose every row changes every mark, every push at its most
 //         rows, two KST days of new subscriptions, a full pair turnover, key sets on 30 runs) ≈ 24,640 + 20,000 + 40,000 +
-//         7,000 + 30 + 3 ≈ 91,700 of 100,000; the other runs of the day add nothing (measured: the schedule + 28 push-started
-//         runs + a Run workflow + a re-run of the same data = 6,005 rows at 3,000 pairs, where the code of the 5th review
-//         wrote 6,004 + 3,001 for EVERY further run). A SECOND full computation the same D1 day (only the late schedule
-//         run above) could add up to 7,000 + 40,000 in that same worst case — over the limit; measured, a second day of
-//         new numbers writes 3,001–6,461. Not counted: PUT/DELETE and a subscription sent again for the same endpoint
-//         (≈ 2–4 rows each, bounded only by the Workers request limit and SUBS_RL), and cf/metrics, which shares the
-//         account's limit (src/rules.js there: up to 80,000 rows on a spammed day — the two together can pass it). The
-//         levers are NEW_PER_DAY (1,000 → −10,000) and MAX_SUBS (−5 rows a day per subscription less): a user decision
+//         7,000 + 30 + 3 ≈ 91,700 of 100,000 (one whole computation measured at the ceiling, concentrated rules: ≤ 46,001);
+//         the other runs of the day add nothing (measured: the schedule + 28 push-started runs + a Run workflow + a re-run of
+//         the same data = 6,005 rows at 3,000 pairs). A SECOND full computation the same D1 day (only the late schedule run
+//         above) could add up to 7,000 + 40,000 in that same worst case — over the limit. Measured (7th review, 8,000 × 20
+//         concentrated, 1,680 / 3,080 phones sent in between): a 15:00 KST run with new data + the next 06:00 run = 25,360
+//         + 28,161 = 53,521 rows, so even then with the day's pushes and subscriptions ≈ 98,200 — why Run workflow stays
+//         key-set-only. Not counted: PUT/DELETE and a subscription sent again for the same endpoint (≈ 1–4 rows each,
+//         bounded only by the Workers request limit and SUBS_RL), and cf/metrics, which shares the account's limit
+//         (src/rules.js there: up to 80,000 rows on a spammed day — the two together can pass it). The levers are
+//         NEW_PER_DAY (1,000 → −10,000) and MAX_SUBS (−5 rows a day per subscription less): a user decision (MAX_SUBS 4,000
+//         + NEW_PER_DAY 1,000 would fit TWO full computations a day: ≈ 88,700)
 //   D1 reads (5,000,000 a day, the same account-wide D1 day; enforced since 2026-09-01: a day over it fails every query until
 //         00:00 UTC = 09:00 KST, which /health shows as 503). Measured on a local D1 at the ceiling (MAX_SUBS 8,000 phones
-//         × 20 rules = 160,000 rule entries, real keys × regions, 3,000 pairs computed, PAGE 5,000 = one watched page):
-//           one full computation ≤ 988,767: keys 1 + watched 437,746 (subs × rules grouped once — the 5th review's two
-//             pages of 2,000 read that twice: 1,246,502 a run) + digest 12,000 (6 chunks) + finish 539,020 (PRUNE_XSENT
-//             8,001, MARK_WEEKLY ≈ 174,000, MARK_EXPIRING ≈ 174,000, CLEAR_STALE_X ≈ 174,000 when rows hold a pending
-//             expiring, PROMOTE/PRUNE_SNAP/ROLL_BU 3,000 each). Rule mix: all newmatch 808,761, mixed 978,980, all
-//             expiring 988,767
-//           a key-set-only run 1; a same-data repeat 3; a subscribe 31 (≤ 50 with 20 unknown keys); a PUT ≈ 90
+//         × 20 rules = 160,000 rule entries, 3,000 pairs computed, PAGE 5,000 = one watched page), 7th review — the worst
+//         shape is every rule on a computed pair (popular treatments) and every rule an expiring one:
+//           one full computation ≤ 1,248,625: keys 1 + watched 339,620 (subs × rules grouped once) + digest 12,000 (6 chunks)
+//             + finish 897,004 (PRUNE_XSENT 8,000 — each row once, no list element; MARK_WEEKLY 328,001 when nobody has
+//             weekly news, its EXISTS walking all 20 rules; MARK_EXPIRING 551,999 — the expiring rows computed ONCE, marks and
+//             clears together; PROMOTE/PRUNE_SNAP/ROLL_BU 3,000 each). The same with exp_sent lists of 20 or 60 entries:
+//             identical (membership is a string search — sql.js X_PAIRS; the 6th review's code read 2,976,533 / 6,496,358
+//             there). 5 expiring rules a phone (the 4 kinds mixed): 1,008,625. test/d1_reads.mjs (run by local_dev.sh) checks
+//             on the same runtime that no finish statement reads more with long lists and the per-phone ceilings
+//           a key-set-only run 1; a same-data repeat 3; a subscribe 9; a PUT of 20 rules 65
 //           one cron run: 26 with nothing pending (the partial indexes hold only rows with something pending); every claim
 //             walks its index in order and stops after its share of SEND_LIMIT due rows, so the worst is rows with news
-//             waiting that are NOT due: weekly waiting (sent within 7 days) 8,026, expiring waiting (one went out today)
-//             16,024 (CLAIM_X + DROP_ENDED), both 24,024 = 3 × MAX_SUBS; 40 due rows 347 → ≤ 77 × 24,024 = 1,849,848 a day.
-//             Held rows (H, 0 on a normal day): CLAIM_P reads those whose minute has come once per run and RELEASE_HELD
-//             walks them when a push origin answers 2xx again — H = 2,000 adds ≈ 160,000 a day
-//         → worst D1 day ≈ 988,767 + 1,849,848 + 160,000 + 2 × 2,000 × 31 (subscribes) + 30 (key sets) ≈ 3.12M of 5M; a
-//         normal day (a few hundred pending rows) is far below 1.5M. The late-schedule day above adds ≤ 988,767 more
-//         (≈ 4.1M, still under). Not counted: PUT/DELETE (≈ 90 rows read each, bounded only by the Workers request limit)
-//         and cf/metrics (shares the account's limit)
+//             waiting that are NOT due: weekly waiting (sent within 7 days) 8,028, expiring waiting (one went out today)
+//             8,027, both 16,027 = 2 × MAX_SUBS (DROP_ENDED walks only until the day's finish ran: + 8,001 before it); a
+//             push with an expiring notice reads ≤ 161 more in SENT (exp_sent ≤ 3 days × 20 entries + pend_xl ≤ 20, merged
+//             and sorted) → ≤ 77 × 16,027 + 3,080 × 161 = 1,729,959 a day. Held rows (H, 0 on a normal day): CLAIM_P reads
+//             those whose minute has come once per run and RELEASE_HELD walks them when a push origin answers 2xx again —
+//             H = 2,000 adds ≈ 160,000 a day
+//         → worst D1 day ≈ 1,248,625 + 1,729,959 + 160,000 + 2 × 2,000 × 9 (subscribes) + 30 (key sets) ≈ 3.17M of 5M; a
+//         normal day (a few hundred pending rows) is far below 1.5M. The late-schedule day above adds ≤ 1,248,625 + the
+//         DROP_ENDED walks of the runs before that finish (≤ 18 × 8,001) ≈ 4.57M, still under. Not counted: PUT/DELETE
+//         (≈ 65 rows read each, bounded only by the Workers request limit) and cf/metrics (shares the account's limit)
 //   CPU (10 ms): one ES256 signature per push origin per 11 h (cached in D1), one test signature + verify per run that
 //         has a key (push.js vapidKey, before any claim; GET /health does the same), JSON of ≤ 40 rows
 // VAPID: only the secret VAPID_PRIVATE_JWK is needed — the public key is derived from it (push.js publicKeyOf). The
 //   optional var VAPID_PUBLIC_KEY, when set, must be that same key (else nothing is sent, GET /health sending:false).
 import { ID_RE, validDay, validRun, FINISH_SLACK_DAYS, daysBetween, newId, kstDay, addDays, inWindow, pushTtl, dueKinds, outcome,
-  hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, keySetJson, clientKey, RETRY_DROP, REFUSED_DROP,
+  hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, validEnd, keySetJson, clientKey, RETRY_DROP, REFUSED_DROP,
   NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES, SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PAIR_KEEP_DAYS } from "./rules.js";
 import { checkSubscription, vapidJwt, vapidKey, pushRequest } from "./push.js";
 import * as Q from "./sql.js";
@@ -203,12 +214,10 @@ async function subscribe(request, env, now) {
   }
   const today = kstDay(now), max = num(env.MAX_SUBS, MAX_SUBS), perDay = num(env.NEW_PER_DAY, NEW_PER_DAY);
   const rules = JSON.stringify(v.rules);
-  // one batch: the Worker's own KST day first (the subs_ins trigger names today's 'new:' counter from it), then the INSERT,
-  // then which of these keys the factory's last data.json does not have (reads the keyset row once)
+  // one batch: the Worker's own KST day first (the subs_ins trigger names today's 'new:' counter from it), then the INSERT
   const res = await env.DB.batch([
     env.DB.prepare(Q.SET_DAY).bind(Number(today.replace(/-/g, ""))),
     env.DB.prepare(Q.SUBSCRIBE).bind(newId(), sub.endpoint, rules, today, max, perDay),
-    env.DB.prepare(Q.UNKNOWN_KEYS).bind(rules),
   ]);
   const row = res[1] && res[1].results && res[1].results[0];
   if (!row) {
@@ -218,15 +227,7 @@ async function subscribe(request, env, now) {
     if (!c || c.today >= perDay) throw new Bad(429, "RATE_LIMITED");
     throw new Bad(503, "FULL");
   }
-  return { status: 201, body: { id: row.id, ...unknownOf(res[2]) } };
-}
-
-// the "unknown" field of a subscribe/PUT answer (sql.js UNKNOWN_KEYS: keys of the stored rules that the factory's last key
-// set does not hold) — only when there are some. Information only: the rules were stored; those pairs are computed once a
-// later data.json has the key (a phone may simply have a newer or older app data than the factory's last run).
-function unknownOf(res) {
-  const keys = ((res && res.results) || []).map((x) => x.k);
-  return keys.length ? { unknown: keys } : {};
+  return { status: 201, body: { id: row.id } };
 }
 
 async function putRules(request, env, id) {
@@ -239,10 +240,8 @@ async function putRules(request, env, id) {
     if (!(await env.DB.prepare(Q.DELETE_SUB_RETURNING).bind(id).first())) throw new Bad(404, "NOT_FOUND");
     return { status: 200, body: { ok: true } };
   }
-  const rules = JSON.stringify(v.rules);
-  const [put, unknown] = await env.DB.batch([env.DB.prepare(Q.PUT_RULES).bind(id, rules), env.DB.prepare(Q.UNKNOWN_KEYS).bind(rules)]);
-  if (!(put && put.results && put.results[0])) throw new Bad(404, "NOT_FOUND");
-  return { status: 200, body: { ok: true, ...unknownOf(unknown) } };
+  if (!(await env.DB.prepare(Q.PUT_RULES).bind(id, JSON.stringify(v.rules)).first())) throw new Bad(404, "NOT_FOUND");
+  return { status: 200, body: { ok: true } };
 }
 
 async function unsubscribe(env, id) {
@@ -253,9 +252,9 @@ async function unsubscribe(env, id) {
 // ---- factory side (Bearer ALERTS_SECRET; never CORS)
 // POST /v1/internal/keys {keys} → {keys: <how many>, changed}. The compare keys of the data.json the app was just given,
 // each once in ascending order (rules.js keySetJson; else 400 BAD_KEYS). Stored as ONE row, rewritten only when it differs
-// (sql.js SET_KEYS: ≤ 1 row written). notify.mjs sends it on every run after a deploy — a push-started run sends only this
-// — and before the first watched page of a full run: WATCHED then ranks only pairs of these keys, and subscribe/PUT name
-// any other key of their rules in "unknown" (stored all the same).
+// (sql.js SET_KEYS: ≤ 1 row written). notify.mjs sends it on every run after a deploy — a run that is not the daily
+// schedule's sends only this — and before the first watched page of a full run: WATCHED then ranks only pairs of these
+// keys (a rule naming any other key is stored all the same and waits).
 async function storeKeys(request, env) {
   const body = await readJson(request, INTERNAL_MAX);
   const set = keySetJson(body && body.keys);
@@ -297,22 +296,26 @@ async function watched(env, url, now) {
 // POST /v1/internal/digest {run, entries} → {saved, skipped}. A pair not in snap yet is added only while snap holds fewer than
 // PAIR_CAP rows (sql.js DIGEST), with today (the Worker's clock) as its first day; one left out (skipped) waits for a row a
 // finish frees, and stamps stat 'capped' (GET /health "pairs": "capped") — the list is at its cap.
+// An expiring end date u must lie within the Worker's own day − FINISH_SLACK_DAYS … + END_DAYS (rules.js validEnd; the
+// factory sends u ≤ its day + 3): a later one would outlive sql.js PRUNE_XSENT's look-ahead, and none can pile up in
+// exp_sent (≤ (END_DAYS + 1) days × MAX_RULES entries). Else 400 BAD_DIGEST and nothing is written.
 async function digest(request, env, now) {
   const body = await readJson(request, INTERNAL_MAX);
   if (!body || !validRun(body.run) || !Array.isArray(body.entries) || body.entries.length > DIGEST_MAX) throw new Bad(400, "BAD_DIGEST");
-  const entries = body.entries.map(cleanEntry);
-  if (entries.some((e) => !e)) throw new Bad(400, "BAD_DIGEST");
+  const entries = body.entries.map(cleanEntry), today = kstDay(now);
+  if (entries.some((e) => !e || (e.u != null && !validEnd(e.u, today)))) throw new Bad(400, "BAD_DIGEST");
   if (!entries.length) return { saved: 0, skipped: 0 };
-  const res = await env.DB.prepare(Q.DIGEST).bind(body.run, JSON.stringify(entries), num(env.PAIR_CAP, PAIR_CAP), kstDay(now)).run();
+  const res = await env.DB.prepare(Q.DIGEST).bind(body.run, JSON.stringify(entries), num(env.PAIR_CAP, PAIR_CAP), today).run();
   const saved = Math.min(entries.length, (res && res.meta && res.meta.changes) || 0), skipped = entries.length - saved;
   if (skipped) {
-    await env.DB.prepare(Q.STAT_CAPPED).bind(dayNum(kstDay(now))).run();
+    await env.DB.prepare(Q.STAT_CAPPED).bind(dayNum(today)).run();
     console.log("alerts digest: new pairs wait for room under PAIR_CAP");
   }
   return { saved, skipped };
 }
 
-// POST /v1/internal/finish {run, today, data?} → {weekly, expiring, changed}. One atomic batch: mark the phones, THEN
+// POST /v1/internal/finish {run, today, data?} → {weekly, expiring, cleared, changed}. One atomic batch: mark the phones
+// (expiring = phones given an expiring notice to send, cleared = stale expiring marks removed — sql.js MARK_EXPIRING), THEN
 // promote the pending numbers to the baseline (a failure promotes nothing), and note the day and the data.json (data = its
 // sha256; stat 'finish' + 'data': watched answers done to the same data the same day).
 // Every date here comes from the Worker's own clock (today = kstDay(now)): the body's `today` and the run's day part only
@@ -327,7 +330,6 @@ async function finish(request, env, now) {
     env.DB.prepare(Q.PRUNE_XSENT).bind(today),
     env.DB.prepare(Q.MARK_WEEKLY),
     env.DB.prepare(Q.MARK_EXPIRING).bind(body.run),
-    env.DB.prepare(Q.CLEAR_STALE_X).bind(body.run),
     env.DB.prepare(Q.PROMOTE),
     env.DB.prepare(Q.PRUNE_SNAP).bind(body.run),
     env.DB.prepare(Q.PRUNE_STAT).bind(today),
@@ -336,7 +338,9 @@ async function finish(request, env, now) {
     body.data ? env.DB.prepare(Q.STAT_DATA).bind(dataTag(body.data)) : env.DB.prepare(Q.CLEAR_DATA),
   ]);
   const ch = (i) => (res[i] && res[i].meta && res[i].meta.changes) || 0;
-  const out = { weekly: ch(1), expiring: ch(2), changed: ch(4) };
+  const x = (res[2] && res[2].results) || [];
+  const marked = x.filter((r) => r.marked).length;
+  const out = { weekly: ch(1), expiring: marked, cleared: x.length - marked, changed: ch(3) };
   console.log("alerts finish", JSON.stringify(out));
   return out;
 }
@@ -369,7 +373,7 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
   // the probes (held rows whose minute has come, a few per push origin: sql.js CLAIM_P) first, then the queue in what is left
   const [, , cache, origins, cp, cx, cw, cf] = await env.DB.batch([
     env.DB.prepare(Q.RESET_STALE).bind(minute),
-    env.DB.prepare(Q.DROP_ENDED).bind(today),
+    env.DB.prepare(Q.DROP_ENDED).bind(today, todayN),
     env.DB.prepare(Q.VAPID_CACHE),
     env.DB.prepare(Q.ORIGIN_STATS).bind(`${tag} `),
     env.DB.prepare(Q.CLAIM_P).bind(minute, PROBES, Math.min(PROBE_SLOTS, limit)),
