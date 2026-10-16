@@ -22,6 +22,7 @@ from common import Fetcher, clean, now_iso, write_raw
 MAIN = "https://drevers.com/"
 NAMELESS = {"yeonsinnae": "연신내점", "dongtan": "동탄점", "siheung-baegot": "시흥배곧점"}
 TOGGLE = re.compile(r"toggle\((\{.*\})\)\s*$", re.S)
+SEX = re.compile(r"여성|남성|여자|남자|女|男")
 
 
 def branch_sites(html):
@@ -46,8 +47,29 @@ def event_paths(html, site):
 
 
 def items(html, branch, url, ts):
-    rows = []
-    for inp in BeautifulSoup(html, "html.parser").select("input.price-check"):
+    rows, heads = [], []
+    # The page as read (2026-10-16 raw probe, 강남·광주상무 /event-month-laser-removal/): div.category-section (header = the JSON
+    # 'category', '레이저 제모') > div.item-group, one per procedure ('겨드랑이' › '1회' / '5회'). Between them stand item groups with
+    # no price that only carry a heading, span.group-title.hp-mk-box: '여성) BEST', '여성 제모(5회 기준)', '남성 제모', and a device
+    # '젠틀맥스 프로플러스 제모'. Every item after a heading belongs to it — the women's and the men's menus list '겨드랑이 5회' at
+    # 13,000 and 65,000 under one category, and the JSON says nothing of the sex. The headings go into the group after the event
+    # name ('… 혜택 · 여성 제모(5회 기준)'), where build2/clean.py reads the sex. A heading naming a sex takes the place of the last
+    # one and keeps the device heading before it; any other heading starts a new menu. An item group holding only a description
+    # line (':… '아리온' 장비 사용') starts a new menu too: 광주상무 lists the 젠틀맥스 menus, then that line, then the same four
+    # menus again for the other device.
+    for el in BeautifulSoup(html, "html.parser").select("div.category-section, div.item-group, input.price-check"):
+        if el.name == "div":
+            if "category-section" in el.get("class", []):
+                heads = []
+            elif not el.select_one("input.price-check"):
+                head = el.select_one(".group-title.hp-mk-box")
+                if head and clean(head.get_text(" ")):
+                    t = clean(head.get_text(" "))
+                    heads = [h for h in heads if not SEX.search(h)] + [t] if SEX.search(t) else [t]
+                elif not el.select_one(".group-title") and el.select_one(".desc-line"):
+                    heads = []
+            continue
+        inp = el
         m = TOGGLE.search(inp.get("@change", "") or "")
         if not m:
             continue
@@ -61,7 +83,7 @@ def items(html, branch, url, ts):
         # the section names a product — sections such as '20만원 39.21만' or '미백 | 톤업 | 색소 | 토닝' are not product words
         cat, name = clean(x.get("category", "")), clean(x.get("name", ""))
         rows.append({"brand": "닥터에버스", "branch": branch, "category": cat,
-                     "group": clean(x.get("event_name", "")), "option": name, "sale": int(x["price"]),
+                     "group": " · ".join(t for t in [clean(x.get("event_name", ""))] + heads if t), "option": name, "sale": int(x["price"]),
                      "orig": int(x["original_price"]) if x.get("original_price") else "", "addon": 0, "until": "",
                      "url": url, "fetched_at": ts})
     return rows
