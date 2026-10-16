@@ -136,10 +136,11 @@ def new_until(text):
 
 def new_items(html, branch, url, ts):
     """rows of one new-platform page (a procedure or an event): its option boxes as the site gives them. The group is the page
-    title, the category the menu heading the procedure's breadcrumb links to ('쁘띠', '리프팅'); '첫방문' (isFirst) and the
-    explanation stay with the name"""
+    title, the category the menu label the procedure's breadcrumb links to — the sub-item's label when the menu lists it
+    ('보톡스'), else that menu column's heading ('쁘띠', '리프팅'); '첫방문' (isFirst) and the explanation stay with the name.
+    A price of 0 is kept (the build drops it with its reason, like the old pages); no price at all ('상담', null) is skipped"""
     text = flight(html)
-    boxes = [v for v in _values(text, r'\{"eventOptions":\[') if isinstance(v, dict)]
+    boxes = [v for v in _values(text, r'\{"(?:eventOptions|packageOptions)":') if isinstance(v, dict)]
     crumbs = _values(text, r'\["\$","nav",null,\{"aria-label":"breadcrumb"')
     titles = _texts(crumbs[0]) if crumbs else []
     group = clean(titles[-1]) if titles else ""
@@ -153,14 +154,16 @@ def new_items(html, branch, url, ts):
     rows, seen = [], set()
     for box in boxes:
         for o in (box.get("eventOptions") or []) + (box.get("packageOptions") or []):
-            if not isinstance(o, dict) or o.get("id") in seen:
+            k = o.get("id") or (o.get("name"), o.get("salePrice"), o.get("longDescription")) if isinstance(o, dict) else None
+            if k is None or k in seen:
                 continue
-            seen.add(o.get("id"))
+            seen.add(k)
             if isinstance(o.get("eventHref"), str) and o["eventHref"].startswith("/"):
                 continue                                    # an event's option shown on a procedure page: read on the event page
-            sale = o.get("salePrice") if isinstance(o.get("salePrice"), int) else won(o.get("salePrice"))
-            if not sale:
+            raw = o.get("salePrice")
+            if raw is None or isinstance(raw, bool) or (isinstance(raw, str) and not re.search(r"\d", raw)):
                 continue                                    # no price ('상담')
+            sale = raw if isinstance(raw, int) else won(raw)
             orig = o.get("originalPrice") if isinstance(o.get("originalPrice"), int) else won(o.get("originalPrice"))
             name = clean(str(o.get("name") or ""))
             expl = o.get("longDescription")

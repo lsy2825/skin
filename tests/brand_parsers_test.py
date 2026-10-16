@@ -169,6 +169,12 @@ odd = cellin.new_items(_p('7:["$","$L2",null,{"eventOptions":['
                           '{"id":"a","name":"아쿠아필","salePrice":29000,"isFirst":true}],"packageOptions":null}]\n'), "x", Y + "/ko/procedures/p", "t")
 ok("셀린 새 사이트: '첫방문' badge kept in the name; no price (상담) skipped; an event's option on a procedure page left to the event page; "
    "same option id once; list price 0 = none", [(r["option"], r["sale"], r["orig"]) for r in odd] == [("아쿠아필 (첫방문)", 29000, "")], odd)
+odd2 = cellin.new_items(_p('7:["$","$L2",null,{"packageOptions":['
+                           '{"name":"LDM 1회","salePrice":50000},{"name":"LDM 3회","salePrice":140000},{"name":"상담","salePrice":"상담"},'
+                           '{"name":"무료 진정관리","salePrice":0}],"eventOptions":null}]\n'), "x", Y + "/ko/procedures/p", "t")
+ok("셀린 새 사이트: options without an id are all kept, a box whose eventOptions is null still gives its packageOptions, "
+   "'상담' skipped, a 0 price kept for the build to drop with its reason (2026-10-16 검토)",
+   [(r["option"], r["sale"]) for r in odd2] == [("LDM 1회", 50000), ("LDM 3회", 140000), ("무료 진정관리", 0)], odd2)
 ok("셀린 새 사이트: an event with no end date has none", cellin.new_until("이벤트기간 : 26.09.03 ~ ") == "" and cellin.new_until("이벤트기간 : {range}") == "")
 
 # the collectors' robots.txt / Crawl-delay manners (scrape/common.py Fetcher, lienjang, branches, the weekly gate; no network):
