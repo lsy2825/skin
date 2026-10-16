@@ -7,7 +7,8 @@ Rows use rowspans, so the item name is the cell just before the first price cell
 Prices are written like '3.9만원' / '1,200,000원'; a range (최저~최고) keeps the minimum as sale.
 robots.txt: each branch host is checked through the shared gate (scrape/common.py Fetcher(robots=True): the answer scrapers
 read earlier in the run, our own name) and the host's Crawl-delay (180 s) is enforced as the minimum gap between any two requests
-to it in the run — the price page, a retry and the address step (scrape/branches.py) each wait their turn (2026-10-15).
+to it in the run — the price page and the address step (scrape/branches.py) each wait their turn (2026-10-15). A host asking for
+30 s or more gets one try per page per run (common.py LONG_DELAY); a host without a Crawl-delay gets up to 2 tries.
 """
 import re
 from bs4 import BeautifulSoup

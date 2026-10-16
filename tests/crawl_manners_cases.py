@@ -4,7 +4,7 @@
   - the weekly gate skips only a brand that is blocked or missing from the source check, and the run goes on.
 Run: python3 tests/crawl_manners_cases.py — tests/brand_parsers_test.py runs it too, so the PR checks (.github/scripts/pr_checks.sh,
 'brand collectors') run it on every PR."""
-import os, sys, tempfile, types
+import os, sys, tempfile, threading, time, types
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scrape"))
@@ -68,6 +68,7 @@ def reset():
         if os.path.exists(p):
             os.remove(p)
     common._clock = None
+    common._busy.clear()
     sleeps.clear()
     T[0] = 1000.0
 
@@ -82,11 +83,55 @@ common.stamp("slow.example")                      # a request made at t=1000
 T[0] = 1100
 common.wait_turn("slow.example")
 ok("a host with Crawl-delay 180 is not asked again before 180 s have passed (waited the missing 80 s)", abs(sum(sleeps) - 80) < 1e-6 and T[0] == 1180, (sleeps, T[0]))
+common.stamp("slow.example")                      # that request ended at t=1180
+T[0] = 1400
 sleeps.clear()
 common.wait_turn("slow.example")
 ok("after the delay no more waiting", not sleeps, sleeps)
+common.stamp("slow.example")
 common.wait_turn("other.example")
 ok("a host without a delay never waits, whatever the clock says", not sleeps, sleeps)
+
+# a turn taken and never given back (a caller that did not stamp) is given up after BUSY_MAX, not held for ever
+reset()
+common.set_delay("stuck.example", 5)
+common.wait_turn("stuck.example")                 # takes the turn at t=1000, no stamp
+common.wait_turn("stuck.example")
+ok("a turn nobody gave back is given up after BUSY_MAX seconds", abs(T[0] - 1000 - common.BUSY_MAX) <= 1, (T[0], len(sleeps)))
+common.stamp("stuck.example")
+
+# threads reading one host with a Crawl-delay at the same time go one by one (2026-10-16 검토: before, they all went together)
+reset()
+_fake = common._now, common._sleep, common.time
+common._now, common._sleep, common.time = time.time, time.sleep, time
+starts, ends = [], []
+
+
+class SlowNet(Net):
+    def request(self, method, url, timeout=0, **kw):
+        starts.append(time.time())
+        time.sleep(0.05)
+        ends.append(time.time())
+        return Resp(200, "ok")
+
+
+try:
+    common.set_delay("race.example", 0.2)
+    fs = []
+    for _ in range(4):
+        fr_ = common.Fetcher(gap=0, retries=1)
+        fr_.s = SlowNet({})
+        fs.append(fr_)
+    th = [threading.Thread(target=fr_.get, args=("https://race.example/p",)) for fr_ in fs]
+    for x in th:
+        x.start()
+    for x in th:
+        x.join()
+finally:
+    common._now, common._sleep, common.time = _fake
+st, en = sorted(starts), sorted(ends)
+ok("four threads on one host with Crawl-delay 0.2 s: each request starts ≥ 0.2 s after the one before ended",
+   len(st) == 4 and all(st[k + 1] - en[k] >= 0.19 for k in range(3)), [round(st[k + 1] - en[k], 3) for k in range(len(st) - 1)])
 
 # --- gate: robots.txt answers
 reset()
@@ -130,6 +175,11 @@ reset()
 fq = fetcher({"https://q.example/p": Resp(500)}, retries=3)
 fq.get("https://q.example/p")
 ok("a host without a long delay still gets its retries", sum(1 for _, u in fq.s.log if u == "https://q.example/p") == 3, fq.s.log)
+for code in (401, 403, 429):
+    fz = fetcher({f"https://z.example/{code}": Resp(code)}, retries=3)
+    fz.get(f"https://z.example/{code}")
+    ok(f"a page answering {code} is asked once, not again with the same name in this run",
+       sum(1 for _, u in fz.s.log if u == f"https://z.example/{code}") == 1 and fz.last_error == f"HTTP {code}", fz.s.log)
 
 # --- shared robots answer between steps
 reset()

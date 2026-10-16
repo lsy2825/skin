@@ -38,8 +38,8 @@ def run(args):
 def gate(policy, key):
     """why a brand is not scraped this run, or '': 'blocked' = robots.txt of its sites disallows the paths (or could not be read),
     'no_record' = the source check (data2/sources.json) has no entry for it, so nobody has looked at its robots.txt (2026-10-15:
-    five brands were scraped on a sources.json that did not list them). Only that brand is skipped — its last accepted file
-    stays and the report says why; the run goes on."""
+    five brands were scraped on a sources.json that did not list them). Only that brand is skipped — its last accepted file,
+    if there is one, stays (a brand never accepted stays out of the data) and the report says why; the run goes on."""
     entry = policy.get(key)
     if entry is None:
         return "no_record"

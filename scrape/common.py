@@ -21,16 +21,22 @@ UA = f"{BOT_NAME}/1.0 (+{BOT_INFO_URL}; weekly public price comparison; robots.t
 
 # 2026-10-15 (C5 re-check): what the collector does about robots.txt, in one place.
 #  - A host's Crawl-delay is a minimum gap between ANY two requests to it, across the steps of one run (sources.py, the price
-#    scraper, branches.py are separate processes): the last request time per host is kept in data2/.host_clock.json.
+#    scraper, branches.py are separate processes): the last request time per host is kept in data2/.host_clock.json. Inside one
+#    process the threads take turns (wait_turn takes the host, stamp gives it back), so a scraper reading several branches of
+#    one host at once still sends them one by one, the gap after the end of the one before (2026-10-16 검토).
 #  - robots.txt texts read in the last 36 h are kept in data2/.robots_cache.json (sources.py writes it first in every run), so a
 #    later step does not ask for the same file again.
 #  - A Fetcher(robots=True) asks that rule set before every request and skips a path the file disallows for YoonSiljangBot
-#    (RFC 9309: a 4xx answer = no rules; no answer or 5xx = treat as disallowed, same as scrape/sources.py).
+#    (RFC 9309: a 4xx answer = no rules, except 401/403/429 = disallowed; no answer or 5xx = treat as disallowed, same as
+#    scrape/sources.py).
+#  - A page answering 401, 403 or 429 (the site refusing us, or asking us to slow down) is not asked again in the same run.
 CLOCK_PATH = os.path.join(ROOT, "data2", ".host_clock.json")
 ROBOTS_PATH = os.path.join(ROOT, "data2", ".robots_cache.json")
 ROBOTS_MAX_AGE = 36 * 3600
 _lock = threading.Lock()
 _clock = None                      # host → {"at": last request time, "delay": Crawl-delay}; CLOCK_PATH, read once per process
+_busy = {}                         # host → when a request to it (this process) took its turn; stamp() ends the turn
+BUSY_MAX = 120                     # a turn not ended in this long (a request is at most 25 s, plus redirects) is given up
 _now, _sleep = time.time, time.sleep      # replaced by tests
 
 
@@ -78,23 +84,32 @@ def host_delay(host):
 
 
 def wait_turn(host):
-    """block until Crawl-delay seconds have passed since the last request to this host (any step of this run, and an earlier
-    run on the same disk)"""
+    """block until a request may go to this host: Crawl-delay seconds since the last request to it ended (any step of this run,
+    and an earlier run on the same disk) and no other request to it under way in this process. The turn is taken under the
+    lock, so threads that find the gap over at the same moment still go one at a time; stamp() ends the turn"""
     d = host_delay(host)
     if not d:
         return
     while True:
         with _lock:
-            left = _clock_map()[host]["at"] + d - _now()
-        if left <= 0:
-            return
+            now = _now()
+            since = _busy.get(host)
+            if since is not None and now - since < BUSY_MAX:
+                left = min(1.0, d)                 # another thread's request to this host is under way
+            else:
+                left = _clock_map()[host]["at"] + d - now
+                if left <= 0:
+                    _busy[host] = now
+                    return
         _sleep(min(left, d))
 
 
 def stamp(host):
+    """a request to this host has ended: the Crawl-delay counts from now, and the next request may take its turn"""
     if host_delay(host):
         with _lock:
             _clock_map()[host]["at"] = _now()
+            _busy.pop(host, None)
             _save(CLOCK_PATH, _clock)
 
 
@@ -181,6 +196,7 @@ def robots_delay(status, text):
 
 
 LONG_DELAY = 30          # seconds of Crawl-delay from which a failed page is not retried in the same run
+REFUSED = (401, 403, 429)           # answers that mean 'not you' or 'slow down': no retry in the same run
 
 
 class Fetcher:
@@ -255,6 +271,10 @@ class Fetcher:
             # whole delay again, and a few failing pages could push the run past its time limit (2026-10-15 검토: up to ~60 min).
             # The page is tried again next run.
             if host_delay(host) >= LONG_DELAY:
+                break
+            # a refusal or 'too many requests' is not asked again with the same name: the page is tried next run (2026-10-16
+            # 검토 — before, 401/403/429 were retried twice like a timeout)
+            if r is not None and r.status_code in REFUSED:
                 break
             time.sleep(2 * attempt)
         self.last_error = err
