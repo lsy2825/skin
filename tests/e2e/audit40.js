@@ -21,8 +21,10 @@ const KL = Object.fromEntries(D.keys.map(([id, , l]) => [id, l]));
 const rowsOfKey = (id) => ROWS.filter((r) => (S[r[7]] || '').split(' ').includes(id));
 
 // ---- data
-// the session count is the largest 'N회' in the name ('※10회 + 10회 한정가 진행시 … 20회 추가' = 20)
-const sessBad = (r) => { const n = S[r[2]]; if (!/(\d+)\s*회\s*(한정|체험)/.test(n)) return false; const mx = Math.max(...[...n.matchAll(/(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))/g)].map((m) => +m[1])); return mx >= 2 && r[8] !== mx && r[8] !== 99; };
+// the session count is the largest 'N회' in the name ('※10회 + 10회 한정가 진행시 … 20회 추가' = 20). A purchase limit is not a
+// count: '최대 3회', '1인 2회', '(*최대 3회 한정)' — 'N회 한정' without 가 (C #80, the same words as build2/xkeys.py LIMIT·LIMIT_NOTE)
+const LIMIT = /최대\s*\d+\s*회|(?<!\d)1\s*인\s*(?:당\s*)?(?:최대\s*)?\d+\s*회/g, LIMIT_NOTE = /\d+\s*회\s*한정(?!\s*(?:특\s*)?가)/g;
+const sessBad = (r) => { const n = S[r[2]].replace(LIMIT, ' ').replace(LIMIT_NOTE, ' '); if (!/(\d+)\s*회\s*(한정|체험)/.test(n)) return false; const mx = Math.max(...[...n.matchAll(/(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))/g)].map((m) => +m[1])); return mx >= 2 && r[8] !== mx && r[8] !== 99; };
 ok('A1 횟수: "N회 한정가·체험가"는 N회로 읽음(1회로 읽은 줄 0개)', !ROWS.some(sessBad), ROWS.filter(sessBad).slice(0, 3).map((r) => S[r[2]]).join(' / '));
 ok('A2 비교 묶음 하나에 다른 용량 없음', !(A.keyMixedQty || []).length, JSON.stringify((A.keyMixedQty || []).slice(0, 2)));
 ok('A3 비교 묶음 하나에 다른 횟수 없음', !(A.keyMixedSess || []).length, JSON.stringify((A.keyMixedSess || []).slice(0, 2)));
