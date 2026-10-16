@@ -39,7 +39,16 @@ run "branch addresses (own address, loose forms, on saved public pages)" python3
 if [ ! -f data2/db/offers.csv ] && [ -f data2/clean.csv ]; then python3 build2/export_db.py >/dev/null 2>&1; fi
 if [ -f data2/db/offers.csv ]; then run "backup / restore" bash tests/db/backup_restore_test.sh
 else echo "SKIP | backup / restore | no data2/db/offers.csv and no data2/clean.csv — run: python build2/weekly.py --skip-scrape && python build2/export_db.py"; fi
-for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push; do
+for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push alert_region addon_col cond_badge spec_notes new_chains; do
   run "e2e $t" node tests/e2e/$t.js
+done
+# A screen check added later (tests/e2e/ belongs to chat B; this file to A) runs too, without waiting for this list to name
+# it: every other tests/e2e/*.js except helper modules (E2E_HELPERS — they only export code). The PR checks run no browser.
+E2E_LISTED=" $(sed -n 's/^for t in \(.*\); do$/\1/p' "$0" | head -1) "
+E2E_HELPERS=" rows "
+for f in tests/e2e/*.js; do
+  t=$(basename "$f" .js)
+  case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac
+  run "e2e $t (not yet in the list above)" node "tests/e2e/$t.js"
 done
 exit $fail
