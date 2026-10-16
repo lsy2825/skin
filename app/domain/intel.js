@@ -1,4 +1,5 @@
-// Price history statistics and price-alert rules (requirements 5.2 and 6). Pure functions, no DOM.
+// Price history statistics, the 가격 변동 notice for newly collected chains and price-alert rules (requirements 5.2 and 6).
+// Pure functions, no DOM.
 // window.Intel in the app, require()d by tests/intel.test.js.
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory(require("./stats.js"));
@@ -26,6 +27,33 @@
     const d = new Date(today + "T00:00:00Z");
     d.setUTCDate(d.getUTCDate() - n);
     return d.toISOString().slice(0, 10);
+  }
+
+  // ---- chains collected for the first time (가격 변동 notice; data.json meta.brandFirst {chain: 'YYYY-MM-DD'}, chat C3 ·
+  // 개선 보고서 E9). A chain first collected after the previous snapshot `prev` (achg.prev) is new as a whole:
+  // build2/appdata.py keeps its prices out of achg.new (the '새로 생겼어요' tile) by the same test, first day > prev. names: the chains
+  // to consider, in screen order (the app passes the switched-on chains with a branch in the region — a chain without
+  // branches still gets a date); upto: this collection's day, a later first day is ignored. Returns [{date, label '10월 14일',
+  // brands}] oldest first, and [] without brandFirst (data.json before 2026-10-15), without a previous snapshot, or when
+  // every chain was already in it — so the notice goes away by itself after the next collection.
+  const ISO = /^\d{4}-\d{2}-\d{2}$/;
+  const koDay = (d) => `${+d.slice(5, 7)}월 ${+d.slice(8, 10)}일`;
+  function newChains(first, prev, names, upto) {
+    if (!first || typeof first !== "object" || typeof prev !== "string" || !ISO.test(prev)) return [];
+    const by = new Map(), seen = new Set();
+    for (const n of names || []) {
+      const d = Object.prototype.hasOwnProperty.call(first, n) ? first[n] : null;
+      if (seen.has(n) || typeof d !== "string" || !ISO.test(d) || d <= prev || (upto && d > upto)) continue;
+      seen.add(n);
+      if (!by.has(d)) by.set(d, []);
+      by.get(d).push(n);
+    }
+    return [...by.keys()].sort().map((d) => ({ date: d, label: koDay(d), brands: by.get(d) }));
+  }
+  // the one sentence the 가격 변동 screen shows for those groups ('' = no notice)
+  function newChainsNote(groups) {
+    if (!groups || !groups.length) return "";
+    return `${groups.map((g) => `${g.brands.join("·")} 체인은 ${g.label}`).join("부터, ")}부터 모았어요. 처음 모은 체인이라 가격이 '새로 생겼어요'에 하나씩 나오지 않고, 다음 수집부터 변동이 보여요.`;
   }
 
   // ---- alerts. alert: {type, target?, base?, last?, lastAt?}, now: {value, count?, until?}, today 'YYYY-MM-DD'.
@@ -103,5 +131,5 @@
     return out;
   }
 
-  return { median, historyStats, daysBefore, evalAlert, evalWatch, WATCH_T };
+  return { median, historyStats, daysBefore, koDay, newChains, newChainsNote, evalAlert, evalWatch, WATCH_T };
 });
