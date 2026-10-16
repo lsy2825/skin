@@ -29,14 +29,18 @@ UA = f"{BOT_NAME}/1.0 (+{BOT_INFO_URL}; weekly public price comparison; robots.t
 #  - A Fetcher(robots=True) asks that rule set before every request and skips a path the file disallows for YoonSiljangBot
 #    (RFC 9309: a 4xx answer = no rules, except 401/403/429 = disallowed; no answer or 5xx = treat as disallowed, same as
 #    scrape/sources.py).
-#  - A page answering 401, 403 or 429 (the site refusing us, or asking us to slow down) is not asked again in the same run.
+#  - A page answering 401, 403 or 429 (the site refusing us, or asking us to slow down) is not retried within that fetch, and
+#    after a 429 this process asks that host nothing more (the rest waits for the next run). Another step of the run (a separate
+#    process: sources.py samples, branches.py) may still ask the same address once.
 CLOCK_PATH = os.path.join(ROOT, "data2", ".host_clock.json")
 ROBOTS_PATH = os.path.join(ROOT, "data2", ".robots_cache.json")
 ROBOTS_MAX_AGE = 36 * 3600
 _lock = threading.Lock()
 _clock = None                      # host → {"at": last request time, "delay": Crawl-delay}; CLOCK_PATH, read once per process
-_busy = {}                         # host → when a request to it (this process) took its turn; stamp() ends the turn
-BUSY_MAX = 120                     # a turn not ended in this long (a request is at most 25 s, plus redirects) is given up
+_busy = {}                         # host → (when, thread) a request to it (this process) took its turn; stamp(end=True) ends it
+BUSY_MAX = 120                     # a turn not ended in this long is given up (requests' timeout of 25 s is per read, so a slow
+                                   # answer can run longer); the next request still waits Crawl-delay from when that turn began
+_slowed = set()                    # hosts that answered 429 in this process: nothing more is asked of them this run
 _now, _sleep = time.time, time.sleep      # replaced by tests
 
 
@@ -86,30 +90,34 @@ def host_delay(host):
 def wait_turn(host):
     """block until a request may go to this host: Crawl-delay seconds since the last request to it ended (any step of this run,
     and an earlier run on the same disk) and no other request to it under way in this process. The turn is taken under the
-    lock, so threads that find the gap over at the same moment still go one at a time; stamp() ends the turn"""
-    d = host_delay(host)
-    if not d:
-        return
+    lock, so threads that find the gap over at the same moment still go one at a time. → True when this call took the turn
+    (its request then ends it with stamp(host, end=True)); False for a host without a Crawl-delay"""
     while True:
+        d = host_delay(host)                       # read again each time: another thread may learn a longer delay meanwhile
+        if not d:
+            return False
         with _lock:
             now = _now()
-            since = _busy.get(host)
-            if since is not None and now - since < BUSY_MAX:
+            at = _clock_map()[host]["at"]
+            busy = _busy.get(host)
+            if busy and now - busy[0] < BUSY_MAX:
                 left = min(1.0, d)                 # another thread's request to this host is under way
             else:
-                left = _clock_map()[host]["at"] + d - now
+                left = max(at, busy[0] if busy else 0.0) + d - now
                 if left <= 0:
-                    _busy[host] = now
-                    return
+                    _busy[host] = (now, threading.get_ident())
+                    return True
         _sleep(min(left, d))
 
 
-def stamp(host):
-    """a request to this host has ended: the Crawl-delay counts from now, and the next request may take its turn"""
+def stamp(host, end=False):
+    """a request to this host has ended: the Crawl-delay counts from now. end=True also gives back the turn this thread took
+    in wait_turn (a request that took none — no delay known when it began — leaves another thread's turn alone)"""
     if host_delay(host):
         with _lock:
             _clock_map()[host]["at"] = _now()
-            _busy.pop(host, None)
+            if end and _busy.get(host, (0, None))[1] == threading.get_ident():
+                _busy.pop(host)
             _save(CLOCK_PATH, _clock)
 
 
@@ -216,21 +224,25 @@ class Fetcher:
         d = self.gap - (time.time() - self.last)
         if d > 0:
             time.sleep(d)
-        wait_turn(host)                  # Crawl-delay of that host, counted over every step of the run
+        took = wait_turn(host)           # Crawl-delay of that host, counted over every step of the run
         self.last = time.time()
+        return took
 
     def _request(self, url, method="GET", **kw):
         """one request with the gaps; → (response or None, error text)"""
         host = urlparse(url).netloc
-        self._wait(host)
+        took = self._wait(host)
         try:
             r = self.s.request(method, url, timeout=self.timeout, **kw)
             self.count += 1
+            if r.status_code == 429:
+                with _lock:
+                    _slowed.add(host)
             return r, "" if r.status_code == 200 else f"HTTP {r.status_code}"
         except requests.RequestException as e:
             return None, type(e).__name__
         finally:
-            stamp(host)
+            stamp(host, end=took)
 
     def _robots(self, host):
         """(status, text) of a host's robots.txt — this Fetcher's memory, the shared cache, or one request; learns Crawl-delay"""
@@ -252,8 +264,12 @@ class Fetcher:
         return self._rules[host]
 
     def get(self, url, method="GET", **kw):
+        host = urlparse(url).netloc
+        if host in _slowed:              # it asked us to slow down: nothing more of it this run (2026-10-16 검토)
+            self.last_error = "HTTP 429 earlier on this host (this run)"
+            self.fails.append({"url": url, "error": self.last_error})
+            return None
         if self.robots:
-            host = urlparse(url).netloc
             status, text = self._robots(host)
             if not robots_allows(status, text, url):
                 self.last_error = "robots.txt disallows" if status == 200 else \
@@ -261,7 +277,6 @@ class Fetcher:
                 self.fails.append({"url": url, "error": self.last_error})
                 return None
         err = ""
-        host = urlparse(url).netloc
         for attempt in range(1, self.retries + 1):
             r, err = self._request(url, method, **kw)
             if r is not None and not err:
