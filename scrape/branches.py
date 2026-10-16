@@ -18,8 +18,21 @@ SIDO = r"(?:서울|경기|인천|부산|대구|대전|광주|울산|세종|충�
 ADDR = re.compile(SIDO + r"\s+[가-힣]+[시군구](?:\s+[가-힣]+[구군])?\s+[가-힣0-9]+(?:로|길)(?:\s*\d+(?:번)?길)?\s*\d+(?:-\d+)?")
 # lot-number address (세종특별자치시 나성동 745) when the page has no road address
 ADDR_LOT = re.compile(SIDO + r"\s+(?:[가-힣]+[시군구]\s+)?(?:[가-힣]+[구군]\s+)?[가-힣0-9]+[동리가]\s*\d+(?:-\d+)?")
-# text that follows an address on some pages and is not part of it
-JUNK = re.compile(r"\s*(네이버|카카오|지도|약도|전화|TEL|Tel|☎|오시는|주차|대표|사업자|\d{2,4}-\d{3,4}-\d{4}|0\d{2}).*$")
+# A phone number from a Korean area code (02, 031–064, 010–019, 070, 0502–0508, 080) in any spacing — (031) 647-6025,
+# 031.647.6025, 031 647 6025, 02)123-4567 — or one the 40-character window below cut short ('031-647-60' at the end). Not
+# when the number is glued to what is before it (a letter or digit, '~', '.', '-', also through an opening '('): so never
+# digits inside a building or lot number (천호대로 1024, 호계동 1042-1, 2층 202호), and 'T.031.647.6025', 'T.(031)647-6025'
+# stay whole as before (the dashed 'T.031-647-6025' is cut by JUNK's dash pattern, 'T.' stays). Not after a digit and ':'
+# or ',' (a time '진료 10:00', a price '39,000' at the end of the window), not from a number that is no area code
+# ('1588 0119', '토 09-14'). Until 2026-10-16 this was '0\d{2}' + a backspace byte where '\b' was meant, so it never
+# matched; '\b' alone would have cut 천호대로 1024 to '천호대로 1'.
+AREA = r"0(?:2|3[1-3]|4[1-4]|5[1-5]|6[1-4]|1[016-9]|70|50[2-8]|80)"
+PHONE = (r"(?<![\w~.-])(?<![\w~.-]\()(?<!\d[,:])\(?" + AREA
+         + r"\)?(?:[\s.)-]+\d{3,4}[\s.-]+\d{4}(?!\d)|(?:[\s.)-]+\d{1,4}){0,2}[\s.)-]*$)")
+# text that follows an address on some pages and is not part of it. TEL/Tel only as a word of its own: 'MERCURE 앰배서더
+# HOTEL' (밴스 홍대) was cut to 'HO' before 2026-10-16.
+JUNK = re.compile(r"\s*(네이버|카카오|지도|약도|전화|(?<![A-Za-z])(?:TEL(?:EPHONE)?|Tel(?:ephone)?)(?![A-Za-z])|☎|오시는|주차|대표|사업자"
+                  r"|\d{2,4}-\d{3,4}-\d{4}|" + PHONE + r").*$")
 
 
 # last resort (2026-10-15): an address with no 시군구 (세종특별자치시 나성북로 15) or with 읍·면 before the road (경남 양산시 물금읍

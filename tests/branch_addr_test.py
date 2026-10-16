@@ -5,8 +5,9 @@ branch gets no address rather than the company's.
 The address with its floor and building (address_full) stops at the page footer (2026-10-16: 'Copyright © …' after the
 쁨·밴스 footer address, the 셀린 footer links, 유앤아이 '내 위치에서 길 찾기'): on the saved 밴스·유앤아이·셀린 pages and on
 ppeum_bupyeong_min.html — NOT a saved page, a minimal one rebuilt from the text data2/branches.csv kept for 쁨 부평점 (the
-dev container cannot reach ppeum.com). The app's clean-up of addresses saved before that (build2/appdata.py clean_addr)
-on the stored texts, half-cut footer words included.
+dev container cannot reach ppeum.com). What JUNK cuts after the address (phone numbers from a real area code, 'TEL' —
+not 'HOTEL', not the digits of a lot or building number, a time or a price). The app's clean-up of addresses saved
+before that (build2/appdata.py clean_addr) on the stored texts, half-cut footer words included.
   python3 tests/branch_addr_test.py
 """
 import os, sys, types
@@ -76,6 +77,46 @@ check("쁨 홍대: '자세히보기' 단추 앞까지(역 안내는 그대로)",
       "서울특별시 마포구 양화로 140 H-cube 4층 2호선 홍대입구역 9번 출구 도보 2분")
 check("바닥글 낱말이 없으면 그대로(층·건물·괄호)", B._full("서울특별시 서초구 강남대로 423", "서울특별시 서초구 강남대로 423, 3층(서초동, 한승빌딩)"),
       "서울특별시 서초구 강남대로 423, 3층(서초동, 한승빌딩)")
+
+# --- what JUNK cuts after an address (2026-10-16): TEL only as a word of its own ('HOTEL' was cut to 'HO' — data2/branches.csv
+# 밴스 홍대 '… MERCURE 앰배서더 HO'); a phone number from its area code in any spacing, or cut short by the 40-character
+# window (the old '0\d{2}' + a backspace byte never matched); never digits inside a building or lot number
+t = "서울 마포구 양화로 144 (동교동, MERCURE 앰배서더 HOTEL) 3층 TEL 02-330-1234"
+check("밴스 홍대: 'HOTEL'은 주소(전에는 'HO'까지), 뒤의 'TEL 02-…'은 자름", B._full("서울 마포구 양화로 144", t),
+      "서울 마포구 양화로 144 (동교동, MERCURE 앰배서더 HOTEL) 3층")
+for label, text in (("Hotel·INTEL", "서울 강남구 테헤란로 1 Grand Hotel 3층, INTEL빌딩"),
+                    ("STELLA·Telecom", "서울 강남구 테헤란로 1 STELLA타워 Telecom센터 2층")):
+    check(f"영어 낱말 속 TEL·Tel은 그대로 — {label}", B.JUNK.sub("", text), text)
+for label, text in (("TEL.", "서울 강남구 테헤란로 1 3층 TEL.02-123-4567"), ("Tel:", "서울 강남구 테헤란로 1 3층 Tel: 02-123-4567"),
+                    ("한글·숫자에 붙은 TEL", "서울 강남구 테헤란로 1 3층TEL031-123-4567"), ("TELEPHONE", "서울 강남구 테헤란로 1 3층 TELEPHONE (02) 123-4567")):
+    check(f"전화 표시 TEL은 자름 — {label}", B.JUNK.sub("", text), "서울 강남구 테헤란로 1 3층")
+for label, tail in (("(031) 647-6025", " (031) 647-6025 진료시간 안내"), ("031.647.6025", " 031.647.6025"),
+                    ("031 647 6025", " 031 647 6025 평일 10시"), ("02)123-4567", ", 02)123-4567"), ("0507-1234-5678", " 0507-1234-5678")):
+    check(f"지역번호부터 전화번호는 자름 — {label}", B._full("경기 수원시 팔달구 효원로 1", "경기 수원시 팔달구 효원로 1 3층" + tail),
+          "경기 수원시 팔달구 효원로 1 3층")
+t = "경기 수원시 팔달구 효원로 1 그랜드프라자 빌딩 3층 301호~305호 (인계동) 031-647-6025 진료시간"
+check("40자 창이 자른 전화번호('031-647-60')도 자름", B._full("경기 수원시 팔달구 효원로 1", t),
+      "경기 수원시 팔달구 효원로 1 그랜드프라자 빌딩 3층 301호~305호 (인계동)")
+for label, text in (("쁨 범계 지번 1042-1", "경기도 안양시 동안구 시민대로 206 인탑스빌딩 6층 (호계동 1042-1) 4호선 범계역 1번 출구 도보"),
+                    ("천호대로 1024", "서울 강동구 천호대로 1024 (성내동, 힐스테이트 천호역 젠트리스), 지하1층"),
+                    ("원당대로 1035·401~405호", "인천광역시 검단구 원당대로 1035, 검단라페온빌 2차 4층 401~405호 (원당동)"),
+                    ("서초대로 301·202호·B01호", "서울 서초구 서초대로 301, 2층 202호, 203호, B01호"),
+                    ("1100로 3321·우편번호", "제주특별자치도 제주시 1100로 3321 (노형동) (우)06234"),
+                    ("층 끝의 번호", "대전광역시 서구 둔산동 1046, 9F~10F 1호선 시청역 2번 출구 도보 15분")):
+    check(f"건물·지번 번호는 그대로 — {label}", B.JUNK.sub("", text), text)
+# the phone pattern starts only at a real area code, not right after a digit and ':' or ',', and an opening '(' does not
+# hide what is before it — so no half-cut time, price or 1588 number is left where the window ends (review 2026-10-16)
+for label, tail in (("시간 10:00", " 진료 10:00"), ("시간 09:00", " 진료 09:00"), ("시간 12:02", " 진료 12:02"),
+                    ("금액 39,000", " 가격 39,000"), ("금액 1,031,000", " 가격 1,031,000"),
+                    ("지역번호 아닌 1588 0119", " 1588 0119"), ("지역번호 아닌 09-14", " 토 09-14"), ("날짜 2024 01 05", " 2024 01 05"),
+                    ("우편번호 조각", " (우)0623"), ("T.031.647.6025", " T.031.647.6025"), ("T.(031)647-6025", " T.(031)647-6025")):
+    text = "경기 수원시 팔달구 효원로 1 3층" + tail
+    check(f"창 끝 숫자는 그대로 — {label}", B.JUNK.sub("", text), text)
+for label, tail, want in (("문의:031 647 6025", " 문의:031 647 6025", " 문의:"), ("문의:(031)647-6025", " 문의:(031)647-6025", " 문의:"),
+                          (",031 647 6025", " ,031 647 6025", ""), ("0507 1234 5678", " 0507 1234 5678", ""),
+                          ("070 1234 5678", " 070 1234 5678", "")):
+    check(f"글자·쉼표 뒤 전화번호는 그대로 자름 — {label}",
+          B._full("경기 수원시 팔달구 효원로 1", "경기 수원시 팔달구 효원로 1 3층" + tail), "경기 수원시 팔달구 효원로 1 3층" + want)
 
 # --- the app's clean-up of texts saved before (build2/appdata.py clean_addr), stored data2/branches.csv texts
 for label, full, addr, want in (
