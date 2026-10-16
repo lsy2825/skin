@@ -143,7 +143,7 @@
       box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "시술 설명 검수 현황"), h("span", { class: "sp" }),
         h("a", { class: "btn sm gray", href: `${REPO}/blob/main/knowledge/README.md`, target: "_blank", rel: "noopener" }, "검수 방법")),
         h("div", { class: "sub" }, `항목 ${KB.entries.length}개 · ${Object.entries(kst).map(([k, v]) => `${(KB.statuses || {})[k] || k} ${v}`).join(" · ")} · 근거 출처 있음 ${KB.entries.filter((e) => e.sources.length).length} · 근거 자료 미정리 ${KB.entries.filter((e) => !e.sources.length).length}`),
-        h("div", { class: "sub", style: "margin-top:4px" }, `설명이 없는 제품군 ${FAM.filter((f) => !kbOf(f)).length}개 (병원 설명만 보여줘요)`)));
+        h("div", { class: "sub", style: "margin-top:4px" }, `설명이 없는 제품군 ${FAM.filter((f) => !kbOf(f)).length}개 (설명 칸이 안 보여요)`)));
       if (reps.length) box.append(h("div", { class: "card flush" }, h("div", { style: "padding:12px 12px 0" }, h("h3", {}, `이 기기에서 보낸 가격 신고 ${reps.length}개`)),
         h("ul", { class: "list" }, reps.slice(0, 10).map((x) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, x.n), h("span", { class: "sub" }, x.at), h("span", { class: "m" }, `${x.br.replace("|", " ")} · ${x.why}`)))))));
       box.append(h("div", { class: "card" }, h("h3", {}, "기능 플래그"), h("div", { class: "sub", style: "margin-top:4px" }, "법률 검토가 필요한 기능은 꺼 둬요(app/config.js flags)."),

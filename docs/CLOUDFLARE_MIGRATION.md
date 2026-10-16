@@ -27,6 +27,7 @@
 
 **바뀌지 않는 것:** 공장이 하는 일. 두 곳 모두 같은 스크립트 `tools/factory.sh`를 돌린다.
 판단(월요일·이벤트 종료) → 단위 테스트·비밀 정보 검사 → 수집·빌드 → 분류 대기열 → main에 저장 → 앱 배포 순서다.
+GitHub에서는 2026-10-16(#82)부터 마지막 배포만 토큰을 가진 다음 job이 한다(`weekly.yml` deploy → `tools/factory.sh deploy`). 공장 job에는 토큰이 없다.
 수집 규칙(robots.txt, `YoonSiljangBot`, 차단 우회 금지)도 그대로다.
 
 ## 2. 구성 요소
