@@ -53,6 +53,46 @@ ok("유앤아이: '전체보기' copy skipped, tab names as categories", "전체
 ok("유앤아이: end date from '이벤트 기간 : … ~ 2026.10.31'", {r["until"] for r in rows} == {"2026-10-31"})
 ok("유앤아이: first-visit tab marked in the group (condition tags read group + option)", any(r["group"].startswith("첫방문") for r in rows if "첫방문" in r["category"]))
 ok("유앤아이: '지점문의' boxes are not prices", not any(r["option"] == "소프웨이브 100샷" and not r["sale"] for r in rows))
+# each swiper's products under its own tab (2026-10-16): the tab button data-cate="<n>" belongs to the swiper id="tab<n>", and the
+# swipers are not in the buttons' order — pairing by position gave 21 of 강남점's 22 tabs another tab's name ('남성 제모' under
+# '쥬베룩', this month's events under '첫방문 이벤트' with a '첫방문' group). Read here straight from the page, not through uandi.py:
+# every row's tab = the button of the first swiper that lists its (group, option, price) — the collector keeps the first copy
+from bs4 import BeautifulSoup  # noqa: E402
+from common import clean as _txt, won as _won  # noqa: E402
+_area = BeautifulSoup(fx("uandi_home.html"), "html.parser").select_one("div.event_area")
+_btn = {"tab" + b["data-cate"]: _txt(b.get_text(" ")) for b in _area.select("button[data-cate]")}
+_tab_of = {}
+for _sw in _area.select("div.prd_list > div.swiper"):
+    for _b in _sw.select("li.price_box") if _sw.get("id") != "mainTab" else []:
+        _g, _o, _s = (_b.select_one(c) for c in (".prd_text", ".prd_info", ".discount .num"))
+        if _o and _s and _won(_s.get_text()):
+            _tab_of.setdefault((_txt(_g.get_text(" ")) if _g else "", _txt(_o.get_text(" ")), _won(_s.get_text())), _btn[_sw["id"]])
+_own = lambda r: r["group"][len(r["category"]) + 3:] if r["category"] and r["group"].startswith(r["category"] + " · ") else r["group"]
+_bad = [(r["category"], r["group"], r["option"]) for r in rows if _tab_of.get((_own(r), r["option"], r["sale"])) != r["category"]]
+ok("유앤아이: every row under the tab of the swiper it came from (button data-cate ↔ swiper id 'tab<n>')",
+   len(_tab_of) == len(rows) and not _bad, (len(_tab_of), len(rows), _bad[:3]))
+ok("유앤아이: 남성 제모 under its own tab, not '쥬베룩'",
+   {r["category"] for r in rows if r["group"].startswith("남성 얼굴 제모(젠틀맥스")} == {"젠틀맥스 프로플러스 남성제모"}
+   and not any("제모" in r["group"] for r in rows if r["category"] == "쥬베룩"))
+ok("유앤아이: the '첫방문' group only on the 첫방문 tab's rows (this month's events are not first-visit prices)",
+   {r["category"] for r in rows if r["group"].startswith("첫방문")} == {"첫방문 이벤트"}
+   and {r["group"] for r in rows if r["category"] == "이달의 이벤트"} == {"이달의 이벤트"})
+# the same mix-up on a small page: swipers in another order than the buttons, a hidden copy of a button, a '더보기' button
+# without data-cate, a swiper whose button is missing (no tab rather than a wrong one)
+_box = lambda g, o, p: (f'<li class="price_box"><p class="prd_text">{g}</p><p class="prd_info">{o}</p>'
+                        f'<p class="discount"><span class="num">{p:,}</span>원</p></li>')
+_swp = lambda i, *b: f'<div class="swiper" id="{i}"><div class="swiper-wrapper"><ul class="swiper-slide">{"".join(_box(*x) for x in b)}</ul></div></div>'
+_page = ('<div class="event_area"><div class="btn_wrap" id="limitedCate"><button class="btn_round active">전체보기</button>'
+         '<button data-cate="1">첫방문 이벤트</button><button data-cate="2">남성제모</button><button data-cate="3">쥬베룩</button>'
+         '<button data-cate="3" style="display:none">쥬베룩</button><button class="btn_round">더보기</button></div><div class="prd_list">'
+         + _swp("mainTab", ("쥬베룩", "쥬베룩 1cc", 49000)) + _swp("tab3", ("쥬베룩", "쥬베룩 1cc", 49000))
+         + _swp("tab2", ("얼굴 제모", "男) 인중 1회", 9000)) + _swp("tab9", ("두피", "두피 스케일링 1회", 30000))
+         + _swp("tab1", ("스킨케어", "아쿠아필 1회", 19000)) + "</div></div>")
+_rows = uandi.items(_page, "x점", "u", "t")
+ok("유앤아이: tabs paired by data-cate, not by position (a missing button gives no tab, '첫방문' group only on the 첫방문 tab)",
+   [(r["category"], r["group"], r["option"]) for r in _rows] == [("쥬베룩", "쥬베룩", "쥬베룩 1cc"), ("남성제모", "얼굴 제모", "男) 인중 1회"),
+                                                              ("", "두피", "두피 스케일링 1회"), ("첫방문 이벤트", "첫방문 이벤트 · 스킨케어", "아쿠아필 1회")],
+   [(r["category"], r["group"], r["option"]) for r in _rows])
 
 # 데이뷰
 sites = daybeau.branch_sites(fx("daybeau_branches.html"))

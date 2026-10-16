@@ -3,7 +3,11 @@
 usage: python scrape/uandi.py [--branches 강남점,잠실점] [--workers 6] [--gap 1.0]
 Branch list = a[data-domain] in the branch picker (data-domain = that branch's site, text = branch name). Per branch one
 page: the home page holds every price in div.event_area — tab buttons (전체보기, 이달의 이벤트, 첫방문 이벤트, 보톡스·윤곽 …)
-and one div.swiper per tab in the same order; the first swiper ('전체보기', id mainTab) repeats the others and is skipped.
+and one div.swiper per tab; the first swiper ('전체보기', id mainTab) repeats the others and is skipped. A tab button carries
+data-cate="<n>" and its products sit in the swiper with id="tab<n>". The swipers are NOT in the buttons' order (강남점 2026-10-14:
+buttons 197 이달의 이벤트 · 865 첫방문 이벤트 · … · 740 남성제모, swipers tab1096 쥬베룩 · tab1095 포텐자 · tab197 · …): pairing by
+position gave 21 of 강남점's 22 tabs another tab's name — 남성 제모 under '쥬베룩', this month's events under '첫방문 이벤트'
+(fixed 2026-10-16). A swiper whose button is not found gets no tab ('') — the page log counts its rows (no_tab).
 li.price_box: .prd_text (group), .prd_info (option), .origin .num (list price), .discount .num (price). A box without a
 price ('지점문의') is not a price and is skipped.
 The site says 'VAT 별도' next to the prices (probe 2026-10-14) -> data2/vat_policy.json.
@@ -28,11 +32,12 @@ def branch_sites(html):
 
 
 def tab_names(area):
-    names = []
-    for b in area.select("button"):
-        t = clean(b.get_text(" "))
-        if t and t != "더보기" and t not in names:
-            names.append(t)
+    """swiper id ('tab<n>') → the name on the tab button with data-cate="<n>" """
+    names = {}
+    for b in area.select("button[data-cate]"):
+        c, t = (b.get("data-cate") or "").strip(), clean(b.get_text(" "))
+        if c and t and t != "더보기":
+            names.setdefault(f"tab{c}", t)
     return names
 
 
@@ -47,10 +52,10 @@ def items(html, branch, url, ts):
     m = re.search(r"이벤트\s*기간\s*:?\s*\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\s*~\s*(\d{4})\.\s?(\d{1,2})\.\s?(\d{1,2})", soup.get_text(" "))
     until = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}" if m else ""
     rows, seen = [], set()
-    for i, sw in enumerate(swipers):
+    for sw in swipers:
         if sw.get("id") == "mainTab":
             continue
-        tab = names[i] if i < len(names) else ""
+        tab = names.get((sw.get("id") or "").strip(), "")
         for box in sw.select("li.price_box"):
             g, o = box.select_one(".prd_text"), box.select_one(".prd_info")
             sale, orig = box.select_one(".discount .num"), box.select_one(".origin .num")
@@ -73,7 +78,8 @@ def scrape_branch(name, site, gap):
     f, ts = Fetcher(gap=gap), now_iso()
     r = f.get(site + "/")
     rows = items(r.text, name, site + "/", ts) if r else []
-    return name, rows, {"branch": name, "site": site, "ok": bool(r) and not f.fails, "rows": len(rows), "requests": f.count, "fails": f.fails}
+    return name, rows, {"branch": name, "site": site, "ok": bool(r) and not f.fails, "rows": len(rows),
+                        "no_tab": sum(1 for x in rows if not x["category"]), "requests": f.count, "fails": f.fails}
 
 
 def main():
