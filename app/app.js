@@ -1242,7 +1242,7 @@
     const s = Intel.historyStats(dates, low), sm = Intel.historyStats(dates, med);
     const card = h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "가격 이력"), h("span", { class: "sp" }), chg(keyChange(k.id))),
       h("div", { class: "sub" }, `${k.label} · 일반가, 전 브랜드 지점, 병원 표시가 기준 · 실제로 모은 날짜만`),
-      reclDate(k.id) ? h("div", { class: "note recl" }, icon("info", "sm"), `${md(reclDate(k.id))}에 같은 시술로 묶는 기준을 고쳤어요(예: 10회 묶음·다른 장비가 섞이지 않게). 그 전 기록은 다른 상품이 섞인 값이라 빼고 보여줘요.`) : null,
+      reclDate(k.id) ? h("div", { class: "note recl" }, icon("info", "sm"), `${md(reclDate(k.id))}에 비교 기준을 고쳤어요(같은 시술로 묶는 방법이나 일반가로 보는 가격). 그 전 기록은 지금 기준과 다른 값이라 빼고 보여줘요.`) : null,
       tr.dates.length > 1 ? h("div", { class: "chips", style: "margin-top:10px" }, ranges.map(([r, l]) => h("button", { class: "chip", type: "button", "aria-pressed": (st.hrange || "") === r ? "true" : "false", onclick: () => { st.hrange = r; render(); } }, l))) : null);
     if (!s) { card.append(h("div", { class: "empty" }, "이 기간에 관측된 가격이 없어요")); return card; }
     // one record is a point, not a trend: no line and no 'change' tiles until a second week is collected

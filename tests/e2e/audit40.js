@@ -90,7 +90,7 @@ ok('A14 다시 묶은 시술은 "가격 변동"에 안 나옴', !(D.changes || [
   // the history card (and this note with it) shows only after 8 distinct weeks of snapshots (Stats.historyReady); before
   // that neither the card nor the note may appear
   const weeks = new Set((D.trend && D.trend.dates || []).map((d) => { const t = new Date(d + 'T00:00:00Z'), w = (t.getUTCDay() + 6) % 7; t.setUTCDate(t.getUTCDate() - w); return t.toISOString().slice(0, 10); })).size;
-  if (weeks >= 8) ok('B7 가격 이력에 "같은 시술로 묶는 기준을 고쳤어요" 안내', await hist.count() === 1 && /기준을 고쳤어요/.test(await hist.innerText()), reK);
+  if (weeks >= 8) ok('B7 가격 이력에 "비교 기준을 고쳤어요" 안내(묶는 방법·일반가 기준 모두)', await hist.count() === 1 && /비교 기준을 고쳤어요/.test(await hist.innerText()), reK);
   else ok(`B7 기록 ${weeks}주(8주 전): 가격 이력·기준 변경 안내를 그리지 않음`, await hist.count() === 0 && !/가격 이력/.test(await p.locator('#main').innerText()), reK);
   ok('B8 페이지 오류 0개', !errs.length, errs.slice(0, 3).join(' / '));
   await b.close();
