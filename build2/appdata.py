@@ -52,7 +52,8 @@ data.json (compact, strings interned in `s`):
   meta.reclBranches  [[collection date, {id: [branch index, …]}], …], one entry per meta.recl entry — at which branches the
             rows of that id moved (2026-10-16): `changes` leaves out only those branches. An id of that meta.recl date with no
             entry here moved at every branch (an id that came back, or one a data.json from before this field listed). Read by
-            the next build only: a later build of the same collection still counts from the older snapshot
+            the next build only: a later build of the same collection still counts from the older snapshot. Such a build also
+            lists every branch whose plain lowest is not the earlier build's (same_collection_moved — rows a rule renamed)
   meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9; a chain never collected is left out).
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
@@ -488,6 +489,44 @@ def recl_pairs(prev, prow, rows):
     return {x for x in out if x[0] in before}
 
 
+def same_collection_moved(prev, prow, best, date):
+    """a later build of the collection the previous data.json was built from: {(id, 'brand|branch')} whose plain lowest is not
+    the earlier build's. That one is counted from the previous rows by the rule they were built with (meta.plainRules), without
+    the rows whose event was over by `date` (clean.py drops those the same way). Both builds read the same collection, so the
+    difference is the rules' — also where recl_pairs cannot match the row to the earlier one: a rule that renames it (a group
+    title read into the name, two rows merged into one) or drops it and adds it back under another name (검증 2026-10-16: 블리비
+    명동점 '[이벤트] 레이저토닝 10회' 149,000, renamed and untagged, read as 190,000 → 149,000 while 유앤아이 구로점 kept
+    T6126905 in meta.recl). Only the earlier build's branches (a branch or chain added to the collection later is new, not
+    moved) and ids (recl_pairs). best: this build's 'id|brand|branch' → plain lowest."""
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    pkey = [f"{pbrand[b[0]]}|{ps[b[1]]}" for b in pb]
+    rule, was = prev_rule(prev), {}
+    for r in prow:
+        until = ps[r[10]] or ""
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", until) and until < date:
+            continue
+        if G.plain(*prev_cond(prev, r), rule=rule):
+            for k in (ps[r[7]] or "").split():
+                kk = f"{k}|{pkey[r[0]]}"
+                was[kk] = min(was.get(kk, 10 ** 12), int(r[3]))
+    branch, ids = set(pkey), {k[0] for k in prev.get("keys", [])}
+    out = set()
+    for kk in best.keys() | was.keys():
+        k, b = kk.split("|", 1)
+        if b in branch and k in ids and best.get(kk) != was.get(kk):
+            out.add((k, b))
+    return out
+
+
+def rule_pairs(prev, prow, rows, best, collected, date):
+    """{(id, 'brand|branch')} the rules moved in this build: recl_pairs, and on a later build of the collection the previous
+    data.json was built from (meta.updated) also same_collection_moved"""
+    out = recl_pairs(prev, prow, rows)
+    if prev and prev["meta"].get("updated") == collected:
+        out |= same_collection_moved(prev, prow, best, date)
+    return out
+
+
 def prev_recl_branches(prev):
     """meta.reclBranches of the previous data.json as {date: {id: {'brand|branch', …}}}; {} for a file without the field"""
     pm = (prev or {}).get("meta", {})
@@ -711,19 +750,6 @@ def main():
     # 톡스앤필 목동 30,000 → 100,000)
     prev_ids = {k[0] for k in (prev_data or {}).get("keys", [])}
     revived = ({kk.split("|")[0] for kk in prev} - prev_ids) if prev_data else set()
-    live = {k[0] for k in ALLK}
-    # the ids whose rows the rules moved, per branch; a revived id at every branch
-    pairs_now, whole_now = {x for x in recl_pairs(prev_data, prev_rows, rows) if x[0] in live}, revived & live
-    recl_now = {k for k, _ in pairs_now} | whole_now
-    # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
-    recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != collected]
-    same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == collected), [])
-    if recl_now or same_day:
-        recl.append([collected, sorted(set(same_day) | recl_now)])
-    recl = recl[-12:]
-    bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
-    # … and at which branches (meta.reclBranches): only those branches' price changes are the rules'
-    reclb = recl_branches(prev_data, collected, recl, pairs_now, whole_now, bkeys)
     out_rows = []
     best = {}
     gid, groups, gkeys, bstat, low_reg = G.build(rows, bi, CATS)
@@ -738,6 +764,20 @@ def main():
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
                 best[kk] = min(best.get(kk, 10 ** 12), int(r["sale"]))
+    live = {k[0] for k in ALLK}
+    # the ids whose rows the rules moved, per branch; a revived id at every branch
+    pairs_now = {x for x in rule_pairs(prev_data, prev_rows, rows, best, collected, a.date) if x[0] in live}
+    whole_now = revived & live
+    recl_now = {k for k, _ in pairs_now} | whole_now
+    # regrouped ids per date (newest last, 12 kept); the app re-bases alerts on them and the trend restarts there
+    recl = [x for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] != collected]
+    same_day = next((x[1] for x in ((prev_data or {}).get("meta", {}).get("recl") or []) if x[0] == collected), [])
+    if recl_now or same_day:
+        recl.append([collected, sorted(set(same_day) | recl_now)])
+    recl = recl[-12:]
+    bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
+    # … and at which branches (meta.reclBranches): only those branches' price changes are the rules'
+    reclb = recl_branches(prev_data, collected, recl, pairs_now, whole_now, bkeys)
     # weekly snapshot + changes against the previous one — dated by the collection, not the build: a rebuild without scraping
     # on a later day rewrites that collection's snapshot instead of adding an observation that never happened
     save_snapshot(hist, collected, best)
