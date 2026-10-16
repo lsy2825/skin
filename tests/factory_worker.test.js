@@ -980,14 +980,20 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   assert.equal(/code\/|published\/|node /.test(take), false, "nothing from the code or hint checkout is read or run in the data step");
   assert.equal(/ALERTS_(URL|SECRET|MODE)|secrets\./.test(pin + hint + which + take), false, "the pin, hint, which and data steps have no secret");
   // the notify step: only with a valid pin AND the data taken; the pinned code on the data file; three env values. FULL
-  // only for the daily schedule (one computation per D1 day — cf/alerts/src/worker.js arithmetic), the key set otherwise
+  // only for the FIRST attempt of the daily schedule (one computation per D1 day — cf/alerts/src/worker.js arithmetic; a
+  // Re-run keeps event_name 'schedule' and re-runs this job with the deploy job — 7th review), the key set otherwise. No
+  // continue-on-error of its own (7th review): a failure or timeout must end the job before the end mark (done stays
+  // empty → the alert job's Telegram line); the JOB's continue-on-error keeps the run green
   assert.match(step, /\n {8}if: steps\.pin\.outputs\.ok == 'true' && steps\.data\.outputs\.ok == 'true'\n/);
   assert.match(step, /\n {8}run: node code\/cf\/alerts\/notify\.mjs "\$RUNNER_TEMP\/data\.json"\n/);
   assert.match(step, /\n {8}timeout-minutes: \d+\n/);
-  assert.match(step, /\n {8}continue-on-error: true\n/);
+  assert.equal(/continue-on-error/.test(step), false, "the notify step does not swallow its own failure or timeout");
+  for (const st of steps) assert.equal(/\n {8}continue-on-error:/.test(st), false, `no price_alerts step hides a failure from the end mark: ${st.split("\n")[0]}`);
   const env = step.slice(step.indexOf("        env:\n") + 13).split("\n").filter((l) => /^ {10}\w+:/.test(l)).map((l) => l.trim().split(":")[0]);
   assert.deepEqual(env, ["ALERTS_MODE", "ALERTS_URL", "ALERTS_SECRET"]);
-  assert.match(step, /\n {10}ALERTS_MODE: \$\{\{ github\.event_name == 'schedule' && 'full' \|\| 'keys' \}\}/, "full only on the daily schedule; a push or Run workflow sends the key set only");
+  assert.match(step, /\n {10}ALERTS_MODE: \$\{\{ github\.event_name == 'schedule' && github\.run_attempt == '1' && 'full' \|\| 'keys' \}\}\n/, "full only on the daily schedule's first attempt; a push, Run workflow or Re-run sends the key set only");
+  assert.ok(steps.indexOf(end) === steps.indexOf(step) + 1, "the end mark comes right after notify (a failed notify skips it)");
+  assert.equal(/\n {8}if:/.test(end), false, "the end mark has no if: (always() would mark a failed job done)");
   assert.match(step, /\n {10}ALERTS_URL: \$\{\{ secrets\.ALERTS_URL \|\| vars\.ALERTS_URL \|\| 'https:\/\/yoonsiljang-alerts\.lsy2825\.workers\.dev' \}\}\n/, "ALERTS_URL defaults to the alerts Worker");
   assert.match(step, /\n {10}ALERTS_SECRET: \$\{\{ secrets\.ALERTS_SECRET \}\}(\n|$)/);
   assert.match(end, /\n {8}id: end\n {8}run: echo "done=true" >> "\$GITHUB_OUTPUT"/);

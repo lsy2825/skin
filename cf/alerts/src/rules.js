@@ -36,6 +36,12 @@ export const validRun = (s) => typeof s === "string" && RUN_RE.test(s) && s.spli
 export const FINISH_SLACK_DAYS = 1;
 export const WEEK_DAYS = 7;
 export const EXPIRING_DAYS = 3;
+// an expiring entry's end date u (digest), checked against the Worker's own day: from today − FINISH_SLACK_DAYS to today +
+// END_DAYS (the factory sends u ≤ its own day + EXPIRING_DAYS, and its day may be one off). So an announced entry still
+// running on day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further, and exp_sent holds at most
+// (END_DAYS + 1) days × MAX_RULES entries whatever the factory sends (src/worker.js digest refuses anything else)
+export const END_DAYS = EXPIRING_DAYS + FINISH_SLACK_DAYS;
+export const validEnd = (u, today) => validDay(u) && u >= addDays(today, -FINISH_SLACK_DAYS) && u <= addDays(today, END_DAYS);
 export const LAST_SEND_MARGIN_MIN = 15;                    // never send a push closer than this to 21:00 KST
 export const TTL_MARGIN_S = 60;                            // push TTL ends this much before 21:00 (clock drift)
 

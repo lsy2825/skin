@@ -465,10 +465,76 @@ test("news is sticky: a failed finish keeps it, a rerun delivers it once, the sa
   // two digests before one finish (a failed later chunk, then a rerun): still one news
   await internal(env, "POST", "/v1/internal/digest", { run: "2026-11-02|2026-11-02", entries: [st("X24", 100000, 5, 90000)] });
   assert.equal((await mark(env, "2026-11-02", [st("X24", 100000, 5, 90000)], "2026-11-02")).weekly, 1);
-  // prices back to the baseline before any finish → no longer news
+  // the SAME collection again before any finish, its median back up (a rebuild that dropped ended rows): a repeat keeps what
+  // the first digest of that collection found (7th review — within one collection numbers only move the good way), news once
   db.raw.prepare("UPDATE subs SET pend_w = 0").run();
   await internal(env, "POST", "/v1/internal/digest", { run: "2026-11-09|2026-11-09", entries: [st("X24", 100000, 5, 80000)] });
-  assert.equal((await mark(env, "2026-11-10", [st("X24", 100000, 5, 90000)], "2026-11-09")).weekly, 0);
+  assert.equal((await mark(env, "2026-11-10", [st("X24", 100000, 5, 90000)], "2026-11-09")).weekly, 1);
+  assert.deepEqual(db.rows("SELECT med, p, pu FROM snap"), [{ med: 80000, p: 0, pu: null }]);
+  // a NEWER collection back at the baseline before any finish → no longer news
+  db.raw.prepare("UPDATE subs SET pend_w = 0").run();
+  await internal(env, "POST", "/v1/internal/digest", { run: "2026-11-16|2026-11-16", entries: [st("X24", 100000, 5, 70000)] });
+  assert.equal((await mark(env, "2026-11-23", [st("X24", 100000, 5, 80000)], "2026-11-23")).weekly, 0);
+  assert.deepEqual(db.rows("SELECT med, p, bu FROM snap"), [{ med: 80000, p: 0, bu: "2026-11-23" }]);
+});
+
+// 7th review: a rise is held for one collection and taken when the next collection shows it too (sql.js CONFIRM). Digesting
+// that confirming collection TWICE before its finish (notify.mjs retries a chunk D1 already committed; the next day's run
+// of the same collection after a failed finish) used to flip it back to "held" — and a later fall under a target's max
+// was then never news. A repeat now keeps what the first digest of that collection found (sql.js REPEAT).
+async function riseThenTarget(dup) {
+  const { env, db } = await setup();
+  await sub(env, [{ kind: "target", key: "X24", max: 110 }]);
+  const digestOnly = async (coll, today, m) => {
+    const r = await internal(env, "POST", "/v1/internal/digest", { run: `${coll}|${today}`, entries: [st("X24", m, 5, m)] }, at(today));
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+  };
+  const snapRow = () => db.rows("SELECT m, n, med, p, pm, pn, pmed, bu, pu, cb, cu FROM snap")[0];
+  await mark(env, "2026-10-05", [st("X24", 100, 5, 100)]);                  // baseline 100
+  await mark(env, "2026-10-12", [st("X24", 120, 5, 120)]);                  // a rise from a new collection: held
+  assert.deepEqual([snapRow().m, snapRow().cb], [100, 5], "held (m and median), baseline still 100");
+  const finishRun = async (run, today) => assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today }, at(today))).status, 200);
+  const states = [];
+  await digestOnly("2026-10-19", "2026-10-19", 120);                        // the confirming collection
+  states.push(snapRow());
+  if (dup === "once") await finishRun("2026-10-19|2026-10-19", "2026-10-19");
+  else if (dup === "twice") {
+    await digestOnly("2026-10-19", "2026-10-19", 120);                      // the same chunk again (a retry after a commit)
+    states.push(snapRow());
+    await finishRun("2026-10-19|2026-10-19", "2026-10-19");
+  } else {
+    // the finish fails (D1 refuses the batch): nothing promoted, nothing marked
+    const realBatch = env.DB.batch;
+    env.DB.batch = async () => { throw new Error("D1 is having a bad day"); };
+    assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-19|2026-10-19", today: "2026-10-19" }, at("2026-10-19"))).status, 500);
+    env.DB.batch = realBatch;
+    // the next day's run: the same collection digested again, then finished
+    await digestOnly("2026-10-19", "2026-10-20", 120);
+    states.push(snapRow());
+    await finishRun("2026-10-19|2026-10-20", "2026-10-20");
+  }
+  const confirmed = snapRow();
+  db.raw.prepare("UPDATE subs SET pend_w = 0").run();
+  // the next collection: 105 ≤ max 110 while the (confirmed) baseline 120 > 110 → target news
+  const news = (await mark(env, "2026-10-26", [st("X24", 105, 5, 105)])).weekly;
+  return { states, confirmed, news, pend: db.rows("SELECT pend_w FROM subs")[0].pend_w };
+}
+
+test("7th review (DIGEST idempotent): a confirmed rise digested twice before its finish = digested once — the confirmation stays and the later target news goes out", T, async () => {
+  const once = await riseThenTarget("once"), twice = await riseThenTarget("twice");
+  assert.deepEqual(once.states[0], { m: 100, n: 5, med: 100, p: 1, pm: 120, pn: 5, pmed: 120, bu: "2026-10-12", pu: "2026-10-19", cb: 0, cu: "2026-10-19" }, "confirmed: pending 120, nothing held");
+  assert.deepEqual(twice.states[1], twice.states[0], "the second digest of the same collection changes no number, cb or cu");
+  assert.deepEqual(twice.confirmed, once.confirmed);
+  assert.deepEqual(once.confirmed, { m: 120, n: 5, med: 120, p: 0, pm: null, pn: null, pmed: null, bu: "2026-10-19", pu: null, cb: 0, cu: "2026-10-19" }, "promoted: the baseline is 120");
+  assert.deepEqual([once.news, once.pend], [1, 1]);
+  assert.deepEqual([twice.news, twice.pend], [1, 1], "the news a confirmed rise makes possible is not lost");
+});
+
+test("7th review (DIGEST idempotent): digest → failed finish → the next day's run of the same collection → finish = digest → finish; the next collection's target news goes out", T, async () => {
+  const once = await riseThenTarget("once"), retry = await riseThenTarget("failedFinish");
+  assert.deepEqual(retry.states[1], retry.states[0], "the next day's digest of the same collection keeps the pending numbers, cb, cu");
+  assert.deepEqual(retry.confirmed, once.confirmed);
+  assert.deepEqual([retry.news, retry.pend], [1, 1]);
 });
 
 test("watch news in SQL = push.js watchMoved() (random numbers)", T, async () => {
@@ -513,10 +579,10 @@ test("expiring: once per end date, at most one stand-alone a day, rides along wi
   assert.equal(push.calls.length, 3, "weekly + expiring together = one push");
   const row = db.rows("SELECT * FROM subs")[0];
   assert.deepEqual([row.pend_w, row.pend_x, row.pend_xl, JSON.parse(row.exp_sent), row.last_w],
-    [0, null, null, ["X24||2026-10-21", "X24||2026-10-23", "X24||2026-10-24"], "2026-10-21"], "every announced (pair, end date) is remembered");
+    [0, null, null, ["2026-10-21|X24|", "2026-10-23|X24|", "2026-10-24|X24|"], "2026-10-21"], "every announced (pair, end date) is remembered");
   // the factory's finish forgets announced entries whose end date passed (today 10-24: 10-21 and 10-23 are over)
   await mark(env, "2026-10-24", [ending("2026-10-24")]);
-  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["X24||2026-10-24"]);
+  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["2026-10-24|X24|"]);
   await mark(env, "2026-10-25", [st("X24", 75000, 5, 90000)]);
   assert.equal(db.rows("SELECT exp_sent FROM subs")[0].exp_sent, null, "nothing left to remember");
   // an end date that passed before it could be sent is dropped
@@ -760,13 +826,13 @@ test("a full day: expiring deadlines are sent before weekly news (nearest end da
   const x20 = await sub(env, [{ kind: "watch", key: "X01" }], subscription("fcm.googleapis.com", "fcm/send/x20"));
   await news(env, "2026-10-19");
   // the two expiring phones got their weekly bundle yesterday (the back of the weekly queue), their deadlines are near
-  db.raw.prepare(`UPDATE subs SET last_w = '2026-10-18', pend_x = '2026-10-21', pend_xl = '["X01||2026-10-21"]' WHERE id = ?`).run(x21.id);
-  db.raw.prepare(`UPDATE subs SET last_w = '2026-10-18', pend_x = '2026-10-20', pend_xl = '["X01||2026-10-20"]' WHERE id = ?`).run(x20.id);
+  db.raw.prepare(`UPDATE subs SET last_w = '2026-10-18', pend_x = '2026-10-21', pend_xl = '["2026-10-21|X01|"]' WHERE id = ?`).run(x21.id);
+  db.raw.prepare(`UPDATE subs SET last_w = '2026-10-18', pend_x = '2026-10-20', pend_xl = '["2026-10-20|X01|"]' WHERE id = ?`).run(x20.id);
   const push = pushService();
   await send(env, kst("2026-10-19T09:00:00"), { fetch: push.f });
   assert.deepEqual(push.calls.map((c) => c.url).slice(0, 2), [x20.endpoint, x21.endpoint], "deadlines first, nearest first");
   assert.equal(push.calls.length, 3, "then weekly news fills the rest of the limit");
-  assert.deepEqual(db.rows("SELECT exp_sent FROM subs WHERE id IN (?, ?) ORDER BY exp_sent", x20.id, x21.id).map((r) => r.exp_sent), ['["X01||2026-10-20"]', '["X01||2026-10-21"]']);
+  assert.deepEqual(db.rows("SELECT exp_sent FROM subs WHERE id IN (?, ?) ORDER BY exp_sent", x20.id, x21.id).map((r) => r.exp_sent), ['["2026-10-20|X01|"]', '["2026-10-21|X01|"]']);
 });
 
 test("stale claims: a send run clears claims older than 15 minutes (claim is kept only while sending)", T, async () => {
@@ -865,7 +931,7 @@ test("the claim query picks exactly the rows dueKinds() calls due (random rows)"
   const ins = db.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_w, last_w, pend_x, exp_sent, last_x, fails) VALUES (?, ?, '[]', ?, ?, ?, ?, ?, ?)");
   const rows = [];
   for (let i = 0; i < 400; i++) {
-    const r = { id: `id${i}`.padEnd(22, "x"), pend_w: pick([0, 1]), last_w: pick(days), pend_x: pick([null, today, "2026-10-20", "2026-10-22"]), exp_sent: pick([null, '["X24||2026-10-20"]']), last_x: pick(days), fails: pick([0, 0, 1, 4]) };
+    const r = { id: `id${i}`.padEnd(22, "x"), pend_w: pick([0, 1]), last_w: pick(days), pend_x: pick([null, today, "2026-10-20", "2026-10-22"]), exp_sent: pick([null, '["2026-10-20|X24|"]']), last_x: pick(days), fails: pick([0, 0, 1, 4]) };
     ins.run(r.id, `https://fcm.googleapis.com/${i}`, r.pend_w, r.last_w, r.pend_x, r.exp_sent, r.last_x, r.fails);
     rows.push(r);
   }
@@ -901,14 +967,20 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
   assert.match(plan(Q.RESET_STALE, 100), /USING INDEX subs_claim/);
   assert.match(plan(Q.CLAIM_P, 100, PROBES, PROBE_SLOTS), /USING INDEX subs_claim \(claim>\? AND claim<\?\)/, "the probes read the held rows only");
   assert.match(plan(Q.RELEASE_HELD, "https://fcm.googleapis.com"), /USING INDEX subs_claim \(claim<\?\)/, "a push origin's release walks the held rows only");
-  assert.match(plan(Q.DROP_ENDED, "2026-10-19"), /USING INDEX subs_x/, "the partial index: rows with a pending expiring only");
+  assert.match(plan(Q.DROP_ENDED, "2026-10-19", 20261019), /SCAN g[\s\S]*USING (COVERING )?INDEX subs_x/, "the partial index (rows with a pending expiring only), walked only under the gate g (7th review)");
+  // the gate: once today's finish ran the walk is skipped (it rewrote every pend_x from today's numbers)
+  db.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_x, pend_xl) VALUES ('dropendedxxxxxxxxxxxxx', 'https://fcm.googleapis.com/de', '[]', '2026-10-18', '[\"2026-10-18|X24|\"]')").run();
+  db.raw.prepare("INSERT INTO stat (k, n) VALUES ('finish', 20261019)").run();
+  assert.equal((await db.prepare(Q.DROP_ENDED).bind("2026-10-19", 20261019).run()).meta.changes, 0, "today's finish ran: no walk");
+  assert.equal((await db.prepare(Q.DROP_ENDED).bind("2026-10-20", 20261020).run()).meta.changes, 1, "no finish yet today: ended dates dropped");
+  db.raw.exec("DELETE FROM subs; DELETE FROM stat WHERE k = 'finish'");
   // the watched list reads the factory's key set once per statement (an uncorrelated list subquery over json_each of the one
-  // keyset row), never once per rule; subscribe/PUT search the one keyset row and never walk the set row by row
+  // keyset row), never once per rule; subscribe/PUT never read the set at all (7th review: no "unknown" answer field)
   const watchedPlan = plan(Q.WATCHED, 2001, 0, "2026-10-12");
   assert.match(watchedPlan, /LIST SUBQUERY \d+/, watchedPlan);
   assert.equal(/CORRELATED/.test(watchedPlan), false, watchedPlan);
-  for (const k of ["SUBSCRIBE", "PUT_RULES", "UNKNOWN_KEYS"]) assert.equal(/json_each\((ks|keyset)\.keys\)/.test(Q[k]), false, k);
-  assert.match(plan(Q.UNKNOWN_KEYS, '[{"kind":"watch","key":"X24"}]'), /SCAN ks/);
+  for (const k of ["SUBSCRIBE", "PUT_RULES"]) assert.equal(/keyset/.test(Q[k]), false, k);
+  assert.equal(Q.UNKNOWN_KEYS, undefined, "no statement names a rule's unknown keys any more");
   // sending runs a day: every cron minute of wrangler.jsonc that inWindow() accepts
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   const cron = /"crons": \["([^"]+)"\]/.exec(cfg)[1];
@@ -943,7 +1015,7 @@ test("planted failing expiring rows (the earliest end dates) cannot hold the que
   const r3 = await send(env, kst("2026-10-19T08:20:00"), { fetch: push.f });
   assert.equal(push.calls.some((c) => c.url.endsWith("/real")), true, "run 3: the real phone is sent although 10 planted rows with an earlier end date are waiting");
   assert.deepEqual([r3.sent, r3.retry], [1, 4], "2 planted first tries + the real phone, then 2 of the failed ones");
-  assert.equal(db.rows("SELECT exp_sent FROM subs WHERE id = ?", real.id)[0].exp_sent, '["X01||2026-10-22"]');
+  assert.equal(db.rows("SELECT exp_sent FROM subs WHERE id = ?", real.id)[0].exp_sent, '["2026-10-22|X01|"]');
   // the rest of the day: each failed row gets at most FAIL_SLOTS per run and is removed at NEVER_DROP failures
   for (let m = 8 * 60 + 30; m <= 20 * 60 + 40; m += 10) await send(env, kst("2026-10-19T00:00:00") + m * 60e3, { fetch: push.f });
   assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 1, "every planted row is gone");
@@ -1000,14 +1072,14 @@ test("expiring per (pair, end date): a later end date already announced never hi
   assert.equal((await mark(env, "2026-10-22", [x24("2026-10-25")])).expiring, 1);
   await send(env, kst("2026-10-22T09:00:00"), { fetch: push.f });
   assert.equal(push.calls.length, 1);
-  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["X24||2026-10-25"]);
+  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["2026-10-25|X24|"]);
   // the next day X01 turns out to end 10-24 — EARLIER than the date already announced: still news (both X01 rules match
   // the same pair and date: one entry)
   assert.equal((await mark(env, "2026-10-23", [x24("2026-10-25"), x01("2026-10-24")])).expiring, 1, "an earlier new end date after a later announced one");
-  assert.deepEqual(db.rows("SELECT pend_x, pend_xl FROM subs")[0], { pend_x: "2026-10-24", pend_xl: '["X01||2026-10-24"]' });
+  assert.deepEqual(db.rows("SELECT pend_x, pend_xl FROM subs")[0], { pend_x: "2026-10-24", pend_xl: '["2026-10-24|X01|"]' });
   await send(env, kst("2026-10-23T09:00:00"), { fetch: push.f });
   assert.equal(push.calls.length, 2);
-  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["X01||2026-10-24", "X24||2026-10-25"]);
+  assert.deepEqual(JSON.parse(db.rows("SELECT exp_sent FROM subs")[0].exp_sent), ["2026-10-24|X01|", "2026-10-25|X24|"]);
   // the same two again: nothing; a third pair/date: the earliest unannounced one becomes pend_x
   assert.equal((await mark(env, "2026-10-24", [x24("2026-10-25"), x01("2026-10-24")])).expiring, 0, "both announced");
   await send(env, kst("2026-10-24T09:00:00"), { fetch: push.f });
@@ -1052,10 +1124,10 @@ test("logs stay counts-only in every error and abuse branch too (429 rate limit/
     assert.equal((await call(worker, env, "GET", "/v1/push/nothing/UNKNOWNID_abcdefghijk", undefined, { headers })).status, 404);
     assert.equal((await call(worker, env, "POST", "/v1/internal/finish", { run: "2026-10-19|9999-12-31", today: "9999-12-31" }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
     assert.equal((await call(worker, env, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: [{ k: "X24", r: "", id: "LEAKID" }] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
-    // the factory's key set: a malformed one (400 BAD_KEYS); then rules naming a key outside it — stored, named in "unknown"
+    // the factory's key set: a malformed one (400 BAD_KEYS); then rules naming a key outside it — stored, answered {id}
     assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24", "TLEAKKEY"] }, { headers: { ...headers, ...AUTH, origin: null } })).body.error, "BAD_KEYS");
     assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24"] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 200);
-    assert.deepEqual((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.unknown, ["TLEAKKEY"]);
+    assert.deepEqual(Object.keys((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body), ["id"]);
     assert.equal((await call(worker, env, "PUT", "/v1/push/rules/UNKNOWNID_abcdefghijkl", { rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).status, 404);
     assert.equal((await call(worker, env, "GET", `/v1/internal/watched?at=0&data=${"Z".repeat(64)}`, undefined, { headers: { ...headers, ...AUTH, origin: null } })).body.error, "BAD_PAGE");
     // push service answers 404 / 410 / 429 / 302 / network error
@@ -1338,16 +1410,73 @@ test("a phone's pending expiring mark is cleared when the next finish finds noth
   // the next day the clinic extended X24's event (no price ends any more); X01 still ends
   await mark(env, "2026-10-20", [calm("X24"), ending("X01", "2026-10-22")]);
   assert.deepEqual(db.rows("SELECT id, pend_x, pend_xl FROM subs ORDER BY id").sort((p, q) => p.id.localeCompare(q.id)),
-    [{ id: a.id, pend_x: null, pend_xl: null }, { id: b.id, pend_x: "2026-10-22", pend_xl: '["X01||2026-10-22"]' }].sort((p, q) => p.id.localeCompare(q.id)), "X24's mark is gone, X01's stays");
+    [{ id: a.id, pend_x: null, pend_xl: null }, { id: b.id, pend_x: "2026-10-22", pend_xl: '["2026-10-22|X01|"]' }].sort((p, q) => p.id.localeCompare(q.id)), "X24's mark is gone, X01's stays");
   const push = pushService();
   const r = await send(env, kst("2026-10-20T09:00:00"), { fetch: push.f });
   assert.equal(r.sent, 1, "only the phone whose price still ends");
   assert.equal(push.calls.length, 1);
   assert.equal(db.rows("SELECT exp_sent FROM subs WHERE id = ?", a.id)[0].exp_sent, null, "nothing was announced for the extended event");
   // the pair itself leaving the data (not in this run's digest) also clears it
-  db.raw.prepare("UPDATE subs SET pend_x = '2026-10-23', pend_xl = '[\"X01||2026-10-23\"]', last_x = NULL WHERE id = ?").run(b.id);
+  db.raw.prepare("UPDATE subs SET pend_x = '2026-10-23', pend_xl = '[\"2026-10-23|X01|\"]', last_x = NULL WHERE id = ?").run(b.id);
   await mark(env, "2026-10-21", [calm("X24"), calm("X01")]);
   assert.equal(db.rows("SELECT pend_x FROM subs WHERE id = ?", b.id)[0].pend_x, null);
+});
+
+// ---- 7th review (D1 reads): announced entries are 'end date|key|region', sorted; membership is a string search, the finish
+// computes the expiring rows ONCE, and the daily prune reads no list element — so no finish statement's rows read grows with
+// exp_sent (measured on a local D1 in test/d1_reads.mjs, run by test/local_dev.sh)
+
+test("7th review (exp_sent): the digest refuses an end date outside the Worker's day − 1 … + 4; PRUNE_XSENT keeps exactly the running entries (= a json_each filter) and rewrites only rows with an ended one", T, async () => {
+  const { env, db } = await setup();
+  const now = at("2026-10-22");
+  const dig = (u) => internal(env, "POST", "/v1/internal/digest", { run: "2026-10-22|2026-10-22", entries: [{ ...st("X24", 90000, 3, 90000), e: 90000, s: null, u }] }, now);
+  for (const u of ["2026-10-20", "2026-10-27", "2027-10-22"]) assert.deepEqual([(await dig(u)).status, db.rows("SELECT count(*) c FROM snap")[0].c], [400, 0], u);
+  for (const u of ["2026-10-21", "2026-10-26"]) assert.equal((await dig(u)).status, 200, u);
+  // PRUNE_XSENT on chosen rows (today 10-22: 10-22 … 10-26 are running, END_DAYS = 4)
+  const rows = {
+    a: ["2026-10-21|X24|", "2026-10-22|X01|", "2026-10-24|X24|서울"],
+    b: ["2026-10-20|X24|", "2026-10-21|X01|"],
+    c: ["2026-10-22|X24|", "2026-10-26|X01|"],
+    d: ["2026-10-01|X01|", "2026-10-21|X01|", "2026-10-26|T0000ABC|수도권"],
+  };
+  const ins = db.raw.prepare("INSERT INTO subs (id, endpoint, rules, exp_sent) VALUES (?, ?, '[]', ?)");
+  for (const [id, l] of Object.entries(rows)) ins.run(id.padEnd(22, "x"), `https://fcm.googleapis.com/${id}`, JSON.stringify(l));
+  const res = await db.prepare(Q.PRUNE_XSENT).bind("2026-10-22").run();
+  assert.equal(res.meta.changes, 3, "the row with nothing ended is not rewritten");
+  const got = Object.fromEntries(db.rows("SELECT id, exp_sent FROM subs").map((r) => [r.id[0], r.exp_sent && JSON.parse(r.exp_sent)]));
+  assert.deepEqual(got, { a: ["2026-10-22|X01|", "2026-10-24|X24|서울"], b: null, c: rows.c, d: ["2026-10-26|T0000ABC|수도권"] });
+  // random sorted lists (end dates today − 6 … today + END_DAYS, as the digest allows) = the json_each filter
+  db.raw.exec("DELETE FROM subs");
+  const keys = ["X01", "X24", "T0000ABC"], regs = ["", "서울", "수도권"];
+  for (let i = 0; i < 300; i++) {
+    const l = new Set();
+    for (let j = Math.floor(Math.random() * 12); j > 0; j--) l.add(`${addDays("2026-10-22", Math.floor(Math.random() * 11) - 6)}|${keys[j % 3]}|${regs[Math.floor(Math.random() * 3)]}`);
+    ins.run(`r${i}`.padEnd(22, "x"), `https://fcm.googleapis.com/r${i}`, l.size ? JSON.stringify([...l].sort()) : null);
+  }
+  const want = db.rows("SELECT id, (SELECT json_group_array(value) FROM (SELECT value FROM json_each(exp_sent) WHERE value >= '2026-10-22' ORDER BY value)) AS l FROM subs WHERE exp_sent IS NOT NULL ORDER BY id");
+  await db.prepare(Q.PRUNE_XSENT).bind("2026-10-22").run();
+  const after = new Map(db.rows("SELECT id, exp_sent FROM subs").map((r) => [r.id, r.exp_sent]));
+  for (const w of want) assert.equal(after.get(w.id), w.l === "[]" ? null : w.l, w.id);
+  // no finish statement reads exp_sent element by element (json_each) — only SENT does, for the one row it writes
+  for (const k of ["PRUNE_XSENT", "MARK_EXPIRING", "MARK_WEEKLY"]) assert.equal(/json_each\(\s*(coalesce\()?\s*(s2\.)?exp_sent/.test(Q[k]), false, k);
+  assert.ok(Q.MARK_EXPIRING.includes(`instr(coalesce(s2.exp_sent, ''), '"' || d.u || '|' || d.k || '|' || d.r || '"') = 0`), "membership is one string search");
+});
+
+test("7th review (one computation): the finish batch computes the expiring rows once (MARK_EXPIRING marks and clears in one statement) and answers how many it marked and cleared", T, async () => {
+  const { env, db } = await setup();
+  const a = await sub(env, [{ kind: "expiring", key: "X24" }]);
+  const b = await sub(env, [{ kind: "expiring", key: "X01" }]);
+  const ending = (k, u) => ({ ...st(k, 75000, 5, 90000), e: 75000, s: null, u });
+  await mark(env, "2026-10-19", [st("X24", 75000, 5, 90000), st("X01", 75000, 5, 90000)]);
+  assert.deepEqual(await mark(env, "2026-10-20", [ending("X24", "2026-10-22"), ending("X01", "2026-10-23")]), { weekly: 0, expiring: 2, cleared: 0, changed: 0 });
+  // the next day X24's event was extended (nothing ends), X01 still ends the same day: one cleared, nothing new
+  db.sqls.length = 0;
+  assert.deepEqual(await mark(env, "2026-10-21", [st("X24", 75000, 5, 90000), ending("X01", "2026-10-23")]), { weekly: 0, expiring: 0, cleared: 1, changed: 0 });
+  assert.deepEqual(db.rows("SELECT id, pend_x FROM subs").map((r) => [r.id === a.id ? "a" : r.id === b.id ? "b" : "?", r.pend_x]).sort(), [["a", null], ["b", "2026-10-23"]]);
+  const fin = db.sqls.slice(db.sqls.indexOf(Q.PRUNE_XSENT));
+  assert.deepEqual(fin.slice(0, 7), [Q.PRUNE_XSENT, Q.MARK_WEEKLY, Q.MARK_EXPIRING, Q.PROMOTE, Q.PRUNE_SNAP, Q.PRUNE_STAT, Q.ROLL_BU], "the finish batch, in order");
+  assert.equal(fin.filter((s) => /'expiring'/.test(s)).length, 1, "one statement computes the expiring rows");
+  assert.equal(Q.CLEAR_STALE_X, undefined);
 });
 
 // ---- 6.0 round 4 (review findings 5/13/14, 7, 8, 9, 15): stale with no finish ever (above), expiring once a day, a broken
@@ -1682,6 +1811,15 @@ test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of p
   assert.equal(worst, 91640, "the worst D1 day the docs quote (≈ 91,600)");
   assert.ok(worst + 30 + 3 < 100000, "plus up to 30 key-set-only runs and the finish's stat rows");
   assert.ok(worst + 2 * (PAIR_CAP + 500) + MAX_SUBS * 5 > 100000, "a SECOND full computation the same D1 day would not fit — why push and Run workflow send the key set only");
+  // the D1 READS arithmetic (src/worker.js, measured on a local D1 at the ceiling — 7th review): one full computation of the
+  // worst shape (every rule an expiring one on a computed pair; never more with long exp_sent lists — test/d1_reads.mjs) +
+  // 77 cron runs walking two partial indexes past rows that are not due + 3,080 pushes with an expiring notice (SENT ≤ 161)
+  // + 2,000 held rows + two KST days of subscriptions (9 rows read each) + key sets stays under 5,000,000 — and so does the
+  // late schedule's day with a second computation (plus DROP_ENDED walks of the runs before its finish)
+  const COMPUTE = 1248625, CRON_WALK = 2 * MAX_SUBS + 27, SENT_X = 161, HELD = 160000, SUB_READ = 9;
+  const reads = COMPUTE + 77 * CRON_WALK + 77 * SEND_LIMIT * SENT_X + HELD + 2 * NEW_PER_DAY * SUB_READ + 30;
+  assert.equal(reads, 3174614, "the worst D1 day of reads the docs quote (≈ 3.17M)");
+  assert.ok(reads + COMPUTE + 18 * (MAX_SUBS + 1) < 5000000, "the late-schedule day (two computations) still fits");
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.equal(/"PAIR_CAP":\s*"(\d+)"/.exec(cfg)[1], String(PAIR_CAP), "wrangler.jsonc vars.PAIR_CAP = the code's default");
 });
@@ -2063,8 +2201,8 @@ test("4th/5th/6th review (cleanup queries): the narrow query the docs give first
 
 // ---- 5th review: keys the factory cannot compute (not in the data.json it reads) never take a place in the watched list;
 // the set is one row written on change. 6th review: subscribe/PUT never refuse them (B's app treats a non-2xx as a failed
-// subscribe, and a lost PUT also loses the deletes it carried): the rules are stored and the answer names such keys in an
-// informational "unknown" field — fields are only added (지시서 공통 규칙 6)
+// subscribe, and a lost PUT also loses the deletes it carried): the rules are stored. 7th review: and the answer is 약속 1's
+// exactly — {id} / {ok:true}, no informational field (B never read it; the contract stays word for word)
 
 const putKeys = (env, keys, now) => internal(env, "POST", "/v1/internal/keys", { keys }, now);
 const written = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
@@ -2098,39 +2236,38 @@ test("5th review (key set): POST /v1/internal/keys stores ONE row, rewritten onl
   assert.deepEqual((await putKeys(env, max)).body, { keys: 20000, changed: true });
 });
 
-test("6th review (subscribe/PUT, additive): before the first key set no answer has \"unknown\"; afterwards a rule naming a key outside it is STORED and the 201/200 answer adds \"unknown\": [those keys] — the budget counts it like any subscription, the same endpoint takes its new rules, PUT [] still deletes, an unknown id is 404", T, async () => {
+test("6th/7th review (subscribe/PUT): a rule naming a key outside the factory's key set is STORED and answered exactly as 약속 1 says — 201 {id} / 200 {ok:true}, before and after the first key set; the budget counts it like any subscription, the same endpoint takes its new rules, PUT [] still deletes, an unknown id is 404", T, async () => {
   const { env, db } = await setup();
   const now = kst("2026-10-19T12:00:00");
   const sa = subscription();
   const a0 = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000ABC" }] }, { now });
-  assert.deepEqual([a0.status, Object.keys(a0.body)], [201, ["id"]], "no key set yet: nothing is unknown");
+  assert.deepEqual([a0.status, Object.keys(a0.body)], [201, ["id"]], "no key set yet");
   const a = a0.body;
   assert.equal((await putKeys(env, ["X01", "X24"], now)).status, 200);
   const budget = () => db.rows("SELECT n FROM stat WHERE k = 'new:2026-10-19'")[0].n;
-  // a new phone naming unknown keys (with a known one): stored, every unknown key listed once, ascending
+  // a new phone naming keys outside the set (with a known one): stored, answered {id} as for any rules
   const s = subscription();
   const rules = [{ kind: "watch", key: "X24" }, { kind: "target", key: "T0000ZZZ", max: 1 }, { kind: "newmatch", key: "T0000AAA" }, { kind: "watch", key: "T0000ZZZ", region: "부산" }];
   const r = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: s, rules }, { now });
   assert.equal(r.status, 201);
-  assert.deepEqual(Object.keys(r.body), ["id", "unknown"]);
-  assert.deepEqual(r.body.unknown, ["T0000AAA", "T0000ZZZ"]);
+  assert.deepEqual(Object.keys(r.body), ["id"], "약속 1: {id} only");
   assert.match(r.body.id, /^[A-Za-z0-9_-]{22}$/);
   assert.equal(r.headers.get("access-control-allow-origin"), APP, "the app can read the answer");
   assert.deepEqual(JSON.parse(db.rows("SELECT rules FROM subs WHERE id = ?", r.body.id)[0].rules).map((x) => x.key).sort(), ["T0000AAA", "T0000ZZZ", "T0000ZZZ", "X24"], "every rule stored as sent");
   assert.equal(budget(), 2, "a new subscription like any other");
   // the same endpoint as phone a again, with an unknown key: a new id and the new rules (as for any key)
   const again = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000AAA" }] }, { now });
-  assert.deepEqual([again.status, again.body.unknown], [201, ["T0000AAA"]]);
+  assert.deepEqual([again.status, Object.keys(again.body)], [201, ["id"]]);
   assert.notEqual(again.body.id, a.id);
   assert.deepEqual(db.rows("SELECT rules FROM subs WHERE endpoint = ?", sa.endpoint), [{ rules: '[{"kind":"watch","key":"T0000AAA"}]' }]);
-  // PUT: an unknown key plus a known one → 200 {ok, unknown}, stored; the known one alone → {ok:true} exactly as before
+  // PUT: a key outside the set plus a known one → 200 {ok:true}, stored; the known one alone → {ok:true} too
   const p1 = await call(worker, env, "PUT", `/v1/push/rules/${again.body.id}`, { rules: [{ kind: "watch", key: "T0000ABC" }, { kind: "watch", key: "X24" }] }, { now });
-  assert.deepEqual([p1.status, p1.body], [200, { ok: true, unknown: ["T0000ABC"] }]);
+  assert.deepEqual([p1.status, p1.body], [200, { ok: true }]);
   assert.equal(db.rows("SELECT rules FROM subs WHERE id = ?", again.body.id)[0].rules, '[{"kind":"watch","key":"T0000ABC"},{"kind":"watch","key":"X24"}]');
   assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${again.body.id}`, { rules: [{ kind: "watch", key: "X24" }] }, { now })).body, { ok: true });
   // an unknown id: 404 whatever the keys
   for (const key of ["X01", "T0000AAA"]) assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key }] }, { now })).status, 404, key);
-  // PUT [] deletes whatever the stored rules name (no "unknown" field: nothing is stored)
+  // PUT [] deletes whatever the stored rules name
   assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${r.body.id}`, { rules: [] }, { now })).body, { ok: true });
   assert.equal(db.rows("SELECT count(*) c FROM subs WHERE id = ?", r.body.id)[0].c, 0);
   // a full table / used-up budget answer as before, unknown keys or not
@@ -2189,11 +2326,11 @@ test("5th/6th review (flood + new real pair): a flood of unknown-key pairs (more
   };
   assert.deepEqual(await factory("2026-10-19"), [], "day 1: the flood is not in the list");
   // day 2: a real phone subscribes (X24 nationwide); more made-up keys are planted after the key set (stored, named
-  // "unknown" — 6th review), again more than PAIR_CAP pairs with 2 phones each
+  // and answered {id} — 6th/7th review), again more than PAIR_CAP pairs with 2 phones each
   const real = await sub(env, [{ kind: "newmatch", key: "X24" }, { kind: "watch", key: "X24" }], subscription(), { now: kst("2026-10-19T12:00:00") });
   for (let rep = 0; rep < 2; rep++) for (let s = 0; s < CAP / 20 + 2; s++) {
     const r = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: fake(5000 + s * 20 + j) })) }, { now: kst("2026-10-19T12:00:00") });
-    assert.deepEqual([r.status, r.body.unknown.length], [201, 20]);
+    assert.deepEqual([r.status, Object.keys(r.body)], [201, ["id"]]);
   }
   // a phone that already watches a key the next data.json will have (T0009077, made up today, real later)
   const early = await sub(env, [{ kind: "newmatch", key: fake(9077) }], subscription(), { now: kst("2026-10-19T12:00:00") });

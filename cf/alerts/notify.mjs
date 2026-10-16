@@ -7,13 +7,15 @@
 // serves that same data-meta.json — what the phones were given — parsed as JSON, never run. Only that job gets ALERTS_URL
 // and ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on its machine. Plain node, no
 // npm packages.
-// ALERTS_MODE=keys (a run started by a push to main — merged code, data rebuilt from saved prices; weekly.yml sets it): only
-// step 1, ≤ 1 D1 row written. full (the daily schedule, Run workflow): steps 1–5. A full run of a data.json the Worker
-// already finished today (same sha256, same KST day) stops after step 2's first page (done): no digest, no finish.
+// ALERTS_MODE (weekly.yml sets it): full = the FIRST attempt of the daily schedule run only — steps 1–5; keys = every other
+// run (started by a push to main, by Run workflow — a manual collection, price-check.yml's or the redeploy job's rebuild —
+// or a Re-run): only step 1, ≤ 1 D1 row written, and a ::notice that this data.json is computed by the next daily run
+// (06:00 KST): the D1 budget holds one computation a day (src/worker.js). A full run of a data.json the Worker already
+// finished today (same sha256, same KST day) stops after step 2's first page (done): no digest, no finish.
 //   1. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
 //      row (rewritten only when they change) and ranks only pairs of these keys in (2) — a key the data does not have can
 //      never be computed, so its pair must never take a place in the list (5th review); rules naming another key are
-//      still stored (subscribe/PUT answer "unknown": [keys], 6th review)
+//      still stored and wait (6th review), computed from the first daily run whose data.json has the key
 //   2. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
 //      at most the Worker's PAIR_CAP (most important first), in one page; data = this file's sha256 (done: already finished
 //      today); a pair whose key is not in this data.json is still skipped here (it would be one D1 row written for nothing)
@@ -149,13 +151,13 @@ export async function notify({ data, sha, mode = "full", today = kstDay(Date.now
   const run = `${data.meta.updated}|${today}`;
   const opt = waitMs === undefined ? {} : { waitMs };
   // the keys this data.json has, sent first: the Worker ranks only pairs of these keys (a key it cannot compute never takes
-  // a place in the list); a rule naming another key is stored and named in "unknown". Ascending, each once (rules.js
-  // keySetJson)
+  // a place in the list); a rule naming another key is stored and waits. Ascending, each once (rules.js keySetJson)
   const keySet = [...new Set(data.keys.map((k) => k[0]))].sort();
   const ks = await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
   if (mode === "keys") {
     const keysChanged = ks && ks.changed ? "changed" : "unchanged";
-    log(`price alerts: key set sent (${keySet.length} keys, ${keysChanged}) — a push-started run computes nothing (the daily run does)`);
+    log(`price alerts: key set sent (${keySet.length} keys, ${keysChanged}) — only the daily schedule run computes`);
+    log("::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST). A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day");
     return { mode, keys: keySet.length, changed: !!(ks && ks.changed) };
   }
   const watched = [];
@@ -192,7 +194,7 @@ export async function notify({ data, sha, mode = "full", today = kstDay(Date.now
   const done = await call(f, url, secret, "/v1/internal/finish", { run, today, ...(sha ? { data: sha } : {}) }, opt);
   const ending = entries.filter((e) => e.e != null).length;
   const skipped = watched.length - pairs.length;
-  log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring`);
+  log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring (${done.cleared} stale expiring cleared)`);
   return { mode, pairs: pairs.length, entries, ...done };
 }
 

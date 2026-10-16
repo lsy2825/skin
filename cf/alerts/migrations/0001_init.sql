@@ -15,9 +15,9 @@ CREATE TABLE subs (
   pend_w INTEGER NOT NULL DEFAULT 0, -- weekly bundle has news to send (reset when the rules change)
   last_w TEXT,                       -- day the last weekly bundle went out (7-day rule; kept when the rules change)
   pend_x TEXT,                       -- earliest end date of a saved price about to end, not announced yet (expiring)
-  pend_xl TEXT,                      -- the (key|region|end date) list behind pend_x, JSON; moves to exp_sent when sent
-  exp_sent TEXT,                     -- JSON list of (key|region|end date) already announced (never the same one twice);
-                                     -- passed end dates are removed by the factory's finish
+  pend_xl TEXT,                      -- the 'end date|key|region' list behind pend_x, JSON; moves to exp_sent when sent
+  exp_sent TEXT,                     -- sorted JSON list of 'end date|key|region' already announced (never the same one
+                                     -- twice); passed end dates are removed by the factory's finish (and at the next send)
   last_x TEXT,                       -- day of the last push that carried an expiring notice, stand-alone or riding along
                                      -- with the weekly bundle (at most one such push a day)
   fails INTEGER NOT NULL DEFAULT 0,  -- consecutive failed pushes (a 5xx/timeout counts only when that push service answered
@@ -86,7 +86,7 @@ CREATE TABLE snap (
 -- before it asks for the watched pairs): ONE row, a JSON array in ascending order (src/rules.js keySetJson), rewritten only
 -- when the set changes (src/sql.js SET_KEYS: a few rows written a week). The factory computes only those keys, so the
 -- watched list ranks only pairs whose key is in it (src/sql.js WATCHED). Subscribe/PUT store a rule whose key is not in it
--- and list that key in an informational "unknown" field of the answer (src/sql.js UNKNOWN_KEYS). Public treatment keys
+-- and answer as for any rule (its pair waits until a later key set holds the key). Public treatment keys
 -- only — nothing about a person. INTEGER PRIMARY KEY: no separate index.
 CREATE TABLE keyset (id INTEGER PRIMARY KEY CHECK (id = 1), keys TEXT NOT NULL) STRICT;
 

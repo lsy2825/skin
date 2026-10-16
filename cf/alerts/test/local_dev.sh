@@ -2,9 +2,9 @@
 # Local check of the alerts Worker in the real runtime (workerd via wrangler dev) with a local D1:
 #   bash cf/alerts/test/local_dev.sh
 # migrate a throw-away local D1 → wrangler dev on a free port (8795-8799) → subscribe / rules / delete / factory export
-# with curl → notify.mjs on app/data.json against it (full, the same data again = done, ALERTS_MODE=keys) → stop wrangler
-# by its process group. Needs node + npx (no account,
-# no network to Cloudflare). The factory secret is made up for this run only.
+# with curl → notify.mjs on app/data.json against it (full, the same data again = done, ALERTS_MODE=keys) → D1 rows read
+# of a finish and a send run on the same runtime (test/d1_reads.mjs) → stop wrangler by its process group. Needs node +
+# npx (no account, no network to Cloudflare). The factory secret is made up for this run only.
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 WRANGLER=${WRANGLER:-npx --yes wrangler@4.145.0}
@@ -89,12 +89,13 @@ DS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --js
 WANT=$(node -e 'const h=require("crypto").createHash("sha256").update(require("fs").readFileSync("app/data.json")).digest("hex");console.log(parseInt(h.slice(0,13),16))')
 case "$DS" in *'"n": '"$WANT"*|*'"n":'"$WANT"*) ;; *) fail "stat 'data' should hold the tag of app/data.json's sha256 ($WANT): $DS";; esac
 echo "ok   same data again the same day: done at the first page (stat data = the file's sha256 tag)"
-# a push-started run (ALERTS_MODE=keys): only the key set
+# a run that is not the daily schedule's first attempt (ALERTS_MODE=keys): only the key set, and a notice
 ALERTS_MODE=keys ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify3.log"
-grep -q '^price alerts: key set sent ([0-9]* keys, unchanged) — a push-started run computes nothing (the daily run does)$' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should send only the key set"
+grep -q '^price alerts: key set sent ([0-9]* keys, unchanged) — only the daily schedule run computes$' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should send only the key set"
+grep -q '^::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST)' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should say when this data is computed"
 echo "ok   ALERTS_MODE=keys: key set only"
 # notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
-# does not have is still stored (the API only adds — 6th review) and named in "unknown"; a malformed key set is 400 BAD_KEYS
+# does not have is still stored (6th review) and answered exactly as 약속 1 says (7th review); a malformed key set is 400
 KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"
 NKEYS=$(node -e 'const d=JSON.parse(require("fs").readFileSync("app/data.json","utf8"));console.log(new Set(d.keys.map((k)=>k[0])).size)')
 case "$KS" in *'"c": 1'*'"n": '"$NKEYS"*|*'"c":1'*'"n":'"$NKEYS"*) ;; *) fail "the key set should be one row of $NKEYS keys: $KS";; esac
@@ -102,10 +103,10 @@ echo "ok   key set stored: one row, $NKEYS keys"
 # (a PUT, so the subscribe rate limit of 3 a minute stays for the subscriptions below; POST takes the same path: node tests)
 U=$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"},{"kind":"watch","key":"TZZZZZZZ"}]}' -H "origin: $APP")
 expect 200 "$U" "a rule naming a key data.json does not have: stored"
-case "$U" in *'{"ok":true,"unknown":["TZZZZZZZ"]}'*) ;; *) fail "should answer {ok:true, unknown:[that key]}: $U";; esac
+case "$(cat "$STATE/out")" in '{"ok":true}') ;; *) fail "should answer {\"ok\":true} (약속 1): $U";; esac
 RU=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT rules FROM subs WHERE endpoint LIKE '%local-dev-1'" 2>/dev/null) || fail "could not read the local D1 rules"
 case "$RU" in *TZZZZZZZ*) ;; *) fail "the rule with the unknown key should be stored: $RU";; esac
-expect 200 "$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"}]}' -H "origin: $APP")" "known keys only: no unknown field"
+expect 200 "$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"}]}' -H "origin: $APP")" "known keys only"
 case "$(cat "$STATE/out")" in '{"ok":true}') ;; *) fail "known keys should answer {\"ok\":true}: $(cat "$STATE/out")";; esac
 expect 400 "$(req POST /v1/internal/keys '{"keys":["X24","X01"]}' -H "authorization: Bearer $SECRET")" "a key set out of order (BAD_KEYS)"
 expect 401 "$(req POST /v1/internal/keys '{"keys":["X01"]}')" "key set without the secret"
@@ -152,4 +153,13 @@ grep -q 'alerts send failed\|alerts error' "$LOG" && fail "the Worker logged an 
 # our own console lines (not wrangler's local access log, which prints URLs; deployed, invocation logs are off)
 if grep -v '^\[wrangler:' "$LOG" | grep -E "$ID|local-dev-" >/dev/null; then fail "the Worker's console log shows an id or endpoint"; fi
 echo "ok   Worker console log has no ids or endpoints"
+
+# D1 rows READ on this runtime's D1 (7th review: the finish must not read more when exp_sent lists are long; per-phone
+# ceilings of the src/worker.js arithmetic): test/d1_reads.mjs with the wrangler package (getPlatformProxy, a throw-away D1)
+if [ -x "${WRANGLER%% *}" ] && [ "$WRANGLER" = "${WRANGLER%% *}" ]; then
+  WR_PKG=$(cd "$(dirname "$(readlink -f "$WRANGLER")")/.." && pwd)
+  node cf/alerts/test/d1_reads.mjs "$WR_PKG" || fail "D1 rows read above the ceiling (test/d1_reads.mjs)"
+else
+  npx --yes -p wrangler@4.145.0 -c 'node cf/alerts/test/d1_reads.mjs "$(cd "$(dirname "$(readlink -f "$(command -v wrangler)")")/.." && pwd)"' || fail "D1 rows read above the ceiling (test/d1_reads.mjs)"
+fi
 echo "local dev check: all good"
