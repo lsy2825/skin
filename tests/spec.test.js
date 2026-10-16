@@ -121,3 +121,16 @@ test("famWords: the word a split family puts in front of its base name, also wit
   assert.deepEqual(Spec.notesFor(NOTES, "toxin", ["국산 얼굴전체", "스킨보톡스", Spec.famWords("스킨보톡스", T)], { drafts: true }).map((x) => x.spec), ["국산", "스킨"]);
   assert.deepEqual(Spec.notesFor(NOTES, "toxin", ["국산", "목주름 보톡스", Spec.famWords("목주름 보톡스", T)], { drafts: true }).map((x) => x.spec), ["국산"]);   // '주름' inside '목주름' stays out
 });
+
+test("a new device's '신규 런칭·입고·도입' is not a first-visit price (C #99, build2/clean.py NEW_ITEM)", () => {
+  const first = (name, tags = []) => Spec.eligibility({ name, tags }).find((x) => x.k === "첫 방문").state;
+  assert.equal(first("덴서티리프팅 알파팁 신규런칭 300샷"), "unknown");
+  assert.equal(first("NMN X 나드샷 신규 런칭 1회"), "unknown");
+  for (const w of ["입고", "도입", "오픈", "출시"]) assert.equal(first(`울쎄라 신규 ${w} 기념 300샷`), "unknown", w);
+  assert.equal(first("신규 고객 리쥬란 2cc"), "limit");                       // a new customer still is
+  assert.equal(first("첫방문 아쿠아필 1회"), "limit");
+  assert.equal(first("신규런칭 기념 · 첫 방문 아쿠아필", []), "limit");       // both: the first-visit words stay
+  assert.equal(first("알파팁 신규런칭", ["첫 방문"]), "limit");               // the build's tag still decides
+  assert.equal(Spec.dropNewItem("A 신규 런칭 B 신규출시 C"), "A   B   C");
+  assert.equal(Spec.dropNewItem(null), "");
+});

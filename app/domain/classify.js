@@ -69,7 +69,7 @@
     if (o.addon != null ? o.addon : ADDON.test(name)) return out("H");
     if ((o.sess || 1) >= 99) return out("G");
     if (isBundle(name) && !/\+/.test(label)) return out("F");
-    if (o.kind === 1 || o.kind === 2 || (o.tags || []).length || /첫\s*방문|신규|평일|주말|타임|선착순/.test(name)) return out("E");
+    if (o.kind === 1 || o.kind === 2 || (o.tags || []).length || /첫\s*방문|신규|평일|주말|타임|선착순/.test(Spec.dropNewItem(name))) return out("E");
     if (o.kind === 4) return out("I");
     const ps = products(name), mix = o.mix;
     if (mix && mix.mixed && ps.length) return out("C", `${CLASSES.C.say} 이 가격: ${ps.join("·")} · 같은 묶음: ${[...mix.named.keys()].join("·")}`);
