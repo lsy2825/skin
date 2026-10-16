@@ -41,3 +41,9 @@ jobs:
         run: python build2/weekly.py --skip-scrape
       - name: Review queue, as the factory does
         run: node tools/review_queue.js
+      # The factory's build guard (build2/labels.py) only stops names it knows are bad; this runs the spec-label tests on the data
+      # this PR just built, so a PR that changes the cleaning or label rules is checked against real data before it is merged.
+      - name: Spec labels on the data this PR built
+        env:
+          PYTHONUTF8: "1"
+        run: python tests/labels_test.py

@@ -67,6 +67,7 @@ checks() {
   python build2/knowledge.py
   python tests/security/scan_secrets.py
   python tests/verify_prices_test.py
+  python tests/size_guard_test.py         # the app/data.json size guard itself (build2/size_guard.py stops a build over 20 MiB)
 }
 
 build() {   # $1 = "" (scrape) or --skip-scrape
