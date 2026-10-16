@@ -87,7 +87,7 @@
 | U7·U14·E11 개발 문구·브랜드 수 | 해결(B1) | 브라우저 | `vatBrandsNote`·`liveBrands`(데이터에서 셈) | — | `meta.about.sources`가 5개 브랜드라 화면은 지점이 있는 브랜드로 대신(C에 부탁) |
 | U8 빨간 '초안' 배지 | 해결(B1) | 브라우저 | `reviewBadge`·`kbFoot` | e2e concern | — |
 | U5·E1 '병원 설명' | 해결(B1) | 브라우저 | guideBox·사전·죠미 답·목록에서 `f.desc` 안 보임 | — | 판촉 문구 거름 사전은 데이터(C) |
-| U6·U10·E5·E6 부가세 미확인·추가 옵션 | 해결(B1) | 단위·브라우저 | `cmpOk`·`cmpRk`, `Classify.isAddon` | classify.test | 닥터에버스·셀린 부가세 조사는 데이터(C2) |
+| U6·U10·E5·E6 부가세 미확인·추가 옵션 | 해결(B1·B9) | 단위·브라우저 | `cmpOk`·`cmpRk`, `addonOf`(빌드의 추가 옵션 칸 r[15]→r[19], C2; 그 칸이 없는 예전 파일만 `Classify.isAddon` 이름 규칙) | classify.test, e2e addon_col | 닥터에버스·셀린 부가세 조사는 데이터(C2) |
 | E4·E10·U18·E12 중복 줄·빈 검색 요약 | 해결(B1) | 단위·브라우저 | `Search.uniqueRows` | search.test | 규격 이름 대소문자·부위 이름(E2·E3)은 데이터(C1) |
 | 크레딧 화면 제거 | 해결(B2, lsy2825/skin#8) | 단위·브라우저 | `commerce.js` 삭제, 마이 메뉴·문구 | e2e devices51·a11y 갱신 | domain 5개 파일은 A3 뒤, demowallet·economics는 A6 뒤 삭제 |
 | U1·U3·U17·E7 비교 화면 한 기준·길이·아래 막대 | 해결(B3) | 브라우저 | `cmpHead`·`rangeBar`·`cmpMoreSheet`, 목록 10곳+모두 보기, 접기 | e2e objective·compare_cards·pricenow·demo_features | '가격과 함께 꼭 확인하세요' 접기는 정책 문서 결정 필요, 13px 미만 글자(배지) 정리 |
