@@ -57,8 +57,23 @@ def from_log(brand, key):
     return json.load(open(p, encoding="utf-8")) if os.path.exists(p) else {}
 
 
+# the page footer and page buttons that the flattened page text puts right after an address (2026-10-16: 'Copyright © 2024
+# PPEUMCLINIC. All…' after the 쁨·밴스 footer address, the footer links '개인정보취급방침 이용약관 …' of 데이뷰·셀린, 유앤아이
+# '내 위치에서 길 찾기', 쁨 '자세히보기', 리엔장 popup buttons). Cut before the 40-character window below, so no half word
+# ('Copyrigh') is left at its end. build2/appdata.py ADDR_JUNK drops the same words from addresses saved before this.
+FOOTER = re.compile(r"\s*(?:copyright|©|ⓒ|all\s+rights?\s+reserved|사업자\s*등록\s*번호|개인정보\s*(?:취급|처리)\s*방침|이용\s*약관"
+                    r"|병원\s*소개|의료진\s*소개|내\s*위치에서\s*길\s*찾기|자세히\s*보기|오늘\s*하루\s*(?:그만\s*)?(?:보기|열지)"
+                    r"|팝업\s*닫기|제휴\s*문의)", re.I)
+
+
 def _full(a, t):
-    return JUNK.sub("", t[t.index(a):][:len(a) + 40]).rstrip(" ,·|/") if a and a in t else a
+    """the address as the page writes it (floor, building): the text from the address on, up to the page footer
+    (FOOTER) and at most 40 characters past the address, without what JUNK names (phone, map links …)"""
+    if not a or a not in t:
+        return a
+    rest = t[t.index(a):]
+    m = FOOTER.search(rest, len(a))
+    return JUNK.sub("", rest[:m.start() if m else len(rest)][:len(a) + 40]).rstrip(" ,·|/")
 
 
 def page_addr(f, url):
