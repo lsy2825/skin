@@ -33,6 +33,7 @@ data.json (compact, strings interned in `s`):
   bstat     per branch [regular level, level incl. specials, groups used, cheapest count, sole cheapest, {cat: level}]
             (level = geometric mean of price / median, 0.81 = 19% cheaper than the middle branch)
   achg      auto-group changes since the previous snapshot {prev, chg [g, b, before, after], new [g, b, p], gone [label s, b, before]}
+            — not where the rules moved a row of that price into or out of the group's regular price (group_moved, meta.reclGroups)
   meta.fam  procedure families (build2/taxonomy.py) for the compare picker and option switch: [name, regex for related rows
             at a branch (tested on the name without spaces), [[key id, variant label]...], compare category, base family id,
             [the clinics' own short explanations from the names]]
@@ -54,6 +55,13 @@ data.json (compact, strings interned in `s`):
             entry here moved at every branch (an id that came back, or one a data.json from before this field listed). Read by
             the next build only: a later build of the same collection still counts from the older snapshot. Such a build also
             lists every branch whose plain lowest is not the earlier build's (same_collection_moved — rows a rule renamed)
+  meta.reclGroups  [collection date, achg.prev, [[group key, branch index, price], …]] (2026-10-16) — the same for the automatic
+            groups: prices the rules moved into or out of a group's regular price at that branch (a row of the same name and
+            price that now counts and did not, or the other way round), found by this build and the earlier builds of the same
+            collection (group_moved, group_memory). achg leaves out a change, new or gone entry whose before or after price is
+            one of them. group key = xkeys.comp of the name (not in `s`); only keys of the achg.prev snapshot. Read by the next
+            build only. A previous file of the same collection without it: still_listed (the snapshot's prices still sold there)
+            and every '새로 생김' of that build (achg_moved — the snapshot cannot tell a row a rule moved in)
   meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9; a chain never collected is left out).
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
@@ -605,8 +613,9 @@ def group_moved(prev, prow, rows, gid, since=None):
     an add-on, and the group read it as a price rise 190,000 → 290,000 at 톡스앤필 건대점). A change whose old or new price is such
     a row is the rules', not the clinic's. The previous rows count by the plain rule of the snapshot the changes are counted from
     (since = its date; 2026-10-16: a '토요일이벤트' price left the regular price without changing). Not by the previous file's own
-    rule: a second build of the same collection has a previous file of the new rule but still counts from the older snapshot
-    (keys keep such ids in meta.recl; groups have no such list), and would list the moved prices as '없어짐'."""
+    rule: a second build of the same collection has a previous file of the new rule but still counts from the older snapshot,
+    and would list the moved prices as '없어짐'. What a tag or add-on change moved, a second build cannot see here (its previous
+    file already has the new tags): it reads it from meta.reclGroups (group_memory)."""
     if not prev:
         return set()
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
@@ -621,6 +630,77 @@ def group_moved(prev, prow, rows, gid, since=None):
         ident = (r["brand"], r["branch"], r["name"], int(r["sale"]))
         now[ident] = now.get(ident, False) or (g >= 0 and G.regular(r))
     return {(f"{i[0]}|{i[1]}", G.comp(i[2]), i[3]) for i, c in now.items() if i in was and was[i] != c}
+
+
+def group_memory(prev, collected, since):
+    """what the earlier builds of this collection found the rules moved for the automatic groups (meta.reclGroups of the
+    previous data.json): {(brand|branch, group key, price)} — or None when the previous file is of this collection but cannot
+    say (a file from before this field, or one counted from another snapshot). A later build of the same collection compares
+    with the same older snapshot, but its previous file already has the new tags, so group_moved finds nothing there (2026-10-16:
+    #83 tagged 쁨 울산점's '♥수목 해피아워♥' rows; the build after it kept them out of achg, the next one listed 79,000 → 100,000 and
+    four more as price rises). A previous file of another collection: set() (its moves were counted from an older snapshot)."""
+    pm = (prev or {}).get("meta", {})
+    if not prev or pm.get("updated") != collected:
+        return set()
+    mem = pm.get("reclGroups")
+    if not mem or mem[0] != collected or mem[1] != since:
+        return None
+    pbrand = [b[0] for b in pm["brands"]]
+    pk = [f"{pbrand[b[0]]}|{prev['s'][b[1]]}" for b in prev["branches"]]
+    return {(pk[b], k, p) for k, b, p in mem[2] if 0 <= b < len(pk)}
+
+
+def still_listed(rows, gid, gkeys, before):
+    """for a same-collection build whose previous file has no meta.reclGroups (group_memory None): the snapshot's regular
+    prices that are no longer a regular price of their group at that branch but are still sold there under the same name
+    (group key) — now with a condition tag, as an add-on or outside any group. {(brand|branch, group key, price)}. Such a
+    'change from' or '없어짐' is a reclassification, as group_moved counts a same-name same-price row whose counted state
+    changed; only the 'before' side can be read from the snapshot (a row that now counts is not in it: achg_moved). It reads
+    prices only: a clinic that made its old regular price a conditional one of the same name between the collections is read
+    as a rule's move too (none in that file: each was a tag or add-on change of the same collection). before = the snapshot
+    {group key: {brand|branch: price}} (2026-10-16: main's file listed 쁨 울산점 79,000 → 100,000 and four more, 톡스앤필
+    건대점 190,000 → 290,000, '포텐자펌핑 팁' 50,000 at 톡스앤필 부천점 as gone)"""
+    counted, sold = defaultdict(set), defaultdict(set)
+    for r, g in zip(rows, gid):
+        b, p = f"{r['brand']}|{r['branch']}", int(r["sale"])
+        if g >= 0 and G.regular(r):
+            counted[(b, gkeys[g])].add(p)
+        else:
+            sold[(b, G.comp(r["name"]))].add(p)
+    return {(b, k, p) for k, m in before.items() for b, p in m.items() if p not in counted[(b, k)] and p in sold[(b, k)]}
+
+
+def achg_moved(prev, prow, rows, gid, gkeys, bkeys, collected, since, before, new):
+    """{(brand|branch, group key, price)} the rules moved for the automatic groups since the snapshot `since` (before = that
+    snapshot): group_moved, and on a later build of the same collection what the earlier ones found (group_memory).
+    A previous file of this collection that cannot say (group_memory None — in practice main's file of 2026-10-16, built before
+    meta.reclGroups): still_listed for the 'before' side, and every '새로 생김' (new = achg new [[gid, branch, price]] of this
+    build, chains new as a whole left out). A row a rule moved into a group is not in the snapshot, so a new price cannot be
+    told from one the rules made, and that file's 38 all were the rules' (검토 2026-10-16: 37 블리비 rows lost a wrong '평일 낮'
+    tag in a rebuild of the collection, 1295f2a, listed as new from the next rebuild on; 쁨 부평점 lost '첫 방문'). A real new
+    price of that week is left out with them — once: meta.reclGroups keeps them out of the later builds of the collection,
+    and the next collection counts from this one's snapshot"""
+    moved = group_moved(prev, prow, rows, gid, since)
+    mem = group_memory(prev, collected, since)
+    if mem is None:
+        mem = still_listed(rows, gid, gkeys, before) | {(bkeys[b], gkeys[g], p) for g, b, p in new}
+    return moved | mem
+
+
+def recl_groups(moved, collected, since, before, bkeys):
+    """meta.reclGroups: [collection date, snapshot date, [[group key, branch index, price], …]] — only group keys the snapshot
+    has (no other key can have an achg entry against it, on this build or a later one of the same collection)"""
+    bix = {b: i for i, b in enumerate(bkeys)}
+    return [collected, since, sorted([k, bix[b], p] for b, k, p in moved if k in before and b in bix)]
+
+
+def achg_keep(chg, new, gone, moved, bkeys, gkeys):
+    """achg without the entries the rules made: a change whose before or after price is a moved row's (2026-10-15: '[울써마지
+    옵션] 얼굴전체 더모톡신' 190,000 became an add-on — not a rise 190,000 → 290,000), and the same for '새로 생김' / '없어짐': a row
+    the rules moved into or out of a group is not a new or a gone price (검증 7차). gone is not cut here (GONE_MAX after)"""
+    at = lambda g, b, p: (bkeys[b], gkeys[g], p) in moved
+    return ([c for c in chg if not at(c[0], c[1], c[2]) and not at(c[0], c[1], c[3])], [c for c in new if not at(*c)],
+            [c for c in gone if (bkeys[c[1]], c[3], c[2]) not in moved])
 
 
 def sex_word(label):
@@ -793,16 +873,16 @@ def main():
     vp = os.path.join(ROOT, "data2", "variants.json")
     vj = json.load(open(vp, encoding="utf-8")) if os.path.exists(vp) else {"keys": [], "families": []}
     KB["specs"] = spec_keys(KB["specs"], vj["keys"], {k[0] for k in ALLK}, vj.get("families", []), {k[0]: k[2] for k in ALLK})
-    achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
-    moved = group_moved(prev_data, prev_rows, rows, gid, aprev)
-    achg = [c for c in achg if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved and (bkeys[c[1]], gkeys[c[0]], c[3]) not in moved]
-    # the same for '새로 생김' / '없어짐': a row the rules moved into or out of a group is not a new or a gone price (검증 7차)
-    anew = [c for c in anew if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved]
-    agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved][:G.GONE_MAX]
+    achg, anew, agone, aprev, asnap = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys,
+                                                             glob.glob(os.path.join(hist, "*.auto.json.gz")))
     # a chain the previous snapshot did not have is new as a whole: its prices are not '새로 생김' one by one (2026-10-15, 개선 보고서
     # E9 — 밴스·유앤아이·데이뷰·닥터에버스·셀린 filled the list on 10-14; a chain back after a gap too, C3 검토)
     days = brand_days(hist, collected)
     anew = [c for c in anew if chain_was_there(days, aprev, bkeys[c[1]].split("|")[0])]
+    moved = achg_moved(prev_data, prev_rows, rows, gid, gkeys, bkeys, collected, aprev, asnap, anew)
+    reclg = recl_groups(moved, collected, aprev, asnap, bkeys)
+    achg, anew, agone = achg_keep(achg, anew, agone, moved, bkeys, gkeys)
+    agone = agone[:G.GONE_MAX]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
@@ -811,6 +891,7 @@ def main():
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "reclBranches": reclb,
+                 "reclGroups": reclg,
                  "labelRules": labels.RULES,
                  "plainRules": G.rule_marks((prev_data or {}).get("meta", {}).get("plainRules"), collected),
                  "brandFirst": first_seen(days, [b for b, *_ in BRANDS], {r["brand"] for r in rows}, collected)},
