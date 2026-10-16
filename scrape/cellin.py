@@ -181,11 +181,16 @@ def scrape_new(f, name, home, old_site, ts):
     base, host = f"{u.scheme}://{u.netloc}", u.netloc
     sm, _ = f.read(base + "/sitemap.xml")
     pages = page_urls(sm.text, host) if sm else []
-    rows = []
+    rows, vat = [], ""
     for p in pages:
         r, at = f.read(p)
         if r is not None and r.status_code == 200 and urlparse(at).netloc == host:
             rows += new_items(r.text, name, at, ts)
+            if not vat:                                     # the option box's VAT line, kept in the log (data2/vat_policy.json)
+                m = re.search(r'"vatNotice":"((?:[^"\\]|\\.)*)"', flight(r.text))
+                vat = clean(json.loads(f'"{m.group(1)}"')) if m else ""
+        elif r is not None:
+            f.fails.append({"url": p, "error": f"HTTP {r.status_code} → {at}"})
     seen, out = set(), []
     for x in rows:
         k = (x["group"], x["option"], x["sale"])
@@ -193,9 +198,10 @@ def scrape_new(f, name, home, old_site, ts):
             seen.add(k)
             out.append(x)
     # branches.py / branch_rows.py read the address from addr_url (the footer of a light page, robots.txt first)
+    n_ev = sum("/events/" in p for p in pages)
     return name, out, {"branch": name, "site": base, "old_site": old_site, "platform": "new", "addr_url": base + "/ko/events",
-                       "ok": bool(sm) and not f.fails, "events": len(pages), "rows": len(out), "requests": f.count,
-                       "fails": f.fails}
+                       "ok": bool(sm) and bool(pages) and not f.fails, "events": n_ev, "procedures": len(pages) - n_ev,
+                       "rows": len(out), "vat_notice": vat, "requests": f.count, "fails": f.fails}
 
 
 def branch_sites(html):
@@ -261,6 +267,8 @@ def scrape_branch(name, site, gap):
         d = f.get(site + DETAIL, method="POST", data={"idx": idx})
         if d is not None and d.status_code == 200:
             rows += items(d.text, name, ev, until_of(info, today), f"{site}{LIST}#li_{idx}", ts)
+        elif d is not None:                                 # a redirect instead of the detail: not followed for a POST
+            f.fails.append({"url": site + DETAIL, "error": f"HTTP {d.status_code} (idx {idx})"})
     seen, out = set(), []
     for x in rows:
         k = (x["group"], x["option"], x["sale"])
@@ -289,7 +297,7 @@ def main():
         for name, got, log in ex.map(lambda kv: scrape_branch(kv[0], kv[1], a.gap), sites.items()):
             rows += got
             logs.append(log)
-            print(f"{name}: {log.get('events', 0)} events, {len(got)} rows{' (moved: ' + log['moved'] + ')' if log.get('moved') else ''}, fails {len(log.get('fails', []))}", flush=True)
+            print(f"{name}: {log.get('events', 0)} events{', %d procedure pages' % log['procedures'] if 'procedures' in log else ''}, {len(got)} rows{' (moved: ' + log['moved'] + ')' if log.get('moved') else ''}, fails {len(log.get('fails', []))}", flush=True)
     bad = [l for l in logs if not l["ok"]]
     path = write_raw("cellin", rows, {"brand": "셀린", "branches": len(sites), "pages": logs, "bad": bad, "finished": now_iso()})
     print(f"wrote {path}: {len(rows)} rows, {len(sites)} branches, {len(bad)} with failures")
