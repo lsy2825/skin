@@ -4,7 +4,7 @@
 **`tools/windows/setup.bat`를 한 번 더블클릭하면 전부 받아서 설치한다**(이미 있는 것은 건너뜀, 다시 실행해도 됨).
 실제로 설치된 위치·버전·검사 결과는 설치가 끝나면 **`C:\yoonsiljang-tools\INSTALLED.md`**에 적힌다.
 이 문서와 설치 파일은 A(플랫폼) 담당이다. 판(version)은 GitHub 자동 검사와 같게 맞춘다(`tests/security/local_setup.test.js`가 확인).
-예전 한 줄 설치(`tools/setup-windows.ps1`, `irm … | iex`, `C:\dev\skin`)는 저장소가 비공개가 되면서 더 이상 쓸 수 없어 이 설치로 바꿨다.
+예전 한 줄 설치(`tools/setup-windows.ps1`, `irm … | iex`, `C:\dev\skin`)는 2026-10-15 저장소를 비공개로 돌릴 때 이 설치로 바꿨다. 저장소는 2026-10-16부터 다시 공개지만(사용자 결정) 설치는 이것 하나만 쓴다.
 
 > 아직 Windows PC에서 직접 돌려 보지 못했다. PowerShell 7로 문법 검사(5.1에 없는 문법 검사 포함)를 했고, 검토자 4명이
 > Windows PowerShell 5.1·cmd 동작을 따져 찾은 문제를 고쳤다. winget·Python 설치기 동작은 PC마다 다를 수 있다.
@@ -63,7 +63,7 @@
 3. 중간에 나오는 것
    - Git·GitHub CLI를 설치할 때 Windows 확인 창(관리자) → `예`
    - 커밋에 남길 이름·이메일 질문(처음 한 번) → GitHub 아이디·이메일
-   - GitHub 로그인 창(비공개 저장소라서) → 저장소 주인 계정으로 로그인
+   - GitHub 로그인 창 → 저장소 주인 계정으로 로그인. 저장소가 공개라 받을 때(`git clone`)는 보통 안 뜨고, 처음 올릴 때(push) 뜬다(추측 — PC에서 확인 못 함)
    - 8766 포트를 예전에 띄운 파이썬 서버가 잡고 있으면 그 서버를 끈다
 4. 끝나면 `C:\yoonsiljang-tools\INSTALLED.md`를 연다. 실제 위치·버전과 검사 결과(Chromium 실행, 앱 열기, 단위 테스트)가 있다.
 

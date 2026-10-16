@@ -1,7 +1,7 @@
 // node --test tests/security/*.test.js (also in tests/run_regression.sh and the PR checks) — keeps the Windows PC setup
 // (tools/windows/, docs/LOCAL_SETUP_WINDOWS.md) honest: the same Node/Python versions as the GitHub checks, the same versions
 // in the script and the guide, a verified Node download, no PIN stored, a tools folder only this account can change, files
-// Windows can actually read, and one setup route only (the old one-line installer cannot reach a private repository).
+// Windows can actually read, and one setup route only (the old one-line installer stays gone though the repo is public again).
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");

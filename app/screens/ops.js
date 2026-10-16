@@ -17,7 +17,7 @@
     // ---------------- 운영 현황 (ingestion status, freshness, review queue, source policy)
     // 수집 실행 상태 (docs/ADMIN_OPERATIONS_SPEC.md §3), asked only when the button is pressed, no token ever in the app:
     // first the Cloudflare factory's /status (cf/factory, docs/CLOUDFLARE_MIGRATION.md), then — while the move is under way, or
-    // if that answers nothing — GitHub's public API for weekly.yml (60 requests an hour per IP; unreadable once the repo is private)
+    // if that answers nothing — GitHub's public API for weekly.yml (60 requests an hour per IP; answers only while the repo is public — it is, owner's decision 2026-10-16)
     const FACTORY_STATUS = "https://yoonsiljang-factory.lsy2825.workers.dev/status";
     const RUN_API = "https://api.github.com/repos/lsy2825/skin/actions/workflows/weekly.yml/runs?per_page=5";
     const runState = (r) => r.status === "in_progress" ? "RUNNING" : r.status !== "completed" ? "QUEUED" : r.conclusion === "success" ? "SUCCESS" : "FAILED";

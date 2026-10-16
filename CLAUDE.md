@@ -3,7 +3,7 @@
 공장형 피부과 브랜드(블리비·쁨·톡스앤필·리엔장)의 지점별 시술 가격을 모아 비교하는 PWA.
 프레임워크·번들러 없음(순수 JS). `app/`은 빌드마다 관리자 Worker `yoonsiljang-admin`(`cf/admin/wrangler.jsonc`, Cloudflare Access 뒤)에
 배포된다. 공개 Worker `yoonsiljang`(`wrangler.jsonc`, https://yoonsiljang.lsy2825.workers.dev)은 2026-10-15 판으로 고정(공개 배포 멈춤 — 저장소 변수
-`PUBLIC_DEPLOY`=`on`일 때만 배포). GitHub 저장소는 2026-10-15 비공개 전환, GitHub Pages 없음. **코드·가격 공장은 비공개 GitHub에 그대로 둔다**
+`PUBLIC_DEPLOY`=`on`일 때만 배포). GitHub 저장소는 **공개**(코드·git 기록·Actions 로그 모두, 2026-10-16 사용자 결정 — `docs/SECURITY_ARCHITECTURE.md` §0), GitHub Pages 없음. **코드·가격 공장은 GitHub에 그대로 둔다**
 (2026-10-15 사용자 결정: GitHub 삭제 안 함, Cloudflare 이사는 보류 — `docs/CLOUDFLARE_MIGRATION.md`). 가격 공장 한 번 =
 `tools/factory.sh`(`weekly.yml`이 돌림. 보류 중인 Cloudflare 상자 `cf/factory`도 같은 스크립트). 공장 순서를 바꿀 때는 이 스크립트만 고치고
 `tests/factory_worker.test.js`를 돌린다.
@@ -68,7 +68,7 @@ Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설�
 참고 문서는 [6.0 보고서](https://claude.ai/code/artifact/0e9dbaac-2295-4faf-9bc0-3820b780f2a0),
 [개선 보고서](https://claude.ai/code/artifact/1f61a769-e8f3-48dd-b34c-84a3ceb57390),
 [검수 보고서](https://claude.ai/code/artifact/cfb9f199-05fb-4b12-bbd9-4bbeebdcf390)다.
-6.0 보고서와 지시서가 다르면 지시서를 따른다(코드·공장은 비공개 GitHub, 앱만 Cloudflare 무료).
+6.0 보고서와 지시서가 다르면 지시서를 따른다(코드·공장은 GitHub, 앱만 Cloudflare 무료. 지시서의 '비공개 GitHub'는 2026-10-16 사용자 결정으로 '공개 GitHub'로 읽는다).
 
 | 채팅 | 맡는 일 | 브랜치 |
 |---|---|---|

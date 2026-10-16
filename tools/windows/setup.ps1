@@ -193,7 +193,7 @@ try {
         Warn "원래 있던 $RepoDir 폴더(git 저장소가 아니거나 받다 만 것)는 $bak 로 이름을 바꿔 뒀어요. 거기서 고친 파일이 있으면 통째로 덮어쓰지 말고, 새 폴더로 옮긴 뒤 Git Bash에서 git diff로 내가 고친 줄만 바뀌었는지 확인하세요(docs\LOCAL_SETUP_WINDOWS.md 2절)."
       } else { Remove-Item -LiteralPath $RepoDir -Force }
     }
-    Write-Host '  GitHub 로그인 창이 뜨면 저장소 주인 계정으로 로그인하세요(비공개 저장소).'
+    Write-Host '  저장소는 공개라 받을 때는 보통 로그인 창이 뜨지 않아요. GitHub 로그인 창이 뜨면 저장소 주인 계정으로 로그인하세요.'
     & $git clone -c core.autocrlf=false $RepoUrl $RepoDir
     if ($LASTEXITCODE -ne 0) { throw "git clone 실패 — 인터넷 연결과 GitHub 로그인(저장소 주인 계정)을 확인하고 다시 실행하세요. 위에 'Clone succeeded, but checkout failed'가 보이면 디스크 공간·백신을 확인하세요. 받다가 끊겼으면 그냥 다시 실행하면 돼요." }
     Ok "받았어요 — $RepoDir"

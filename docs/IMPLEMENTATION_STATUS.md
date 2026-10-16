@@ -438,3 +438,37 @@ C8(#54) 줄 번호 함수는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | B 신고(2026-10-16): 지점 주소 끝 바닥글 | 합쳐짐 | lsy2825/skin#79 | — |
 | B 신고(2026-10-16): 시간만 적힌 가격의 '평일 낮' → 새 태그 '시간대' | PR 열림(B 화면 고친 뒤 합침) | lsy2825/skin#83 | 앱 `condState`·배지(B), DB 조건 목록(A) |
 | C9 심평원 비급여 자료 | 기다림 | — | 사용자가 API 키를 받은 뒤 |
+
+## 윤실장 6.0 · 채팅 A(플랫폼·보안) 진행 (2026-10-15~)
+
+기준은 개발 지시서(CLAUDE.md '분업'). PR 번호는 모두 lsy2825/skin.
+
+| 일 | 상태 | PR | 남은 것 |
+|---|---|---|---|
+| A1 CLAUDE.md 분업 절 | 합쳐짐 | #5 | — |
+| A2 보안 헤더(`app/_headers`) | 합쳐짐, 실제 응답 헤더로 확인(모니터) | #6, 문서 #33 | — |
+| A3 서버·DB 쪽 크레딧 제거 | 합쳐짐 | #9, #35 | — |
+| A4 익명 집계 Worker(`cf/metrics`, D1) | 합쳐짐. 앱 쪽은 꺼짐(`metrics: false`) | #15, #26 | 켜기(아래 순서) |
+| A5 푸시 알림 Worker(`cf/alerts`, D1) | 브랜치 `platform/alerts-worker`, 아직 안 합침 | — | 합치기·배포·VAPID 키 → B에게 `alertsApi`·`pushPublicKey` |
+| A6 관리자 주소(운영 현황은 Cloudflare Access 뒤) | 합쳐짐 | #23 | Access 설정(사용자). 설정 전에는 관리자 주소도 403 |
+| A7 텔레그램 모니터링 | 합쳐짐 | #14, #18 | — |
+| A8 사고 대응 문서 | 합쳐짐 | #10 | — |
+| A9 전용 도메인·`data.json` 요청 제한 | 시작 안 함 | — | 도메인 구매(사용자) |
+| 공장·검사 보강 | 합쳐짐 | #31, #36, #38, #46, #49, #56, #60 | — |
+| 공개 주소 배포 멈춤(`PUBLIC_DEPLOY`) | 합쳐짐 | #48 | 다시 켤지 사용자 결정 |
+| Windows PC 준비(`tools/windows/`) | 합쳐짐 | #57 | Windows PC에서 직접 돌려 보지 못함 |
+| 사용자 결정 기록 | 2026-10-15 합쳐짐, 2026-10-16(저장소 공개 등)은 이 PR | #34 | — |
+| 비밀번호 화면 번호 바꾸기 도구(`tools/windows/pin.bat`) | 별도 PR(`platform/pin-tool`) | — | 사용자가 PC에서 실행 |
+
+**2026-10-16 사용자 결정(자세히는 NOTES.md).** 저장소는 공개로 둔다(`docs/SECURITY_ARCHITECTURE.md` §0). 익명 집계·푸시 알림 켜기 승인.
+켜는 순서: A5 배포 → B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 공개 배포(`PUBLIC_DEPLOY`=`on`)를 다시 켜야 실제 사용자에게 닿음
+(두 Worker는 공개 주소에서 온 요청만 받음). 변호사·의료 검수는 사용자가 맡김(의뢰 자료는 저장소 밖). 그 밖의 일은 나중에(가족이 이어받음).
+
+**이어받는 분께 — A의 남은 일(짧게)**
+1. A5 알림 Worker 합치고 배포, 공개키를 B에게.
+2. 배포 작업 나누기: Cloudflare 토큰을 수집·빌드 작업에서 빼고 따로 떼어 낸 배포 작업에만 줌(`weekly.yml`·`tools/factory.sh`, 별도 PR `platform/deploy-job`).
+3. 공개 배포 다시 켜기(GitHub 저장소 변수 `PUBLIC_DEPLOY`=`on`) — 사용자 결정.
+4. 비밀번호 화면 번호 바꾸기(`platform/pin-tool` 합친 뒤 PC에서 실행).
+5. 사용자 설정: Cloudflare Access(관리자 주소), GitHub 비밀 검사·push protection(Settings → Code security).
+6. A9 전용 도메인과 요청 제한(도메인을 산 뒤).
+7. 문서에 남은 '비공개' 표현(`.github/workflows/weekly.yml` 주석, `docs/ARCHITECTURE.md`의 배포·스케줄 줄)은 같은 줄을 고치는 `platform/deploy-job` PR에서 함께 고침.

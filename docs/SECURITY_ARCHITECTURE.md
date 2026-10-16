@@ -5,6 +5,18 @@
 - **미검증:** 만들었거나 설정했지만 이 환경에서 시험하지 못했어요.
 - **미해결:** 아직 없어요.
 
+## 0. 공개 저장소 (2026-10-16 사용자 결정)
+- GitHub `lsy2825/skin`은 **공개**예요. 2026-10-16에 확인했어요(`gh api repos/lsy2825/skin` → `private: false`, 로그인 없이 raw 파일 받기 200).
+- 문서에는 2026-10-15 비공개 전환으로 적혀 있었어요. 언제·왜 다시 공개가 됐는지는 **모름**이에요. 사용자가 2026-10-16에 공개로 두기로 했어요.
+- 그래서 코드·데이터·git 기록 전체·Actions 실행 로그를 누구나 읽어요. 복사본 `leebackcoding/skin`(2026-10-14)도 있어요.
+- 2026-10-16 전체 기록 비밀 검사(`python3 tests/security/scan_secrets.py --history`, 브랜치 84개): **진짜 비밀값은 없었어요.**
+  - 걸린 것 ①: `server/test/api.test.mjs` 옛 판의 시험용 가짜 값 2개.
+  - 걸린 것 ②: 예전 비밀번호 화면 번호(R1·R-open-1). 번호를 바꿔서 해결해요(PC 도구 `tools/windows/pin.bat`, 별도 PR).
+- 남의 복사본(fork)에서 온 PR에는 비밀값이 가지 않아요. PR 검사는 `pull_request`만 쓰고 `pull_request_target`은 안 써요. 비밀값은 push·예약·수동 실행에서만 써요.
+- 검사가 비밀값을 찾아도 값은 로그에 쓰지 않아요(종류·위치·길이만). Actions 로그도 공개이기 때문이에요.
+- 비용: 공개 저장소는 GitHub Actions 표준 러너가 무료이고, 비공개의 월 2,000분 한도가 없다고 알고 있어요. 리드의 이해이고, 이 작업에서 결제 화면으로 **확인하지 않았어요.**
+- 사용자 할 일: GitHub Settings → Code security에서 비밀 검사(secret scanning)와 push protection을 켜요. 이 작업의 토큰으로는 읽지도 바꾸지도 못해요(403). `RELEASE_CHECKLIST.md`의 'GitHub 보안 기능' 줄과 같은 일이에요.
+
 ## 1. 구조와 신뢰 경계
 ```
 [병원 공개 페이지] ──(GitHub Actions: robots.txt 확인 → 수집 → 정리 → 급변 검토 → 빌드)──▶ [공개 저장소 lsy2825/skin]

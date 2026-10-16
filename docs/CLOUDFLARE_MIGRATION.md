@@ -2,7 +2,7 @@
 
 > **현재 결정 (2026-10-15, 최종): GitHub는 지우지 않는다. 이사는 0~1단계에서 멈춘다(보류).**
 > 지금 구성은 이렇다.
-> - 코드와 가격 공장: **비공개 GitHub**(`weekly.yml` → `tools/factory.sh`).
+> - 코드와 가격 공장: **GitHub**(`weekly.yml` → `tools/factory.sh`). 저장소는 **공개**다(2026-10-16 사용자 결정, `docs/SECURITY_ARCHITECTURE.md` §0).
 > - 앱 주소: **Cloudflare 무료 플랜**(https://yoonsiljang.lsy2825.workers.dev).
 >
 > Cloudflare 공장(`cf/factory/`)은 만들고 시험까지 마쳤지만 배포하지 않았다. 아무것도 돌지 않고 비용도 들지 않는다.
@@ -11,7 +11,7 @@
 
 처음 결정(2026-10-15, 같은 날 철회): 코드 보관·가격 공장·앱 주소를 모두 Cloudflare로 옮기고, 끝나면 GitHub 저장소를 지운다.
 이유는 보안이었다. GitHub 저장소가 공개 상태였고, 다른 계정(`leebackcoding/skin`, 2026-10-14)이 이미 통째로 복사해 갔다.
-비공개 전환(0단계)으로 이 걱정이 해결됐다. 그래서 유료 플랜이 필요한 2단계 이후는 하지 않기로 했다.
+2026-10-15에는 비공개 전환(0단계)으로 이 걱정이 해결됐다고 보고, 유료 플랜이 필요한 2단계 이후는 하지 않기로 했다. 2026-10-16에 확인하니 저장소는 다시 공개였다(언제·왜 바뀌었는지는 모름). 같은 날 전체 기록 비밀 검사에서 진짜 비밀값은 없었고(옛 비밀번호 화면 번호만 — 번호를 바꾼다), 사용자는 공개로 두기로 했다. 이사 보류는 그대로다.
 
 ## 1. 바뀌는 것
 
@@ -20,7 +20,7 @@
 | 코드 보관 | GitHub `lsy2825/skin` | **Artifacts** 저장소 `skin` (git 그대로: clone·push) | developers.cloudflare.com/artifacts |
 | 가격 공장 | GitHub Actions `weekly.yml` | **Containers**: `cf/factory` Worker가 매일 06:00 KST에 상자를 켬 | /containers, "Cron container" 예제 |
 | 코드가 바뀌면 다시 만들기 | `push` 트리거 | Artifacts `pushed` 이벤트 → Queue `skin-pushes` → `rebuild` | /artifacts/guides/event-subscriptions |
-| 앱 주소 | `yoonsiljang.lsy2825.workers.dev` (GitHub Pages는 비공개 전환으로 2026-10-15 종료) | **Workers 정적 파일** `yoonsiljang` 하나 (`wrangler.jsonc`) | /workers/static-assets |
+| 앱 주소 | `yoonsiljang.lsy2825.workers.dev` (GitHub Pages는 2026-10-15 종료 — 그날 비공개 전환 때 배포 단계를 뺐고, 다시 공개가 된 뒤에도 쓰지 않는다) | **Workers 정적 파일** `yoonsiljang` 하나 (`wrangler.jsonc`) | /workers/static-assets |
 | 수동 실행(가격 재확인·출처 재확인) | `price-check.yml`·`source-check.yml` 버튼 | `POST /run {mode}` (비밀키 필요) | `cf/factory/src/index.js` |
 | 운영 화면의 수집 상태 | GitHub API(공개 저장소일 때만 읽힘) | `GET /status` (공장 관리자) | `app/screens/ops.js` |
 | 의존성 업데이트 알림 | Dependabot | 없음 → 분기마다 직접 확인(`requirements.txt`, wrangler, 상자 이미지 digest) | — |
@@ -53,7 +53,7 @@ tools/factory.sh   공장 한 번 (GitHub weekly.yml도 이 스크립트를 부�
 
 | 단계 | 내용 | 누가 | 상태 |
 |---|---|---|---|
-| 0 | GitHub 저장소 **비공개**로 전환(이사 중 추가 유출 막기) | 사용자 | **완료** (2026-10-15, GitHub Pages 배포 단계 제거) |
+| 0 | GitHub 저장소 **비공개**로 전환(이사 중 추가 유출 막기) | 사용자 | 2026-10-15 완료(GitHub Pages 배포 단계 제거) → **2026-10-16 취소**: 다시 공개인 것을 확인(경위 모름), 사용자가 공개로 두기로 결정 |
 | 1 | 공장 스크립트 하나로 통일(`tools/factory.sh`), 상자·관리자 코드 작성, 로컬 시험 | Claude | **완료** (§4) |
 | 2 | Cloudflare **Workers Paid**($5/월) 가입 → Artifacts·Containers 사용 가능 | 사용자 | 대기 |
 | 3 | Artifacts 저장소 `skin` 만들고 GitHub 전체 이력 가져오기(import) → 커밋 수·최신 해시 대조 | Claude+사용자 | 대기 |
@@ -96,5 +96,5 @@ tools/factory.sh   공장 한 번 (GitHub weekly.yml도 이 스크립트를 부�
 
 전환일 전까지는 GitHub 공장이 그대로 돈다. Cloudflare 쪽은 지우기만 하면 된다
 (`wrangler delete --config cf/factory/wrangler.jsonc`).
-전환 뒤 문제가 생기면 Artifacts의 최신 이력을 GitHub(비공개)에 push하고 `weekly.yml` 일정을 다시 켠다.
+전환 뒤 문제가 생기면 Artifacts의 최신 이력을 GitHub(공개 저장소)에 push하고 `weekly.yml` 일정을 다시 켠다.
 **GitHub 삭제(7단계)는 Cloudflare 공장이 최소 2주 혼자 문제없이 돈 다음에만 한다.**

@@ -7,7 +7,7 @@
 
 | 무엇 | 어디 | 주의 |
 |---|---|---|
-| 코드·가격 기록 | GitHub `lsy2825/skin` **비공개**(2026-10-15 전환) | 그 전까지 공개였고, 복사본 `leebackcoding/skin`(2026-10-14)이 있어요. **2026-10-15 이전 커밋은 영원히 공개된 것으로 봐요** |
+| 코드·가격 기록 | GitHub `lsy2825/skin` **공개**(2026-10-16 사용자 결정. 2026-10-15에 비공개로 돌렸는데 2026-10-16에 다시 공개인 것을 확인 — 언제·왜인지 모름) | 코드·git 기록 전체·Actions 실행 로그를 누구나 읽어요. 복사본 `leebackcoding/skin`(2026-10-14)도 있어요. **모든 커밋은 공개된 것으로 봐요** — 비밀값은 GitHub·Cloudflare 비밀값에만 두고 로그에 찍지 않아요(`docs/SECURITY_ARCHITECTURE.md` §0) |
 | 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
 | 앱 주소 | 공개: Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev — **2026-10-15 판으로 고정**(공개 배포 멈춤, 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만 배포). 관리자: `yoonsiljang-admin`(Cloudflare Access 뒤)이 빌드마다 갱신 | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
 | 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
