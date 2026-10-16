@@ -12,7 +12,7 @@ on:
         default: false
   push:                        # app or build code changed: rebuild from saved data and redeploy (no scraping)
     branches: [main]
-    paths: ["app/**", "build2/**", "tests/**", "knowledge/**", "tools/factory.sh", "cf/admin/**", ".github/workflows/weekly.yml"]   # knowledge/ = 시술 설명; cf/admin = 관리자 주소 Worker(factory.sh deploy가 같이 배포)
+    paths: ["app/**", "build2/**", "tests/**", "knowledge/**", "tools/factory.sh", "cf/admin/**", "wrangler.jsonc", ".github/workflows/weekly.yml"]   # knowledge/ = 시술 설명; cf/admin = 관리자 주소 Worker(factory.sh deploy가 같이 배포); every path the deploy job checks for newer deploy code is here, so each such change gets its own run
 
 permissions: {}       # nothing by default; each job asks only for what it needs (least privilege)
 
@@ -22,75 +22,264 @@ concurrency:
 
 jobs:
   update:
+    # main only: a "Run workflow" on another branch must not save that branch's commits to main or deploy its code
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     permissions:
       contents: write    # commit the new data
     timeout-minutes: 90
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      deploy: ${{ steps.decide.outputs.deploy }}   # "true" when a build was made and should be deployed (deploy job below)
+      sha: ${{ steps.decide.outputs.sha }}         # the commit on main that holds the build
     steps:
+      # A GitHub re-run of this job is refused, before anything else runs. A re-run uses the run's OLD workflow and OLD code
+      # (github.sha): build2/, knowledge/, data2's settings, scrape/ of the commit the run started on — so it would build,
+      # save to main and deploy something older than main already has. Use Run workflow instead (it starts at main's newest
+      # commit). The attempt number is the runner's own environment variable GITHUB_RUN_ATTEMPT (1 = first run), not a
+      # ${{ }} pasted into the script. Re-running only the deploy job stays allowed: it skips when main is newer (below).
+      - name: Refuse a re-run of the factory (use Run workflow)
+        run: |
+          if [ "${GITHUB_RUN_ATTEMPT:-1}" != 1 ]; then
+            echo "::error title=Re-run::Re-run은 그 실행의 옛 코드·옛 입력으로 다시 만들어요 — Actions에서 Run workflow(skip_scrape)를 쓰세요"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
           python-version: "3.12"
       # The whole factory run is tools/factory.sh — the same script the Cloudflare factory box runs (cf/factory,
       # docs/CLOUDFLARE_MIGRATION.md): decide (schedule only) → unit tests + secret scan → scrape/build → review queue →
-      # save to main → deploy app/ to Cloudflare when the token is set (the script hides the token from the build steps).
-      - name: Factory (decide, test, scrape/build, save, deploy to Cloudflare)
+      # save to main → name the saved commit for the deploy job. Before building it takes the files a build reads and
+      # writes (data2/…, app/data*.json, …) from main's LATEST commit — the code stays this run's — so a run that waited
+      # behind another one builds on main's newest data (a re-run never gets here: refused above). If main changes any of
+      # those files while it builds, it pushes nothing and fails (never a mixed build). This job gets NO Cloudflare token:
+      # the scrapers, the pip packages and the build code run here, and a token anywhere in this job could be read back by
+      # them (an `unset` in a script is no wall: /proc/<pid>/environ of the script and of this step's shell still holds it).
+      - name: Factory (decide, test, scrape/build, save — the deploy runs in the next job)
         id: decide
         run: bash tools/factory.sh "$FACTORY_MODE"
         env:
           FACTORY_MODE: ${{ github.event_name == 'schedule' && 'weekly' || ((github.event_name == 'push' || inputs.skip_scrape) && 'rebuild' || 'scrape') }}
           FACTORY_INSTALL: "1"
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
-          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # "on" = also deploy the public app; unset = admin host only (paused 2026-10-15)
+          FACTORY_DEPLOY: separate
       - name: Summary
         if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
-      # GitHub Pages deploy removed 2026-10-15: the repository is private now (free plan: no Pages), the app lives only on
-      # Cloudflare (factory.sh → wrangler deploy). Without the deploy token the run fails here instead of silently not deploying.
+
+  # Deploy to Cloudflare — a job of its own on a FRESH runner, the only place the Cloudflare token goes. The CODE that runs
+  # with the token (tools/factory.sh, wrangler.jsonc, cf/admin/, the app's own files, this workflow's steps) comes from the
+  # commit this run STARTED on (github.sha): a push the factory job makes during this run cannot change it. From the commit
+  # the factory saved only the four files it builds are taken — app/data.json, data-meta.json, home.json, review.json — only
+  # as regular files (a symlink could make wrangler upload a file of this machine), and only when data-meta.json's
+  # sha256/bytes match data.json and its "home" entry matches home.json (never a mixed build). The saved commit must be on main.
+  # The deploy is SKIPPED — the job stays green, with a notice, and says why in its output `skipped` — when main already has
+  #   - a newer build than that commit (skipped=build): the run that saved that build deploys it (or its alert job says why
+  #     not), so nothing more is done here;
+  #   - newer deploy code than github.sha (skipped=code) — app/ but the four data files, wrangler.jsonc, cf/admin/,
+  #     tools/factory.sh, .github/workflows/weekly.yml: the redeploy job below starts a fresh rebuild run of main.
+  # Re-runs: a re-run of the factory job is refused (its first step); re-running only this job is allowed and skips as above
+  # (a re-run uses this file as it was when the run started — that is why weekly.yml itself is deploy code here). To deploy
+  # again use Run workflow (skip_scrape). wrangler is installed — pinned — in a step whose environment holds no secret, and
+  # the token is given only to the step that runs `tools/factory.sh deploy` (admin host on every build; the public app only
+  # when the repository variable PUBLIC_DEPLOY is exactly "on" — paused since 2026-10-15).
+  # Without the deploy token the run fails here instead of silently not deploying.
+  # What this does not cover: the factory job can push to main (it saves the data; price-check.yml and source-check.yml can
+  # too). A push from there that changes deploy code during this run makes this job skip, and then the redeploy job starts a
+  # run whose deploy job runs that code with the token within minutes (so would any later run that deploys: a schedule that
+  # builds, a dispatch — price-check starts one right away — or a PR merge). git log is for finding it afterwards, not a
+  # wall: docs/SECURITY_ARCHITECTURE.md §5.
+  deploy:
+    needs: update
+    if: ${{ needs.update.result == 'success' && needs.update.outputs.deploy == 'true' }}
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    # The Cloudflare token's home. Until the owner moves CLOUDFLARE_API_TOKEN (and CLOUDFLARE_ACCOUNT_ID if it is a secret)
+    # from the repository secrets into the GitHub Environment "cloudflare" (Deployment branches: main only) and deletes the
+    # repository secret, this line changes nothing — a repository secret reaches every job. After the move only jobs that
+    # name this environment, on main, get the token: a re-run of a run that started before this change — its old weekly.yml
+    # has no environment and handed the token to the factory job — gets none, and so does any job that asks for it wrongly.
+    # Environment secrets work on GitHub Free only in PUBLIC repositories (the repository is public, owner's decision of
+    # 2026-10-16); a private repository needs a paid plan for them, else the deploy finds no token.
+    environment: cloudflare
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    outputs:
+      skipped: ${{ steps.data.outputs.skipped }}   # "code" | "build" when the deploy was skipped (go=false); empty otherwise
+    steps:
+      # the whole value must be one commit id (bash =~ anchors to the whole string, so a value with a line break fails)
+      - name: The commit the factory saved
+        id: commit
+        env:
+          SHA: ${{ needs.update.outputs.sha }}
+        run: |
+          if [[ $SHA =~ ^[0-9a-f]{40}$ ]]; then echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          else echo "::error title=Cloudflare::the factory job named no valid commit to deploy — nothing deployed"; exit 1; fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.sha }}       # the code this run started on — not whatever the factory job pushed meanwhile
+          fetch-depth: 0               # also fetches origin/main and the saved commit, for the steps below
+          persist-credentials: false
+      # go=true: deploy. go=false (green, a notice) with skipped=build (the run that saved the newer build deploys it) or
+      # skipped=code (the redeploy job starts a rebuild of main). Anything else fails.
+      - name: Take the built data from the saved commit (on main, newest build, code not behind main, regular files, checksums)
+        id: data
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -eu
+          MAIN=refs/remotes/origin/main
+          if ! git merge-base --is-ancestor "$SHA" "$MAIN"; then echo "::error title=Cloudflare::$SHA is not on main — nothing deployed"; exit 1; fi
+          if [ -n "$(git rev-list "$SHA..$MAIN" -- app/data-meta.json)" ]; then
+            echo "::notice title=Cloudflare::main already has a newer build than $SHA — not deployed by this run: the run that saved that build deploys it (its alert job reports a failed deploy); to deploy by hand use Run workflow (skip_scrape), not Re-run"
+            { echo "go=false"; echo "skipped=build"; } >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if [ -n "$(git rev-list "$GITHUB_SHA..$MAIN" -- app wrangler.jsonc cf/admin tools/factory.sh .github/workflows/weekly.yml ':(exclude)app/data.json' ':(exclude)app/data-meta.json' ':(exclude)app/home.json' ':(exclude)app/review.json')" ]; then
+            echo "::notice title=Cloudflare::main has newer deploy code than this run's $GITHUB_SHA — not deployed by this run: the redeploy job starts a rebuild of main (Run workflow, skip_scrape) that deploys it"
+            { echo "go=false"; echo "skipped=code"; } >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          for f in app/data.json app/data-meta.json app/home.json app/review.json; do
+            mode=$(git ls-tree "$SHA" -- "$f" | cut -d' ' -f1)
+            if [ "$mode" != 100644 ]; then echo "::error title=Cloudflare::$f in $SHA is not a regular file (mode '$mode') — nothing deployed"; exit 1; fi
+          done
+          git checkout "$SHA" -- app/data.json app/data-meta.json app/home.json app/review.json
+          # data-meta.json must describe exactly this data.json and home.json (the app checks both before it keeps them)
+          python3 - <<'PY'
+          import hashlib, json, sys
+          def fail(why):
+              print(f"::error title=Cloudflare::{why} — nothing deployed (a mixed build?)")
+              sys.exit(1)
+          try:
+              with open("app/data-meta.json", encoding="utf-8") as f:
+                  meta = json.load(f)
+          except ValueError:
+              fail("app/data-meta.json is not JSON")
+          if not isinstance(meta, dict) or not isinstance(meta.get("home"), dict):
+              fail("app/data-meta.json has no data/home checksums")
+          for name, want in (("app/data.json", meta), ("app/home.json", meta["home"])):
+              with open(name, "rb") as f:
+                  raw = f.read()
+              if want.get("sha256") != hashlib.sha256(raw).hexdigest() or want.get("bytes") != len(raw):
+                  fail(f"app/data-meta.json does not match {name}")
+          PY
+          echo "code: $(git rev-parse HEAD) · data: $SHA"
+          echo "go=true" >> "$GITHUB_OUTPUT"
       - name: Check the Cloudflare deploy token is set
-        if: steps.decide.outputs.run == 'true'
+        if: steps.data.outputs.go == 'true'
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         run: |
-          if [ "$HAS_TOKEN" != "true" ]; then echo "::error title=Cloudflare::CLOUDFLARE_API_TOKEN secret missing — the app was not deployed anywhere"; exit 1; fi
+          if [ "$HAS_TOKEN" != "true" ]; then echo "::error title=Cloudflare::CLOUDFLARE_API_TOKEN secret missing (repository secret, or the Environment 'cloudflare' once it was moved there) — the app was not deployed anywhere"; exit 1; fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        if: steps.data.outputs.go == 'true'
+        with:
+          node-version: "22"
+      # npm resolves wrangler's dependencies and runs their install scripts here, with no secret in this step's environment.
+      # Not a wall (same job: the runner process holds the job's secrets, readable with sudo; only wrangler itself is pinned)
+      # — it keeps the token out of what install scripts see by default.
+      - name: Install wrangler (no secret in this step's environment)
+        if: steps.data.outputs.go == 'true'
+        run: npm install --no-save --no-fund --no-audit --prefix "$RUNNER_TEMP/wr" wrangler@4.145.0
+      - name: Deploy app/ (tools/factory.sh deploy)
+        if: steps.data.outputs.go == 'true'
+        run: bash tools/factory.sh deploy
+        env:
+          WRANGLER: ${{ runner.temp }}/wr/node_modules/.bin/wrangler
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # "on" = also deploy the public app; unset = admin host only (paused 2026-10-15)
+  # The deploy was skipped because main has newer deploy code (skipped=code): start a fresh rebuild run of main (the "Run
+  # workflow" button with skip_scrape) instead of counting on the push run that change started. Runs of the concurrency group
+  # weekly-prices (this workflow, price-check.yml, source-check.yml) keep only ONE pending run: a newer pending run — a source
+  # check, a daily schedule that builds nothing, a Run workflow on another branch — silently cancels the one waiting before
+  # it. The run started here waits only while this run's alert job finishes. It cannot loop: it starts at main's newest
+  # commit, and the files its own factory saves (the four app data files, data2/, docs/*.csv) are not deploy code, so its
+  # deploy job skips for code only if someone else pushes deploy code to main while it runs (each further run needs such a
+  # new push). skipped=build needs nothing: the run that saved that build deploys it.
+  # The flip side of that one-pending rule: the run started here can itself take the place of — and so cancel — a different
+  # run already waiting (a collecting schedule run, a manual collect, a price check). That needs a run going past 06:00 KST or
+  # a button press while deploy code merges; if it happens, run the cancelled one again with Run workflow.
+  # No checkout, no secret, no code from the repository: only `gh` with this run's github.token, allowed to start a workflow.
+  redeploy:
+    needs: deploy
+    if: needs.deploy.outputs.skipped == 'code'
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    permissions:
+      actions: write     # start weekly.yml on main (workflow_dispatch) — nothing else
+    timeout-minutes: 5
+    steps:
+      - name: Start a rebuild of main (Run workflow, skip_scrape)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run weekly.yml --repo "$GITHUB_REPOSITORY" --ref main -f skip_scrape=true
   # Monitoring → Telegram (docs/SECURITY_ARCHITECTURE.md §9). A separate job, so the bot token never sits in the job where
   # the scrapers and the build ran (they could have written to GITHUB_ENV); read-only, no git credentials left on disk.
+  # The alert scripts come from the commit this run STARTED on (github.sha), like the deploy job's code: the factory job can
+  # push to main during the run, and these scripts run with the bot token. From main only the run's report
+  # (data2/report.md, app/data-meta.json) is taken, as regular files, and read as data.
   # Without the TELEGRAM_* secrets the scripts print a notice and do nothing; they always exit 0.
   alert:
-    needs: update
+    needs: [update, deploy, redeploy]
     if: always()
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     timeout-minutes: 5
     permissions:
-      contents: read     # private repo: checkout of the alert scripts and of the run's saved report
+      contents: read     # checkout of the alert scripts and of the run's saved report
     steps:
-      # the latest main: a successful run has pushed its data2/report.md and app/data-meta.json there
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          ref: main
+          ref: ${{ github.sha }}       # the alert scripts this run started with — not whatever was pushed meanwhile
+          fetch-depth: 0               # also fetches origin/main, where a successful run pushed its report
           persist-credentials: false
       # cancelled too: a run stopped by timeout-minutes is "cancelled", not "failure"
-      - name: Alert on factory failure (Telegram)
-        if: needs.update.result == 'failure' || needs.update.result == 'cancelled'
+      - name: Alert on factory, deploy or redeploy failure (Telegram)
+        if: >-
+          needs.update.result == 'failure' || needs.update.result == 'cancelled' ||
+          needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled' ||
+          needs.redeploy.result == 'failure' || needs.redeploy.result == 'cancelled'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT: ${{ github.event_name }}
           RESULT: ${{ needs.update.result }}
+          DEPLOY: ${{ needs.deploy.result }}
+          REDEPLOY: ${{ needs.redeploy.result }}
+          # "true" for a collection run (schedule, or Run workflow without skip_scrape): when its factory fails, this week's
+          # scraped prices were not saved, so running it again must scrape again — a skip_scrape run would only rebuild old data
+          COLLECT: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.skip_scrape) }}
         run: |
-          case "$RESULT" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
           case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
-          python3 .github/scripts/telegram.py "윤실장 가격 공장 $WHY ($WHEN). 앱은 마지막으로 배포된 자료를 그대로 보여 줘요. 실행 기록: $RUN_URL"
+          case "$COLLECT" in true) AGAIN="Run workflow(skip_scrape 끄고 — 수집부터 다시)";; *) AGAIN="Run workflow(skip_scrape)";; esac
+          if [ "$RESULT" = failure ] || [ "$RESULT" = cancelled ]; then
+            case "$RESULT" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+            python3 .github/scripts/telegram.py "윤실장 가격 공장 $WHY ($WHEN). 앱은 마지막으로 배포된 자료를 그대로 보여 줘요. 다시 돌리려면 Re-run 말고 $AGAIN. 실행 기록: $RUN_URL"
+          elif [ "$DEPLOY" = failure ] || [ "$DEPLOY" = cancelled ]; then
+            case "$DEPLOY" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+            python3 .github/scripts/telegram.py "윤실장 Cloudflare 배포 $WHY ($WHEN). 새 자료는 main에 저장됐지만 앱 주소에는 아직 안 올라갔어요. 다시 배포하려면 Re-run 말고 Run workflow(skip_scrape). 실행 기록: $RUN_URL"
+          else
+            case "$REDEPLOY" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+            python3 .github/scripts/telegram.py "윤실장 다시 배포 요청 $WHY ($WHEN). main에 더 새 배포 코드가 있어 이 실행은 배포를 건너뛰었는데, 그 코드로 다시 만드는 새 실행을 띄우지 못했어요. 앱 주소에는 아직 전 판이 있어요. Actions → weekly-prices → Run workflow(skip_scrape)를 눌러 주세요. 실행 기록: $RUN_URL"
+          fi
+      # what the data alerts read: the run's data2/report.md and app/data-meta.json from the latest main (a successful run
+      # pushed them there) — regular files only (mode 100644), otherwise those alerts are skipped with a notice
+      - name: Take the run's report from main (regular files only)
+        id: report
+        run: |
+          ok=true
+          for f in data2/report.md app/data-meta.json; do
+            mode=$(git ls-tree refs/remotes/origin/main -- "$f" | cut -d' ' -f1)
+            if [ "$mode" != 100644 ]; then echo "::notice title=Telegram::$f on main is not a regular file (mode '$mode') — data alerts skipped"; ok=false; fi
+          done
+          if [ "$ok" = true ]; then git checkout refs/remotes/origin/main -- data2/report.md app/data-meta.json; fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
       # Data guard hits and old data — only after a COLLECTION run (schedule, or manual without skip_scrape), not after every
       # code-push rebuild, so the same unchanged problem is not re-sent each time someone merges a PR.
       - name: Alert on data guard or old data (Telegram)
         if: >-
           needs.update.result == 'success' && needs.update.outputs.run == 'true' &&
-          (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.skip_scrape))
+          (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.skip_scrape)) &&
+          steps.report.outputs.ok == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

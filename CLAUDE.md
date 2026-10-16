@@ -47,13 +47,19 @@ Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설�
   미뤄 준다. `change`·`blur`·`focusout`에서 `#main`을 직접 `replaceChildren`/`innerHTML`로 갈지 않는다. 필터를 바꾸는
   `go()`류는 그려질 때의 `params`가 아니라 지금 주소(`location.hash`)에 덧붙인다. 화면·입력칸을 바꾸면
   `tests/e2e/clickable.js`(회귀에 포함)를 돌린다.
-- `app/`·`build2/`·`tests/`·`knowledge/`·`tools/factory.sh`·`cf/admin/`(그리고 `weekly.yml` 자체)이 main에 합쳐지면 `weekly.yml`이
-  `tools/factory.sh`를 돌려 관리자 주소 `yoonsiljang-admin`(Cloudflare Access 로그인)이 다시 배포된다. **공개 주소 `yoonsiljang` 배포는
+- `app/`·`build2/`·`tests/`·`knowledge/`·`tools/factory.sh`·`cf/admin/`·`wrangler.jsonc`(그리고 `weekly.yml` 자체)이 main에 합쳐지면 `weekly.yml`이
+  `tools/factory.sh`를 돌리고, Cloudflare 토큰을 가진 별도 deploy job(공장 job에는 토큰 없음. 토큰은 GitHub Environment `cloudflare`로 옮길 예정)이
+  관리자 주소 `yoonsiljang-admin`(Cloudflare Access 로그인)을 다시 배포한다. main에 더 새 빌드가 있으면 건너뛰고(그 빌드를 저장한 실행이 배포),
+  더 새 배포 코드가 있으면 건너뛴 뒤 redeploy job이 main에서 Run workflow(skip_scrape)를 새로 띄운다. 공장은 빌드 전에 main의 최신 데이터를
+  받아 오고 섞인 빌드는 push하지 않는다. 다시 돌릴 때는 Re-run 말고 Run workflow(skip_scrape, 수집 실행이 실패했으면 skip_scrape 끄고) —
+  공장 job의 Re-run은 첫 단계에서 거절된다(deploy job만 다시 돌리기는 됨). **공개 주소 `yoonsiljang` 배포는
   2026-10-15 사용자 결정으로 멈춤** — GitHub 저장소 변수 `PUBLIC_DEPLOY`가 정확히 `on`일 때만 배포되고, 지금 공개 주소는 마지막 판을
   그대로 보여 준다. 공개 배포가 멈춘 동안 관리자 배포 실패는 공장 실행 실패(텔레그램 알림), 공개 배포를 켜면 경고만. Access 설정 전에는
   관리자 주소도 모두 403이라 새 판은 로컬(`python -m http.server 8766 --directory app`)에서만 보인다. 다시 켜려면 변수를 `on`으로 바꾼 뒤
   weekly-prices를 Run workflow(skip_scrape)로 한 번 돌린다. 2026-10-15 이전에 시작된 weekly-prices 실행은 Re-run하지 않는다(옛 factory.sh가
-  공개 주소에 배포한다). main에는 직접 push하지 않고 PR로만 합친다(아래 '분업').
+  공개 주소에 배포한다). deploy job이 없는 weekly-prices 실행(배포 분리를 합치기 전에 시작된 것)도 Re-run하지 않는다 — 옛 정의는 Cloudflare
+  토큰을 공장 job에 주고, 섞인 빌드 검사 없이 main에 push한 뒤 그 job에서 배포한다. 토큰을 Environment `cloudflare`(main만)로 옮기면 그런
+  Re-run은 토큰을 못 받지만 검사 없는 push는 남는다. main에는 직접 push하지 않고 PR로만 합친다(아래 '분업').
 - 규격 이름이 깨지지 않게(2026-10-14 사고): 수집기는 상품명을 사이트 그대로 저장하고, 칸·묶음 제목을 앞에 붙이는 일은
   `build2/clean.py`(`title_words`)만 한다. 비교 규격 이름 규칙은 `build2/labels.py`(빌드 가드) — 수집기·정리·분류 규칙을
   바꾸면 `python3 tests/labels_test.py`를 돌린다.

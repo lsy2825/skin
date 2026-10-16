@@ -19,6 +19,12 @@ concurrency:
 jobs:
   metrics:
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    # The Cloudflare token's home, as in weekly.yml's deploy job. Once the owner moves CLOUDFLARE_API_TOKEN (and
+    # CLOUDFLARE_ACCOUNT_ID if it is a secret) from the repository secrets into the GitHub Environment "cloudflare"
+    # (Deployment branches: main only) and deletes the repository secret, only jobs that name it, on main, get the token —
+    # then a re-run of a weekly-prices run that started before this change (its old weekly.yml has no environment and
+    # handed the token to the factory job) gets none. Until then this line changes nothing.
+    environment: cloudflare
     permissions:
       contents: read
     timeout-minutes: 15
