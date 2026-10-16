@@ -5,9 +5,9 @@ branch gets no address rather than the company's.
 The address with its floor and building (address_full) stops at the page footer (2026-10-16: 'Copyright © …' after the
 쁨·밴스 footer address, the 셀린 footer links, 유앤아이 '내 위치에서 길 찾기'): on the saved 밴스·유앤아이·셀린 pages and on
 ppeum_bupyeong_min.html — NOT a saved page, a minimal one rebuilt from the text data2/branches.csv kept for 쁨 부평점 (the
-dev container cannot reach ppeum.com). What JUNK cuts after the address (phone numbers, 'TEL' — not 'HOTEL', not the
-digits of a lot or building number). The app's clean-up of addresses saved before that (build2/appdata.py clean_addr)
-on the stored texts, half-cut footer words included.
+dev container cannot reach ppeum.com). What JUNK cuts after the address (phone numbers from a real area code, 'TEL' —
+not 'HOTEL', not the digits of a lot or building number, a time or a price). The app's clean-up of addresses saved
+before that (build2/appdata.py clean_addr) on the stored texts, half-cut footer words included.
   python3 tests/branch_addr_test.py
 """
 import os, sys, types
@@ -104,6 +104,19 @@ for label, text in (("쁨 범계 지번 1042-1", "경기도 안양시 동안구 
                     ("1100로 3321·우편번호", "제주특별자치도 제주시 1100로 3321 (노형동) (우)06234"),
                     ("층 끝의 번호", "대전광역시 서구 둔산동 1046, 9F~10F 1호선 시청역 2번 출구 도보 15분")):
     check(f"건물·지번 번호는 그대로 — {label}", B.JUNK.sub("", text), text)
+# the phone pattern starts only at a real area code, not right after a digit and ':' or ',', and an opening '(' does not
+# hide what is before it — so no half-cut time, price or 1588 number is left where the window ends (review 2026-10-16)
+for label, tail in (("시간 10:00", " 진료 10:00"), ("시간 09:00", " 진료 09:00"), ("시간 12:02", " 진료 12:02"),
+                    ("금액 39,000", " 가격 39,000"), ("금액 1,031,000", " 가격 1,031,000"),
+                    ("지역번호 아닌 1588 0119", " 1588 0119"), ("지역번호 아닌 09-14", " 토 09-14"), ("날짜 2024 01 05", " 2024 01 05"),
+                    ("우편번호 조각", " (우)0623"), ("T.031.647.6025", " T.031.647.6025"), ("T.(031)647-6025", " T.(031)647-6025")):
+    text = "경기 수원시 팔달구 효원로 1 3층" + tail
+    check(f"창 끝 숫자는 그대로 — {label}", B.JUNK.sub("", text), text)
+for label, tail, want in (("문의:031 647 6025", " 문의:031 647 6025", " 문의:"), ("문의:(031)647-6025", " 문의:(031)647-6025", " 문의:"),
+                          (",031 647 6025", " ,031 647 6025", ""), ("0507 1234 5678", " 0507 1234 5678", ""),
+                          ("070 1234 5678", " 070 1234 5678", "")):
+    check(f"글자·쉼표 뒤 전화번호는 그대로 자름 — {label}",
+          B._full("경기 수원시 팔달구 효원로 1", "경기 수원시 팔달구 효원로 1 3층" + tail), "경기 수원시 팔달구 효원로 1 3층" + want)
 
 # --- the app's clean-up of texts saved before (build2/appdata.py clean_addr), stored data2/branches.csv texts
 for label, full, addr, want in (
