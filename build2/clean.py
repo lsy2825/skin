@@ -9,7 +9,8 @@ Rules (each dropped or changed row is listed in issues.csv with the reason):
          (a category page wins over the 기획전 page, so the row keeps its real category and list price; the matching name is
          compared without word breaks or letter case; folds the old rule didn't make are listed as '합침')
 Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가), cat (common category), name (display name),
-mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 일요일 · 첫 방문), keys (matched comparison ids),
+mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 일요일 · 첫 방문), days / hours (the weekdays
+and hours written for the price: visit_days / visit_hours), keys (matched comparison ids),
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
 evidence from the site, see data2/sources.json).
 """
@@ -73,10 +74,161 @@ CATS = [  # first match wins; tested on category + group + option
 # 온다 60KJ showed its 400,000 happy-hour price over the 450,000 regular one). Under the app's own tag ('평일 낮': app/domain/pricing.js
 # condState) the visit-day filter drops them on weekends and holidays. The app reads every such tag as Monday-Friday: a '화/수/목'
 # or all-day '평일한정' price is not told apart, and when the days stand only in the group title (501 rows on 2026-10-16) the
-# name does not show them either (C1 다음 검토 — a day tag or column is for B's filter to ask for)
+# name does not show them either — the row fields days / hours below carry them (2026-10-16)
 TAGS = [("평일 낮", r"프라임\s*타임|평일\s*(낮|오전|오후|한정)|낮\s*시간|\d+시\s*이전|해피\s*아워|화\s*/?\s*수\s*/?\s*목(?!요일)|"
                   r"\d{1,2}\s*시\s*[~-]\s*\d{1,2}\s*시"), ("일요일", r"일요일|썬데이|선데이"),
         ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"), ("1인 1회", r"1인\s*1회|1인당\s*1회")]
+# The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as TAGS
+# (group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
+#   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written
+#   hours = 'HH:MM-HH:MM' (24 h), '' = no hours written; 'N시 이전/까지' = '00:00-HH:MM', 'N시 이후' = 'HH:MM-24:00'
+# Only what is written: '해피아워' / '프라임 타임' / '평일 오후' give no hours, a holiday ('공휴일') is no weekday and is not kept.
+WEEK = "월화수목금토일"
+ALL_DAYS = 127
+_D = "[월화수목금토일]"
+# one item of a day list: a word for a set of days, a range ('월~금'), a run of day letters in week order ('화수목', '월목금'), one
+# day letter with or without 요일. A lone day letter counts only with 요일 ('21(화) 입고', '앞 목 5회' are not days).
+_ITEM = rf"(?:평일|주중|주말|공휴일|빨간\s*날|썬데이|선데이|{_D}(?:요일)?\s*[~\-–]\s*{_D}(?:요일)?|{_D}{{2,7}}(?:요일)?|{_D}(?:요일)?)"
+_SEP = r"(?:\s*[/,·.ㆍ・&+]\s*|\s+(?:및|와|과|or)\s+|\s*및\s*)"
+DAY_LIST = re.compile(rf"(?:(?<![가-힣0-9A-Za-z])(?=[월화수목금토일])|(?=평일|주중|주말|공휴일|빨간|썬데이|선데이)){_ITEM}(?:{_SEP}{_ITEM})*")
+# after a list that ends in a bare day letter: no other Hangul, unless it is a word that goes with a day condition ('화,목,토이벤트',
+# '화수목한정'; '화목한', '수일', '목주름' are not days)
+_AFTER_DAY = re.compile(r"(?![가-힣])|(?=이벤트|한정|특가|타임|해피|반짝|적용|방문|만\b|에만|데이|오전|오후|파워|단독|내원|진행|할인|딜|찬스|이용|예약|가능)")
+_NOT_DAYS = re.compile(r"\s*(?:은|는|엔|에는)?\s*(?:제외|불가|미적용|적용\s*불가|시술\s*불가|사용\s*불가|이용\s*불가|진행\s*불가|예약\s*불가|안\s*됨)")
+# a sentence about the clinic, not about the price ('화요일 휴진 안내', '토요일 오전 진료'): says nothing about the days
+_DAY_NOTICE = re.compile(r"\s*(?:은|는|엔|에는)?\s*(?:야간|오전|오후|정상)?\s*(?:휴진|휴무|휴원|진료|운영|영업|오픈|입고|정기\s*휴)")
+
+
+def _day_bits(item):
+    """bits of one list item; None when the letters are not days ('금일' = today, '일월' out of week order)"""
+    it = re.sub(r"\s+", "", item)
+    words = {"평일": 31, "주중": 31, "주말": 96, "공휴일": 0, "빨간날": 0, "썬데이": 64, "선데이": 64}
+    if it in words:
+        return words[it]
+    it = it.replace("요일", "")
+    m = re.fullmatch(rf"({_D})[~\-–]({_D})", it)
+    if m:
+        a, b = WEEK.index(m.group(1)), WEEK.index(m.group(2))
+        return sum(1 << i for i in range(a, b + 1)) if a < b else None
+    idx = [WEEK.index(c) for c in it]
+    if any(b <= a for a, b in zip(idx, idx[1:])) or (len(it) == 2 and it[1] == "일" and it != "토일"):
+        return None
+    return sum(1 << i for i in idx)
+
+
+def visit_days(text):
+    """the weekdays a price is valid on (bit mask above; 0 = no day written). Every day phrase holds ('평일한정이벤트 월~목' = 월~목),
+    days named before 제외 / 불가 are taken off ('공휴일, 주말 제외' = 평일, '*금요일, 주말, 공휴일 불가' with '월~목' = 월~목)."""
+    text = unicodedata.normalize("NFKC", text or "")
+    pos, neg, said = ALL_DAYS, 0, False
+    for m in DAY_LIST.finditer(text):
+        items = [x for x in re.split(_SEP, m.group(0)) if x.strip()]
+        bits = [_day_bits(x) for x in items]
+        tail = text[m.end():]
+        if (len(items) == 1 and re.fullmatch(_D, items[0].strip())) or None in bits or _DAY_NOTICE.match(tail) \
+                or (re.search(rf"{_D}$", items[-1].strip()) and not items[-1].strip().endswith("요일") and not _AFTER_DAY.match(tail)):
+            continue
+        mask = 0
+        for b in bits:
+            mask |= b
+        if _NOT_DAYS.match(tail):
+            neg |= mask
+            said = said or bool(mask)
+        elif mask:
+            pos &= mask
+            said = True
+    out = pos & ~neg & ALL_DAYS if said else 0
+    return 0 if out == ALL_DAYS else out
+
+
+_AMPM = r"(?:(오전|오후|낮|저녁|밤|AM|PM|am|pm)\s*)?"
+# one time: (am/pm, hour, ':', minutes, '시', minutes, '반'); '시간' / '시술' / '시린지' / '시즌' are not o'clock
+_TIME = _AMPM + r"(\d{1,2})(?:\s*(:)\s*(\d{2})|\s*(시)(?![간술린작즌리세행트])(?:\s*(\d{1,2})\s*분|\s*(반))?)?"
+HOUR_RANGE = re.compile(rf"(?<![\d./:]){_TIME}\s*(?:~|-|–|부터)\s*{_TIME}(?![\d./])(?:\s*시?\s*까지)?")
+HOUR_EDGE = re.compile(rf"(?<![\d./:~\-]){_TIME}\s*(이전|전까지|전|까지|이후|부터)")
+_HOUR_SKIP_BEFORE = re.compile(r"(?:점심|휴게|진료|운영|영업|상담|휴무)\s*시간[^0-9]{0,8}$")   # '(점심시간 13시~14시 제외)'
+_HOUR_SKIP_AFTER = re.compile(r"\s*\)?\s*(?:제외|휴게|휴무)")
+
+
+def _minutes(g, end=False, other=None):
+    """one time (regex groups of _TIME) → minutes after midnight. A bare 1~8 o'clock is the afternoon (clinic hours: '12시~6시',
+    '1시~5까지'); a start stays in the morning when the afternoon would come after the end ('8시~11시')."""
+    ap, h, _, mm, _, mm2, half = g
+    h, m = int(h), int(mm or mm2 or (30 if half else 0))
+    if m > 59 or h > 24:
+        return None
+    if (ap in ("오후", "저녁", "밤", "PM", "pm") and h < 12) or (ap == "낮" and h <= 6):
+        h += 12
+    elif not ap and 1 <= h <= 8 and (end or other is None or (h + 12) * 60 + m < other):
+        h += 12
+    return h * 60 + m
+
+
+def _span(a, b):
+    return f"{a // 60:02d}:{a % 60:02d}-{b // 60:02d}:{b % 60:02d}"
+
+
+def visit_hours(text):
+    """the hours a price is valid in ('HH:MM-HH:MM', '' = none written): '11시~16시', '12:00~17:00', '오전 10시~오후 3시', '10-15시',
+    '평일4시이전'. A time needs 시 or ':' on one side ('1~2회', '10/1~10/15' are not hours); a lunch break or a time 제외 is not the
+    hours ('화/수/목 11시~16시 한정 (점심시간 13시~14시 제외)' = 11:00-16:00). Several times: the part they share."""
+    text = unicodedata.normalize("NFKC", text or "")
+    spans, used = [], []
+    for m in HOUR_RANGE.finditer(text):
+        g1, g2 = m.groups()[:7], m.groups()[7:]
+        if not (g1[2] or g1[4] or g2[2] or g2[4]):
+            continue
+        used.append((m.start(), m.end()))
+        if _HOUR_SKIP_BEFORE.search(text[:m.start()]) or _HOUR_SKIP_AFTER.match(text[m.end():]):
+            continue
+        b = _minutes(g2, end=True)
+        a = _minutes(g1, other=b) if b is not None else None
+        if a is not None and b is not None and b <= a and b + 720 <= 1440:
+            b += 720                                         # '오후 1시~10시'
+        if a is not None and b is not None and 0 <= a < b <= 1440:
+            spans.append((a, b))
+    for m in HOUR_EDGE.finditer(text):
+        g = m.groups()[:7]
+        if any(s <= m.start() < e for s, e in used) or not (g[2] or g[4]) \
+                or _HOUR_SKIP_BEFORE.search(text[:m.start()]) or _HOUR_SKIP_AFTER.match(text[m.end():]):
+            continue
+        t = _minutes(g, end=m.group(8) not in ("이후", "부터"))
+        if t is not None and 0 < t < 1440:
+            spans.append((t, 1440) if m.group(8) in ("이후", "부터") else (0, t))
+    if not spans:
+        return ""
+    a, b = max(s[0] for s in spans), min(s[1] for s in spans)
+    return _span(a, b) if a < b else _span(*spans[0])
+
+
+def _hours_and(x, y):
+    (a1, b1), (a2, b2) = [[int(t[:2]) * 60 + int(t[3:]) for t in v.split("-")] for v in (x, y)]
+    a, b = max(a1, a2), min(b1, b2)
+    return _span(a, b) if a < b else ""
+
+
+def visit_when(grp, opt):
+    """(days, hours) of one price from its group title and option. Both hold (the group's '평일' and the option's '화,수,목' =
+    화수목); when they share no day or hour, the option's — written next to the price — wins."""
+    dg, do, hg, ho = visit_days(grp), visit_days(opt), visit_hours(grp), visit_hours(opt)
+    days = (dg & do or do) if dg and do else dg or do
+    hours = (_hours_and(hg, ho) or ho) if hg and ho else hg or ho
+    return days, hours
+
+
+def visit_merge(a, b):
+    """the days/hours of one price shown on two pages: like the tags, a limit stays only when both pages state one; then the
+    price is open on either page's days, in either page's hours"""
+    (da, ha), (db, hb) = a, b
+    days = da | db if da and db else 0
+    if ha and hb:
+        (a1, b1), (a2, b2) = [[int(t[:2]) * 60 + int(t[3:]) for t in v.split("-")] for v in (ha, hb)]
+        hours = _span(min(a1, a2), max(b1, b2))
+    else:
+        hours = ""
+    return days, hours
+
+
 EMOJI = re.compile(r"[♥️❤♡]+")
 
 
@@ -258,9 +410,11 @@ def main():
         tags = [t for t, p in TAGS if re.search(p, f"{grp} {opt}")]
         if re.search(r"일요일|선데이|썬데이", grp):
             tags.append("일요일")
+        days, hours = visit_when(grp, opt)
         row = {"brand": r["brand"], "branch": r["branch"], "src_cat": r["category"], "group": grp, "option": opt,
                "name": name, "mname": mname, "cat": cat, "kind": kind, "sale": sale, "orig": orig or "",
                "addon": "1" if OPTION_LABEL.match(opt) or addon_name(mname) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
+               "days": days, "hours": hours,
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
                "vat": vat_of(r, grp, opt, vdef)}
         # the same item shown on two pages of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row.
@@ -292,6 +446,7 @@ def main():
             # a condition stays only when every page says it: the same price on a page without it is open to anyone (a union
             # turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
             prev["tags"] = "·".join(t for t in prev["tags"].split("·") if t and t in row["tags"].split("·"))
+            prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
             if row["addon"] == "1":
                 prev["addon"] = "1"
             if event_page(prev) and not event_page(row):

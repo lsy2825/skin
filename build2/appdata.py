@@ -6,7 +6,7 @@ data.json (compact, strings interned in `s`):
   cols      the price rows, stored one list per field (cols[f][row]); like values sit together, so gzip makes the file about
             a quarter smaller than row arrays. Fields in colDelta are stored as differences from the row before (the app and
             the tools add them back up). A row = [branch, cat, name s, sale, orig, kind, tags s, keys s, sess, group, until s,
-            url s, vat, review, parts s, addon]
+            url s, vat, review, parts s, addon, days, hours s]
             keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
             group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
             url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
@@ -16,6 +16,12 @@ data.json (compact, strings interned in `s`):
             addon = 1 when the price is only sold on top of another procedure ('옵션5) 에어녹스 추가', '[…옵션] …', '… 추가당',
             '… 추가 시', or the site marks it so): not a procedure price — keep it out of ranges, medians and 'lowest'
             (2026-10-15, 개선 보고서 E5; data.json files from before have 15 fields, read a missing one as 0)
+            days = the weekdays the price is valid on, written on the site (build2/clean.py visit_days): a bit mask 월 1 · 화 2 ·
+            수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96, 화/수/목 14), 0 = no day written
+            hours = the hours it is valid in (visit_hours): 'HH:MM-HH:MM' in 24 h ('12:00-17:00'; 'N시 이전' = '00:00-16:00',
+            'N시 이후' = '16:00-24:00'), '' = no hours written. Read from the group title and the option, the texts the '평일 낮'
+            tag reads (2026-10-16, C1 다음: the app read every '평일 낮' as 월~금). data.json files from before have 16 fields:
+            read a missing days as 0 and hours as ''
   branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
             this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
@@ -335,7 +341,7 @@ def price_checks(rows, date):
     return out
 
 
-ROW_FIELDS = 16
+ROW_FIELDS = 18
 COL_DELTA = [2]   # product name string ids: a branch's rows list names in order, so the differences are small numbers
 
 
@@ -588,7 +594,8 @@ def main():
         kind = KINDS.index(r["kind"])
         out_rows.append([b, CATS.index(r["cat"]), S(r["name"]), int(r["sale"]), int(r["orig"]) if r["orig"] else 0,
                          kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g, S(r["until"]), S(r["url"] if re.match(r"https?://", r["url"] or "") else ""),
-                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"])), int(r["addon"] == "1")])
+                         {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"])), int(r["addon"] == "1"),
+                         int(r.get("days") or 0), S(r.get("hours", ""))])
         if r["kind"] in ("일반", "고시가") and not r["tags"]:
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"

@@ -18,6 +18,7 @@ import json, re
 from collections import defaultdict
 
 POPULAR, PER_CAT, FINDS = 6, 6, 80
+STR_FIELDS = (2, 6, 7, 10, 11, 14, 17)   # row fields that are indexes into s (build2/appdata.py: name, tags, keys, until, url, parts, hours)
 
 
 def rows_of(data):
@@ -110,8 +111,9 @@ def build(data):
     out_rows = []
     for j in keep:
         r = list(rows[j])
-        for f in (2, 6, 7, 10, 11, 14):
-            r[f] = S(r[f])
+        for f in STR_FIELDS:
+            if f < len(r):              # data.json from before 2026-10-16 has 16 fields (no days / hours)
+                r[f] = S(r[f])
         r[9] = gmap[r[9]] if r[9] is not None and r[9] >= 0 else r[9]
         out_rows.append(r)
     pos = {j: i for i, j in enumerate(keep)}
