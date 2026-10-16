@@ -54,9 +54,9 @@ def main():
     for r in rows:
         branch_keys.setdefault((r["brand"], r["branch"]), r["url"])
     brid = {k: i + 1 for i, k in enumerate(branch_keys)}
-    from appdata import region  # noqa: E402
+    from appdata import clean_addr, region  # noqa: E402
     counts["clinic_branches"] = write("clinic_branches", ["id", "brand_id", "name", "address", "region", "lat", "lng", "site_url", "status"],
-        [[brid[k], bid[k[0]], k[1], (geo.get(k, {}).get("address_full") or geo.get(k, {}).get("address", "")), region(geo.get(k, {}).get("address", "")),
+        [[brid[k], bid[k[0]], k[1], clean_addr(geo.get(k, {}).get("address_full") or geo.get(k, {}).get("address", ""), geo.get(k, {}).get("address", "")), region(geo.get(k, {}).get("address", "")),
           geo.get(k, {}).get("lat", ""), geo.get(k, {}).get("lng", ""), re.match(r"https?://[^/]+", u).group(0), "ACTIVE"] for k, u in branch_keys.items()])
     counts["treatment_categories"] = write("treatment_categories", ["id", "name", "sort"], [[i + 1, c, i] for i, c in enumerate(CATS)])
     pid = {}

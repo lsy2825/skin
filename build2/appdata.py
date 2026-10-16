@@ -299,13 +299,29 @@ def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, allk):
     return sum(1 for x in out if x["status"] == "검토 대기")
 
 
-# words a clinic page puts after the address (a popup's buttons, a footer link) that the scraper read with it
-ADDR_JUNK = re.compile(r"\s*(오늘\s*하루\s*(그만\s*)?(보기|열지)|팝업\s*닫기|제휴\s*문의|닫기\s*$).*$")
+# words a clinic page puts after the address (a popup's buttons, a footer link) that the scraper read with it — and, from
+# 2026-10-16, the page footer: 'Copyright © 2024 PPEUMCLINIC. All…' (쁨·밴스), '개인정보취급방침 이용약관 …' (데이뷰·셀린),
+# '내 위치에서 길 찾기' (유앤아이), '자세히보기' (쁨). scrape/branches.py FOOTER cuts the same words before it saves.
+ADDR_JUNK = re.compile(r"\s*(오늘\s*하루\s*(그만\s*)?(보기|열지)|팝업\s*닫기|제휴\s*문의|닫기\s*$"
+                       r"|(?i:copyright)|©|ⓒ|(?i:all\s+rights?\s+reserved)|사업자\s*등록\s*번호|개인정보\s*(취급|처리)\s*방침"
+                       r"|이용\s*약관|병원\s*소개|의료진\s*소개|내\s*위치에서\s*길\s*찾기|자세히\s*보기).*$")
+# before 2026-10-16 scrape/branches.py kept 40 characters after the address and cut the footer word there in half
+# ('… Copyrigh', '… 내 위'): a saved text that fills those 40 characters loses its last word when that word is how one of
+# these begins
+SCRAPE_WINDOW = 40
+FOOTER_WORDS = ("Copyright", "내 위치에서 길 찾기", "자세히보기", "개인정보 취급방침", "개인정보취급방침")
 
 
-def clean_addr(a):
-    """address as shown in the app: the scraped text minus page furniture (data2/branches.csv keeps the original)"""
-    return ADDR_JUNK.sub("", a or "").strip()
+def clean_addr(a, addr=""):
+    """address as shown in the app: the scraped text a (address_full) minus page furniture; addr = the bare address the
+    text starts with (data2/branches.csv keeps the original)"""
+    out = ADDR_JUNK.sub("", a or "").strip()
+    if addr and out == (a or "").strip() and out.startswith(addr) and len(out) - len(addr) == SCRAPE_WINDOW:
+        for w in FOOTER_WORDS:
+            cut = next((k for k in range(len(w) - 1, 0, -1) if out.endswith(" " + w[:k])), 0)
+            if cut:
+                return out[:-cut].rstrip(" ,·|/")
+    return out
 
 
 def region(addr):
@@ -548,7 +564,7 @@ def main():
             g = geo.get(k, {})
             site = re.match(r"https?://[^/]+", r["url"]).group(0)
             bi[k] = len(branches)
-            branches.append([bnames.index(r["brand"]), S(r["branch"]), S(clean_addr(g.get("address_full") or g.get("address", ""))),
+            branches.append([bnames.index(r["brand"]), S(r["branch"]), S(clean_addr(g.get("address_full") or g.get("address", ""), g.get("address", ""))),
                              float(g["lat"]) if g.get("lat") else None, float(g["lng"]) if g.get("lng") else None,
                              S(region(g.get("address", "")) or HINT.get(f"{r['brand']}|{r['branch']}", {}).get("region", "")), S(site), "", "",
                              # map pin precision: 0 building (road + number) · 1 street only · 2 district only · 3 none
