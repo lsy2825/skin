@@ -1,6 +1,6 @@
 """쁨 (ppeum): two kinds of branch site, both read straight from the HTML.
 
-usage: python scrape/ppeum.py [--only ppeum10,ppeum17] [--workers 4] [--gap 1.0]
+usage: python scrape/ppeum.py [--only ppeum10,ppeum17] [--workers 4] [--gap 1.0] [--shard 0/2]
 Branches = www.ppeum1.com .. www.ppeum{MAX_N}.com; each is followed to where it redirects:
   <name>.ppeum.com/          (new site) -> <name>.ppeum.com/selectSurgery: rendered product list.
       input[data-name][data-price][data-end] + label (full name) + select-box: first span = sale, .priceDecoration = list.
@@ -9,6 +9,10 @@ Branches = www.ppeum1.com .. www.ppeum{MAX_N}.com; each is followed to where it 
       li[data-num]: .cateName, strong (name), p b (sale), p > span (list). (The page's <h3> is a fixed label.)
   no answer / maintenance page -> skipped and logged.
 Branch name = the site's <title> up to '점' (NAME_FIX for titles without it).
+robots.txt (2026-10-16): every request — the branch search and the price pages — goes through the shared answer
+(scrape/common.py Fetcher(robots=True)): a home whose robots.txt disallows it, or cannot be read (5xx, no answer, 401/403/429),
+is skipped like a dead site, with the reason in the log. The answer is for the address asked; where it redirects
+(<name>.ppeum.com/, www.ppeumN.com/new/...) is not checked again. The price page is checked on its own host.
 """
 import argparse, re
 from concurrent.futures import ThreadPoolExecutor
@@ -28,8 +32,8 @@ def discover(f):
     out = []
     for n in list(nums) + EXTRA_SUBS:
         r = f.get(f"https://www.ppeum{n}.com/" if isinstance(n, int) else f"https://{n}.ppeum.com/")
-        if not r:
-            out.append({"n": n, "kind": "dead"})
+        if not r:                       # no answer, or robots.txt says no / cannot be read: the reason goes to the log
+            out.append({"n": n, "kind": "dead", "error": f.last_error})
             continue
         title = clean((BeautifulSoup(r.text, "html.parser").title or BeautifulSoup("<title></title>", "html.parser").title).get_text())
         m = re.match(r"https://([a-z]+)\.ppeum\.com(/|$)", r.url)
@@ -96,7 +100,7 @@ def parse_old(html, name, url, ts):
 
 
 def scrape(b, gap):
-    f = Fetcher(gap=gap)
+    f = Fetcher(gap=gap, robots=True)
     if b["kind"] == "new":
         url = f"https://{b['sub']}.ppeum.com/selectSurgery"
         r = f.get(url)
@@ -106,7 +110,7 @@ def scrape(b, gap):
         r = f.get(url)
         rows = parse_old(r.text, b["name"], url, now_iso()) if r else []
     else:
-        return b, [], {**b, "ok": False, "error": "site not answering or not a branch site"}
+        return b, [], {**b, "ok": False, "error": b.get("error") or "site not answering or not a branch site"}
     return b, rows, {**b, "ok": bool(rows), "rows": len(rows), "fails": f.fails}
 
 
@@ -115,10 +119,14 @@ def main():
     ap.add_argument("--only")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--gap", type=float, default=1.0)
+    ap.add_argument("--shard", help="i/n: only every n-th branch from i (split one run over several jobs)")
     a = ap.parse_args()
-    found = discover(Fetcher(gap=0.5))
+    found = discover(Fetcher(gap=0.5, robots=True))
     if a.only:
         found = [b for b in found if f"ppeum{b['n']}" in a.only.split(",")]
+    if a.shard:
+        i, n = map(int, a.shard.split("/"))
+        found = found[i::n]
     rows, logs = [], []
     with ThreadPoolExecutor(a.workers) as ex:
         for b, got, log in ex.map(lambda b: scrape(b, a.gap), found):

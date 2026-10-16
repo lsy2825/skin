@@ -1,6 +1,6 @@
 """톡스앤필 (toxnfillN.com, one site per branch): categories -> items -> options, read straight from the HTML.
 
-usage: python scrape/toxnfill.py [--branches 압구정점,홍대점] [--workers 6] [--gap 0.7]
+usage: python scrape/toxnfill.py [--branches 압구정점,홍대점] [--workers 6] [--gap 0.7] [--shard 0/2]
 Branch list = the branch <select> on any page (option value = that branch's site). Per branch:
   serviceInfo.php?c=   -> category links (serviceInfo.php?c=N)
   serviceInfo.php?c=N  -> item cards (detail.php?c=N&i=M) with a 'from' price
@@ -8,6 +8,10 @@ Branch list = the branch <select> on any page (option value = that branch's site
 An item with no real options (walk-in only, e.g. '예약X', or prices only in a free-form table in the body) keeps its
 card price as one row with option '(대표가)'. Free-form tables are not parsed (layouts differ per page).
 Branches run in parallel (each its own site); requests to one site are spaced by --gap.
+robots.txt (2026-10-16): every request — the branch list, category pages and detail pages — goes through the shared answer
+(scrape/common.py Fetcher(robots=True)): a disallowed page, or any page of a site whose robots.txt cannot be read (5xx, no
+answer, 401/403/429), is skipped and logged (no category list = that branch is skipped; no branch list = the run stops).
+The answer is for the address asked; a redirect's target is not checked again.
 """
 import argparse, re
 from concurrent.futures import ThreadPoolExecutor
@@ -19,7 +23,10 @@ NOTE = re.compile(r"참조|참고|^[▶※★▼]|가격표")
 
 
 def branch_sites(f):
-    soup = BeautifulSoup(f.get(SEED).text, "html.parser")
+    r = f.get(SEED)
+    if r is None:                      # robots.txt says no, or the page did not load: stop (scrape/branches.py keeps its old file)
+        raise SystemExit(f"톡스앤필 지점 목록을 읽지 못함 ({f.last_error})")
+    soup = BeautifulSoup(r.text, "html.parser")
     out = {}
     for o in soup.select("select option"):
         v = (o.get("value") or "").strip()
@@ -30,7 +37,7 @@ def branch_sites(f):
 
 
 def scrape_branch(name, site, gap):
-    f = Fetcher(gap=gap)
+    f = Fetcher(gap=gap, robots=True)
     rows, items, ts = [], [], now_iso()
     r = f.get(f"{site}/serviceInfo.php?c=")
     if not r:
@@ -88,10 +95,20 @@ def main():
     ap.add_argument("--branches")
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--gap", type=float, default=0.7)
+    ap.add_argument("--shard", help="i/n: only every n-th branch from i (split one run over several jobs)")
     a = ap.parse_args()
-    sites = branch_sites(Fetcher())
+    f = Fetcher(robots=True)
+    try:
+        sites = branch_sites(f)
+    except SystemExit:                 # the log says why; no rows = the weekly run keeps the last accepted file
+        write_raw("toxnfill", [], {"brand": "톡스앤필", "branches": 0, "pages": [], "bad": [{"branch": "(지점 목록)", "ok": False,
+                  "error": f.last_error, "fails": f.fails}], "finished": now_iso()})
+        raise
     if a.branches:
         sites = {k: v for k, v in sites.items() if k in a.branches.split(",")}
+    if a.shard:
+        i, n = map(int, a.shard.split("/"))
+        sites = dict(sorted(sites.items())[i::n])
     rows, logs = [], []
     with ThreadPoolExecutor(a.workers) as ex:
         for name, got, log in ex.map(lambda kv: scrape_branch(kv[0], kv[1], a.gap), sites.items()):

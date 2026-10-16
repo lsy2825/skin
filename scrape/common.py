@@ -41,6 +41,8 @@ _busy = {}                         # host → (when, thread) a request to it (th
 BUSY_MAX = 120                     # a turn not ended in this long is given up (requests' timeout of 25 s is per read, so a slow
                                    # answer can run longer); the next request still waits Crawl-delay from when that turn began
 _slowed = set()                    # hosts that answered 429 in this process: nothing more is asked of them this run
+_robots_locks = {}                 # host → lock: Fetchers in parallel threads (쁨's old-site branches all on event.ppeum.com)
+                                   # ask a host's robots.txt once; the others wait for that answer and read it from the cache
 _now, _sleep = time.time, time.sleep      # replaced by tests
 
 
@@ -247,14 +249,17 @@ class Fetcher:
     def _robots(self, host):
         """(status, text) of a host's robots.txt — this Fetcher's memory, the shared cache, or one request; learns Crawl-delay"""
         if host not in self._rules:
-            got = robots_get(host)
-            fresh = got is None
-            if fresh:
-                r, err = self._request(f"https://{host}/robots.txt")
-                status = r.status_code if r is not None else (int(err.split()[1]) if err.startswith("HTTP ") else 0)
-                # no answer at all: keep why ('SSLError', 'ConnectTimeout') so the log still names the cause, not only 'unreadable'
-                got = (status, r.text if r is not None and status == 200 else ("" if r is not None else err))
-                robots_put(host, *got)
+            with _lock:
+                hl = _robots_locks.setdefault(host, threading.Lock())
+            with hl:                     # one request per host even when several threads start on it at once
+                got = robots_get(host)
+                fresh = got is None
+                if fresh:
+                    r, err = self._request(f"https://{host}/robots.txt")
+                    status = r.status_code if r is not None else (int(err.split()[1]) if err.startswith("HTTP ") else 0)
+                    # no answer at all: keep why ('SSLError', 'ConnectTimeout') so the log still names the cause, not only 'unreadable'
+                    got = (status, r.text if r is not None and status == 200 else ("" if r is not None else err))
+                    robots_put(host, *got)
             self._rules[host] = got
             delay = robots_delay(*got)
             if delay:
