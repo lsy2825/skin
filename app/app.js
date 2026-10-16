@@ -861,6 +861,7 @@
             h("b", {}, "이 옵션 그대로"), h("span", {}, `같은 이름 상품이 있는 ${same}개 지점끼리 비교`)),
           keys.map((k) => h("button", { class: "opt", type: "button", "aria-pressed": s.how === k ? "true" : "false", onclick: () => { s.how = k; paint(); } },
             h("b", {}, `같은 시술로: ${KEYS[k].label}`), h("span", {}, "모든 브랜드·지점과 비교")))),
+        typeof s.how === "number" ? specNotes(famOf[s.how]) : null,
         h("div", { class: "row", style: "margin-top:14px" }, h("span", { class: "sub" }, "횟수(회차)"), h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
         cartPicker(s.ci, (x) => { s.ci = x; paint(); }),
         h("div", { class: "row", style: "margin-top:14px;gap:8px" },
@@ -2721,6 +2722,20 @@
     return h("div", { class: "vsteps" }, s1, s2, s3, !s1 && !s2 && !s3 ? h("div", { class: "sub" }, "고를 옵션이 하나뿐이에요.") : null,
       h("p", { class: "tiny", style: "margin:6px 0 0" }, `지금 비교: ${KEYS[cur].label} · 전국 ${byKB[cur].size}곳에서 팔아요`));
   }
+  // 규격 낱말 뜻 (data.json meta.kb.specs, C7): the chosen spec's words ('국산', '사각턱' …), one plain line each, at most 3.
+  // Keyed by (family id, word) — Spec.notesFor; the words stand in the variant label and the family name ('스킨보톡스' → '스킨',
+  // Spec.famWords). Drafts follow the knowledge-base rule (kbVisible: only while flags.showDraftKnowledge is on) and always
+  // say '의료진 검수 전'. Data without meta.kb.specs (before C7): no box. fm: famOf[k]
+  function specNotes(fm) {
+    if (!fm || !Array.isArray(KB.specs) || !KB.specs.length) return null;
+    const glued = Spec.famWords(fm.f.name, FAM.filter((x) => x.fid && x.fid === fm.f.fid).map((x) => x.name));
+    const ns = Spec.notesFor(KB.specs, fm.f.fid, [fm.label, fm.f.name, glued], { drafts: FLAGS.showDraftKnowledge, max: 3 });
+    if (!ns.length) return null;
+    const all = ns.every((n) => n.draft);
+    return h("div", { class: "specnotes", role: "note", "aria-label": "규격 낱말 뜻" },
+      h("ul", {}, ns.map((n) => h("li", {}, h("b", {}, n.spec), ` ${n.text}`, n.draft && !all ? h("span", { class: "k k4" }, "의료진 검수 전") : null))),
+      h("p", { class: "tiny" }, `${all ? "의료진 검수 전 설명이에요. " : ""}낱말이 무엇을 가리키는지만 적었어요.`));
+  }
   function variantRows(groups, cur, scroll) {
     return h("div", { class: "vrows" }, groups.map(([g, xs]) => h("div", { class: "vrow" }, h("span", { class: "vg" }, g),
       h("div", { class: scroll ? "vchips scroll" : "vchips" }, xs.map(({ v, amt }) => { const rr = cmpRk(ranking(v.k, "price"));
@@ -3157,6 +3172,7 @@
         if (rest.length) card.append(h("details", { class: "fold small" }, h("summary", {}, `다른 종류 ${rest.length}가지 · ${rest.slice(0, 3).map(([g]) => g).join(", ")}${rest.length > 3 ? " …" : ""}`), variantRows(rest, k.i)));
       }
     }
+    { const sn = specNotes(fam); if (sn) card.append(sn); }
     card.append(h("details", { class: "fold small cmpother" }, h("summary", {}, `다른 시술 고르기 · ${k.cat}`), catChips, h("div", { class: "keyhead", style: "margin-top:8px" }, sel),
       h("div", { style: "margin-top:8px" }, famFinder())));
     card.append(h("div", { class: "row", style: "margin-top:16px;gap:10px" }, switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }), h("span", { class: "sp" }), whenChip()),
