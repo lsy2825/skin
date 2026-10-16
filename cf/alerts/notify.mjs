@@ -6,14 +6,18 @@
 // only when its sha256 is the one the public data-meta.json names (the app's own check), parsed as JSON, never run. Only
 // that job gets ALERTS_URL and ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on its
 // machine. Plain node, no npm packages.
-//   1. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
-//      at most the Worker's PAIR_CAP (most important first), and only pairs whose key is in this data.json are kept (a key
-//      the data does not have would be one D1 row written a day for nothing — and a made-up key costs nothing to subscribe)
-//   2. compute each pair from that data.json (the copy the public app serves) with the app's own code
+//   1. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
+//      row (rewritten only when they change), ranks only pairs of these keys in (2) and refuses rules naming any other key
+//      at subscribe/PUT (400 UNKNOWN_KEY) — a key the data does not have can never be computed, so its pair must never take
+//      a place in the list (5th review)
+//   2. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
+//      at most the Worker's PAIR_CAP (most important first); a pair whose key is not in this data.json is still skipped
+//      here (it would be one D1 row written a day for nothing)
+//   3. compute each pair from that data.json (the copy the public app serves) with the app's own code
 //      (app/domain/pricectx.js, pricing.js, stats.js — read only) on the price basis of the app's alert engine (병원 표시가)
 //      → digest entries (numbers only)
-//   3. POST /v1/internal/digest    500 entries at a time (a pair new to the Worker is kept only while its table has room
-//      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   4. POST /v1/internal/finish   the
+//   4. POST /v1/internal/digest    500 entries at a time (a pair new to the Worker is kept only while its table has room
+//      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   5. POST /v1/internal/finish   the
 //      Worker marks who has news
 // Prints counts only (never keys, ids or endpoints). A failure prints a ::warning and exits 0: alerts never fail the price
 // build, and the next run catches up (news waits in D1 until a finish consumes it).
@@ -21,7 +25,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { pairStats } from "./src/digest.js";
-import { kstDay, regionMatch, KEY_RE, REGIONS, validDay } from "./src/rules.js";
+import { kstDay, regionMatch, KEY_RE, REGIONS, MAX_KEYS, validDay } from "./src/rules.js";
 
 const require = createRequire(import.meta.url);
 const PriceCtx = require("../../app/domain/pricectx.js");
@@ -76,14 +80,16 @@ export function reclDate(data, k) {
   return d;
 }
 
-// Does this data.json still have the shape the Worker accepts? Every compare key must match rules.js KEY_RE and every
-// branch region must be one of REGIONS (or empty) — otherwise the Worker would answer 400 (BAD_DIGEST, BAD_RULES) and the
-// phones' rules for those treatments would die quietly. → [] or the problems (counts only, so the log stays clean)
+// Does this data.json still have the shape the Worker accepts? Every compare key must match rules.js KEY_RE, there may be
+// at most MAX_KEYS of them, and every branch region must be one of REGIONS (or empty) — otherwise the Worker would answer
+// 400 (BAD_KEYS, BAD_DIGEST, BAD_RULES) and the phones' rules for those treatments would die quietly. → [] or the
+// problems (counts only, so the log stays clean)
 export function shapeProblems(data) {
   const out = [];
   if (!data || !data.meta || !Array.isArray(data.keys) || !Array.isArray(data.branches) || !Array.isArray(data.s)) return ["not a data.json"];
   const badKeys = data.keys.filter((k) => !Array.isArray(k) || !KEY_RE.test(k[0] || "")).length;
   if (badKeys) out.push(`${badKeys} of ${data.keys.length} compare keys do not match KEY_RE`);
+  if (data.keys.length > MAX_KEYS) out.push(`${data.keys.length - MAX_KEYS} of ${data.keys.length} compare keys are past MAX_KEYS`);
   const badRegions = data.branches.filter((b) => { const r = data.s[b[5]] || ""; return r && !REGIONS.includes(r); }).length;
   if (badRegions) out.push(`${badRegions} of ${data.branches.length} branches have a region not in REGIONS`);
   if (data.meta.recl != null && !(Array.isArray(data.meta.recl) && data.meta.recl.every((x) => Array.isArray(x) && validDay(x[0]) && Array.isArray(x[1])))) out.push("meta.recl is not [[day, [keys]]]");
@@ -133,6 +139,10 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   }
   const run = `${data.meta.updated}|${today}`;
   const opt = waitMs === undefined ? {} : { waitMs };
+  // the keys this data.json has, sent first: the Worker ranks only pairs of these keys (a key it cannot compute never takes
+  // a place in the list) and refuses rules naming any other key. Ascending, each once (rules.js keySetJson)
+  const keySet = [...new Set(data.keys.map((k) => k[0]))].sort();
+  await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
   const watched = [];
   let capped = false;
   for (let at = 0; at !== null;) {
@@ -142,8 +152,9 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
     at = Number.isInteger(page.next) && page.next > at ? page.next : null;
   }
   if (capped) log("::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed (GET /health pairs: capped)");
-  // only keys this data.json has (a key that left the data — a regroup — gets a fresh baseline when it is back: no news)
-  const known = new Set(data.keys.map((k) => k[0]));
+  // only keys this data.json has (a key that left the data — a regroup — gets a fresh baseline when it is back: no news).
+  // The Worker already ranked only these (the key set above); this guards against a Worker that did not
+  const known = new Set(keySet);
   const seen = new Set();
   const pairs = watched.filter((p) => { const id = `${p.k}|${p.r}`; if (!known.has(p.k) || seen.has(id)) return false; seen.add(id); return true; });
   let entries = [];

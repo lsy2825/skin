@@ -82,6 +82,13 @@ CREATE TABLE snap (
   PRIMARY KEY (k, r)
 ) STRICT;
 
+-- the compare keys of the data.json the factory last read (notify.mjs → POST /v1/internal/keys, before it asks for the
+-- watched pairs): ONE row, a JSON array in ascending order (src/rules.js keySetJson), rewritten only when the set changes
+-- (src/sql.js SET_KEYS: a few rows written a week). The factory computes only those keys, so the watched list ranks only
+-- pairs whose key is in it, and once it exists subscribe/PUT refuse a rule whose key is not (400 UNKNOWN_KEY; src/sql.js
+-- WATCHED, UNKNOWN_KEYS). Public treatment keys only — nothing about a person. INTEGER PRIMARY KEY: no separate index.
+CREATE TABLE keyset (id INTEGER PRIMARY KEY CHECK (id = 1), keys TEXT NOT NULL) STRICT;
+
 -- VAPID JWT per push origin (a signed token, not a secret; 12 h). Re-signed only when < 1 h is left.
 CREATE TABLE vapid (aud TEXT PRIMARY KEY, jwt TEXT NOT NULL, exp INTEGER NOT NULL) STRICT;
 

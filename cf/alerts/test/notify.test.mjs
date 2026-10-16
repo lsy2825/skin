@@ -266,7 +266,9 @@ test("notify: nobody watching → no digest, finish still runs; wrong secret fai
   const w = wire(env, undefined, "2026-10-12");
   const r = await notify({ data: WEEK1, today: "2026-10-12", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {} });
   assert.equal(r.pairs, 0);
-  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/watched", "/v1/internal/finish"]);
+  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/keys", "/v1/internal/watched", "/v1/internal/finish"]);
+  assert.deepEqual(JSON.parse(w.sent[0].body), { keys: ["X01", "X02", "X03", "X24"] }, "the data.json's keys, ascending, each once");
+  assert.deepEqual(db.rows("SELECT keys FROM keyset"), [{ keys: '["X01","X02","X03","X24"]' }]);
   const bad = wire(env, undefined, "2026-10-12");
   await assert.rejects(notify({ data: WEEK1, today: "2026-10-12", url: URL_, secret: "nope", fetch: bad.f, log: () => {}, waitMs: 0 }), /401/);
   assert.equal(bad.sent.length, 1);
@@ -817,23 +819,29 @@ test("vapid-keygen.mjs: a failed wrangler drops the key (exit 1, no public key f
   } finally { sb.done(); }
 });
 
-test("review finding (D1 write limit): made-up keys and a flood of pairs cost no D1 writes beyond PAIR_CAP — keys not in data.json are skipped, the cut list is a ::warning", T, async () => {
+test("review finding (D1 write limit) + 5th review: made-up keys cost no D1 writes and take no place in the list — planted before the first key set, watched by more phones than the real pairs; a real phone that never took a push is computed the same day; afterwards made-up keys are refused (400 UNKNOWN_KEY)", T, async () => {
   const db = makeDb(), env = makeEnv(db, { PAIR_CAP: "4" });
-  // 4 phones × 20 rules on keys of the right shape that data.json does not have (one POST each, no browser)
-  for (let p = 0; p < 4; p++) {
+  // 2 × 4 phones × 20 rules on keys of the right shape that data.json does not have (one POST each, no browser), before
+  // the factory ever stored a key set (accepted as before): each made-up pair is watched by 2 phones
+  for (let rep = 0; rep < 2; rep++) for (let p = 0; p < 4; p++) {
     const res = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: Array.from({ length: 20 }, (_, i) => ({ kind: "target", key: `T${String(p * 20 + i).padStart(7, "0")}`, max: 1 })) });
     assert.equal(res.status, 201);
   }
-  // a real phone that took a push: its pairs come first in the Worker's list
+  // a real phone that never took a push (each of its pairs watched by 1 phone)
   const real = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }, { kind: "watch", key: "X01" }] });
-  db.raw.prepare("UPDATE subs SET last_w = '2026-10-01' WHERE id = ?").run(real.body.id);
+  assert.equal(real.status, 201);
   const logs = [];
   const r = await run(env, WEEK1, "2026-10-12", { log: (l) => logs.push(l) });
-  assert.equal(r.pairs, 2, "only X24 and X01 (in data.json) are digested");
+  assert.equal(r.pairs, 2, "X24 and X01 (in data.json) are digested");
   assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X24"], "D1 holds rows for the real pairs only");
-  assert.match(logs[0], /^::warning title=price alerts::the Worker cut the watched list at PAIR_CAP/);
-  assert.match(logs[1], /^price alerts: 2 watched pairs \(2 skipped, /);
-  assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-12T09:30:00+09:00") })).body.pairs, "capped");
+  assert.deepEqual(logs, [logs.find((l) => l.startsWith("price alerts: 2 watched pairs (0 skipped, "))], "the list was not cut: no ::warning, nothing skipped");
+  assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-12T09:30:00+09:00") })).body.pairs, "ok");
+  // the key set is stored now: a made-up key is refused at subscribe, a real one taken and computed the next day
+  const bad = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }, { kind: "watch", key: "T0000099" }] });
+  assert.deepEqual([bad.status, bad.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000099"] }]);
+  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X02" }] })).status, 201);
+  assert.equal((await run(env, WEEK1, "2026-10-13")).pairs, 3);
+  assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X02", "X24"]);
 });
 
 test("review finding (D1 budget): a pair new to the Worker waits for a row the finish frees when its table is at PAIR_CAP — the day's run says so (::warning, /health pairs: capped), the next day computes it", T, async () => {

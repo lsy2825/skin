@@ -194,6 +194,21 @@ test("REGIONS and KEY_RE cover everything in app/data.json", { skip: existsSync(
   assert.equal(typeof P.fromData, "function");
 });
 
+test("key set (5th review): 1 to MAX_KEYS KEY_RE keys in strictly ascending order → its JSON; anything else null; the real app/data.json's keys fit, and MAX_KEYS of them fit the factory's 256 KB body cap", () => {
+  assert.equal(R.keySetJson(["T0000ABC", "X01", "X24"]), '["T0000ABC","X01","X24"]');
+  for (const bad of [undefined, null, "X24", {}, [], ["X24", "X01"], ["X01", "X01"], ["X1"], ["x24"], ["T000ABC"], ["X24", 5], [["X24"]], ["X24 "], ['X24","X01']])
+    assert.equal(R.keySetJson(bad), null, JSON.stringify(bad));
+  const many = Array.from({ length: R.MAX_KEYS + 1 }, (_, i) => "T" + i.toString(36).toUpperCase().padStart(7, "0")).sort();
+  assert.equal(R.keySetJson(many), null, "more than MAX_KEYS");
+  const full = R.keySetJson(many.slice(0, R.MAX_KEYS));
+  assert.ok(full && new TextEncoder().encode(JSON.stringify({ keys: many.slice(0, R.MAX_KEYS) })).length <= 256 * 1024, "MAX_KEYS keys fit the body cap");
+  if (existsSync(DATA)) {
+    const d = JSON.parse(readFileSync(DATA, "utf8"));
+    const keys = [...new Set(d.keys.map((k) => k[0]))].sort();
+    assert.ok(R.keySetJson(keys), `the real data.json's ${keys.length} keys are a valid key set (≤ MAX_KEYS)`);
+  }
+});
+
 test("hostTrouble: a 5xx, a redirect and a network error are the push service's; a 4xx is the row's", () => {
   for (const s of [0, 500, 502, 503, 504, 599, 301, 302, 307]) assert.equal(R.hostTrouble(s), true, String(s));
   for (const s of [400, 401, 403, 404, 410, 413, 429, 200, 201]) assert.equal(R.hostTrouble(s), false, String(s));
