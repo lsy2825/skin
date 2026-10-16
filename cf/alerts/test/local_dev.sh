@@ -30,6 +30,10 @@ PID=""
 cleanup() { if [ -n "$PID" ]; then kill -- -"$PID" 2>/dev/null || kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; fi; rm -rf "$STATE"; }
 trap cleanup EXIT
 fail() { echo "FAIL: $*" >&2; echo "--- wrangler log ---" >&2; tail -30 "$LOG" >&2 || true; exit 1; }
+# grep_none WHAT GREP-ARGS...: fails unless grep finds nothing (exit 1). A match (0) fails, and so does a grep error (2) —
+# 8th review: an id that starts with '-' (1 in 64) was read as an option, grep stopped with 2 and the check printed ok
+# without looking. Patterns always go after -e.
+grep_none() { local what=$1 rc=0; shift; grep "$@" >/dev/null || rc=$?; [ "$rc" = 1 ] || fail "$what (grep exit $rc)"; }
 
 echo "== migrate local D1"
 $WRANGLER d1 migrations apply DB --local --config "$CONF" --persist-to "$STATE" >"$STATE/migrate.log" 2>&1 || { cat "$STATE/migrate.log"; exit 1; }
@@ -149,9 +153,11 @@ case "$S" in
   *) fail "send run should handle exactly one push";;
 esac
 expect 200 "$(curl -sS -o /dev/null -w '%{http_code}' "$BASE/__scheduled?cron=*/10+23,0-11+*+*+*")" "cron handler runs"
-grep -q 'alerts send failed\|alerts error' "$LOG" && fail "the Worker logged an error"
+grep_none "the Worker logged an error" -F -e 'alerts send failed' -e 'alerts error' "$LOG"
 # our own console lines (not wrangler's local access log, which prints URLs; deployed, invocation logs are off)
-if grep -v '^\[wrangler:' "$LOG" | grep -E "$ID|local-dev-" >/dev/null; then fail "the Worker's console log shows an id or endpoint"; fi
+RC=0; grep -v -e '^\[wrangler:' "$LOG" >"$STATE/own.log" || RC=$?
+[ "$RC" -le 1 ] || fail "could not read the wrangler log (grep exit $RC)"
+grep_none "the Worker's console log shows an id or endpoint" -F -e "$ID" -e "$ID3" -e 'local-dev-' "$STATE/own.log"
 echo "ok   Worker console log has no ids or endpoints"
 
 # D1 rows READ on this runtime's D1 (7th review: the finish must not read more when exp_sent lists are long; per-phone

@@ -21,8 +21,9 @@
 //         → 21,560 / 2 = 10,780 phones; MAX_SUBS 8,000 leaves ~25% for retries, 429-paused hosts and runs cut at 20:45.
 //         That is an average: a day with more due than 3,080 (Monday's weekly news + month-end deadlines) sends expiring
 //         rows first, nearest end date first (CLAIM_X), so a deadline is not queued behind weekly news that can wait.
-//         Rows held back at a push service in trouble (rules.js HOLD) take at most PROBE_SLOTS 10 of a run's 40, and rows
-//         that failed before at most FAIL_SLOTS 10
+//         Rows held back at a push service in trouble (rules.js HOLD) take at most PROBE_SLOTS 10 of a run's 40 as probes,
+//         and come back at most SEND_LIMIT a run once that service answers 2xx again; rows that failed before take at most
+//         FAIL_SLOTS 10
 //   subrequests per run: ≤ 40 push fetches (redirects never followed, so 1 each) of the 50 external allowed; D1 = the claim
 //         batch + one results batch per parallel group of 6 (≤ 7) + the closing one, each tried at most 3 times → ≤ ~27 of
 //         the 1,000 allowed to Cloudflare services
@@ -41,9 +42,14 @@
 //         subscribe). D1 counts every row a statement writes plus one per index entry it changes. Rows written per
 //         statement, measured on a local D1 (wrangler 4.145.0 / workerd, 2026-10-16; production is assumed to count the same
 //         way — a guess), with the snap deletes counted as 2 (row + primary-key entry, as the D1 docs describe):
-//           a push: claim 2 + its result (SENT 1; a hold 2 + its later release 2; a counted failure up to 4 — the row and
-//             its subs_due, subs_x and subs_fail entries (measured: RETRY of a row with pend_w 1 and pend_x set) — and a
-//             delete 2 more) ≤ 8 (≈ 6 on average) → 77 runs × SEND_LIMIT 40 = 3,080 pushes × 8 = 24,640 at most
+//           a push: claim 2 + its result (SENT 1; a hold 2 — the row and its subs_held entry; a counted failure up to 4 —
+//             the row and its subs_due, subs_x and subs_fail entries (measured: RETRY of a row with pend_w 1 and pend_x set)
+//             — and a delete 2 more) ≤ 8 (≈ 6 on average) → 77 runs × SEND_LIMIT 40 = 3,080 pushes × 8 = 24,640 at most. A
+//             probe's claim also takes the row out of subs_held (counted: 3 instead of 2) → + ≤ PROBE_SLOTS 10 a run = 770
+//           held rows freed (sql.js RELEASE_HELD, 8th review): ≤ SEND_LIMIT a run however many were held on the days before
+//             (it was every held row of an origin at once: up to MAX_SUBS × 2 on the day an outage ends, a D1 day apart from
+//             the pushes that held them) × 2 (the row and its subs_held entry; measured 1 — the local runtime does not count
+//             an index entry it removes) → ≤ 77 × 40 × 2 = 6,160
 //           a new subscription: 5 (row, primary-key and endpoint entries, the two counters; the KST day's first one 8 with
 //             the 'day' row and the new counter — measured). NEW_PER_DAY is per KST day and a D1 day spans two of them →
 //             ≤ 2 × 2,000 × 5 = 20,000. A rule's key outside the key set changes nothing here (stored like any other)
@@ -65,18 +71,20 @@
 //             PRIMARY KEY: no index entry; measured) → ≤ 1 per run that sends it, ≤ 30 a day at the run counts above
 //           a finish's own stat rows: 'finish' and 'data' only when they change, 'capped' when the list was cut → ≤ 3
 //         → a D1 day where everything peaks at once (a full table whose every row changes every mark, every push at its most
-//         rows, two KST days of new subscriptions, a full pair turnover, key sets on 30 runs) ≈ 24,640 + 20,000 + 40,000 +
-//         7,000 + 30 + 3 ≈ 91,700 of 100,000 (one whole computation measured at the ceiling, concentrated rules: ≤ 46,001);
-//         the other runs of the day add nothing (measured: the schedule + 28 push-started runs + a Run workflow + a re-run of
-//         the same data = 6,005 rows at 3,000 pairs). A SECOND full computation the same D1 day (only the late schedule run
-//         above) could add up to 7,000 + 40,000 in that same worst case — over the limit. Measured (7th review, 8,000 × 20
-//         concentrated, 1,680 / 3,080 phones sent in between): a 15:00 KST run with new data + the next 06:00 run = 25,360
-//         + 28,161 = 53,521 rows, so even then with the day's pushes and subscriptions ≈ 98,200 — why Run workflow stays
-//         key-set-only. Not counted: PUT/DELETE and a subscription sent again for the same endpoint (≈ 1–4 rows each,
-//         bounded only by the Workers request limit and SUBS_RL), and cf/metrics, which shares the account's limit
-//         (src/rules.js there: up to 80,000 rows on a spammed day — the two together can pass it). The levers are
-//         NEW_PER_DAY (1,000 → −10,000) and MAX_SUBS (−5 rows a day per subscription less): a user decision (MAX_SUBS 4,000
-//         + NEW_PER_DAY 1,000 would fit TWO full computations a day: ≈ 88,700)
+//         rows, every run's probes and a full release, two KST days of new subscriptions, a full pair turnover, key sets on
+//         30 runs) ≈ 24,640 + 770 + 6,160 + 20,000 + 40,000 + 7,000 + 30 + 3 ≈ 98,600 of 100,000 (8th review: 91,700 left
+//         the freed held rows out; counted the way the local runtime counts, 94,800). One whole computation measured at the
+//         ceiling, concentrated rules: ≤ 46,001; the other runs of the day add nothing (measured: the schedule + 28
+//         push-started runs + a Run workflow + a re-run of the same data = 6,005 rows at 3,000 pairs). A SECOND full
+//         computation the same D1 day (only the late schedule run above) could add up to 7,000 + 40,000 in that same worst
+//         case — over the limit. Measured (7th review, 8,000 × 20 concentrated, 1,680 / 3,080 phones sent in between): a
+//         15:00 KST run with new data + the next 06:00 run = 25,360 + 28,161 = 53,521 rows, so with the day's pushes and
+//         subscriptions ≈ 98,200 and the probes and freed held rows ≈ 105,100 — over: why Run workflow stays key-set-only.
+//         Not counted: PUT/DELETE and a subscription sent again for the same endpoint (≈ 1–4 rows each, bounded only by the
+//         Workers request limit and SUBS_RL), and cf/metrics, which shares the account's limit (src/rules.js there: up to
+//         80,000 rows on a spammed day — the two together can pass it). The levers are NEW_PER_DAY (1,000 → −10,000) and
+//         MAX_SUBS (−5 rows a day per subscription less): a user decision (MAX_SUBS 4,000 + NEW_PER_DAY 1,000 would fit TWO
+//         full computations a day: ≈ 95,600)
 //   D1 reads (5,000,000 a day, the same account-wide D1 day; enforced since 2026-09-01: a day over it fails every query until
 //         00:00 UTC = 09:00 KST, which /health shows as 503). Measured on a local D1 at the ceiling (MAX_SUBS 8,000 phones
 //         × 20 rules = 160,000 rule entries, 3,000 pairs computed, PAGE 5,000 = one watched page), 7th review — the worst
@@ -89,25 +97,34 @@
 //             there). 5 expiring rules a phone (the 4 kinds mixed): 1,008,625. test/d1_reads.mjs (run by local_dev.sh) checks
 //             on the same runtime that no finish statement reads more with long lists and the per-phone ceilings
 //           a key-set-only run 1; a same-data repeat 3; a subscribe 9; a PUT of 20 rules 65
-//           one cron run: 26 with nothing pending (the partial indexes hold only rows with something pending); every claim
-//             walks its index in order and stops after its share of SEND_LIMIT due rows, so the worst is rows with news
-//             waiting that are NOT due: weekly waiting (sent within 7 days) 8,028, expiring waiting (one went out today)
-//             8,027, both 16,027 = 2 × MAX_SUBS (DROP_ENDED walks only until the day's finish ran: + 8,001 before it); a
-//             push with an expiring notice reads ≤ 161 more in SENT (exp_sent ≤ 3 days × 20 entries + pend_xl ≤ 20, merged
-//             and sorted) → ≤ 77 × 16,027 + 3,080 × 161 = 1,729,959 a day. Held rows (H, 0 on a normal day): CLAIM_P reads
-//             those whose minute has come once per run and RELEASE_HELD walks them when a push origin answers 2xx again —
-//             H = 2,000 adds ≈ 160,000 a day
-//         → worst D1 day ≈ 1,248,625 + 1,729,959 + 160,000 + 2 × 2,000 × 9 (subscribes) + 30 (key sets) ≈ 3.17M of 5M; a
-//         normal day (a few hundred pending rows) is far below 1.5M. The late-schedule day above adds ≤ 1,248,625 + the
-//         DROP_ENDED walks of the runs before that finish (≤ 18 × 8,001) ≈ 4.57M, still under. Not counted: PUT/DELETE
-//         (≈ 65 rows read each, bounded only by the Workers request limit) and cf/metrics (shares the account's limit)
+//           one cron run (measured again after the 8th review, wrangler 4.145.0 / workerd): 35 with nothing pending (the
+//             partial indexes hold only rows with something pending), 361 sending 40; every claim walks its index in order
+//             and stops after its share of SEND_LIMIT due rows, so the worst is rows with news waiting that are NOT due:
+//             weekly waiting (sent within 7 days) and expiring waiting (one went out today) 16,034 = 2 × MAX_SUBS + 34
+//             (DROP_ENDED walks only until the day's finish ran: + 8,000 before it — every run of a KST day without a
+//             finish). Held rows (claim < 0; 0 on a normal day, but nothing bounds them below MAX_SUBS — a week of VAPID
+//             refusal grace holds up to 3,080 a day): the probes (sql.js CLAIM_P) read one index seek per push origin that
+//             holds rows and two short ranges each, at most PROBE_ORIGINS origins — 40 rows with one origin whether 20 or
+//             7,990 rows are held, 1,397 at 64 or more origins (14 with nothing held), so ≤ + 1,383 a run; a release after
+//             a 2xx (RELEASE_HELD) ≤ 340 (measured 280–321 freeing 40, over 1–200 origins); 8th review: the probes read and
+//             sorted every held row whose minute had come (~4 rows each: 31,974 at 7,990 held) and a release walked all held
+//             rows of all origins. A push with an expiring notice reads ≤ 161 more in SENT (the entries announced on earlier
+//             days end within END_DAYS 3 days: ≤ 60 + pend_xl ≤ 20, merged and sorted — rules.js validEnd)
+//             → ≤ 77 × (16,034 + 1,383 + 340) + 3,080 × 161 = 1,863,169 a day after the day's finish, + 77 × 8,000 =
+//             616,000 on a D1 day holding a KST day without a finish
+//         → worst D1 day ≈ 1,248,625 + 1,863,169 + 616,000 + 2 × 2,000 × 9 (subscribes) + 30 (key sets) ≈ 3.76M of 5M; a
+//         normal day (a few hundred pending rows) is far below 1.5M. The late-schedule day above (two computations, so the
+//         KST day had its finish, only late): 2 × 1,248,625 + 1,863,169 + the DROP_ENDED walks of the runs before that
+//         finish (≤ 18 × 8,000) + 36,030 ≈ 4.54M; ≈ 4.96M if that computation only came after the day's last send run
+//         (71 walks) — the edge. Not counted: PUT/DELETE (≈ 65 rows read each, bounded only by the Workers request limit)
+//         and cf/metrics (shares the account's limit)
 //   CPU (10 ms): one ES256 signature per push origin per 11 h (cached in D1), one test signature + verify per run that
 //         has a key (push.js vapidKey, before any claim; GET /health does the same), JSON of ≤ 40 rows
 // VAPID: only the secret VAPID_PRIVATE_JWK is needed — the public key is derived from it (push.js publicKeyOf). The
 //   optional var VAPID_PUBLIC_KEY, when set, must be that same key (else nothing is sent, GET /health sending:false).
 import { ID_RE, validDay, validRun, FINISH_SLACK_DAYS, daysBetween, newId, kstDay, addDays, inWindow, pushTtl, dueKinds, outcome,
   hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, validEnd, keySetJson, clientKey, RETRY_DROP, REFUSED_DROP,
-  NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES, SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PAIR_KEEP_DAYS } from "./rules.js";
+  NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES, SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PROBE_ORIGINS, PAIR_KEEP_DAYS } from "./rules.js";
 import { checkSubscription, vapidJwt, vapidKey, pushRequest } from "./push.js";
 import * as Q from "./sql.js";
 
@@ -296,9 +313,10 @@ async function watched(env, url, now) {
 // POST /v1/internal/digest {run, entries} → {saved, skipped}. A pair not in snap yet is added only while snap holds fewer than
 // PAIR_CAP rows (sql.js DIGEST), with today (the Worker's clock) as its first day; one left out (skipped) waits for a row a
 // finish frees, and stamps stat 'capped' (GET /health "pairs": "capped") — the list is at its cap.
-// An expiring end date u must lie within the Worker's own day − FINISH_SLACK_DAYS … + END_DAYS (rules.js validEnd; the
-// factory sends u ≤ its day + 3): a later one would outlive sql.js PRUNE_XSENT's look-ahead, and none can pile up in
-// exp_sent (≤ (END_DAYS + 1) days × MAX_RULES entries). Else 400 BAD_DIGEST and nothing is written.
+// An expiring end date u must lie within the Worker's own day − FINISH_SLACK_DAYS … + END_DAYS (= 3, rules.js validEnd; the
+// factory sends u ≤ its day + 3 and its day is never ahead of the Worker's): a later one would outlive sql.js PRUNE_XSENT's
+// look-ahead, and none can pile up in exp_sent (a push reads ≤ 161 rows in SENT whatever the factory sends — 8th review).
+// Else 400 BAD_DIGEST and nothing is written.
 async function digest(request, env, now) {
   const body = await readJson(request, INTERNAL_MAX);
   if (!body || !validRun(body.run) || !Array.isArray(body.entries) || body.entries.length > DIGEST_MAX) throw new Bad(400, "BAD_DIGEST");
@@ -376,7 +394,7 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
     env.DB.prepare(Q.DROP_ENDED).bind(today, todayN),
     env.DB.prepare(Q.VAPID_CACHE),
     env.DB.prepare(Q.ORIGIN_STATS).bind(`${tag} `),
-    env.DB.prepare(Q.CLAIM_P).bind(minute, PROBES, Math.min(PROBE_SLOTS, limit)),
+    env.DB.prepare(Q.CLAIM_P).bind(minute, PROBES, Math.min(PROBE_SLOTS, limit), PROBE_ORIGINS),
     env.DB.prepare(Q.CLAIM_X).bind(minute, weekAgo, today, limit),
     env.DB.prepare(Q.CLAIM_W).bind(minute, weekAgo, today, limit),
     env.DB.prepare(Q.CLAIM_F).bind(minute, weekAgo, today, limit, FAIL_SLOTS),
@@ -391,9 +409,6 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
     ...(cf.results || []).sort(by((r) => r.fails, (r) => r.last_w || ""))];
   if (!subs.length) return out;
   if (probes.length) out.probes = probes.length;
-  const originOf = (s) => { try { return new URL(s.endpoint).origin; } catch { return ""; } };
-  // push origins that have held rows (a probe was claimed there in this run)
-  const probed = new Set(probes.map(originOf));
 
   // per push origin (sql.js ORIGIN_STATS): okEver = it answered 2xx to a push of ours under some key; for THIS key: okSince
   // = the first day this key went through there; stretchFrom / stretchLast = the first / last day of the current stretch of
@@ -476,11 +491,9 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
       if (what === "sent" && !okOrigins.has(origin)) {
         // this origin's first 2xx in the run: the day this key went through there (kept if older) and the end of any refusal
         // stretch go into the SAME results batch as this SENT, so a recorded push never lacks them (sql.js STAT_OK_SINCE).
-        // When that origin has held rows (a probe of it in this run, or a refusal stretch — the rows spared there), they are
-        // freed in the same batch (sql.js RELEASE_HELD: the rows that received a push before)
+        // Its held rows are freed in the run's closing batch (below: sql.js RELEASE_HELD, a few a run)
         okOrigins.add(origin);
         stmts.push(env.DB.prepare(Q.STAT_OK_SINCE).bind(`${tag} ${origin}`, todayN), env.DB.prepare(Q.CLEAR_RS).bind(`${tag} ${origin}`));
-        if (probed.has(origin) || stretchFrom.has(origin)) stmts.push(env.DB.prepare(Q.RELEASE_HELD).bind(origin));
       }
       if (what === "slow") { slowHosts.add(origin); return result(s, "slowed", due); }
       // 401/403 and push-service trouble (5xx, redirect, timeout) are decided after the run (below), once every push of the
@@ -521,7 +534,7 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
     // starts its own grace days. For up to REFUSING_GRACE_DAYS from the first day of the stretch, at an origin that took
     // nothing 2xx in the run and is suspect in it or has a stretch going: a phone that took our pushes is held back
     // unchanged (rules.js HOLD; fails stays; held, not released, so these rows never keep the other push services' phones
-    // waiting — they come back as probes, a few a run, and all at once at that origin's next 2xx — and so most runs of a
+    // waiting — they come back as probes, a few a run, and SEND_LIMIT a run once that origin answers 2xx — and so most runs of a
     // stretch try only a few of them, which is why a stretch going is enough), and a row that never took one gets one
     // failure and stays. Only a phone that took our pushes makes a run suspect and moves 'rl:'
     // (planted rows can neither start nor prolong a stretch). Judged per run and per origin from one such phone on, so a
@@ -559,7 +572,14 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
   } finally {
     // a claimed row left without a statement (an exception above) is released, not left claimed for 15 minutes
     for (const s of subs) if (!queued.has(s.id)) { out.stopped++; q(s, release(s)); }
-    await write([...unwritten, ...fresh, ...stmts, env.DB.prepare(Q.DROP_OTHER_TAGS).bind(`${tag} `), env.DB.prepare(Q.DROP_OLD_JWT).bind(nowS)]);
+    // the push origins that took a push 2xx in this run free their held rows (sql.js RELEASE_HELD: rows that received a push
+    // before, the longest-waiting first, at most `limit` in all — the next runs free the rest as they go). Not an origin
+    // that said 429 in this run: the rows it slowed were held just now, and it asked us to slow down. Holds of this run at
+    // the other origins are never touched: a row is held for push-service trouble or a refusal only where nothing went
+    // through in the run (above), and those origins are not in this list
+    const freeAt = [...okOrigins].filter((o) => !slowHosts.has(o));
+    const closing = freeAt.length ? [env.DB.prepare(Q.RELEASE_HELD).bind(JSON.stringify(freeAt), limit)] : [];
+    await write([...unwritten, ...fresh, ...stmts, ...closing, env.DB.prepare(Q.DROP_OTHER_TAGS).bind(`${tag} `), env.DB.prepare(Q.DROP_OLD_JWT).bind(nowS)]);
   }
   console.log("alerts send", JSON.stringify(out));
   return out;

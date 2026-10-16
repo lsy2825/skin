@@ -41,9 +41,13 @@ CREATE TABLE subs (
 -- full one stops after its rows without sorting.
 CREATE INDEX subs_due ON subs(fails, coalesce(last_w, '')) WHERE pend_w = 1;
 CREATE INDEX subs_fail ON subs((last_w IS NULL AND last_x IS NULL), fails, coalesce(last_w, '')) WHERE fails > 0 AND (pend_w = 1 OR pend_x IS NOT NULL);
--- the few rows a send run holds right now, and the rows held back (stale claims, probes and a push origin's release go
--- through this, not through a scan of the table)
-CREATE INDEX subs_claim ON subs(claim) WHERE claim IS NOT NULL;
+-- the few rows a send run holds right now (claim > 0: stale claims and a run's own count go through this, not a scan)
+CREATE INDEX subs_claim ON subs(claim) WHERE claim > 0;
+-- the rows held back (claim < 0), per push origin (the same expression as src/sql.js ORIGIN), rows that received a push
+-- before apart from rows that never did, then the minute they may be tried again: the probes take a few per origin and a
+-- release a few per run, each an index range that stops after its share — never a walk over every held row (8th review:
+-- reading them all cost ~4 rows per held row in each of 77 runs, and the held rows are not bounded below MAX_SUBS)
+CREATE INDEX subs_held ON subs(substr(endpoint, 1, 7 + instr(substr(endpoint, 9), '/')), (last_w IS NULL AND last_x IS NULL), claim) WHERE claim < 0;
 -- expiring rows: fails FIRST, then the end date, so the send run claims the nearest deadline among rows that never failed
 -- (CLAIM_X: fails = 0, in index order) and a failing row can never hold the front of the queue; DROP_ENDED scans it
 CREATE INDEX subs_x ON subs(fails, pend_x) WHERE pend_x IS NOT NULL;
@@ -73,6 +77,9 @@ CREATE TABLE snap (
   pu TEXT,                           -- collection date of the pending numbers when it is not bu
   cb INTEGER NOT NULL DEFAULT 0,     -- which numbers the last NEW collection moved the bad way and were held back: 1 = m, 2 = n, 4 = med
   cu TEXT,                           -- that collection's date (a held-back move is taken when the NEXT collection shows it too)
+  qm INTEGER,                        -- q = the numbers an earlier collection's digest took that no finish consumed before the
+  qn INTEGER,                        -- next collection came (its finish failed): that collection is compared with q, and the
+  qmed INTEGER,                      -- next finish marks baseline → q and q → pending (src/sql.js DIGEST PREV, MARK_WEEKLY)
   g TEXT NOT NULL DEFAULT '',        -- regroup day of the key (meta.recl) the baseline belongs to
   run TEXT NOT NULL,                 -- 'updated|day' of the factory run that last wrote the row (unwatched pairs are pruned)
   added TEXT NOT NULL DEFAULT '',    -- KST day the pair was first computed (never updated)

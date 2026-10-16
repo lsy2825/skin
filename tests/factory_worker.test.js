@@ -1095,7 +1095,7 @@ test("price alerts which/data steps (run as written, a real git checkout, fake c
     r = run();
     assert.equal(r.output, "ok=false\n");
     assert.equal(r.taken, null);
-    assert.match(r.out, /^::warning title=price alerts::the public app does not serve this data\.json \(a deploy that did not reach it, or a newer one\) — nothing sent \(the next run tries again\)$/m);
+    assert.match(r.out, /^::warning title=price alerts::the public app does not serve this data\.json \(a deploy that did not reach it, or a newer one\) — nothing sent \(the next daily run \(06:00 KST\) computes again; a push, Run workflow or Re-run only sends the key set\)$/m);
     assert.deepEqual([r.curl.length, r.sleeps], [3, 2]);
     // ... and serves it from the second try on (a deploy that just finished)
     const later = path.join(dir, "later");

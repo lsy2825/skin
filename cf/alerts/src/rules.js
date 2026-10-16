@@ -37,10 +37,15 @@ export const FINISH_SLACK_DAYS = 1;
 export const WEEK_DAYS = 7;
 export const EXPIRING_DAYS = 3;
 // an expiring entry's end date u (digest), checked against the Worker's own day: from today − FINISH_SLACK_DAYS to today +
-// END_DAYS (the factory sends u ≤ its own day + EXPIRING_DAYS, and its day may be one off). So an announced entry still
-// running on day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further, and exp_sent holds at most
-// (END_DAYS + 1) days × MAX_RULES entries whatever the factory sends (src/worker.js digest refuses anything else)
-export const END_DAYS = EXPIRING_DAYS + FINISH_SLACK_DAYS;
+// END_DAYS. The factory sends u ≤ its own day + EXPIRING_DAYS, and its day is the Worker's or the day before (a run that
+// crosses midnight) — never ahead (8th review: the upper bound was + 4, one day more than any honest factory sends, which
+// let exp_sent hold a fourth day of entries and a push read 201 rows in SENT instead of 161; a factory clock ahead of the
+// Worker's across midnight gets 400 BAD_DIGEST and the next daily run computes). So an announced entry still running on
+// day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further — and when a push is sent on day T, the entries
+// announced before (on an earlier day: at most one finish a KST day, and one push with an expiring notice a day after it)
+// end by T + END_DAYS − 1: ≤ END_DAYS days × MAX_RULES = 60 live entries, plus the ≤ 20 it announces (src/sql.js SENT:
+// ≤ 2 × 80 + 1 = 161 rows read), whatever the factory sends (src/worker.js digest refuses anything else)
+export const END_DAYS = EXPIRING_DAYS;
 export const validEnd = (u, today) => validDay(u) && u >= addDays(today, -FINISH_SLACK_DAYS) && u <= addDays(today, END_DAYS);
 export const LAST_SEND_MARGIN_MIN = 15;                    // never send a push closer than this to 21:00 KST
 export const TTL_MARGIN_S = 60;                            // push TTL ends this much before 21:00 (clock drift)
@@ -167,9 +172,11 @@ export const REFUSING_GRACE_DAYS = 7;
 // set to minus the epoch minute it may be tried again (sql.js HOLD); no claim query of the queue takes it. A held row comes
 // back in two ways only (4th review: a hold that simply ran out put every held row back at the front at once):
 //   - as a PROBE: once its minute has come, at most PROBES held rows per push origin and PROBE_SLOTS in all are tried per
-//     run (sql.js CLAIM_P, the longest-waiting first) — still failing → held again, at the back;
-//   - all at once when that push origin answers a push 2xx (sql.js RELEASE_HELD, in the same results batch as that 2xx and
-//     CLEAR_RS) — rows that received a push before only; a row that never did comes back as a probe.
+//     run (sql.js CLAIM_P, the longest-waiting first, among the first PROBE_ORIGINS push origins that hold rows) — still
+//     failing → held again, at the back;
+//   - freed when that push origin answers a push 2xx (sql.js RELEASE_HELD, in the run's closing batch; not where it said 429
+//     in the run) — rows that received a push before only, the longest-waiting first, at most SEND_LIMIT a run (8th review:
+//     not all at once — the next 2xx there frees the next ones); a row that never did comes back as a probe.
 // HOLD_MINUTES: refused at a push service where our setup may be broken (above), or that push service was down
 // (hostTrouble with no 2xx from it in the run). SLOW_HOLD_MINUTES: the service answered 429 (that row and the rows of that
 // service the run stopped after it).
@@ -177,6 +184,10 @@ export const HOLD_MINUTES = 180;
 export const SLOW_HOLD_MINUTES = 30;
 export const PROBES = 2;
 export const PROBE_SLOTS = 10;
+// push origins whose held rows one run looks at for probes (sql.js CLAIM_P: one index seek per origin, so a run reads a few
+// hundred rows at most however many rows are held). The push services have far fewer hosts than this (src/push.js
+// PUSH_HOSTS: FCM, Apple, Mozilla and the WNS data centres)
+export const PROBE_ORIGINS = 64;
 // (key, region) pairs the factory computes are cut at PAIR_CAP (src/worker.js watched). A pair keeps its place for this many
 // KST days after it was first computed (snap.added) even when no phone watching it took a push yet; after that a pair that
 // is not computed yet comes first (sql.js WATCHED) — so whoever fills the list first cannot keep it (4th review), and a new

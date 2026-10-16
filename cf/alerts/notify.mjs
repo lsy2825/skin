@@ -26,7 +26,9 @@
 //      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   5. POST /v1/internal/finish   the
 //      Worker marks who has news
 // Prints counts only (never keys, ids or endpoints). A failure prints a ::warning and exits 0: alerts never fail the price
-// build, and the next run catches up (news waits in D1 until a finish consumes it).
+// build. News waits in D1 until a finish consumes it, and the next daily run (06:00 KST, weekly.yml ALERTS_MODE=full)
+// computes again — a run started by a push, by Run workflow or a Re-run only sends the key set (8th review: "the next run
+// catches up" sent an operator to Run workflow, which computes nothing).
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -217,7 +219,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   };
   (async () => { checkUrl(url); return notify({ ...readData(), mode, url, secret }); })().catch((e) => {
     // never fail the price build; the message is a path + status or a network error (no secret, no ids)
-    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next run catches up`);
+    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next daily run (06:00 KST) computes again; a push, Run workflow or Re-run only sends the key set`);
     process.exit(0);
   });
 }

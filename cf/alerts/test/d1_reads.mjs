@@ -7,7 +7,11 @@
 //      is a string search and the prune reads no list element (it was up to 6.5M rows in one finish at the ceiling);
 //   2. PRUNE_XSENT reads each subscription row once, MARK_WEEKLY ≤ 41 and MARK_EXPIRING ≤ 70 rows per phone with 20 rules
 //      (src/worker.js arithmetic at MAX_SUBS: 8,000 × (1 + 41 + 70) + 3 × PAIR_CAP ≈ 0.9M for a finish);
-//   3. a push with an expiring notice reads ≤ 2 × (E + X) + 2 rows in SENT (X = pending entries merged in).
+//   3. a push with an expiring notice reads ≤ 2 × (E + X) + 2 rows in SENT (X = pending entries merged in);
+//   4. (8th review) held rows (claim < 0): a send run's probes (CLAIM_P) read the same however many rows are held — about
+//      PROBE_CLAIM_PER_ORIGIN rows per push origin that holds rows, PROBE_ORIGINS origins at most — and the release after a
+//      2xx (RELEASE_HELD) frees SEND_LIMIT rows, reading ≤ RELEASE_PER_ROW per freed row, never the other held rows (it read
+//      and sorted every held row of every origin: ~4 rows per held row in each of 77 runs, unbounded below MAX_SUBS).
 // Exit 1 with the numbers when one fails. Nothing leaves this machine; the D1 is a throw-away folder.
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -18,7 +22,10 @@ const WR = process.argv[2];
 if (!WR) { console.error("usage: node cf/alerts/test/d1_reads.mjs <wrangler package folder>"); process.exit(2); }
 const { getPlatformProxy } = await import(pathToFileURL(join(WR, "wrangler-dist/cli.js")).href);
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const { default: worker, send } = await import(new URL("../src/worker.js", import.meta.url).href);
+const { default: worker, send, SEND_LIMIT } = await import(new URL("../src/worker.js", import.meta.url).href);
+const { PROBES, PROBE_ORIGINS } = await import(new URL("../src/rules.js", import.meta.url).href);
+// the per-origin and per-freed-row ceilings src/worker.js uses for its arithmetic (measured: 31 and 7)
+const PROBE_CLAIM_PER_ORIGIN = 32, PROBE_CLAIM_BASE = 20, RELEASE_PER_ROW = 8;
 const Q = await import(new URL("../src/sql.js", import.meta.url).href);
 const H = await import(new URL("./helpers.mjs", import.meta.url).href);
 
@@ -102,9 +109,39 @@ try {
   if (sentReads > r.sent * (2 * (E + X) + 2)) fails.push(`SENT read ${sentReads} > ${r.sent} × ${2 * (E + X) + 2}`);
   const merged = JSON.parse((await raw.prepare("SELECT exp_sent FROM subs WHERE last_x = '2026-10-21' LIMIT 1").first()).exp_sent);
   if (merged.join() !== [...merged].sort().join() || merged.some((x) => x < "2026-10-21")) fails.push("SENT must keep exp_sent sorted and drop ended entries");
+
+  // 4. held rows. A send run at 12:00 where the first `h` rows are held (minute come) at `origins` push origins.
+  //    waiting: every row had its weekly bundle yesterday (not due) — the probes are claimed, found not due and released;
+  //    due:     every row is due and took pushes before; every push answers 201 — the probes go through and RELEASE_HELD frees
+  //             SEND_LIMIT of the held rows in the run's closing batch
+  const heldAt = H.kst("2026-10-22T12:00:00"), minute = Math.floor(heldAt / 60e3);
+  const heldRun = async (h, origins, due) => {
+    await raw.prepare(`UPDATE subs SET endpoint = CASE WHEN ?1 = 1 THEN 'https://fcm.googleapis.com/held/' || rowid ELSE 'https://wns2-h' || (rowid % ?1) || '.notify.windows.com/w/?token=' || rowid END,
+      pend_w = 1, last_w = ?2, pend_x = NULL, pend_xl = NULL, last_x = NULL, exp_sent = NULL, fails = 0,
+      claim = CASE WHEN rowid <= ?3 THEN -(?4 - 10 - rowid) ELSE NULL END`).bind(origins, due ? "2026-10-01" : "2026-10-21", h, minute).run();
+    await raw.prepare("INSERT INTO stat (k, n) VALUES ('finish', 20261022) ON CONFLICT(k) DO UPDATE SET n = excluded.n").run();
+    log = [];
+    const res = await send(env, heldAt, { fetch: async () => new Response(null, { status: 201 }), waits: [0, 0] });
+    const of = (q) => log.filter(([sql]) => sql === q).reduce((a, [, n]) => a + n, 0);
+    const held = (await raw.prepare("SELECT count(*) AS c FROM subs WHERE claim < 0").first()).c;
+    return { res, claimP: of(Q.CLAIM_P), release: of(Q.RELEASE_HELD), held, total: log.reduce((a, [, n]) => a + n, 0) };
+  };
+  const few = await heldRun(20, 1, false), all = await heldRun(N, 1, false), spread = await heldRun(N, 10, false);
+  console.log(`d1 reads: held rows, not due — CLAIM_P ${few.claimP} rows read with 20 held, ${all.claimP} with ${N} held (one push origin), ${spread.claimP} with ${N} held over 10 origins`);
+  if (all.claimP > few.claimP + 2) fails.push(`CLAIM_P read ${all.claimP} rows with ${N} held, ${few.claimP} with 20 (must not grow with the held rows)`);
+  for (const [x, o] of [[all, 1], [spread, 10]])
+    if (x.claimP > PROBE_CLAIM_BASE + PROBE_CLAIM_PER_ORIGIN * Math.min(o, PROBE_ORIGINS)) fails.push(`CLAIM_P read ${x.claimP} > ${PROBE_CLAIM_BASE} + ${PROBE_CLAIM_PER_ORIGIN} × ${o} origins`);
+  if (spread.res.probes !== Math.min(10 * PROBES, 10)) fails.push(`10 origins holding rows should give PROBE_SLOTS probes, got ${spread.res.probes}`);
+  const rel = await heldRun(N, 1, true), relSpread = await heldRun(N, 10, true);
+  console.log(`d1 reads: held rows, all due, every push 201 — RELEASE_HELD ${rel.release} rows read (one origin, ${N - rel.held - PROBES} freed), ${relSpread.release} (10 origins, ${N - relSpread.held - relSpread.res.probes} freed); the run ${rel.total} / ${relSpread.total}`);
+  for (const [x, label] of [[rel, "one origin"], [relSpread, "10 origins"]]) {
+    const freed = N - x.held - x.res.probes;
+    if (freed !== SEND_LIMIT) fails.push(`${label}: a run freed ${freed} held rows, not SEND_LIMIT ${SEND_LIMIT}`);
+    if (x.release > RELEASE_PER_ROW * SEND_LIMIT + 20) fails.push(`${label}: RELEASE_HELD read ${x.release} > ${RELEASE_PER_ROW} × ${SEND_LIMIT} + 20`);
+  }
 } finally {
   await mf.dispose();
   rmSync(persist, { recursive: true, force: true });
 }
 if (fails.length) { for (const f of fails) console.error("FAIL d1 reads: " + f); process.exit(1); }
-console.log("ok   d1 reads: the finish does not read more with long exp_sent lists; per-phone reads within the documented ceiling");
+console.log("ok   d1 reads: the finish does not read more with long exp_sent lists; per-phone reads within the documented ceiling; held rows cost the same however many are held");
