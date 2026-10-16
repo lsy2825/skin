@@ -79,3 +79,34 @@ test("watch: switched-off kinds never fire; no repeat for the same observation",
   const again = W.evalWatch({ base: { ...base, low: 90000 } }, nowOf({ low: 90000 }), "2026-10-21");
   assert.equal(again.events.length, 0);
 });
+
+// 가격 변동 notice for chains collected for the first time (data.json meta.brandFirst, chat C3 · 개선 보고서 E9)
+const FIRST = { 블리비: "2026-10-13", 쁨: "2026-10-13", 톡스앤필: "2026-10-13", 리엔장: "2026-10-13", 포에버: "2026-10-14",
+  밴스: "2026-10-14", 유앤아이: "2026-10-14", 데이뷰: "2026-10-14", 닥터에버스: "2026-10-14", 셀린: "2026-10-14" };
+const LIVE = ["블리비", "쁨", "톡스앤필", "리엔장", "밴스", "유앤아이", "데이뷰", "닥터에버스", "셀린"];   // 포에버: no branches
+test("new chains: only the chains first collected after the previous snapshot, in screen order, '10월 14일'", () => {
+  const g = I.newChains(FIRST, "2026-10-13", LIVE, "2026-10-14");
+  assert.deepEqual(g, [{ date: "2026-10-14", label: "10월 14일", brands: ["밴스", "유앤아이", "데이뷰", "닥터에버스", "셀린"] }]);
+  assert.equal(I.newChainsNote(g), "밴스·유앤아이·데이뷰·닥터에버스·셀린 체인은 10월 14일부터 모았어요. 처음 모은 체인이라 가격이 '새로 생겼어요'에 하나씩 나오지 않고, 다음 수집부터 변동이 보여요.");
+  // a chain not passed in (switched off, or no branches like 포에버) is not named
+  assert.deepEqual(I.newChains(FIRST, "2026-10-13", ["블리비", "셀린"], "2026-10-14")[0].brands, ["셀린"]);
+  assert.equal(I.newChains(FIRST, "2026-10-13", LIVE).length, 1);   // upto is optional
+});
+test("new chains: several first days, oldest first, one sentence", () => {
+  const g = I.newChains({ ...FIRST, 셀린: "2026-10-21" }, "2026-10-13", LIVE, "2026-10-21");
+  assert.deepEqual(g.map((x) => [x.label, x.brands.join("·")]), [["10월 14일", "밴스·유앤아이·데이뷰·닥터에버스"], ["10월 21일", "셀린"]]);
+  assert.match(I.newChainsNote(g), /^밴스·유앤아이·데이뷰·닥터에버스 체인은 10월 14일부터, 셀린 체인은 10월 21일부터 모았어요\. /);
+  assert.equal(I.koDay("2026-01-05"), "1월 5일");
+});
+test("new chains: nothing to say — old files, no previous snapshot, every chain already compared, bad dates", () => {
+  assert.deepEqual(I.newChains(undefined, "2026-10-13", LIVE, "2026-10-14"), []);         // data.json before C3: no brandFirst
+  assert.deepEqual(I.newChains(null, "2026-10-13", LIVE, "2026-10-14"), []);
+  assert.deepEqual(I.newChains(FIRST, "", LIVE, "2026-10-14"), []);                        // first collection: nothing compared
+  assert.deepEqual(I.newChains(FIRST, undefined, LIVE, "2026-10-14"), []);
+  assert.deepEqual(I.newChains(FIRST, "2026-10-14", LIVE, "2026-10-21"), []);              // the next collection: all were in 10-14
+  assert.deepEqual(I.newChains(FIRST, "2026-10-13", ["블리비", "쁨"], "2026-10-14"), []);   // only chains from the start
+  assert.deepEqual(I.newChains({ 밴스: "2026-10-30", 셀린: "10/14", 데이뷰: 20261014 }, "2026-10-13", LIVE, "2026-10-14"), []);
+  assert.deepEqual(I.newChains(FIRST, "2026-10-13", ["밴스", "밴스", "toString"], "2026-10-14")[0].brands, ["밴스"]);
+  assert.equal(I.newChainsNote([]), "");
+  assert.equal(I.newChainsNote(undefined), "");
+});

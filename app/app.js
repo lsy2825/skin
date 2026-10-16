@@ -1906,8 +1906,14 @@
   views.change = () => {
     const box = h("div", { class: "view" });
     const all = changeItems();
+    // chains first collected since the previous snapshot (meta.brandFirst, C3): their prices are not '새로 생겼어요' one by one —
+    // say so, for the chains this list can show (switched on, a branch in the region). No brandFirst: no notice, as before.
+    // An older cached intel.js next to this app.js (sw.js falls back to the cache per file) only drops the notice
+    const shownChains = D.meta.brands.map((x, i) => (st.brands.includes(i) && BR.some((r) => r.brand === i && regionOk(r.i)) ? x[0] : "")).filter(Boolean);
+    const nc = Intel.newChains ? Intel.newChainsNote(Intel.newChains(D.meta.brandFirst, (D.achg || {}).prev, shownChains, D.meta.updated)) : "";
     box.append(h("div", { class: "card" }, h("h2", {}, "가격 변동"),
       h("div", { class: "sub", style: "margin-top:4px" }, D.meta.prev ? `${D.meta.prev} → ${D.meta.updated} · 일반가(병원 표시가) 기준 · ${regionName()}` : "지난 수집 기록과 비교해요. 첫 기록이 2026-10-13이라 다음 갱신(10/19 월)부터 보여요."),
+      nc ? h("div", { class: "note", id: "newchains", style: "margin-top:10px" }, nc) : null,
       h("div", { class: "tiles" }, [["down", "내렸어요"], ["up", "올랐어요"], ["new", "새로 생겼어요"], ["gone", "없어졌어요"]].map(([v, l]) =>
         h("button", { class: "tile tbtn", type: "button", "aria-pressed": st.cdir === v ? "true" : "false", onclick: () => { st.cdir = st.cdir === v ? "all" : v; render(); } },
           h("span", { class: "k" }, l), h("b", { class: `num ${v === "down" ? "down" : v === "up" ? "up" : ""}` }, all.filter((x) => x.t === v).length), h("span", { class: "w" }, st.cdir === v ? "선택됨 · 다시 누르면 전체" : "눌러서 보기"))))));
