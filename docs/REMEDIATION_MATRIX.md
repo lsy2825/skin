@@ -95,9 +95,9 @@
 | 13px 미만 글자 | 해결(B3.5, lsy2825/skin#13) | 브라우저 | `styles.css` 61곳·인라인 2곳 → 13px(배지 등 4곳은 그대로) | 320px 넘침 36/292(main 41/292) | — |
 | 6.0 약속 2 단계별 익명 집계 | 만듦·꺼짐(B5) | 단위·브라우저 | `domain/metrics.js`, `config.js` `metrics`·`metricsApi`, `check_csp.js` | metrics.test, e2e metrics(꺼짐 0건·켜짐 단계별 1번) | 켜기: A4 주소 + C 처리방침 + 사용자 승인. `run_regression.sh`에 metrics 넣기(A) |
 | 6.0 약속 1 푸시 구독 화면·sw.js | 만듦·꺼짐(B6) | 단위·브라우저 | `domain/push.js`, 관심 탭 `.nfp`, `sw.js` push·notificationclick, `config.js` `alertsApi`·`pushPublicKey` | push.test, sw.test, e2e push(꺼짐 0건·켜짐 POST/PUT/DELETE) | 켜기: A5 주소·공개키 + C 처리방침. 실기기 푸시 확인. `run_regression.sh`에 push 넣기(A) |
-| 6.0 약속 6 처리방침 화면 문구 | PR(lsy2825/skin#40), 꺼진 동안 안 보임 | 단위·브라우저 | 설정 집계 칸·푸시 켜짐 줄·알림 설명을 C6 §4 확정 문장으로 | e2e push·metrics·clickable | 죠미 도움말·대사는 푸시를 켤 때. '오전 8시~오후 9시'는 C 문서에서 아직 ⏳ |
-| A 메모: 가격 알림 시트 최저가 기준 | PR(#41) | 브라우저 | `alertSheet`가 `addAlert`와 같은 지역·특가로 읽음 | e2e alert_region(새) | watch '오른 경우' 규칙이 정해지면 문구(A5) |
-| '정보' 화면 Crawl-delay 문장 | PR(#44) | 단위·브라우저 | `views.about` 리엔장 줄 문장 삭제(코드와 다름) | e2e clickable·ux_qa | 새 문장은 C(#45 뒤), 등록부 `rate` 글자 3~5곳 불일치도 C |
+| 6.0 약속 6 처리방침 화면 문구 | 해결(lsy2825/skin#40), 꺼진 동안 안 보임 | 단위·브라우저 | 설정 집계 칸·푸시 켜짐 줄·알림 설명을 C6 §4 확정 문장으로 | e2e push·metrics·clickable | 죠미 도움말·대사는 푸시를 켤 때. '오전 8시~오후 9시'는 C 문서에서 아직 ⏳ |
+| A 메모: 가격 알림 시트 최저가 기준 | 해결(#41) | 브라우저 | `alertSheet`가 `addAlert`와 같은 지역·특가로 읽음 | e2e alert_region(새) | watch '오른 경우' 규칙이 정해지면 문구(A5) |
+| '정보' 화면 Crawl-delay 문장 | 해결(#44) | 단위·브라우저 | `views.about` 리엔장 줄 문장 삭제(코드와 다름) | e2e clickable·ux_qa | 새 문장은 C(#45 뒤), 등록부 `rate` 글자 3~5곳 불일치도 C |
 
 ## C — 6.0 데이터(채팅 C, 2026-10-15)
 
