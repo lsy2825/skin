@@ -4,7 +4,7 @@ The live sites are not reachable from the dev container, so these check the page
 when a site changes its markup the weekly guard (build2/weekly.py) keeps the last good file and this test shows where.
   python3 tests/brand_parsers_test.py
 """
-import datetime, os, sys
+import datetime, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scrape"))
@@ -76,6 +76,45 @@ r0 = next(r for r in rows if "사각턱보톡스" in r["option"])
 ok("닥터에버스: item JSON read (name, event, category, prices)", (r0["sale"], r0["orig"], r0["group"]) == (39000, 76400, "파마리서치×닥터에버스 SALE FESTA"), r0)
 ok("닥터에버스: item name kept as the site gives it, section in 'category' (clean.py decides what goes in front)",
    not r0["option"].startswith("국산 프리미엄 보톡스") and r0["category"].endswith("국산 프리미엄 보톡스"), (r0["option"], r0["category"]))
+ok("닥터에버스: a page without headings keeps the event name alone as the group", {r["group"] for r in rows} == {"파마리서치×닥터에버스 SALE FESTA"})
+# the monthly 제모 page (광주상무점 /event-month-laser-removal/, 2026-10-16 raw probe): headings between the item groups
+# ('젠틀맥스 프로플러스 제모' › '여성) BEST' / '여성 제모' / '남성) BEST' / '남성 제모', then a description line and the same menus
+# for the other device) — the women's and men's menus list one name at two prices, the JSON names no sex
+hair = drevers.items(fx("drevers_hair.html"), "광주상무점", "u", "t")
+common("닥터에버스 제모", hair)
+EV = "26년 10월) 10월 가을 맞이 秋향 저격 혜택"
+by = lambda g, o: [r["sale"] for r in hair if r["group"] == g and r["option"] == o]
+ok("닥터에버스 제모: the women's / men's heading goes into the group after the event name, the name stays as the site gives it",
+   by(f"{EV} · 젠틀맥스 프로플러스 제모 · 여성 제모", "겨드랑이 5회") == [135000] and by(f"{EV} · 젠틀맥스 프로플러스 제모 · 남성 제모", "겨드랑이 5회") == [120000],
+   sorted({r["group"] for r in hair}))
+ok("닥터에버스 제모: 'BEST' headings carry the sex too ('여성) BEST' › '겨드랑이+인중 5회')",
+   by(f"{EV} · 젠틀맥스 프로플러스 제모 · 여성) BEST", "겨드랑이+인중 5회") == [175000] and by(f"{EV} · 남성) BEST", "인중+입가+앞턱+겨드랑이 5회") == [119000])
+ok("닥터에버스 제모: the description line starts the second device's menus (no 젠틀맥스 heading on them)",
+   by(f"{EV} · 여성 제모", "겨드랑이 1회") == [9000] and by(f"{EV} · 남성 제모", "겨드랑이 1회") == [11000])
+ok("닥터에버스 제모: every item under a heading that names its sex, one price per group and name",
+   all(re.search(r"여성|남성", r["group"]) for r in hair) and len({(r["group"], r["option"]) for r in hair}) == len(hair), len(hair))
+ok("닥터에버스 제모: a note heading ('※얼굴제모시 … 추가') is not a menu", not any("※" in r["group"] for r in hair))
+# headings seen on the 34 branches' pages (2026-10-16 collector probe)
+for t, want in [("여성) BEST", ("sex", "여성) BEST")), ("[★남성제모★]", ("sex", "[★남성제모★]")),
+                ("여성 제모 (5회 기준) : 얼굴 제모에는 '클라리티' 장비 사용", ("sex", "여성 제모 (5회 기준)")),
+                ("젠틀맥스 프로플러스 제모", ("title", "젠틀맥스 프로플러스 제모")), ("커플", ("title", "커플")),
+                ("평일 10:00~16:00 한정", ("title", "평일 10:00~16:00 한정")),
+                ("아리온 : 자체 냉각시스템으로 통증최소화", ("new", "")), ("클라리티2 | 아리온 : 자체 냉각시스템으로", ("new", "")),
+                ("※항목별 1회씩 적용", ("note", "")), ("[※항목별 1회씩 적용]", ("note", "")), ("*수면마취 추가: 20만원", ("note", ""))]:
+    ok(f"닥터에버스 heading '{t[:24]}' → {want}", drevers.menu_heading(t) == want, drevers.menu_heading(t))
+_item = lambda i, n, p: ('<div class="item-group"><div class="group-header"><span class="group-title">x</span></div><input class="price-check" '
+                         f'@change=\'$store.booking.toggle({{"id":{i},"name":"{n}","event_name":"10월 이벤트","category":"고주파 리프팅","price":{p},'
+                         '"original_price":0,"is_inquiry":0})\'/></div>')
+_head = lambda t: f'<div class="item-group"><div class="group-header"><span class="group-title hp-mk-box">{t}</span></div></div>'
+_page = (f'<div class="category-section"><div class="category-header">고주파 리프팅</div>{_head("올리지오 : RF고주파를 이용하여")}'
+         f'{_item(1, "올리지오 300샷", 99000)}{_head("※항목별 1회씩 적용")}{_item(2, "써마지 300샷", 990000)}</div>'
+         f'<div class="category-section"><div class="category-header">레이저 제모</div>{_head("여성")}{_item(3, "겨드랑이 5회", 13000)}'
+         f'{_head("커플")}{_item(4, "겨드랑이 5회", 20000)}</div>')
+_rows = drevers.items(_page, "x점", "u", "t")
+ok("닥터에버스: a section whose headings name no sex keeps them out of the group (product notes: '올리지오 : RF고주파 …')",
+   [r["group"] for r in _rows[:2]] == ["10월 이벤트"] * 2, [r["group"] for r in _rows])
+ok("닥터에버스: a new section starts with no heading; a title after a sex heading replaces it ('여성' → '커플')",
+   [r["group"] for r in _rows[2:]] == ["10월 이벤트 · 여성", "10월 이벤트 · 커플"], [r["group"] for r in _rows])
 # which section titles may go in front of a name (build2/clean.py title_words — 2026-10-14 '20만원3921만재생' spec labels)
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 import clean  # noqa: E402
@@ -84,6 +123,12 @@ for title, want in [("◆국산 프리미엄 보톡스", "국산 프리미엄 �
                     ("※카카오톡 플러스친구 혜택", ""), ("추천조합", ""), ("26년 10월 2차) 한글날 맞이 만원으로 맘껏누림 큰잔치", ""),
                     ("10월 리쥬란 특가", "리쥬란")]:
     ok(f"section title '{title}' → '{want}'", clean.title_words(title) == want, clean.title_words(title))
+# the section title in front of the name loses its sex word when the menu heading (group) names the other sex (미사점, 2026-10-16)
+for sec, grp, want in [("젠틀맥스 프로플러스 남성 제모", "10월 이벤트 · 여성 제모", "젠틀맥스 프로플러스 제모"),
+                       ("젠틀맥스 프로플러스 남성 제모", "10월 이벤트 · 남성 제모", "젠틀맥스 프로플러스 남성 제모"),
+                       ("젠틀맥스 프로플러스 남성 제모", "젠틀맥스 프로 플러스 제모 무제한 이벤트", "젠틀맥스 프로플러스 남성 제모"),
+                       ("여자 레이저 제모", "10월 이벤트 · 여성) BEST", "여자 레이저 제모")]:
+    ok(f"section '{sec}' under '{grp[-12:]}' → '{want}'", clean.section_head(sec, grp) == want, clean.section_head(sec, grp))
 
 # 셀린 (list page + the detail the page loads when an event is clicked, 2026-10-15 raw probe)
 sites = cellin.branch_sites(fx("cellin_list.html"))

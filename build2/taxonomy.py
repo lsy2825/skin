@@ -788,8 +788,12 @@ def build(rows, min_branches=3):
             if nv and nv["sig"].startswith("hair|") and dev in nv["sig"].split("|")[2].split(","):
                 vs[i] = nv
     # one page listing the same 제모 option twice at different prices with nothing to tell them apart (닥터에버스 monthly laser page:
-    # the 여성 and 남성 menus under headings the scraper does not keep, 겨드랑이 5회 13,000 and 65,000): two products under one name.
+    # the 여성 and 남성 menus under headings the scraper did not keep, 겨드랑이 5회 13,000 and 65,000): two products under one name.
     # A sexless area key would hold both and show the cheaper as the branch's price, so neither gets a key (검증 6차)
+    # Since 2026-10-16 scrape/drevers.py keeps those headings in the group ('… 혜택 · 여성 제모(5회 기준)'): the rows carry their sex
+    # (clean.py) and each menu is its own page key, so the guard below no longer takes them (collector probe of all 34 branches: it
+    # took 1,398 닥터에버스 rows of those pages read without the headings, none with them). It stays for rows whose sex is still
+    # unknown (밴스 24, 쁨 2 on the same build).
     # Names are compared loosely (spaces, brackets, area spellings: the two menus spell '구레나룻' differently), and a page with two or
     # more such twins lists two menus — none of its sexless 제모 rows can be told apart (검증 7차)
     page = lambda r: (r["brand"], r["branch"], r.get("url", ""), r.get("group", ""))
