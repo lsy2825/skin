@@ -14,7 +14,7 @@
 
 Windows PC 준비(한 번): `tools\windows\setup.bat`와 `setup.ps1`을 같은 폴더에 두고 `setup.bat` 더블클릭 — Git·GitHub CLI·Python 3.12·
 Node.js 22·Playwright·Chromium·axe-core 설치, `Desktop\윤실장`에 저장소 받기, 설치 위치는 `C:\yoonsiljang-tools\INSTALLED.md`.
-앱 보기·끄기는 `start.bat`·`stop.bat`. 자세히: `docs/LOCAL_SETUP_WINDOWS.md` (저장소가 비공개라 예전 `irm … | iex` 한 줄 설치는 못 써요).
+앱 보기·끄기는 `start.bat`·`stop.bat`. 자세히: `docs/LOCAL_SETUP_WINDOWS.md` (예전 `irm … | iex` 한 줄 설치는 2026-10-15 저장소를 비공개로 돌릴 때 없앴고, 저장소가 다시 공개인 지금도 이 설치 하나만 써요).
 
 로컬 실행:
 

@@ -23,7 +23,7 @@ scrape/sources.py ─▶ data2/sources.json (Source Policy Registry: robots.txt 
                                           ▼
 tools/factory.sh(가격 공장 한 번) ── 매일 06:00 KST 판단(build2/needs_refresh.py): 월요일 또는 저장된 이벤트가 끝났으면 수집
                               → 단위 테스트(node --test) → 빌드 → 커밋 → Cloudflare 배포 / app·build2·tests·knowledge 변경 push 시 수집 없이 재배포
-   돌리는 곳: 비공개 GitHub Actions(weekly.yml). Cloudflare 상자(cf/factory)는 만들어 두고 보류 — docs/CLOUDFLARE_MIGRATION.md
+   돌리는 곳: GitHub Actions(weekly.yml, 공개 저장소 — 2026-10-16 사용자 결정). Cloudflare 상자(cf/factory)는 만들어 두고 보류 — docs/CLOUDFLARE_MIGRATION.md
 GitHub Actions(price-check.yml, 수동) ── scrape/verify_prices.py로 초저가 원본 다시 읽기 → 결과 커밋 → 수집 없이 재빌드(weekly.yml skip_scrape)
                                           ▼
                  app/ (정적 PWA, 프레임워크 없음) ── 휴대폰 홈 화면 앱, 오프라인 캐시(sw.js), 비밀번호 화면(gate.js)

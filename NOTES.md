@@ -135,3 +135,17 @@
   `probe/c-cellin-new`는 이 환경에서 지우기가 막혀(프록시 403) 남아 있음 — A·사용자에게 부탁.
 - 알면서 남긴 것: 유앤아이 탭 이름이 상품 순서와 어긋나는 곳(남성 제모가 '쥬베룩' 탭 아래 등, `scrape/uandi.py`) — 분류·성별에 영향, 후속.
   `branches.JUNK`의 백스페이스 글자·`TEL` 경계, `audit_data.js` `bname()`. 셀린 새 사이트 약관·`terms_reviewed` 날짜는 사람이 읽은 뒤.
+
+## 2026-10-16 · 채팅 A(플랫폼·보안) 사용자 결정
+- **GitHub 저장소는 공개로 둔다.** 2026-10-16 확인: `gh api repos/lsy2825/skin` → `private: false`, 로그인 없이 raw 파일 받기 200.
+  문서에는 2026-10-15 비공개 전환으로 적혀 있었음. 언제·왜 다시 공개가 됐는지는 모름. A 문서의 '비공개' 표현을 고침
+  (CLAUDE.md, README, ARCHITECTURE, CLOUDFLARE_MIGRATION, INCIDENT_RESPONSE_PLAN, LOCAL_SETUP_WINDOWS, SECURITY_ARCHITECTURE §0 새로 씀).
+- 전체 기록 비밀 검사(`scan_secrets.py --history`, 브랜치 84개): 진짜 비밀값 없음. 걸린 것은 `server/test/api.test.mjs` 옛 판의 시험용 가짜 값 2개와
+  예전 비밀번호 화면 번호(R1·R-open-1)뿐. 워크플로는 `pull_request`만 쓰고(`pull_request_target` 없음) 비밀값은 push·예약·수동 실행에서만 씀.
+- 비밀번호 화면 번호를 바꾼다. 사용자 PC 도구 `tools/windows/pin.bat`(별도 PR `platform/pin-tool`). 번호는 채팅·저장소에 남기지 않음.
+- 익명 집계·푸시 알림 켜기를 **승인**함. 순서는 그대로: A5 알림 Worker 배포 → B가 `app/config.js`에 `alertsApi`·`pushPublicKey`·`metrics`를 넣음.
+  실제 사용자에게는 공개 배포(`PUBLIC_DEPLOY`=`on`)를 다시 켠 뒤에만 닿음 — 두 Worker는 공개 주소(origin)에서 온 요청만 받음(`ALLOWED_ORIGIN`, 알림 Worker는 아직 브랜치 `platform/alerts-worker` 기준).
+- 변호사·의료 검수를 사용자가 맡긴다. 의뢰 자료는 A가 저장소 밖에 준비함(저장소에는 넣지 않음).
+- C의 #45(09:53)·#54(10:03)를 2026-10-16에 합침.
+- 사용자: 나머지는 나중에(가족이 이어받음). A의 남은 일은 `docs/IMPLEMENTATION_STATUS.md` 채팅 A 절 끝에 짧게 적음.
+- 사용자 할 일 하나 더: GitHub Settings → Code security에서 비밀 검사·push protection 켜기(이 작업 토큰으로는 403).
