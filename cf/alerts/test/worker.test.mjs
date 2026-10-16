@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { webcrypto as wc } from "node:crypto";
 import worker, { send, SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, PAIR_CAP } from "../src/worker.js";
-import { dueKinds, unb64u, addDays, inWindow, clientKey, REFUSED_DROP, RETRY_DROP, NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES,
-  SLOW_HOLD_MINUTES } from "../src/rules.js";
+import { dueKinds, unb64u, addDays, daysBetween, inWindow, clientKey, REFUSED_DROP, RETRY_DROP, NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES,
+  SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PAIR_KEEP_DAYS } from "../src/rules.js";
 import { watchMoved, vapidJwt } from "../src/push.js";
 import * as Q from "../src/sql.js";
 import { SKIP_SQL, makeDb, makeEnv, call, subscription, pushService, vapidKeys, kst, SECRET_VALUE, spyConsole, rateLimiter } from "./helpers.mjs";
@@ -561,10 +561,14 @@ test("push service answers: 404/410 delete, a 4xx-style failure retries (10 in a
   assert.equal((await send(env2, kst("2026-10-19T09:10:00"), { fetch: slow.f })).sent, 0);
   assert.ok(slow.calls.length <= 6, "a held row is not claimed again before its hold ends");
   // 401/403 from phones that never took a push (made with another key, or planted): refused for ever, so removed at the FIRST
-  // refusal — a planted refusing row costs one try, not three
+  // refusal — a planted refusing row costs one try, not three. After SLOW_HOLD_MINUTES the held rows come back as probes,
+  // PROBES a run (nothing 2xx from that host frees the rest at once)
   const refused = pushService(() => 403);
-  const r3 = await send(env2, kst("2026-10-19T09:00:00") + SLOW_HOLD_MINUTES * 60e3, { fetch: refused.f });
-  assert.deepEqual([r3.refused, r3.spared, r3.refusing, refused.calls.length], [5, undefined, undefined, 5], "every row tried; planted rows never make a service suspect");
+  const r3 = [];
+  for (let i = 0; i < 3; i++) r3.push(await send(env2, kst("2026-10-19T09:00:00") + (SLOW_HOLD_MINUTES + 10 * i) * 60e3, { fetch: refused.f }));
+  assert.deepEqual(r3.map((r) => [r.refused, r.probes]), [[PROBES, PROBES], [PROBES, PROBES], [5 - 2 * PROBES, 5 - 2 * PROBES]], "held rows come back PROBES a run");
+  assert.equal(r3.some((r) => r.spared || r.refusing), false, "planted rows never make a service suspect");
+  assert.equal(refused.calls.length, 5, "every row tried once");
   assert.equal(db2.rows("SELECT count(*) c FROM subs")[0].c, 0, "never-pushed rows are removed at their first 401/403");
   // phones that DID take a push before, at a push service that took another push 2xx in the same run: one failure each, and
   // in later runs (only they are due) they were last reached before this key first went through there (stat 'ok:', written
@@ -684,7 +688,8 @@ test("a cron run that starts late is judged by the real clock: nothing after the
 });
 
 test("redirects are never followed: a 302 from the push service = one request; it counts against the row only when that service took another push in the run", T, async () => {
-  const { env, db } = await setup();
+  const { env, db, k } = await setup();
+  okSince(db, k.pub, "https://fcm.googleapis.com", "2026-10-01");     // FCM took our pushes before: a push service is there
   await sub(env, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/moved"));
   await news(env, "2026-10-19");
   const push = pushService(() => 302);
@@ -879,7 +884,7 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
   const { db } = await setup();
   const plan = (sql, ...a) => db.rows("EXPLAIN QUERY PLAN " + sql, ...a).map((r) => r.detail).join(" | ");
   assert.match(Q.CLAIM_W, /fails = 0 AND claim IS NULL[\s\S]*ORDER BY coalesce\(last_w, ''\) ASC LIMIT/, "rows that never failed, longest-waiting first — stated, not left to the planner");
-  assert.match(Q.CLAIM_X, /fails = 0 AND claim IS NULL[\s\S]*ORDER BY pend_x LIMIT \?4/, "rows that never failed, nearest deadline first");
+  assert.match(Q.CLAIM_X, /fails = 0 AND claim IS NULL[\s\S]*ORDER BY pend_x LIMIT max\(0, \?4 - \(SELECT count\(\*\) FROM subs WHERE claim = \?1\)\)/, "rows that never failed, nearest deadline first, in what the probes left");
   assert.match(Q.CLAIM_F, /fails > 0 AND claim IS NULL[\s\S]*ORDER BY \(last_w IS NULL AND last_x IS NULL\), fails, coalesce\(last_w, ''\) ASC LIMIT max\(0, min\(\?5,/, "rows that failed before: rows that took a push before first, then fewest failures, FAIL_SLOTS at most");
   const claim = plan(Q.CLAIM_W, 1, "2026-10-12", "2026-10-19", 40);
   assert.match(claim, /USING INDEX subs_due \(fails=\?\)/);
@@ -892,6 +897,8 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
   assert.equal(/TEMP B-TREE/.test(claimF), false, `no sort for ORDER BY: ${claimF}`);
   assert.equal(/EVICT_IDLE|PRUNE_SUBS/.test(Object.keys(Q).join()), false, "no eviction and no retention statement exists");
   assert.match(plan(Q.RESET_STALE, 100), /USING INDEX subs_claim/);
+  assert.match(plan(Q.CLAIM_P, 100, PROBES, PROBE_SLOTS), /USING INDEX subs_claim \(claim>\? AND claim<\?\)/, "the probes read the held rows only");
+  assert.match(plan(Q.RELEASE_HELD, "https://fcm.googleapis.com"), /USING INDEX subs_claim \(claim<\?\)/, "a push origin's release walks the held rows only");
   assert.match(plan(Q.DROP_ENDED, "2026-10-19"), /USING INDEX subs_x/, "the partial index: rows with a pending expiring only");
   // sending runs a day: every cron minute of wrangler.jsonc that inWindow() accepts
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
@@ -1104,7 +1111,7 @@ test("PUT with no rules deletes the subscription: 200 {ok:true}, then that id is
 test("data minimisation: no per-row date, no retention, no eviction anywhere in the Worker (columns, SQL, source)", T, async () => {
   const { db } = await setup();
   assert.deepEqual(db.rows("PRAGMA table_info(subs)").map((c) => c.name), ["id", "endpoint", "rules", "pend_w", "last_w", "pend_x", "pend_xl", "exp_sent", "last_x", "fails", "claim"]);
-  assert.deepEqual(db.rows("PRAGMA table_info(snap)").map((c) => c.name), ["k", "r", "m", "n", "med", "p", "pm", "pn", "pmed", "bu", "pu", "cb", "cu", "g", "run", "e", "s", "u"]);
+  assert.deepEqual(db.rows("PRAGMA table_info(snap)").map((c) => c.name), ["k", "r", "m", "n", "med", "p", "pm", "pn", "pmed", "bu", "pu", "cb", "cu", "g", "run", "added", "e", "s", "u"]);
   assert.deepEqual(db.rows("SELECT k FROM stat").map((x) => x.k), ["subs"], "an empty database holds the one counter");
   assert.deepEqual(db.rows("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'subs' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((x) => x.name), ["subs_claim", "subs_due", "subs_fail", "subs_x"]);
   for (const f of ["../migrations/0001_init.sql", "../src/sql.js", "../src/worker.js", "../src/rules.js"]) {
@@ -1193,9 +1200,12 @@ test("push-service trouble (5xx, redirect, timeout) deletes nobody: counted agai
   const fresh = await sub(env, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", "fresh"));
   await news(env, "2026-10-19");
   db.raw.prepare("UPDATE subs SET last_w = '2026-10-01' WHERE id = ?").run(real.id);
+  // Apple took a push of ours before — under ANOTHER key (an 'ok:' row of any key says a push service is there), so the
+  // never-pushed row there is protected during an outage too
+  okSince(db, "OTHERKEYTAG0" + "x".repeat(75), "https://web.push.apple.com", "2026-09-01");
   // an incident longer than every drop limit: 503, 302 and a timeout, try after try, to the only origin each row has. A row
-  // whose service gave nothing 2xx is held back HOLD_MINUTES: four tries a day (08:00, 11:00, 14:00, 17:00), and a run in
-  // between does not touch it
+  // whose service gave nothing 2xx is held back HOLD_MINUTES and then comes back as a probe: four tries a day (08:00, 11:00,
+  // 14:00, 17:00), and a run in between does not touch it
   const kinds = [503, 302, "throw"];
   const slot = (i) => kst(`${addDays("2026-10-19", Math.floor(i / 4))}T08:00:00`) + (i % 4) * HOLD_MINUTES * 60e3;
   let held = 0;
@@ -1216,6 +1226,7 @@ test("push-service trouble (5xx, redirect, timeout) deletes nobody: counted agai
 
   // the same origin took another push 2xx in that run → the failure is the row's and counts (RETRY_DROP / NEVER_DROP)
   const { env: e2, db: d2 } = await setup();
+  okSince(d2, "OTHERKEYTAG0" + "x".repeat(75), "https://web.push.apple.com", "2026-09-01");
   const good = await sub(e2, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/good"));
   const bad = await sub(e2, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/bad"));
   const other = await sub(e2, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", "other-origin"));
@@ -1229,6 +1240,21 @@ test("push-service trouble (5xx, redirect, timeout) deletes nobody: counted agai
   for (let i = 1; i < NEVER_DROP; i++) { arm(); await send(e2, kst("2026-10-19T09:00:00") + i * 20 * 60e3, { fetch: pushService(answer).f }); }
   assert.equal(d2.rows("SELECT count(*) c FROM subs WHERE id = ?", bad.id)[0].c, 0, `the never-pushed row whose service was up is removed after ${NEVER_DROP} counted failures`);
   assert.equal(d2.rows("SELECT fails FROM subs WHERE id = ?", other.id)[0].fails, 0, "the other origin's row was never counted");
+
+  // 4th review: a row that never received a push, at a push origin that never answered 2xx to any push of ours (no 'ok:' for
+  // any key — e.g. a made-up host that cannot answer): nothing says a push service is there, so its trouble counts and the
+  // row goes after NEVER_DROP tries. A phone that took our pushes is never counted for an outage, 'ok:' or not
+  const { env: e3, db: d3 } = await setup();
+  const planted = await sub(e3, [{ kind: "watch", key: "X24" }], subscription("wns2-zz9.notify.windows.com", "w/?token=planted"));
+  const reached = await sub(e3, [{ kind: "watch", key: "X24" }], subscription("wns2-zz8.notify.windows.com", "w/?token=reached"));
+  await news(e3, "2026-10-19");
+  d3.raw.prepare("UPDATE subs SET last_w = '2026-10-01' WHERE id = ?").run(reached.id);
+  for (let i = 0; i < NEVER_DROP; i++) {
+    const r = await send(e3, kst("2026-10-19T08:00:00") + i * HOLD_MINUTES * 60e3, { fetch: pushService(() => kinds[i % 3]).f });
+    assert.deepEqual([r.retry, r.held], [1, 1], `try ${i + 1}: the never-pushed row is counted, the reached phone held`);
+  }
+  assert.deepEqual(d3.rows("SELECT id, fails FROM subs"), [{ id: reached.id, fails: 0 }], `the planted row is gone after ${NEVER_DROP} tries`);
+  assert.equal(planted.id.length, 22);
 });
 
 test("CLAIM_F: a real phone that took pushes before and has failed once comes before never-pushed rows with the same failures", T, async () => {
@@ -1280,7 +1306,8 @@ test("sustained planting at the daily budget: real phones with one failure are s
 });
 
 test("a phone's pending expiring mark is cleared when the next finish finds nothing ending for it (extended event) — no stale 'ending soon' push", T, async () => {
-  const { env, db } = await setup();
+  const { env, db, k } = await setup();
+  okSince(db, k.pub, "https://fcm.googleapis.com", "2026-10-01");     // a push service that took our pushes before, down for a day
   const a = await sub(env, [{ kind: "expiring", key: "X24" }]);
   const b = await sub(env, [{ kind: "expiring", key: "X01" }]);
   const ending = (k, u) => ({ ...st(k, 75000, 5, 90000), e: 75000, s: null, u });
@@ -1388,9 +1415,11 @@ test("a push service refusing our VAPID token for days: kept for REFUSING_GRACE_
   // removes a phone that took pushes before; a never-pushed one goes at its first counted refusal)
   for (let d = 2; d < REFUSING_GRACE_DAYS; d++) await send(env, kst(`${addDays("2026-10-19", d)}T09:00:00`), { fetch: push.f });
   assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%'")[0].c, 10, `day ${REFUSING_GRACE_DAYS - 1} of the stretch: all 10 Apple rows still there`);
+  // the held phones come back PROBES a run; once counted (fails > 0) they are tried in the FAIL_SLOTS of every run
   const over = addDays("2026-10-19", REFUSING_GRACE_DAYS);
-  for (let i = 0; i < REFUSED_DROP; i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
-  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%'")[0].c, 0, "after the grace days the refusing subscriptions are removed (the policy: delivery keeps failing → deleted)");
+  const bound = REFUSED_DROP - 1 + Math.ceil(pushed.length / PROBES);
+  for (let i = 0; i < bound; i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%'")[0].c, 0, `after the grace days the refusing subscriptions are removed within ${bound} runs (the policy: delivery keeps failing → deleted)`);
   assert.equal((await health(`${over}T21:00:00`)).refusing, true, "and the monitor still says so");
   assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 5, "the FCM phones are untouched");
 
@@ -1401,8 +1430,12 @@ test("a push service refusing our VAPID token for days: kept for REFUSING_GRACE_
   d2.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
   const r1 = await send(e2, kst("2026-10-19T09:00:00"), { fetch: pushService(() => 403).f });
   assert.deepEqual([r1.refused, r1.spared, r1.refusing], [3, 3, 1], "one phone is enough to be careful (never a count per run)");
+  // the probes go through: the stretch ends and the other held phone is freed in the same batch, sent by the next run
   const fixed = pushService();
-  assert.equal((await send(e2, kst("2026-10-21T09:00:00"), { fetch: fixed.f })).sent, 3);
+  assert.equal((await send(e2, kst("2026-10-21T09:00:00"), { fetch: fixed.f })).sent, PROBES);
+  assert.deepEqual(d2.rows("SELECT count(*) c FROM subs WHERE claim IS NOT NULL"), [{ c: 0 }], "nothing is held any more (RELEASE_HELD with the 2xx)");
+  assert.equal((await send(e2, kst("2026-10-21T09:10:00"), { fetch: fixed.f })).sent, 3 - PROBES);
+  assert.equal(fixed.calls.length, 3);
   assert.deepEqual(d2.rows("SELECT k FROM stat WHERE k LIKE 'rs:%' OR k LIKE 'rl:%'"), [], "a 2xx from Apple ends the stretch");
   assert.deepEqual(d2.rows("SELECT k, n FROM stat WHERE k LIKE 'ok:%'"), [{ k: `ok:${k2.pub.slice(0, 12)} https://web.push.apple.com`, n: 20261021 }], "and records the first day this key went through Apple");
   assert.equal((await call(worker, e2, "GET", "/health", undefined, { now: kst("2026-10-23T09:30:00") })).body.refusing, false, "two days after the last refusing run");
@@ -1616,11 +1649,12 @@ test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of p
   assert.deepEqual([p2.body.pairs.length, p2.body.next, p2.body.capped], [100, null, undefined]);
   assert.equal(new Set([...p1.body.pairs, ...p2.body.pairs].map((p) => p.k + p.r)).size, 2100);
   assert.ok(PAIR_CAP >= 2100 && PAIR_CAP <= 5000, `PAIR_CAP ${PAIR_CAP}`);
-  // the arithmetic (src/worker.js, rows written per statement measured on a local D1): pushes (≈ 6 a push) + new
-  // subscriptions (5 each; a D1 day spans two KST budget days) + the finish's marks on a full table (≤ 5 per row) + the snap
-  // side of a factory run (≤ 2 × (PAIR_CAP + 500)) stays under D1 Free's 100,000 rows a day, a manual re-run included
-  const worst = 77 * SEND_LIMIT * 6 + 2 * NEW_PER_DAY * 5 + MAX_SUBS * 5 + 2 * (PAIR_CAP + 500);
-  assert.ok(worst <= 86000, `worst D1 day ${worst}`);
+  // the arithmetic (src/worker.js, rows written per statement measured on a local D1): pushes (≤ 8 a push: claim 2 +
+  // RETRY of a row with pend_w 1 and pend_x set 4 + a delete 2) + new subscriptions (5 each; a D1 day spans two KST budget
+  // days) + the finish's marks on a full table (≤ 5 per row) + the snap side of a factory run (≤ 2 × (PAIR_CAP + 500))
+  // stays under D1 Free's 100,000 rows a day, a manual re-run included (cf/metrics shares the limit: not in this sum)
+  const worst = 77 * SEND_LIMIT * 8 + 2 * NEW_PER_DAY * 5 + MAX_SUBS * 5 + 2 * (PAIR_CAP + 500);
+  assert.equal(worst, 91640, "the worst D1 day the docs quote (≈ 91,600)");
   assert.ok(worst + 2 * (PAIR_CAP + 500) < 100000, "a second factory run the same day still fits");
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.equal(/"PAIR_CAP":\s*"(\d+)"/.exec(cfg)[1], String(PAIR_CAP), "wrangler.jsonc vars.PAIR_CAP = the code's default");
@@ -1769,7 +1803,8 @@ test("review finding (stale stretch): a refusal stretch that ended without a 2xx
   const push = pushService(() => 403);
   for (let i = 0; i <= REFUSED_DROP; i++) {
     const r = await send(env, kst("2026-10-15T09:00:00") + i * HOLD_MINUTES * 60e3, { fetch: push.f });
-    assert.deepEqual([r.refused, r.spared], [3, 3], `try ${i + 1}: spared, not counted`);
+    const n = i === 0 ? 3 : PROBES;                                    // then the held phones come back PROBES a run
+    assert.deepEqual([r.refused, r.spared], [n, n], `try ${i + 1}: spared, not counted`);
   }
   assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 4, "nobody removed");
   assert.deepEqual(db.rows("SELECT n FROM stat WHERE k LIKE 'rs:%'"), [{ n: 20261015 }], "the new stretch starts on its own first day");
@@ -1777,7 +1812,7 @@ test("review finding (stale stretch): a refusal stretch that ended without a 2xx
   for (let d = 1; d < REFUSING_GRACE_DAYS; d++) await send(env, kst(`${addDays("2026-10-15", d)}T09:00:00`), { fetch: push.f });
   assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 4, `day ${REFUSING_GRACE_DAYS - 1} of the stretch: still all there`);
   const over = addDays("2026-10-15", REFUSING_GRACE_DAYS);
-  for (let i = 0; i < REFUSED_DROP; i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
+  for (let i = 0; i < REFUSED_DROP - 1 + Math.ceil(bs.length / PROBES); i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
   assert.deepEqual(db.rows("SELECT id FROM subs").map((x) => x.id), [a.id], "after the grace days the refusing phones are removed (the one with nothing due stays)");
 });
 
@@ -1800,8 +1835,10 @@ test("review finding (key records): one run with a wrong key does not erase the 
   const wrong = await send(e2, kst("2026-10-09T09:00:00"), { fetch: apple.f });
   assert.deepEqual([wrong.refused, wrong.spared], [3, 3]);
   assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", ok1), [{ n: 20261001 }], "the right key's first day survives a wrong-key run");
-  // back to K1 (after the hold): the X01 phones get their push; K2's stretch records go
-  assert.equal((await send(e1, kst("2026-10-09T09:00:00") + HOLD_MINUTES * 60e3, { fetch: apple.f })).sent, 3);
+  // back to K1 (after the hold): the X01 phones get their push — PROBES of them as probes, and their 2xx frees the third,
+  // which the next run sends; K2's stretch records go
+  assert.equal((await send(e1, kst("2026-10-09T09:00:00") + HOLD_MINUTES * 60e3, { fetch: apple.f })).sent, PROBES);
+  assert.equal((await send(e1, kst("2026-10-09T09:10:00") + HOLD_MINUTES * 60e3, { fetch: apple.f })).sent, 3 - PROBES);
   assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", ok1), [{ n: 20261001 }]);
   assert.deepEqual(db.rows("SELECT k FROM stat WHERE k LIKE 'rs:%' OR k LIKE 'rl:%'"), []);
   // 10-12: our setup breaks at Apple; news for the X02 phones (last reached 10-01 = K1's first day: reached under K1)
@@ -1809,7 +1846,8 @@ test("review finding (key records): one run with a wrong key does not erase the 
   broken = true;
   for (let i = 0; i < REFUSED_DROP; i++) {
     const r = await send(e1, kst("2026-10-12T09:00:00") + i * HOLD_MINUTES * 60e3, { fetch: apple.f });
-    assert.deepEqual([r.refused, r.spared, r.refusing], [3, 3, 1], `try ${i + 1}: suspect, spared`);
+    const n = i === 0 ? 3 : PROBES;
+    assert.deepEqual([r.refused, r.spared, r.refusing], [n, n, 1], `try ${i + 1}: suspect, spared`);
   }
   assert.equal(db.rows("SELECT count(*) c FROM subs WHERE fails = 0")[0].c, 6, "all six phones are still there, none counted");
   assert.equal((await call(worker, e1, "GET", "/health", undefined, { now: kst("2026-10-12T21:00:00") })).body.refusing, true, "and the monitor is told");
@@ -1824,4 +1862,146 @@ test("review finding (key records): one run with a wrong key does not erase the 
   await assert.rejects(send(closingFails, kst("2026-10-19T09:00:00"), { fetch: pushService().f, waits: [0, 0] }), /Network connection lost/);
   assert.deepEqual(d3.rows("SELECT last_w FROM subs"), [{ last_w: "2026-10-19" }], "the push is recorded");
   assert.deepEqual(d3.rows("SELECT n FROM stat WHERE k = ?", `ok:${k3.pub.slice(0, 12)} https://fcm.googleapis.com`), [{ n: 20261019 }], "and so is the day it proves");
+});
+
+// ---- 4th review: an unreachable-host flood, held rows taking the queue back, the first filler keeping the pair list, the
+// documented cleanup query
+
+test("4th review (unreachable hosts): planted rows on push hosts that never answered 2xx are counted and removed — more than SEND_LIMIT × HOLD_MINUTES / 10 of them never keep the real phones waiting; deeper host names are refused", T, async () => {
+  const W = [{ kind: "watch", key: "X24" }];
+  // a name with more than one label in front of notify.windows.com / push.services.mozilla.com is refused at subscribe
+  const { env: e0 } = await setup();
+  for (const h of ["p1.x.notify.windows.com", "a.b.push.services.mozilla.com"])
+    assert.equal((await call(worker, e0, "POST", "/v1/push/subscribe", { subscription: subscription(h, "w/?token=1"), rules: W })).status, 400, h);
+  const P = SEND_LIMIT * HOLD_MINUTES / 10 + 40;                      // 760: past what held (not counted) rows would block
+  for (const [label, answer, host] of [["network error, 760 hosts", "throw", (i) => `p${i}.notify.windows.com`], ["503, 7 hosts", 503, (i) => `p${i % 7}.notify.windows.com`]]) {
+    const { env, db } = await setup({ NEW_PER_DAY: "5000" });
+    for (let i = 0; i < 10; i++) await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/f${i}`));
+    for (let i = 0; i < P; i++) await sub(env, W, subscription(host(i), `w/?token=${i}`));
+    await news(env, "2026-10-19");
+    db.raw.prepare("UPDATE subs SET last_w = '2026-10-05' WHERE endpoint LIKE '%fcm%'").run();
+    const push = pushService((u) => (u.includes("notify.windows.com") ? answer : 201));
+    const fcmCalls = () => push.calls.filter((c) => c.url.includes("fcm")).length;
+    let run = 0, firstFcm = -1, held = 0;
+    for (let d = 0; d < 3; d++) {
+      for (let m = 8 * 60; m <= 20 * 60 + 40; m += 10, run++) {
+        held += (await send(env, kst(`${addDays("2026-10-19", d)}T00:00:00`) + m * 60e3, { fetch: push.f })).held;
+        if (firstFcm < 0 && fcmCalls()) firstFcm = run;
+      }
+      if (d === 0) assert.equal(fcmCalls(), 10, `${label}: all 10 FCM phones were sent on the first day`);
+    }
+    assert.ok(firstFcm >= 0 && firstFcm <= P / SEND_LIMIT, `${label}: right after the planted rows' first tries (run ${firstFcm})`);
+    assert.equal(held, 0, `${label}: nothing held — no push service ever answered 2xx there`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%windows%'")[0].c, 0, `${label}: every planted row is removed`);
+    assert.equal(push.calls.length - fcmCalls(), P * NEVER_DROP, `${label}: each planted row cost NEVER_DROP tries`);
+  }
+});
+
+test("4th review (held rows): 760 phones held at one push service (our setup refused there, it is down, or it says 429) never take the queue back — the other services' phones are sent the same day, the held ones come back PROBES a run, and all at once when that service answers 2xx again", T, async () => {
+  const W = [{ kind: "watch", key: "X24" }];
+  const NA = SEND_LIMIT * HOLD_MINUTES / 10 + 40;
+  for (const status of [403, 503, 429]) {
+    const { env, db, k } = await setup({ NEW_PER_DAY: "5000" });
+    okSince(db, k.pub, "https://web.push.apple.com", "2026-09-01");   // Apple took this key's pushes before
+    for (let i = 0; i < NA; i++) await sub(env, W, subscription("web.push.apple.com", `a/${i}`));
+    for (let i = 0; i < 10; i++) await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/f${i}`));
+    await news(env, "2026-10-19");
+    // every phone took our pushes before; the Apple phones waited longest: the front of the weekly queue
+    db.raw.prepare("UPDATE subs SET last_w = CASE WHEN endpoint LIKE '%apple%' THEN '2026-10-01' ELSE '2026-10-05' END").run();
+    let broken = true;
+    const push = pushService((u) => (u.includes("apple") && broken ? status : 201));
+    const appleCalls = () => push.calls.filter((c) => c.url.includes("apple")).length;
+    // one day of cron runs from `from` (minutes after 00:00 KST) → the most Apple pushes any one run made
+    const day = async (d, from = 8 * 60) => {
+      let most = 0;
+      for (let m = from; m <= 20 * 60 + 40; m += 10) {
+        const before = appleCalls();
+        await send(env, kst(`${d}T00:00:00`) + m * 60e3, { fetch: push.f });
+        most = Math.max(most, appleCalls() - before);
+      }
+      return most;
+    };
+    // day 1: each Apple phone is tried once (nothing tells the queue the service is broken before that), then the FCM phones
+    await day("2026-10-19");
+    assert.equal(push.calls.filter((c) => c.url.includes("fcm")).length, 10, `${status}: the FCM phones were sent on the first day`);
+    // day 2: the held Apple phones come back PROBES a run at most; nobody is counted or removed
+    const most = await day("2026-10-20");
+    assert.ok(most <= PROBES, `${status}: day 2: at most PROBES Apple tries a run (${most})`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%' AND fails = 0 AND pend_w = 1")[0].c, NA, `${status}: nobody counted or removed`);
+    // a phone of another service with news on day 2 is not held up either
+    const late = await sub(env, W, subscription("fcm.googleapis.com", "fcm/send/late"));
+    db.raw.prepare("UPDATE subs SET pend_w = 1, last_w = '2026-10-10' WHERE id = ?").run(late.id);
+    const r0 = await send(env, kst("2026-10-20T20:40:00"), { fetch: push.f });
+    assert.equal(r0.sent, 1, `${status}: sent in the next run`);
+    // Apple works again: the first probe that goes through frees every held Apple phone in the same batch, and the queue
+    // sends them that day
+    broken = false;
+    const r1 = await send(env, kst("2026-10-21T08:00:00"), { fetch: push.f });
+    assert.deepEqual([r1.probes, r1.sent], [PROBES, PROBES], `${status}: the probes go through`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE claim < 0")[0].c, 0, `${status}: nothing is held any more`);
+    await day("2026-10-21", 8 * 60 + 10);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE pend_w = 1")[0].c, 0, `${status}: all ${NA} Apple phones got their push that day`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, NA + 11);
+  }
+});
+
+test("4th review (first come keeps the list): pairs that filled the list first make way after PAIR_KEEP_DAYS — a real phone that subscribes later is computed within days, stays computed and gets its news; a factory run still writes ≤ 2 × (PAIR_CAP + 500) snap rows", T, async () => {
+  const CAP = 200;
+  const { env, db } = await setup({ PAIR_CAP: String(CAP) });
+  const key = (i) => "T" + String(i).padStart(7, "0");
+  // CAP pairs from CAP / 20 subscriptions × 20 newmatch rules (one POST each, no browser) — never news, never a push
+  for (let s = 0; s < CAP / 20; s++) await sub(env, Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: key(s * 20 + j) })));
+  const inSnap = () => db.rows("SELECT count(*) c FROM snap WHERE k = 'X24'")[0].c === 1;
+  // one factory run as notify.mjs does it, a NEW collection every day; X24's lowest price is `x24m`
+  const factory = async (today, x24m = 100000) => {
+    const before = new Set(db.rows("SELECT k || '|' || r AS p FROM snap").map((x) => x.p));
+    const now = kst(`${today}T06:00:00`), run = `${today}|${today}`, pairs = [];
+    for (let at = 0; ;) {
+      const w = (await internal(env, "GET", `/v1/internal/watched?at=${at}`, undefined, now)).body;
+      pairs.push(...w.pairs);
+      if (w.next === null) break;
+      at = w.next;
+    }
+    for (let i = 0; i < pairs.length; i += 500) {
+      const entries = pairs.slice(i, i + 500).map((p) => ({ k: p.k, r: p.r, m: p.k === "X24" ? x24m : 1000, n: 5, med: 120000 }));
+      assert.equal((await internal(env, "POST", "/v1/internal/digest", { run, entries }, now)).status, 200);
+    }
+    assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today }, now)).status, 200);
+    const after = new Set(db.rows("SELECT k || '|' || r AS p FROM snap").map((x) => x.p));
+    const added = [...after].filter((p) => !before.has(p)).length, pruned = [...before].filter((p) => !after.has(p)).length;
+    assert.ok(2 * added + 2 * pruned + 2 * (after.size - added) <= 2 * (CAP + 500), `${today}: snap rows written`);
+    assert.ok(after.size <= CAP + 500, "the room check holds");
+  };
+  await factory("2026-10-19");
+  assert.equal(db.rows("SELECT count(*) c FROM snap")[0].c, CAP, "the planted pairs fill the list");
+  // 10-20: a real phone subscribes (X24 nationwide); the factory runs every day
+  const real = await sub(env, [{ kind: "newmatch", key: "X24" }, { kind: "watch", key: "X24" }]);
+  let d = "2026-10-20", first = null;
+  for (; !first && d <= "2026-11-10"; d = addDays(d, 1)) { await factory(d); if (inSnap()) first = d; }
+  assert.ok(first, "the real phone's pair is computed");
+  assert.ok(daysBetween(first, "2026-10-19") <= PAIR_KEEP_DAYS + 1, `${first}: within PAIR_KEEP_DAYS + 1 days of the list being filled`);
+  assert.equal(db.rows("SELECT added FROM snap WHERE k = 'X24'")[0].added, first, "its first day is the Worker's day");
+  // it stays computed (the planted pairs that came first make way, not the newest), and its news arrives
+  for (let i = 0; i < PAIR_KEEP_DAYS + 3; i++, d = addDays(d, 1)) { await factory(d); assert.ok(inSnap(), `${d}: X24 still computed`); }
+  await factory(d, 90000);                                            // a 10% lower lowest price in a new collection
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", real.id)[0].pend_w, 1, "the real phone has its news");
+  assert.equal((await send(env, kst(`${d}T09:00:00`), { fetch: pushService().f })).sent, 1);
+  const w = (await internal(env, "GET", "/v1/internal/watched?at=0", undefined, kst(`${d}T10:00:00`))).body;
+  assert.deepEqual(w.pairs[0], { k: "X24", r: "" }, "a phone that took a push puts its pair first for good");
+});
+
+test("4th review (cleanup query): the query the docs give (SECURITY_ARCHITECTURE §4) removes every subscription that never received a push — held, with news waiting, or idle — and nothing a send run holds right now or a phone that took a push", T, async () => {
+  const doc = readFileSync(new URL("../../../docs/SECURITY_ARCHITECTURE.md", import.meta.url), "utf8");
+  const del = /`(DELETE FROM subs WHERE [^`]+)`/.exec(doc), count = /`(SELECT count\(\*\) FROM subs WHERE [^`]+)`/.exec(doc);
+  assert.ok(del && count, "both queries are in the doc");
+  assert.equal(count[1].replace(/^SELECT count\(\*\)/, "").trim(), del[1].replace(/^DELETE/, "").trim(), "the count and the delete name the same rows");
+  const { db } = await setup();
+  const ins = db.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_w, last_w, fails, claim) VALUES (?, ?, '[]', ?, ?, ?, ?)");
+  const rows = [["heldPlant", 1, null, 0, -29000000], ["duePlant", 1, null, 0, null], ["idlePlant", 0, null, 0, null], ["failedPlant", 1, null, 2, null],
+    ["sendingNow", 1, null, 0, 29000000], ["realHeld", 1, "2026-10-01", 0, -29000000], ["realIdle", 0, "2026-10-01", 0, null]];
+  for (const [id, pend, lastW, fails, claim] of rows) ins.run(id.padEnd(22, "x"), `https://fcm.googleapis.com/${id}`, pend, lastW, fails, claim);
+  assert.equal(db.rows(count[1].replace(/;$/, ""))[0]["count(*)"], 4);
+  db.raw.exec(del[1]);
+  assert.deepEqual(db.rows("SELECT id FROM subs ORDER BY id").map((x) => x.id.replace(/x+$/, "")), ["realHeld", "realIdle", "sendingNow"]);
+  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'subs'")[0].n, 3, "the counter follows (trigger)");
 });

@@ -65,7 +65,9 @@ test("subscriptions: only known push services over https, no ports/userinfo/IP; 
   for (const e of ["http://fcm.googleapis.com/x", "https://evil.example/x", "https://fcm.googleapis.com.evil.example/x", "https://169.254.169.254/x",
     "https://fcm.googleapis.com:8443/x", "https://u:p@fcm.googleapis.com/x", "https://localhost/x", "https://yoonsiljang.lsy2825.workers.dev/x",
     "https://fcm.googleapis.com/" + "a".repeat(1100), "not a url", "", "https://fcm.googleapis.com/fcm/send/x#frag",
-    "https://fcm.googleapis.com/fcm/send/x#", "https://wns2-par02p.notify.windows.com/w/?token=1#t"])
+    "https://fcm.googleapis.com/fcm/send/x#", "https://wns2-par02p.notify.windows.com/w/?token=1#t",
+    // one label in front of notify.windows.com / push.services.mozilla.com only (4th review: a deeper name never answers 2xx)
+    "https://p1.x.notify.windows.com/w/?token=1", "https://a.b.push.services.mozilla.com/x", "https://.notify.windows.com/x"])
     assert.equal(checkSubscription({ endpoint: e, keys }).error, "BAD_SUBSCRIPTION", e.slice(0, 60));
   assert.equal(checkSubscription({ endpoint: "https://fcm.googleapis.com/x", keys: { p256dh: "short", auth: keys.auth } }).error, "BAD_SUBSCRIPTION");
   assert.equal(checkSubscription(null).error, "BAD_SUBSCRIPTION");

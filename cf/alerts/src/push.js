@@ -4,8 +4,10 @@
 import { b64u, unb64u } from "./rules.js";
 
 // push services a subscription may point at (the endpoint is user-supplied: anything else would be a request forgery
-// target). Strict on purpose (fail closed); add a host only after a real subscription shows it.
-export const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9.-]+\.notify\.windows\.com|web\.push\.apple\.com)$/;
+// target). Strict on purpose (fail closed); add a host only after a real subscription shows it. Mozilla and Windows: ONE
+// label in front (wns2-xx.notify.windows.com) — a wildcard certificate covers one label only, so a deeper name could never
+// answer 2xx (a planted row there would only ever fail)
+export const PUSH_HOSTS = /^(fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9-]+\.push\.services\.mozilla\.com|[a-z0-9-]+\.notify\.windows\.com|web\.push\.apple\.com)$/;
 
 // → { endpoint } or { error: 'BAD_SUBSCRIPTION' }
 export function checkSubscription(s) {

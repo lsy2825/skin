@@ -47,22 +47,29 @@ export const HEALTH = `SELECT (SELECT n FROM stat WHERE k = 'subs') AS subs, (SE
   (SELECT substr(min(k), 5) FROM stat WHERE k >= 'new:' AND k < 'new;') AS first_new, (SELECT n FROM stat WHERE k = 'refusing') AS ref,
   (SELECT n FROM stat WHERE k = 'capped') AS cap`;
 
-// ?1 page size ?2 offset. Pairs only — never ids, endpoints or numbers (they would leave Cloudflare for the runner). The
-// factory digests every pair it gets, and every digested pair is D1 rows written (D1 Free allows 100,000 rows written a day
-// FOR THE WHOLE ACCOUNT — over it every D1 query of the account fails until 00:00 UTC = 09:00 KST). So the list is CUT at
-// PAIR_CAP (src/worker.js watched) and the pairs that matter most come first: pairs watched by more phones that already
-// received a push from us (planted subscriptions never did), then pairs ALREADY IN snap (a list of new pairs, however many
-// phones name them, can never push out the pairs computed yesterday: no planted subscription replaces the list), then pairs
-// watched by more phones, then (k, r). A pair is counted once per phone (two rules of one phone on the same pair are one).
-// Paged by rank (LIMIT/OFFSET): every page groups the table again. Digesting a page only moves that page's own new pairs up
-// (they are in snap now), so the later pages stay the same; a subscription made while the factory pages can shift a pair by
-// one page (read twice or missed once — a missed pair's baseline is pruned and taken again silently the next day).
-export const WATCHED = `SELECT k, r FROM (
+// ?1 page size ?2 offset ?3 today − PAIR_KEEP_DAYS (the Worker's clock). Pairs only — never ids, endpoints or numbers (they
+// would leave Cloudflare for the runner). The factory digests every pair it gets, and every digested pair is D1 rows written
+// (D1 Free allows 100,000 rows written a day FOR THE WHOLE ACCOUNT — over it every D1 query of the account fails until 00:00
+// UTC = 09:00 KST). So the list is CUT at PAIR_CAP (src/worker.js watched) and comes in this order:
+//   1. pairs watched by more phones that already received a push from us (planted subscriptions never did);
+//   2. pairs first computed less than PAIR_KEEP_DAYS ago (snap.added): a list of new pairs, however many phones name them,
+//      cannot push out the pairs computed this week — the list is never replaced in a day;
+//   3. pairs not computed yet (not in snap);
+//   4. pairs computed for longer than that that no phone which took a push watches: they make way for (3), so whoever
+//      filled the list first cannot keep it for ever (4th review) — a new pair takes a row a finish freed (sql.js DIGEST);
+// then pairs watched by more phones, then the more recently computed, then (k, r). A pair is counted once per phone (two
+// rules of one phone on the same pair are one). Paged by rank (LIMIT/OFFSET): every page groups the table again. Digesting a
+// page only moves that page's own new pairs up (3 → 2), so the later pages stay the same; a subscription made while the
+// factory pages can shift a pair by one page (read twice or missed once — a missed pair's baseline is pruned and taken again
+// silently the next day).
+export const WATCHED = `SELECT w.k AS k, w.r AS r FROM (
     SELECT j.value->>'$.key' AS k, coalesce(j.value->>'$.region', '') AS r,
       count(DISTINCT CASE WHEN subs.last_w IS NOT NULL OR subs.last_x IS NOT NULL THEN subs.id END) AS got,
       count(DISTINCT subs.id) AS c
     FROM subs, json_each(subs.rules) j GROUP BY 1, 2
-  ) w ORDER BY got DESC, EXISTS (SELECT 1 FROM snap WHERE snap.k = w.k AND snap.r = w.r) DESC, c DESC, k, r LIMIT ?1 OFFSET ?2`;
+  ) w LEFT JOIN snap s ON s.k = w.k AND s.r = w.r
+  ORDER BY w.got DESC, CASE WHEN s.added > ?3 THEN 0 WHEN s.k IS NULL THEN 1 ELSE 2 END, w.c DESC, s.added DESC, w.k, w.r
+  LIMIT ?1 OFFSET ?2`;
 // ?1 today as yyyymmdd: the factory's watched list was cut at PAIR_CAP — GET /health "pairs": "capped" that day and the next
 export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n";
 
@@ -92,6 +99,7 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // of ≤ DIGEST_MAX 500 can pass it: snap ≤ PAIR_CAP + 500). The rows a finish prunes are free again only the next day, so
 // a day can never both add a whole list and delete one: per factory run the snap side writes ≤ 2 × (PAIR_CAP + 500) rows
 // (src/worker.js has the arithmetic). A pair left out waits for a free row (src/worker.js digest: 'capped').
+// ?4 today (the Worker's clock): a new pair's `added` (WATCHED keeps it in the list for PAIR_KEEP_DAYS); never updated.
 const SAME = "snap.bu = excluded.bu";
 const REBASE = "excluded.g > snap.g";
 const BAD_M = "((excluded.m IS NULL AND snap.m IS NOT NULL) OR (excluded.m IS NOT NULL AND snap.m IS NOT NULL AND excluded.m > snap.m))";
@@ -106,9 +114,9 @@ const NEW_M = `CASE WHEN ${SAME} THEN (CASE WHEN snap.m IS NULL THEN excluded.m 
 const NEW_N = `CASE WHEN ${SAME} THEN max(snap.n, excluded.n) WHEN ${TAKE_N} THEN excluded.n ELSE snap.n END`;
 const NEW_MED = `CASE WHEN ${SAME} THEN (CASE WHEN excluded.n <= snap.n THEN snap.med ELSE excluded.med END) WHEN ${TAKE_MED} THEN excluded.med ELSE snap.med END`;
 const NEW_CB = `(CASE WHEN ${BAD_M} AND NOT ${TAKE_M} THEN 1 ELSE 0 END) + (CASE WHEN ${BAD_N} AND NOT ${TAKE_N} THEN 2 ELSE 0 END) + (CASE WHEN ${BAD_MED} AND NOT ${TAKE_MED} THEN 4 ELSE 0 END)`;
-export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, e, s, u)
+export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, s, u)
   SELECT j.value->>'$.k', j.value->>'$.r', j.value->>'$.m', j.value->>'$.n', j.value->>'$.med', substr(?1, 1, 10),
-    coalesce(j.value->>'$.g', ''), ?1, j.value->>'$.e', j.value->>'$.s', j.value->>'$.u'
+    coalesce(j.value->>'$.g', ''), ?1, ?4, j.value->>'$.e', j.value->>'$.s', j.value->>'$.u'
   FROM json_each(?2) j
   WHERE EXISTS (SELECT 1 FROM snap s WHERE s.k = j.value->>'$.k' AND s.r = j.value->>'$.r') OR (SELECT count(*) FROM snap) < ?3
   ON CONFLICT(k, r) DO UPDATE SET run = excluded.run, e = excluded.e, s = excluded.s, u = excluded.u,
@@ -165,14 +173,14 @@ export const ROLL_BU = "UPDATE snap SET bu = pu, pu = NULL WHERE pu IS NOT NULL"
 // ?1 today as yyyymmdd: the last finish, shown by GET /health ("finished") so a monitor sees the factory → Worker link stop
 export const STAT_FINISH = "INSERT INTO stat (k, n) VALUES ('finish', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
-// PAIR_CAP (src/worker.js watched)
+// PAIR_CAP (src/worker.js watched; sql.js WATCHED says which pairs make way)
 export const PRUNE_SNAP = "DELETE FROM snap WHERE run <> ?1";
 export const PRUNE_STAT = "DELETE FROM stat WHERE k LIKE 'new:%' AND k < 'new:' || ?1";   // ?1 today: past days' budgets
 
 // send run, first batch. ?1 now (epoch minutes). claim > 0 = the epoch minute of the send run holding the row: older than 15
-// minutes = a run that died — cleared. claim < 0 = a row HELD BACK until the epoch minute −claim (HOLD, rules.js
-// HOLD_MINUTES) — cleared once that minute has come. One range of the subs_claim index (reads only claimed and held rows).
-export const RESET_STALE = "UPDATE subs SET claim = NULL WHERE claim IS NOT NULL AND claim >= -?1 AND claim < ?1 - 15";
+// minutes = a run that died — cleared. (claim < 0 = a row HELD BACK, rules.js HOLD: never cleared by time — CLAIM_P tries a
+// few a run, RELEASE_HELD frees them at that push origin's next 2xx.) One range of the subs_claim index.
+export const RESET_STALE = "UPDATE subs SET claim = NULL WHERE claim > 0 AND claim < ?1 - 15";
 // ?1 today (scans the subs_x partial index: rows with a pending expiring only)
 export const DROP_ENDED = "UPDATE subs SET pend_x = NULL, pend_xl = NULL WHERE pend_x IS NOT NULL AND pend_x < ?1";
 export const VAPID_CACHE = "SELECT aud, jwt, exp FROM vapid";
@@ -187,13 +195,29 @@ export const VAPID_CACHE = "SELECT aud, jwt, exp FROM vapid";
 //   'rl:<tag> <origin>'  the last day of that stretch (STAT_RL): a stretch whose last day is older than yesterday ended without
 //                        a 2xx (the phones stopped being due), so the next one starts again from its own first day
 // Push origins are push-service hosts (fcm.googleapis.com, web.push.apple.com, …), never anything about a person.
-export const ORIGIN_STATS = `SELECT k, n FROM stat WHERE ((k >= 'ok:' AND k < 'ok;') OR (k >= 'rl:' AND k < 'rl;') OR (k >= 'rs:' AND k < 'rs;'))
-  AND substr(k, 4, 13) = ?1`;
+// The 'ok:' rows of EVERY key are read (one per push service per key): a push origin with none never answered 2xx to any
+// push of ours, so trouble there is not a push-service outage for a row that never received a push (src/worker.js send)
+export const ORIGIN_STATS = `SELECT k, n FROM stat WHERE (k >= 'ok:' AND k < 'ok;')
+  OR (((k >= 'rl:' AND k < 'rl;') OR (k >= 'rs:' AND k < 'rs;')) AND substr(k, 4, 13) = ?1)`;
+// a push origin from an endpoint ('https://host/…' → 'https://host', the same as new URL(endpoint).origin: endpoints are
+// stored as URL.href, so there is always a '/' after the host)
+const ORIGIN = "substr(endpoint, 1, 7 + instr(substr(endpoint, 9), '/'))";
+// ?1 now (epoch minutes) ?2 PROBES ?3 how many in all (min(PROBE_SLOTS, limit)). Held rows (claim < 0, rules.js HOLD) whose
+// minute has come (−claim ≤ now), at most ?2 per push origin, the longest-waiting first: tried again in this run as probes
+// (still failing → held again, at the back; a 2xx frees that origin's held rows, RELEASE_HELD). Claimed BEFORE the queue,
+// so a probe is never crowded out on a busy day, and the claims below fill only what is left of the limit. Reads the held
+// rows (one range of subs_claim) and numbers them per origin.
+export const CLAIM_P = `UPDATE subs SET claim = ?1 WHERE id IN (
+    SELECT id FROM (
+      SELECT id, claim, row_number() OVER (PARTITION BY ${ORIGIN} ORDER BY claim DESC, id) AS i
+      FROM subs WHERE claim < 0 AND claim >= -?1)
+    WHERE i <= ?2 ORDER BY i, claim DESC, id LIMIT ?3)
+  RETURNING id, endpoint, pend_w, last_w, pend_x, pend_xl, last_x, fails`;
 // ?1 now (epoch minutes) ?2 today − 7 ?3 today ?4 limit ?5 FAIL_SLOTS. Together the three claims pick exactly the rows
 // rules.js dueKinds() finds due (a test checks), in three passes, so a deadline is never queued behind weekly news and a
 // row that failed before never takes the queue from rows that did not:
-//   CLAIM_X  rows that never failed (fails = 0) with an expiring due, the nearest end date first — subs_x index, in
-//            order, stops at the limit (no sort)
+//   CLAIM_X  rows that never failed (fails = 0) with an expiring due, the nearest end date first, up to what the probes
+//            left of the limit — subs_x index, in order, stops at the limit (no sort)
 //   CLAIM_W  rows that never failed with the weekly bundle due, up to what is left of the limit: longest wait first,
 //            never-sent first — subs_due index (pend_w = 1 rows only), in order, no sort. A row due only for its expiring is
 //            always CLAIM_X's (X_DUE holds every such row): CLAIM_X takes all of them unless it fills the limit, and then
@@ -209,7 +233,7 @@ const ANY_DUE = "((pend_w = 1 AND (last_w IS NULL OR last_w <= ?2)) OR (pend_x >
 const LEFT = "?4 - (SELECT count(*) FROM subs WHERE claim = ?1)";
 export const CLAIM_X = `UPDATE subs SET claim = ?1 WHERE id IN (
     SELECT id FROM subs WHERE pend_x IS NOT NULL AND fails = 0 AND claim IS NULL AND ${X_DUE}
-    ORDER BY pend_x LIMIT ?4)
+    ORDER BY pend_x LIMIT max(0, ${LEFT}))
   ${RETURNS}`;
 export const CLAIM_W = `UPDATE subs SET claim = ?1 WHERE id IN (
     SELECT id FROM subs WHERE pend_w = 1 AND fails = 0 AND claim IS NULL AND (last_w IS NULL OR last_w <= ?2)
@@ -247,10 +271,15 @@ export const DROP_FAILING = "DELETE FROM subs WHERE id = ?1 AND (fails >= ?2 OR 
 export const DROP_REFUSED = "DELETE FROM subs WHERE id = ?1 AND (fails >= ?2 OR (last_w IS NULL AND last_x IS NULL))";
 // ?2 the claim
 export const RELEASE = "UPDATE subs SET claim = NULL WHERE id = ?1 AND claim = ?2";
-// ?2 the claim ?3 the epoch minute the row is free again: held back, unchanged otherwise (rules.js HOLD_MINUTES; RESET_STALE).
-// A negative claim is never a run's own (that is the run's epoch minute, > 0), so no claim query, no count of a run's claims
-// (CLAIM_W/CLAIM_F 'LEFT') and no SENT/RETRY/RELEASE ever matches it
+// ?2 the claim ?3 the epoch minute the row may be tried again: held back, unchanged otherwise (rules.js HOLD). A negative
+// claim is never a run's own (that is the run's epoch minute, > 0), so no claim of the queue, no count of a run's claims
+// ('LEFT') and no SENT/RETRY/RELEASE ever matches it — only CLAIM_P (a probe) and RELEASE_HELD
 export const HOLD = "UPDATE subs SET claim = -?3 WHERE id = ?1 AND claim = ?2";
+// ?1 a push origin that just answered a push 2xx (src/worker.js send, in the same results batch as that SENT and CLEAR_RS,
+// when the origin had a probe in this run or a refusal stretch): its held rows that received a push before are free at
+// once, and the next runs take them in queue order. A row that never received a push stays held and comes back as a probe
+// (so planted rows on a real push service cannot ride in on a real phone's 2xx). Walks the held rows (subs_claim, claim < 0).
+export const RELEASE_HELD = `UPDATE subs SET claim = NULL WHERE claim < 0 AND (last_w IS NOT NULL OR last_x IS NOT NULL) AND ${ORIGIN} = ?1`;
 // ?1 today as yyyymmdd: phones that took our pushes under this key refused it at a push service that took nothing else in the
 // run (worker.js send: `suspect`) — GET /health "refusing" for that day and the next, so the daily monitor (09:30 KST) sees
 // it from any run since the morning before. Within REFUSING_GRACE_DAYS nobody refused there was removed.
