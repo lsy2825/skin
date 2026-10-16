@@ -812,6 +812,10 @@ ok("요일·시간: 묶음 제목과 이름이 둘 다 맞음(제목 '평일' + 
    and clean.visit_when("토요일이벤트", "[일요일 특가] 리쥬란") == (64, "") and clean.visit_when("화수목 이벤트", "리쥬란 힐러 2cc") == (14, ""))
 ok("요일·시간: 두 페이지의 같은 가격은 둘 다 조건이 있을 때만 남고(태그처럼), 그때는 어느 쪽 요일·시간이든 됨",
    clean.visit_merge((14, "11:00-16:00"), (31, "10:00-15:00")) == (31, "10:00-16:00") and clean.visit_merge((14, "11:00-16:00"), (0, "")) == (0, ""))
+ok("... 평일 페이지 + 주말 페이지 = 매일 → 요일 0(시간도 00:00~24:00이면 ''), 그래서 일반가 규칙 2에서도 일반가. 월~토(63)는 조건부 그대로",
+   clean.visit_merge((31, ""), (96, "")) == (0, "") and clean.visit_merge((31, "00:00-14:00"), (31, "14:00-24:00")) == (31, "")
+   and clean.visit_hours("0시~24시") == "" and _G.plain("일반", "", *clean.visit_merge((31, ""), (96, "")))
+   and clean.visit_merge((31, ""), (32, "")) == (63, "") and not _G.plain("일반", "", *clean.visit_merge((31, ""), (32, ""))))
 _raw_w = [("이벤트", "화수목 이벤트", "리쥬란 힐러 2cc", 199000), ("이벤트", "평일한정이벤트 월~목 오전 11시~오후4시까지 *금요일, 주말, 공휴일 불가", "온다 리프팅 6만줄", 150000),
           ("이벤트", "토요일이벤트", "울쎄라피 프라임 300샷", 990000), ("이벤트", "화수목 이벤트", "슈링크 유니버스 300샷", 250000),
           ("리프팅", "슈링크", "슈링크 유니버스 300샷", 250000), ("스킨케어", "평일 해피아워 특가", "아쿠아필 1회", 30000),
@@ -868,7 +872,7 @@ if os.path.exists(vp):
 if len(D["cols"]) >= 18:
     _days, _hrs = D["cols"][16], [D["s"][i] for i in D["cols"][17]]
     ok(f"app/data.json days·hours: 요일 칸 {sum(1 for d in _days if d):,}줄 · 시간 칸 {sum(1 for h in _hrs if h):,}줄 모두 형식대로",
-       all(isinstance(d, int) and 0 <= d < 127 for d in _days) and all(h == "" or re.fullmatch(r"([01]\d|2[0-4]):[0-5]\d-([01]\d|2[0-4]):[0-5]\d", h) for h in _hrs))
+       all(isinstance(d, int) and 0 <= d < 127 for d in _days) and all(h == "" or (h != clean.ALL_HOURS and re.fullmatch(r"([01]\d|2[0-4]):[0-5]\d-([01]\d|2[0-4]):[0-5]\d", h)) for h in _hrs))
 else:
     print(f"INFO | app/data.json은 {len(D['cols'])}칸(요일·시간 칸 전) — 다음 공장 빌드에서 days·hours가 더해짐")
 cp = os.path.join(ROOT, "data2", "clean.csv")

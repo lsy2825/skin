@@ -37,13 +37,16 @@ for (const k of KEYS) {
   const ids = byK.get(k.id).filter((i) => !expired(ROWS[i]));
   if (!ids.length) continue;
   const mix = Classify.mixOf(ids.map((i) => S[ROWS[i][2]]));
-  // the middle of the group per session, plain prices first (the same basis the compare screen uses)
+  // the middle of the group per session, plain prices first (the same basis the compare screen uses: kind 일반, no tag, and
+  // since 2026-10-16 no weekday / hour limit — row fields 16 days, 17 hours; a file from before has neither, read as none)
   const per = (i) => ROWS[i][3] / Math.min(ROWS[i][8] || 1, 98);
-  const plain = ids.filter((i) => !ROWS[i][5] && !S[ROWS[i][6]]);
+  const plain = ids.filter((i) => !ROWS[i][5] && !S[ROWS[i][6]] && !ROWS[i][16] && !S[ROWS[i][17]]);
   const med = median((plain.length >= 3 ? plain : ids).map(per));
   for (const i of ids) {
     const r = ROWS[i];
-    const res = Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags: (S[r[6]] || "").split("·").filter(Boolean), keyLabel: k.label, mix, price: per(i), median: med,
+    const tags = (S[r[6]] || "").split("·").filter(Boolean);
+    if (!tags.length && (r[16] || S[r[17]])) tags.push("요일·시간");   // days / hours only: a conditional price too (E), as app.js classOf
+    const res = Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags, keyLabel: k.label, mix, price: per(i), median: med,
       addon: ADDON_COL ? r[Classify.ADDON_FIELD] === 1 : undefined });
     count[res.c] = (count[res.c] || 0) + 1;
     if (res.c === "R") push({ kind: "가격", cls: "R", key: k.id, label: k.label, brand_branch: bname(r[0]), name: S[r[2]], price: r[3], reason: res.why,
