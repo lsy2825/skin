@@ -32,11 +32,43 @@ test("visit conditions: weekday-daytime, Sunday, holidays", () => {
   assert.equal(P.condState("평일 낮", "x", { date: "2026-12-25", time: "" }), 1);          // holiday (Friday)
   assert.equal(P.condState("평일 낮", "[평일5시이전] x", { date: "2026-10-20", time: "16:30" }), 0);
   assert.equal(P.condState("평일 낮", "[평일5시이전] x", { date: "2026-10-20", time: "17:00" }), 1);
+  // the hour does not matter when the name says so (C1b 해피아워 rows); without such words an unknown hour stays "check"
+  assert.equal(P.condState("평일 낮·1인 1회", "[화수목 해피아워] 시간 상관 없이 화/수/목요일 방문 고객님 대상 · 블랙필 1회", { date: "2026-10-21", time: "11:00" }), 0);
+  assert.equal(P.condState("평일 낮", "시간무관 평일 이벤트", { date: "2026-10-21", time: "19:00" }), 0);
+  assert.equal(P.condState("평일 낮", "[화수목 해피아워] 블랙필 1회", { date: "2026-10-21", time: "11:00" }), 2);
+  assert.equal(P.condState("평일 낮", "[화수목 해피아워] 시간 상관 없이 블랙필", { date: "2026-10-24", time: "11:00" }), 1);   // Saturday
   assert.equal(P.condState("평일 낮", "[프라임 타임] x", { date: "2026-10-20", time: "18:00" }), 2);  // window unknown
   assert.equal(P.condState("일요일", "x", sun), 0);
   assert.equal(P.condState("일요일", "x", tue), 1);
   assert.equal(P.condState("", "x", tue), 0);
   assert.equal(P.condState("평일 낮", "x", null), 0);
+});
+
+// C1b (2026-10-15): 해피아워·화수목·'평일 한정'·'12시~17시' prices carry the same '평일 낮' tag. The name the app gets often
+// has no day or hour (they are in the event title), so: weekend/holiday → not valid, a weekday → valid, a weekday with a
+// chosen time → 'time unclear' unless the name has a '…시 이전' cutoff.
+test("visit conditions: happy-hour, 화수목 and '평일 한정' rows under the '평일 낮' tag", () => {
+  const sat = { date: "2026-10-24", time: "" }, mon = { date: "2026-10-19", time: "" }, wed = { date: "2026-10-21", time: "" };
+  for (const [tags, name] of [["평일 낮", "해피아워_스킨케어 · LDM 1회"], ["평일 낮·1인 1회", "[화수목 해피아워] 시간 상관 없이 화/수/목요일 방문 고객님 대상 (1인 1회, keep 불가) · 블랙필 1회"],
+    ["평일 낮", "(대표X,평일한정이벤트)얼굴위쪽보톡스(국산)"], ["평일 낮", "색소 올인원 · 색소 올인원 1회 (12시-3시)"], ["평일 낮", "인모드 FX 얼굴전체 3회"]]) {
+    assert.equal(P.condState(tags, name, sat), 1, name);
+    assert.equal(P.condState(tags, name, { date: "2026-12-25", time: "" }), 1, name);       // public holiday on a Friday
+    assert.equal(P.condState(tags, name, wed), 0, name);
+    // a picked hour: unknown → 2 (check with the clinic), except a name that says the hour does not matter
+    assert.equal(P.condState(tags, name, { ...wed, time: "11:00" }), /시간 상관 없이/.test(name) ? 0 : 2, name);
+  }
+  // the day subset is not read: a 화수목 price still counts on a Monday (the exact days are left to the clinic, see the sheet text)
+  assert.equal(P.condState("평일 낮", "인모드 FX 얼굴전체 3회", mon), 0);
+});
+
+test("condition badge words: '평일 낮' reads '평일·시간 한정', other tags as they are", () => {
+  assert.equal(P.condLabel("평일 낮"), "평일·시간 한정");
+  assert.ok(P.condLabel("평일 낮").replace(/[^가-힣]/g, "").length <= 7);
+  for (const t of ["일요일", "타임세일", "첫 방문", "1인 1회", "새 조건"]) assert.equal(P.condLabel(t), t);
+  assert.equal(P.condLabel("toString"), "toString");
+  // the tag id itself is unchanged: condState still keys on '평일 낮', not on the badge words
+  assert.equal(P.condState(P.condLabel("평일 낮"), "x", { date: "2026-10-18", time: "" }), 0);
+  assert.equal(P.condState("평일 낮", "x", { date: "2026-10-18", time: "" }), 1);
 });
 
 const row = (i, p, special = false) => ({ i, p, special });
