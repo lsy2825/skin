@@ -25,7 +25,11 @@ jobs:
       matrix:
         include:
           - task: "raw:all:0"
-            urls: "https://yeonsinnae.cellinclinic.com/robots.txt,https://dasan.cellinclinic.com/robots.txt,https://hongdae.cellinclinic.com/robots.txt"
+            urls: "https://yeonsinnae.cellinclinic.com/sitemap.xml,https://yeonsinnae.cellinclinic.com/ko/events"
+          - task: "raw:all:1"
+            urls: "https://yeonsinnae.cellinclinic.com/ko/events/52,https://yeonsinnae.cellinclinic.com/ko/procedures/thermage-flx"
+          - task: "raw:all:2"
+            urls: "https://yeonsinnae.cellinclinic.com/ko/procedures/category/botox,https://yeonsinnae.cellinclinic.com/ko/non-covered-items"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
