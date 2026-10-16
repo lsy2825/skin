@@ -7,7 +7,10 @@ come from the branch list printed on the same page — NAMELESS below). Per bran
                                   another branch's page (…-incheon) answers 404 and is skipped
   each event page              -> input.price-check: its @change handler carries the item as JSON
                                   {name, event_name, category, price, original_price, is_inquiry} — read as is.
-                                  is_inquiry = 1 ('가격 문의') is not a price.
+                                  is_inquiry = 1 ('가격 문의') is not a price. Headings between the item groups
+                                  ('여성 제모', '남성) BEST', '젠틀맥스 프로플러스 제모') go into the group after
+                                  the event name (items(): the monthly 제모 pages list one name in the women's and
+                                  the men's menu at two prices)
 Events for 카카오톡 friends say so in their name ('해피아워 이벤트(카톡친구대상)'); the name is kept as the group.
 VAT wording: the event cards say 'VAT 별도' (2026-10-15 check) -> data2/vat_policy.json 닥터에버스 (branches not confirmed stay unknown).
 robots.txt (2026-10-14): Disallow /wp-admin/ /wp-json/ /backpg/ /shop/ — event pages are allowed. The words 'captcha' and
@@ -23,6 +26,8 @@ MAIN = "https://drevers.com/"
 NAMELESS = {"yeonsinnae": "연신내점", "dongtan": "동탄점", "siheung-baegot": "시흥배곧점"}
 TOGGLE = re.compile(r"toggle\((\{.*\})\)\s*$", re.S)
 SEX = re.compile(r"여성|남성|여자|남자|女|男")
+NOTE_HEAD = re.compile(r"^[\[(]?\s*[※*]")
+DESC = re.compile(r"\s:\s*|:\s+")   # '아리온 : 자체 …', '레이저제모 :자체 …' — not a time ('10:00')
 
 
 def branch_sites(html):
@@ -46,27 +51,46 @@ def event_paths(html, site):
     return out
 
 
+def menu_heading(t):
+    """a heading between the item groups of a 제모 section → (kind, title): 'sex' for a women's / men's menu ('여성) BEST',
+    '여성 제모(5회 기준)' — the title before a ' : ' note: '여성 제모 (5회 기준) : 얼굴 제모에는 '클라리티' 장비 사용' names a device for
+    the face items only), 'title' for any other menu title ('젠틀맥스 프로플러스 제모', '커플'), 'new' for a device written as
+    'name : description' ('아리온 : 자체 냉각시스템으로 …' — a new menu, like the description line), 'note' for '※…' / '*…'"""
+    if NOTE_HEAD.match(t):
+        return "note", ""
+    title, desc = (DESC.split(t, 1) + [""])[:2]
+    title, desc = title.strip(), desc.strip()
+    if SEX.search(title):
+        return "sex", title
+    return ("new", "") if desc else ("title", title)
+
+
 def items(html, branch, url, ts):
-    rows, heads = [], []
-    # The page as read (2026-10-16 raw probe, 강남·광주상무 /event-month-laser-removal/): div.category-section (header = the JSON
-    # 'category', '레이저 제모') > div.item-group, one per procedure ('겨드랑이' › '1회' / '5회'). Between them stand item groups with
-    # no price that only carry a heading, span.group-title.hp-mk-box: '여성) BEST', '여성 제모(5회 기준)', '남성 제모', and a device
-    # '젠틀맥스 프로플러스 제모'. Every item after a heading belongs to it — the women's and the men's menus list '겨드랑이 5회' at
-    # 13,000 and 65,000 under one category, and the JSON says nothing of the sex. The headings go into the group after the event
-    # name ('… 혜택 · 여성 제모(5회 기준)'), where build2/clean.py reads the sex. A heading naming a sex takes the place of the last
-    # one and keeps the device heading before it; any other heading starts a new menu. An item group holding only a description
-    # line (':… '아리온' 장비 사용') starts a new menu too: 광주상무 lists the 젠틀맥스 menus, then that line, then the same four
-    # menus again for the other device.
+    rows, heads, menus = [], [], False
+    # The page as read (2026-10-16 raw probe, 강남·광주상무 /event-month-laser-removal/; collector probe on all 34 branches):
+    # div.category-section (header = the JSON 'category', '레이저 제모') > div.item-group, one per procedure ('겨드랑이' › '1회' /
+    # '5회'). Between them stand item groups with no price that only carry a heading, span.group-title.hp-mk-box: '여성) BEST',
+    # '여성 제모(5회 기준)', '남성 제모', '★젠틀맥스 프로플러스 남성제모★', a device '젠틀맥스 프로플러스 제모'. Every item after a
+    # heading belongs to it — the women's and the men's menus list '겨드랑이 5회' at 13,000 and 65,000 under one category, and the
+    # JSON says nothing of the sex. In a section whose headings name a sex, the headings go into the group after the event name
+    # ('… 혜택 · 여성 제모(5회 기준)'), where build2/clean.py reads the sex: a sex heading takes the place of the last one and keeps
+    # the title before it, another title starts a new menu. An item group holding only a description line (':… '아리온' 장비
+    # 사용') or a heading 'device : description' starts a new menu with no title: 광주상무 lists the 젠틀맥스 menus, then that line,
+    # then the same four menus again for the other device. Other sections' headings are product notes ('올리지오 : RF고주파 …',
+    # '※항목별 1회씩 적용') and stay out, as before.
     for el in BeautifulSoup(html, "html.parser").select("div.category-section, div.item-group, input.price-check"):
         if el.name == "div":
             if "category-section" in el.get("class", []):
                 heads = []
-            elif not el.select_one("input.price-check"):
+                menus = any(menu_heading(clean(h.get_text(" ")))[0] == "sex" for h in el.select(".group-title.hp-mk-box"))
+            elif menus and not el.select_one("input.price-check"):
                 head = el.select_one(".group-title.hp-mk-box")
-                if head and clean(head.get_text(" ")):
-                    t = clean(head.get_text(" "))
-                    heads = [h for h in heads if not SEX.search(h)] + [t] if SEX.search(t) else [t]
-                elif not el.select_one(".group-title") and el.select_one(".desc-line"):
+                kind, t = menu_heading(clean(head.get_text(" "))) if head else ("", "")
+                if kind == "sex":
+                    heads = [h for h in heads if not SEX.search(h)] + [t]
+                elif kind == "title":
+                    heads = [t]
+                elif kind == "new" or (not head and not el.select_one(".group-title") and el.select_one(".desc-line")):
                     heads = []
             continue
         inp = el
