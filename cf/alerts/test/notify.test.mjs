@@ -483,7 +483,8 @@ test("CLI: a data file that is not JSON is reported without echoing its content 
     writeFileSync(file, "ALERTS_SECRET=hunter2-super-secret\nPATH=/usr/bin\n");
     const r = spawnSync(process.execPath, [cli, file], { env: { PATH: process.env.PATH, ALERTS_URL: "https://alerts.example.workers.dev", ALERTS_SECRET: "hunter2-super-secret" }, encoding: "utf8" });
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\)/m);
+    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\) — the next daily run \(06:00 KST\) computes again; a push, Run workflow or Re-run only sends the key set$/m);
+    assert.equal(/next run catches up|next run tries again/.test(r.stdout), false, "8th review: no run but the daily schedule's computes");
     assert.equal((r.stdout + r.stderr).includes("hunter2"), false, "neither the file's content nor the secret is printed");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

@@ -439,7 +439,7 @@ jobs:
         run: |
           set -u
           export LC_ALL=C            # byte ranges in the patterns below
-          skip() { echo "::warning title=price alerts::$1 — nothing sent (the next run tries again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          skip() { echo "::warning title=price alerts::$1 — nothing sent (the next daily run (06:00 KST) computes again; a push, Run workflow or Re-run only sends the key set)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
           # (1) regular files (a symlink could point at a file of this machine), and the checksums of data-meta.json
           for f in app/data.json app/data-meta.json; do
             mode=$(git -C data ls-tree HEAD -- "$f" | cut -d' ' -f1)

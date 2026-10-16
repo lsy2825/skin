@@ -118,6 +118,14 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // the news it makes possible later would be lost (7th review). So digesting a collection twice = once; only run, e, s, u
 // (and g through REBASE) are this run's. A good move a later build of that same collection shows is taken by the first
 // digest after the finish (SAME) — a day later, never lost.
+// ANOTHER new collection while the last one's numbers were never finished (PREV: pu names an earlier collection and p = 1 —
+// its finish failed, and no finish ran before this collection came): the digest goes on as if that finish had run (8th
+// review: the next collection used to be compared with the old baseline, so a confirmed rise was held again and the target
+// and newmatch news after it was lost). Those numbers become q (qm/qn/qmed) and are what this collection is compared with,
+// exactly as a finish would have promoted them; the baseline m/n/med stays the numbers the phones were last marked
+// against. The next finish marks both steps — baseline → q and q → this collection (MARK_WEEKLY) — and promotes. Left: a
+// third collection before any finish keeps only the latest unfinished numbers in q (baseline → the last unfinished
+// collection → this one: a crossing in the middle collection alone is not news).
 // ?3 PAIR_CAP: a NEW pair is added only while snap holds fewer than PAIR_CAP rows (counted once per statement, so one chunk
 // of ≤ DIGEST_MAX 500 can pass it: snap ≤ PAIR_CAP + 500). The rows a finish prunes are free again only the next day, so
 // a day can never both add a whole list and delete one: per factory run the snap side writes ≤ 2 × (PAIR_CAP + 500) rows
@@ -126,17 +134,26 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 const SAME = "snap.bu = excluded.bu";
 const REBASE = "excluded.g > snap.g";
 const REPEAT = `(NOT ${SAME} AND snap.pu = excluded.bu)`;
-const BAD_M = "((excluded.m IS NULL AND snap.m IS NOT NULL) OR (excluded.m IS NOT NULL AND snap.m IS NOT NULL AND excluded.m > snap.m))";
-const BAD_N = "(excluded.n < snap.n)";
-const BAD_MED = `(${BAD_N} OR (excluded.med IS NULL AND snap.med IS NOT NULL) OR (excluded.med IS NOT NULL AND snap.med IS NOT NULL AND excluded.med > snap.med))`;
+// an earlier new collection's numbers no finish consumed (only read on the NEW path: not SAME, not REPEAT, so pu ≠ this one)
+const PREV = "(snap.pu IS NOT NULL AND snap.p = 1)";
+// what a NEW collection is compared with: those numbers when there are some (as their finish would have promoted them),
+// else the baseline
+const B_M = `(CASE WHEN ${PREV} THEN snap.pm ELSE snap.m END)`;
+const B_N = `(CASE WHEN ${PREV} THEN snap.pn ELSE snap.n END)`;
+const B_MED = `(CASE WHEN ${PREV} THEN snap.pmed ELSE snap.med END)`;
+const BAD_M = `((excluded.m IS NULL AND ${B_M} IS NOT NULL) OR (excluded.m IS NOT NULL AND ${B_M} IS NOT NULL AND excluded.m > ${B_M}))`;
+const BAD_N = `(excluded.n < ${B_N})`;
+const BAD_MED = `(${BAD_N} OR (excluded.med IS NULL AND ${B_MED} IS NOT NULL) OR (excluded.med IS NOT NULL AND ${B_MED} IS NOT NULL AND excluded.med > ${B_MED}))`;
 // a held move is taken when the collection before this one (another date) held the same number
 const CONFIRM = "(snap.cu IS NOT NULL AND snap.cu <> excluded.bu)";
 const TAKE_M = `(NOT ${BAD_M} OR (${CONFIRM} AND (snap.cb & 1) <> 0))`;
 const TAKE_N = `(NOT ${BAD_N} OR (${CONFIRM} AND (snap.cb & 2) <> 0))`;
 const TAKE_MED = `(NOT ${BAD_MED} OR (${CONFIRM} AND (snap.cb & 4) <> 0))`;
-const NEW_M = `CASE WHEN ${SAME} THEN (CASE WHEN snap.m IS NULL THEN excluded.m WHEN excluded.m IS NULL THEN snap.m ELSE min(snap.m, excluded.m) END) WHEN ${TAKE_M} THEN excluded.m ELSE snap.m END`;
-const NEW_N = `CASE WHEN ${SAME} THEN max(snap.n, excluded.n) WHEN ${TAKE_N} THEN excluded.n ELSE snap.n END`;
-const NEW_MED = `CASE WHEN ${SAME} THEN (CASE WHEN excluded.n <= snap.n THEN snap.med ELSE excluded.med END) WHEN ${TAKE_MED} THEN excluded.med ELSE snap.med END`;
+const NEW_M = `CASE WHEN ${SAME} THEN (CASE WHEN snap.m IS NULL THEN excluded.m WHEN excluded.m IS NULL THEN snap.m ELSE min(snap.m, excluded.m) END) WHEN ${TAKE_M} THEN excluded.m ELSE ${B_M} END`;
+const NEW_N = `CASE WHEN ${SAME} THEN max(snap.n, excluded.n) WHEN ${TAKE_N} THEN excluded.n ELSE ${B_N} END`;
+const NEW_MED = `CASE WHEN ${SAME} THEN (CASE WHEN excluded.n <= snap.n THEN snap.med ELSE excluded.med END) WHEN ${TAKE_MED} THEN excluded.med ELSE ${B_MED} END`;
+// q: PREV's numbers on the NEW path; kept by a REPEAT; gone with SAME (the baseline's own collection again) and REBASE
+const NEW_Q = (c) => `CASE WHEN ${REBASE} OR ${SAME} THEN NULL WHEN ${REPEAT} THEN snap.q${c} WHEN ${PREV} THEN snap.p${c} ELSE NULL END`;
 const NEW_CB = `(CASE WHEN ${BAD_M} AND NOT ${TAKE_M} THEN 1 ELSE 0 END) + (CASE WHEN ${BAD_N} AND NOT ${TAKE_N} THEN 2 ELSE 0 END) + (CASE WHEN ${BAD_MED} AND NOT ${TAKE_MED} THEN 4 ELSE 0 END)`;
 export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, s, u)
   SELECT j.value->>'$.k', j.value->>'$.r', j.value->>'$.m', j.value->>'$.n', j.value->>'$.med', substr(?1, 1, 10),
@@ -149,7 +166,8 @@ export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, 
     n = CASE WHEN ${REBASE} THEN excluded.n ELSE snap.n END,
     med = CASE WHEN ${REBASE} THEN excluded.med ELSE snap.med END,
     bu = CASE WHEN ${REBASE} THEN excluded.bu ELSE snap.bu END,
-    p = CASE WHEN ${REBASE} THEN 0 WHEN ${REPEAT} THEN snap.p ELSE ((${NEW_M}) IS NOT snap.m OR (${NEW_N}) IS NOT snap.n OR (${NEW_MED}) IS NOT snap.med) END,
+    p = CASE WHEN ${REBASE} THEN 0 WHEN ${REPEAT} THEN snap.p ELSE ((${NEW_M}) IS NOT snap.m OR (${NEW_N}) IS NOT snap.n OR (${NEW_MED}) IS NOT snap.med OR (NOT ${SAME} AND ${PREV})) END,
+    qm = ${NEW_Q("m")}, qn = ${NEW_Q("n")}, qmed = ${NEW_Q("med")},
     pm = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pm ELSE ${NEW_M} END,
     pn = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pn ELSE ${NEW_N} END,
     pmed = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pmed ELSE ${NEW_MED} END,
@@ -157,26 +175,30 @@ export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, 
     cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} OR ${REPEAT} THEN snap.cb ELSE ${NEW_CB} END,
     cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} OR ${REPEAT} THEN snap.cu ELSE excluded.bu END`;
 
-// finish (one batch, in this order). Weekly news = a pending pair against its baseline:
-//   watch    median moved ≥ 5% (|pmed − med| × 20 ≥ med, exact in integers) or a new lowest price — push.js watchMoved()
-//   newmatch more branches (pn > n)
-//   target   the lowest price crossed max: now ≤ max, baseline > max or no price (already below max shows on screen only)
+// finish (one batch, in this order). Weekly news = a pending pair against its baseline (from → to):
+//   watch    median moved ≥ 5% (|to.med − from.med| × 20 ≥ from.med, exact in integers) or a new lowest price — push.js
+//            watchMoved()
+//   newmatch more branches (to.n > from.n)
+//   target   the lowest price crossed max: now ≤ max, before > max or no price (already below max shows on screen only)
+// A pair with q (an earlier collection no finish consumed, DIGEST PREV) has two steps, baseline → q and q → pending: news
+// in either is news, as if each had had its finish. The same joined row — no extra row read.
+const NEWS = (f, t) => `((j.value->>'$.kind' = 'watch' AND d.${f}med > 0 AND d.${t}med IS NOT NULL
+            AND (abs(d.${t}med - d.${f}med) * 20 >= d.${f}med OR (d.${f}m IS NOT NULL AND d.${t}m IS NOT NULL AND d.${t}m < d.${f}m)))
+       OR (j.value->>'$.kind' = 'newmatch' AND d.${t}n > d.${f}n)
+       OR (j.value->>'$.kind' = 'target' AND d.${t}m IS NOT NULL AND d.${t}m <= j.value->>'$.max'
+            AND (d.${f}m IS NULL OR d.${f}m > j.value->>'$.max')))`;
 export const MARK_WEEKLY = `UPDATE subs SET pend_w = 1 WHERE pend_w = 0 AND EXISTS (
     SELECT 1 FROM json_each(subs.rules) j JOIN snap d ON ${RULE_PAIR} AND d.p = 1
-    WHERE (j.value->>'$.kind' = 'watch' AND d.med > 0 AND d.pmed IS NOT NULL
-            AND (abs(d.pmed - d.med) * 20 >= d.med OR (d.m IS NOT NULL AND d.pm IS NOT NULL AND d.pm < d.m)))
-       OR (j.value->>'$.kind' = 'newmatch' AND d.pn > d.n)
-       OR (j.value->>'$.kind' = 'target' AND d.pm IS NOT NULL AND d.pm <= j.value->>'$.max'
-            AND (d.m IS NULL OR d.m > j.value->>'$.max')))`;
+    WHERE CASE WHEN d.qn IS NULL THEN ${NEWS("", "p")} ELSE ${NEWS("", "q")} OR ${NEWS("q", "p")} END)`;
 // Announced expiring entries (subs.exp_sent; pend_xl holds the ones not announced yet) are 'end date|key|region' strings in
 // a JSON array sorted by value — so by end date first. A KEY_RE key, a region and a date hold no quote, so '"<entry>"' finds
 // exactly that element with instr(): membership costs no D1 row reads (json_each would read every element of every phone's
 // list for every rule — 7th review: up to 6.5M reads in one finish).
 const X_T = "d.u || '|' || d.k || '|' || d.r";
 // the position in exp_sent of its first entry still running on ?1 (today): the first '"<date>|' among the days ?1 … ?1 +
-// END_DAYS (1e9 when there is none). No entry can end later than that: the Worker's digest refuses an end date u past its
-// own day + END_DAYS (src/worker.js digest), and an entry is announced only from a run digested on or before today. In a
-// list sorted by end date, everything before that position has ended. Scalar string functions only — no rows read.
+// END_DAYS (= 3; 1e9 when there is none). No entry can end later than that: the Worker's digest refuses an end date u past
+// its own day + END_DAYS (src/worker.js digest), and an entry is announced only from a run digested on or before today. In
+// a list sorted by end date, everything before that position has ended. Scalar string functions only — no rows read.
 const FIRST_LIVE = `min(${Array.from({ length: END_DAYS + 1 }, (_, i) => `coalesce(nullif(instr(exp_sent, '"' || date(?1, '+${i} days') || '|'), 0), 1000000000)`).join(", ")})`;
 // ?1 today: announced entries whose end date passed are forgotten (exp_sent stays small; docs/legal/PRIVACY_POLICY_DRAFT.md
 // '종료일이 지나면 지움'). Only a row whose first entry has ended is rewritten — the text from its first running entry on, or
@@ -206,7 +228,8 @@ export const MARK_EXPIRING = `UPDATE subs SET pend_x = x.u, pend_xl = x.l FROM (
   WHERE subs.id = x.id AND (subs.pend_x IS NOT x.u OR subs.pend_xl IS NOT x.l)
   RETURNING pend_x IS NOT NULL AS marked`;
 // the phones are marked: the pending numbers become the baseline (with their collection date)
-export const PROMOTE = "UPDATE snap SET m = pm, n = pn, med = pmed, bu = coalesce(pu, bu), p = 0, pm = NULL, pn = NULL, pmed = NULL, pu = NULL WHERE p = 1";
+// (q goes with them: a row with q always has p = 1, DIGEST)
+export const PROMOTE = "UPDATE snap SET m = pm, n = pn, med = pmed, bu = coalesce(pu, bu), p = 0, pm = NULL, pn = NULL, pmed = NULL, pu = NULL, qm = NULL, qn = NULL, qmed = NULL WHERE p = 1";
 // unchanged numbers from a new collection: the baseline now belongs to that collection
 export const ROLL_BU = "UPDATE snap SET bu = pu, pu = NULL WHERE pu IS NOT NULL";
 // ?1 today as yyyymmdd: the last finish, shown by GET /health ("finished") so a monitor sees the factory → Worker link stop.
@@ -229,7 +252,8 @@ export const PRUNE_STAT = "DELETE FROM stat WHERE k LIKE 'new:%' AND k < 'new:' 
 
 // send run, first batch. ?1 now (epoch minutes). claim > 0 = the epoch minute of the send run holding the row: older than 15
 // minutes = a run that died — cleared. (claim < 0 = a row HELD BACK, rules.js HOLD: never cleared by time — CLAIM_P tries a
-// few a run, RELEASE_HELD frees them at that push origin's next 2xx.) One range of the subs_claim index.
+// few a run, RELEASE_HELD frees a few a run after that push origin answers 2xx; both through the subs_held index.) One range
+// of the subs_claim index (claim > 0 rows only).
 export const RESET_STALE = "UPDATE subs SET claim = NULL WHERE claim > 0 AND claim < ?1 - 15";
 // ?1 today ?2 today as yyyymmdd: pending end dates before today are dropped (scans the subs_x partial index: rows with a
 // pending expiring only — up to MAX_SUBS rows read). Only until the day's finish ran: it rewrites or clears every pend_x
@@ -258,18 +282,36 @@ export const VAPID_CACHE = "SELECT aud, jwt, exp FROM vapid";
 export const ORIGIN_STATS = `SELECT k, n FROM stat WHERE (k >= 'ok:' AND k < 'ok;')
   OR (((k >= 'rl:' AND k < 'rl;') OR (k >= 'rs:' AND k < 'rs;')) AND substr(k, 4, 13) = ?1)`;
 // a push origin from an endpoint ('https://host/…' → 'https://host', the same as new URL(endpoint).origin: endpoints are
-// stored as URL.href, so there is always a '/' after the host)
+// stored as URL.href, so there is always a '/' after the host). The subs_held index (migration) is on this same expression,
+// then NEVER (a row that never received a push), then claim — so every statement on held rows below names an origin and a
+// NEVER value and reads one index range that stops after its share (8th review: reading every held row cost ~4 rows read per
+// held row in each of 77 runs, and nothing bounds the held rows below MAX_SUBS).
 const ORIGIN = "substr(endpoint, 1, 7 + instr(substr(endpoint, 9), '/'))";
-// ?1 now (epoch minutes) ?2 PROBES ?3 how many in all (min(PROBE_SLOTS, limit)). Held rows (claim < 0, rules.js HOLD) whose
-// minute has come (−claim ≤ now), at most ?2 per push origin, the longest-waiting first: tried again in this run as probes
-// (still failing → held again, at the back; a 2xx frees that origin's held rows, RELEASE_HELD). Claimed BEFORE the queue,
-// so a probe is never crowded out on a busy day, and the claims below fill only what is left of the limit. Reads the held
-// rows (one range of subs_claim) and numbers them per origin.
+const NEVER = "(last_w IS NULL AND last_x IS NULL)";
+// ?1 now (epoch minutes) ?2 PROBES ?3 how many in all (min(PROBE_SLOTS, limit)) ?4 PROBE_ORIGINS. Held rows (claim < 0,
+// rules.js HOLD) whose minute has come (−claim ≤ now), at most ?2 per push origin, the longest-waiting first: tried again in
+// this run as probes (still failing → held again, at the back; a 2xx frees that origin's held rows a few a run,
+// RELEASE_HELD). Claimed BEFORE the queue, so a probe is never crowded out on a busy day, and the claims below fill only what
+// is left of the limit. How it reads (EXPLAIN QUERY PLAN checked in the tests, rows read in test/d1_reads.mjs): o = the push
+// origins that hold rows, one index seek each (a skip over the index: the next origin after the last one), at most ?4 of
+// them; for each origin the ?2 longest-waiting due rows that received a push before and the ?2 that never did (two index
+// ranges that stop after ?2 entries); of those, ?2 per origin, the longest-waiting first. Rows read ≈ ?4 × (1 + 2 × (?2 + 1))
+// + the claimed rows, however many rows are held. Left: more than ?4 origins holding rows at once (the push services
+// have far fewer hosts, src/push.js PUSH_HOSTS) — the origins after the ?4th by name get no probe until fewer hold rows; a
+// 2xx there (RELEASE_HELD) still frees theirs.
 export const CLAIM_P = `UPDATE subs SET claim = ?1 WHERE id IN (
-    SELECT id FROM (
-      SELECT id, claim, row_number() OVER (PARTITION BY ${ORIGIN} ORDER BY claim DESC, id) AS i
-      FROM subs WHERE claim < 0 AND claim >= -?1)
-    WHERE i <= ?2 ORDER BY i, claim DESC, id LIMIT ?3)
+    WITH RECURSIVE o(x, n) AS (
+      SELECT (SELECT ${ORIGIN} FROM subs WHERE claim < 0 ORDER BY 1 LIMIT 1), 1
+      UNION ALL
+      SELECT (SELECT ${ORIGIN} FROM subs WHERE claim < 0 AND ${ORIGIN} > o.x ORDER BY 1 LIMIT 1), n + 1 FROM o WHERE o.x IS NOT NULL AND n < ?4),
+    c AS (
+      SELECT h.id AS id, h.claim AS cl, o.x AS x FROM o, subs h
+        WHERE h.rowid IN (SELECT rowid FROM subs WHERE ${ORIGIN} = o.x AND ${NEVER} = 0 AND claim < 0 AND claim >= -?1 ORDER BY claim DESC LIMIT ?2)
+      UNION ALL
+      SELECT h.id, h.claim, o.x FROM o, subs h
+        WHERE h.rowid IN (SELECT rowid FROM subs WHERE ${ORIGIN} = o.x AND ${NEVER} = 1 AND claim < 0 AND claim >= -?1 ORDER BY claim DESC LIMIT ?2))
+    SELECT id FROM (SELECT id, cl, row_number() OVER (PARTITION BY x ORDER BY cl DESC, id) AS i FROM c)
+    WHERE i <= ?2 ORDER BY i, cl DESC, id LIMIT ?3)
   RETURNING id, endpoint, pend_w, last_w, pend_x, pend_xl, last_x, fails`;
 // ?1 now (epoch minutes) ?2 today − 7 ?3 today ?4 limit ?5 FAIL_SLOTS. Together the three claims pick exactly the rows
 // rules.js dueKinds() finds due (a test checks), in three passes, so a deadline is never queued behind weekly news and a
@@ -288,7 +330,8 @@ export const CLAIM_P = `UPDATE subs SET claim = ?1 WHERE id IN (
 const RETURNS = "RETURNING id, endpoint, pend_w, last_w, pend_x, pend_xl, last_x, fails";
 const X_DUE = "(pend_x >= ?3 AND (coalesce(last_x, '') < ?3 OR (pend_w = 1 AND (last_w IS NULL OR last_w <= ?2))))";
 const ANY_DUE = "((pend_w = 1 AND (last_w IS NULL OR last_w <= ?2)) OR (pend_x >= ?3 AND coalesce(last_x, '') < ?3))";
-const LEFT = "?4 - (SELECT count(*) FROM subs WHERE claim = ?1)";
+// this run's claims so far (claim > 0 names the subs_claim index's own condition, so the count is one range of it)
+const LEFT = "?4 - (SELECT count(*) FROM subs WHERE claim > 0 AND claim = ?1)";
 export const CLAIM_X = `UPDATE subs SET claim = ?1 WHERE id IN (
     SELECT id FROM subs WHERE pend_x IS NOT NULL AND fails = 0 AND claim IS NULL AND ${X_DUE}
     ORDER BY pend_x LIMIT max(0, ${LEFT}))
@@ -336,11 +379,20 @@ export const RELEASE = "UPDATE subs SET claim = NULL WHERE id = ?1 AND claim = ?
 // claim is never a run's own (that is the run's epoch minute, > 0), so no claim of the queue, no count of a run's claims
 // ('LEFT') and no SENT/RETRY/RELEASE ever matches it — only CLAIM_P (a probe) and RELEASE_HELD
 export const HOLD = "UPDATE subs SET claim = -?3 WHERE id = ?1 AND claim = ?2";
-// ?1 a push origin that just answered a push 2xx (src/worker.js send, in the same results batch as that SENT and CLEAR_RS,
-// when the origin had a probe in this run or a refusal stretch): its held rows that received a push before are free at
-// once, and the next runs take them in queue order. A row that never received a push stays held and comes back as a probe
-// (so planted rows on a real push service cannot ride in on a real phone's 2xx). Walks the held rows (subs_claim, claim < 0).
-export const RELEASE_HELD = `UPDATE subs SET claim = NULL WHERE claim < 0 AND (last_w IS NOT NULL OR last_x IS NOT NULL) AND ${ORIGIN} = ?1`;
+// ?1 JSON array of the push origins that answered a push 2xx in this run and did not answer 429, in the order their first
+// 2xx came (src/worker.js send, in the run's closing batch) ?2 how many at most (the run's SEND_LIMIT). Their held rows that
+// received a push before are free again — per origin the longest-waiting first, origin after origin, at most ?2 in all per
+// run (8th review: freeing every held row of an origin at once could write up to MAX_SUBS × 2 rows on the day an outage
+// ends, on top of that day's pushes; ?2 a run is what the queue sends anyway). The rest follow in the next runs: the freed
+// rows go out in queue order, and each run whose pushes get through there frees the next ?2. A row that never received a
+// push stays held and comes back as a probe (so planted rows on a real push service cannot ride in on a real phone's 2xx).
+// Reads per origin one index range of subs_held (NEVER = 0) that stops after ?2 entries, and stops at ?2 rows in all (no
+// sort across origins: with one, every origin's whole range was read and sorted — 6,600 rows for 40 origins on workerd);
+// measured ≈ 7 rows read per freed row, ≈ 280 for ?2 = 40, however many rows are held and however many origins.
+export const RELEASE_HELD = `UPDATE subs SET claim = NULL WHERE rowid IN (
+    SELECT h.rowid FROM json_each(?1) o, subs h
+      WHERE h.rowid IN (SELECT rowid FROM subs WHERE ${ORIGIN} = o.value AND ${NEVER} = 0 AND claim < 0 ORDER BY claim DESC LIMIT ?2)
+    LIMIT ?2)`;
 // ?1 today as yyyymmdd: phones that took our pushes under this key refused it at a push service that took nothing else in the
 // run (worker.js send: `suspect`) — GET /health "refusing" for that day and the next, so the daily monitor (09:30 KST) sees
 // it from any run since the morning before. Within REFUSING_GRACE_DAYS nobody refused there was removed.
