@@ -335,3 +335,15 @@ test("package match with per-part comparison keys (from xkeys)", () => {
   assert.deepEqual(m.matched.map((x) => x.state), ["spec", "spec"]);   // toxin, but not the same procedure
   assert.equal(m.full, false);
 });
+
+test("weekday holidays: weekend-only prices are left out, the screen says clinics differ (user decision 2026-10-16)", () => {
+  assert.equal(P.weekdayHoliday("2026-12-25"), "성탄절");          // Friday
+  assert.equal(P.weekdayHoliday("2026-12-24"), "");               // not a holiday
+  assert.equal(P.weekdayHoliday("2027-02-06"), "");               // 설날 on a Saturday: a holiday, but not a weekday one
+  assert.equal(P.weekdayHoliday(null), "");
+  assert.equal(P.weekdayHoliday("2026-12-25", { "2026-12-25": "x" }), "x");
+  for (const [d, want] of [[32, true], [64, true], [96, true], [31, false], [48, false], [0, false], [127, false]]) assert.equal(P.weekendOnly(d), want, String(d));
+  // the filter itself is condState's '그 요일만' rule: a weekend-only price is out on a weekday holiday, a 금·토 price is in
+  assert.equal(P.condState("", "주말 이벤트", { date: "2026-12-25", time: "" }, { days: 96 }), 1);
+  assert.equal(P.condState("", "금토 이벤트", { date: "2026-12-25", time: "" }, { days: 48 }), 0);
+});

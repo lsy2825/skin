@@ -433,7 +433,8 @@
     const out = [];
     if (addonOf(r)) out.push(h("span", { class: "k k4", title: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 범위·중간값 계산에서 빼요" }, "추가 옵션"));
     if (r[15] === 1) out.push(h("span", { class: "k kx" }, "기간 끝남"));
-    if (r[17] === 1) out.push(h("span", { class: "k kx" }, "방문일엔 안 됨"));
+    if (r[17] === 1) out.push(h("span", { class: "k kx", title: st.when && Pricing.weekendOnly(r[20]) && Pricing.weekdayHoliday(st.when.date)
+      ? "주말에만 되는 가격이라 공휴일엔 뺐어요. 공휴일에도 주말 가격을 받는 병원이 있으니 병원에 확인하세요" : null }, "방문일엔 안 됨"));
     if (r[17] === 2) out.push(h("span", { class: "k kx", title: "이 가격이 되는 시간대를 앱이 알지 못해요. 병원에 확인하세요" }, "시간 확인 필요"));
     if (r[15] === 2) out.push(h("span", { class: "k kx", title: "지난 수집보다 90% 넘게 내리거나 10배 넘게 올라 확인 중이에요" }, "급변·확인 중"));
     const u = S[r[10]] || "";
@@ -475,11 +476,13 @@
       const time = h("select", { class: "field", "aria-label": "방문 시간" }, times.map((x) => h("option", { value: x, selected: (st.when ? st.when.time : "") === x }, x || "시간 상관없음")));
       const info = h("div", { class: "sub", style: "margin-top:8px" });
       const paint = () => { const hol = Pricing.KR_HOLIDAYS[date.value]; const d = date.value ? new Date(date.value + "T12:00:00Z").getUTCDay() : null;
-        info.textContent = date.value ? `${DOW[d]}요일${hol ? ` · 공휴일(${hol}) — 평일에만 되는 가격은 빠져요` : d === 0 || d === 6 ? " · 주말 — 평일에만 되는 가격은 빠져요" : ""}` : ""; };
+        // a weekday holiday also leaves out weekend-only prices (with the site's days): say so, and that some clinics take them
+        const wkHol = WHEN_COL && Pricing.weekdayHoliday(date.value);
+        info.textContent = date.value ? `${DOW[d]}요일${hol ? ` · 공휴일(${hol}) — ${wkHol ? "평일에만 되는 가격과 주말에만 되는 가격은 빠져요. 공휴일에도 주말 가격을 받는 병원이 있으니 병원에 확인하세요" : "평일에만 되는 가격은 빠져요"}` : d === 0 || d === 6 ? " · 주말 — 평일에만 되는 가격은 빠져요" : ""}` : ""; };
       date.addEventListener("input", paint); paint();
       // a file without the site's days / hours (before C #71) can only use the tags: say so instead of promising the days
       const intro = `'${Pricing.condLabel("평일 낮")}', '${Pricing.condLabel("시간대")}', '일요일'처럼 조건이 붙은 가격을 방문일에 맞춰 걸러요. `
-        + (WHEN_COL ? "사이트에 적힌 요일·시간에 안 맞는 가격을 빼고, 평일에만 되는 가격은 주말·공휴일에 빼요. 되는 시간을 앱이 모르면 '시간 확인 필요'로 남겨요."
+        + (WHEN_COL ? "사이트에 적힌 요일·시간에 안 맞는 가격을 빼고, 평일에만 되는 가격은 주말·공휴일에 빼요. 주말에만 되는 가격은 평일 공휴일에 빼요(병원에 따라 될 수 있어요). 되는 시간을 앱이 모르면 '시간 확인 필요'로 남겨요."
           : "평일에만 되는 가격은 주말·공휴일에 빼고, 되는 시간을 앱이 모르면 '시간 확인 필요'로 남겨요. 화수목처럼 정해진 요일은 병원에 확인하세요.");
       return h("div", {}, h("div", { class: "sub" }, intro),
         h("label", { class: "flabel" }, "날짜", date), h("label", { class: "flabel" }, "시간", time), info,
