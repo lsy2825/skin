@@ -12,7 +12,7 @@ const load = () => import(path.join(__dirname, "../cf/factory/src/runs.js"));
 
 // run only deploy() from tools/factory.sh, under the script's own `set -euo pipefail`, with a fake wrangler that records its
 // arguments and fails on the config named in FAKE_FAIL ("public" = the root config, "admin" = cf/admin)
-function runDeploy({ fail = "", token = "tok", github = false, pub = "on" } = {}) {
+function runDeploy({ fail = "", token = "tok", github = false, pub = "on", separate = false } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "factory-deploy-"));
   const calls = path.join(dir, "calls");
   fs.writeFileSync(path.join(dir, "wrangler"), [
@@ -25,15 +25,19 @@ function runDeploy({ fail = "", token = "tok", github = false, pub = "on" } = {}
   const fn = sh.slice(sh.indexOf("deploy() {"), sh.indexOf("\n}", sh.indexOf("deploy() {")) + 2);
   const script = `set -euo pipefail\nMODE=test\nDEPLOY_TOKEN=${JSON.stringify(token)}\nWRANGLER=${JSON.stringify(path.join(dir, "wrangler"))}\n` +
     `log() { echo "== factory[$MODE]: $*"; }\n${fn}\ndeploy\necho after-deploy\n`;
-  const env = { ...process.env, CALLS: calls, FAKE_FAIL: fail };
+  const out = path.join(dir, "github_output");
+  const env = { ...process.env, CALLS: calls, FAKE_FAIL: fail, GITHUB_OUTPUT: out };
+  delete env.FACTORY_DEPLOY;
+  if (separate) env.FACTORY_DEPLOY = "separate";
   delete env.GITHUB_ACTIONS;
   if (github) env.GITHUB_ACTIONS = "true";
   delete env.PUBLIC_DEPLOY;
   if (pub !== null) env.PUBLIC_DEPLOY = pub;
   const r = spawnSync("bash", ["-c", script], { cwd: path.join(__dirname, ".."), env, encoding: "utf8" });
   const lines = fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n") : [];
+  const ghOut = fs.existsSync(out) ? fs.readFileSync(out, "utf8") : "";
   fs.rmSync(dir, { recursive: true, force: true });
-  return { status: r.status, out: r.stdout + r.stderr, calls: lines };
+  return { status: r.status, out: r.stdout + r.stderr, calls: lines, ghOut };
 }
 
 test("factory deploy: public Worker then admin Worker, same token; both deploys succeed → no warning", () => {
@@ -81,9 +85,88 @@ test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but
   assert.ok(!bad.out.includes("after-deploy"));
 });
 
-test("weekly.yml hands PUBLIC_DEPLOY to the factory step (a repository variable, no secret)", () => {
+test("weekly.yml hands PUBLIC_DEPLOY to the deploy step (a repository variable, no secret)", () => {
   const wf = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
   assert.match(wf, /^ {10}PUBLIC_DEPLOY: \$\{\{ vars\.PUBLIC_DEPLOY \}\}/m);
+});
+
+test("factory deploy on GitHub (FACTORY_DEPLOY=separate): no wrangler at all, the saved commit is named for the deploy job", () => {
+  const r = runDeploy({ token: "", separate: true });
+  assert.equal(r.status, 0, r.out);
+  assert.deepEqual(r.calls, [], "the factory job never deploys");
+  assert.match(r.ghOut, /^deploy=true$/m);
+  assert.match(r.ghOut, /^sha=[0-9a-f]{40}$/m);
+  assert.match(r.out, /deploy handed to the separate deploy job/);
+  const leaked = runDeploy({ token: "tok", separate: true, github: true });
+  assert.deepEqual(leaked.calls, [], "even a token that reached the factory job by mistake is not used there");
+  assert.match(leaked.out, /^::warning title=Cloudflare::CLOUDFLARE_API_TOKEN was handed to the factory job/m);
+});
+
+// the real script in deploy mode, with a fake wrangler (no network): deploys only; refuses to run without a token or when told
+// to hand the deploy on again
+function runMode(mode, env) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "factory-mode-"));
+  const calls = path.join(dir, "calls");
+  fs.writeFileSync(path.join(dir, "wrangler"), '#!/usr/bin/env bash\necho "token=${CLOUDFLARE_API_TOKEN:-} args=$*" >> "$CALLS"\n', { mode: 0o755 });
+  const e = { ...process.env, CALLS: calls, WRANGLER: path.join(dir, "wrangler"), PUBLIC_DEPLOY: "", ...env };
+  for (const k of ["GITHUB_ACTIONS", "GITHUB_OUTPUT", "FACTORY_INSTALL"]) delete e[k];
+  for (const [k, v] of Object.entries(e)) if (v === undefined) delete e[k];
+  const r = spawnSync("bash", [path.join(__dirname, "../tools/factory.sh"), mode], { env: e, encoding: "utf8" });
+  const lines = fs.existsSync(calls) ? fs.readFileSync(calls, "utf8").trim().split("\n") : [];
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { status: r.status, out: r.stdout + r.stderr, calls: lines };
+}
+
+test("factory.sh deploy mode (weekly.yml deploy job): deploys only, needs the token, never hands the deploy on", () => {
+  const ok = runMode("deploy", { CLOUDFLARE_API_TOKEN: "tok", FACTORY_DEPLOY: undefined });
+  assert.equal(ok.status, 0, ok.out);
+  assert.deepEqual(ok.calls, ["token=tok args=deploy --config cf/admin/wrangler.jsonc"], "public hosting paused → admin host only");
+  assert.ok(!/unit tests|build /.test(ok.out), "no tests, no build, no scraping in deploy mode");
+  const none = runMode("deploy", { CLOUDFLARE_API_TOKEN: "", FACTORY_DEPLOY: undefined });
+  assert.equal(none.status, 1, none.out);
+  assert.deepEqual(none.calls, []);
+  assert.match(none.out, /deploy mode needs CLOUDFLARE_API_TOKEN/);
+  const loop = runMode("deploy", { CLOUDFLARE_API_TOKEN: "tok", FACTORY_DEPLOY: "separate" });
+  assert.equal(loop.status, 2, loop.out);
+  assert.deepEqual(loop.calls, []);
+});
+
+// a job block of weekly.yml (from "  <name>:" to the next job or the end)
+function job(wf, name) {
+  const start = wf.indexOf(`\n  ${name}:\n`);
+  assert.ok(start > 0, `weekly.yml has a ${name} job`);
+  const rest = wf.slice(start + 1);
+  const next = rest.slice(1).search(/\n  [a-z_]+:\n/);
+  return next === -1 ? rest : rest.slice(0, next + 1);
+}
+const stripComments = (t) => t.split("\n").map((l) => l.replace(/(^|\s)#.*$/, "")).join("\n");
+
+test("weekly.yml: the factory job holds no Cloudflare token; only the deploy job's deploy step gets it, on a fresh runner", () => {
+  const wf = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
+  const update = stripComments(job(wf, "update")), deploy = stripComments(job(wf, "deploy")), alert = stripComments(job(wf, "alert"));
+  assert.doesNotMatch(update, /CLOUDFLARE_API_TOKEN|secrets\./, "no secret of any kind in the job that runs scrapers, pip packages and build code");
+  assert.match(update, /FACTORY_DEPLOY: separate/);
+  assert.match(update, /deploy: \$\{\{ steps\.decide\.outputs\.deploy \}\}/);
+  assert.match(update, /sha: \$\{\{ steps\.decide\.outputs\.sha \}\}/);
+  assert.match(deploy, /needs: update/);
+  assert.match(deploy, /if: \$\{\{ needs\.update\.result == 'success' && needs\.update\.outputs\.deploy == 'true' \}\}/);
+  assert.match(deploy, /permissions:\n\s+contents: read\n/);
+  assert.doesNotMatch(deploy, /: write/);
+  assert.match(deploy, /grep -Eq '\^\[0-9a-f\]\{40\}\$'/, "the commit id from the factory job is checked before use");
+  assert.match(deploy, /ref: \$\{\{ steps\.commit\.outputs\.sha \}\}/);
+  assert.match(deploy, /persist-credentials: false/);
+  assert.match(deploy, /git merge-base --is-ancestor "\$SHA" origin\/main/, "only a commit on main is deployed");
+  // the token appears in exactly one step: the deploy step, which runs the pre-installed, pinned wrangler
+  const steps = deploy.split(/\n      - /).slice(1);
+  const withToken = steps.filter((st) => /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/.test(st));
+  assert.equal(withToken.length, 1, "one step gets the token");
+  assert.match(withToken[0], /run: bash tools\/factory\.sh deploy/);
+  assert.match(withToken[0], /WRANGLER: \$\{\{ runner\.temp \}\}\/wr\/node_modules\/\.bin\/wrangler/);
+  const install = steps.find((st) => /npm install/.test(st));
+  assert.ok(install && /wrangler@4\.145\.0/.test(install) && !/secrets\./.test(install), "wrangler installed, pinned, in a step without secrets");
+  assert.ok(steps.indexOf(install) < steps.indexOf(withToken[0]), "installed before the token step");
+  assert.match(alert, /needs: \[update, deploy\]/);
+  assert.match(alert, /needs\.deploy\.result == 'failure' \|\| needs\.deploy\.result == 'cancelled'/, "a failed deploy also sends the Telegram alert");
 });
 
 test("factory deploy: without a token nothing is deployed", () => {

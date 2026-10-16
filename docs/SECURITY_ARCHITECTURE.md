@@ -96,6 +96,7 @@
 | Supabase service_role 키 | GitHub Actions secret에만 | 브라우저·저장소에 절대 두지 않아요. CI 비밀 검사로 막아요 |
 | GitHub 토큰 | Actions가 실행마다 발급(`github.token`) | 작업별 최소 권한 |
 | 텔레그램 봇 토큰·대화 번호 | GitHub Actions repository secret(`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)에만 | 알림 스크립트가 토큰을 출력하지 않아요(§9) |
+| Cloudflare 배포 토큰(`CLOUDFLARE_API_TOKEN`) | GitHub Actions repository secret에만. 받는 곳: `weekly.yml`의 **deploy job** 배포 단계, `cf-workers.yml`(집계 Worker) | 가격 공장(update job)은 이 토큰을 **받지 않아요**(2026-10-16부터). 그 job에서 수집기·pip 패키지·빌드 코드가 돌고, 같은 job 안이면 스크립트가 `unset`해도 `/proc/<pid>/environ`(스크립트·단계 셸)과 러너의 sudo로 다시 읽을 수 있기 때문이에요. 공장은 저장한 커밋 id만 넘기고, deploy job이 새 러너에서 그 커밋을 받아(main에 있는지 확인), 토큰 없는 단계에서 wrangler를 고정 판으로 설치한 뒤 배포 단계에만 토큰을 줘요. **남는 위험:** 공장 job은 데이터를 저장하려고 main에 push할 수 있어서(contents: write), 거기서 오염된 코드가 push한 파일(예: `wrangler.jsonc`, `tools/factory.sh`)은 다음 실행의 deploy job에서 토큰과 함께 돌아요 — push는 기록에 남아요(`git log`). 워크플로 파일은 이 토큰으로 바꿀 수 없어요(GitHub가 막음). 토큰 권한은 Workers·D1 Edit라 계정의 Worker·D1 전체에 닿아요 |
 | 비밀번호 화면 PIN | 해시만 `gate.js`에 | 비밀이 아니라 가림막이에요. 숫자는 저장소에 쓰지 않아요(테스트는 `APP_PIN` 환경 변수) |
 
 - **자동 비밀 검사:** `tests/security/scan_secrets.py`를 배포 전 테스트에서 매번 돌려요(**검증됨**).

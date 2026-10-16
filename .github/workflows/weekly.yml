@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 90
     outputs:
       run: ${{ steps.decide.outputs.run }}
+      deploy: ${{ steps.decide.outputs.deploy }}   # "true" when a build was saved and should be deployed (deploy job below)
+      sha: ${{ steps.decide.outputs.sha }}         # the commit to deploy
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
@@ -35,32 +37,75 @@ jobs:
           python-version: "3.12"
       # The whole factory run is tools/factory.sh — the same script the Cloudflare factory box runs (cf/factory,
       # docs/CLOUDFLARE_MIGRATION.md): decide (schedule only) → unit tests + secret scan → scrape/build → review queue →
-      # save to main → deploy app/ to Cloudflare when the token is set (the script hides the token from the build steps).
-      - name: Factory (decide, test, scrape/build, save, deploy to Cloudflare)
+      # save to main → name the saved commit for the deploy job. This job gets NO Cloudflare token: the scrapers, the pip
+      # packages and the build code run here, and a token anywhere in this job could be read back by them (an `unset` in a
+      # script is no wall: /proc/<pid>/environ of the script and of this step's shell still holds it).
+      - name: Factory (decide, test, scrape/build, save — the deploy runs in the next job)
         id: decide
         run: bash tools/factory.sh "$FACTORY_MODE"
         env:
           FACTORY_MODE: ${{ github.event_name == 'schedule' && 'weekly' || ((github.event_name == 'push' || inputs.skip_scrape) && 'rebuild' || 'scrape') }}
           FACTORY_INSTALL: "1"
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
-          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # "on" = also deploy the public app; unset = admin host only (paused 2026-10-15)
+          FACTORY_DEPLOY: separate
       - name: Summary
         if: steps.decide.outputs.run == 'true'
         run: cat data2/report.md >> "$GITHUB_STEP_SUMMARY"
-      # GitHub Pages deploy removed 2026-10-15: the repository is private now (free plan: no Pages), the app lives only on
-      # Cloudflare (factory.sh → wrangler deploy). Without the deploy token the run fails here instead of silently not deploying.
+
+  # Deploy to Cloudflare — a job of its own on a FRESH runner, the only place the Cloudflare token goes. Nothing from the
+  # factory run executes here: the commit the factory saved is checked out (it must be on main), wrangler is installed —
+  # pinned — in a step without secrets, and the token reaches only the step that runs `tools/factory.sh deploy` (admin host
+  # on every build; the public app only when the repository variable PUBLIC_DEPLOY is exactly "on" — paused since 2026-10-15).
+  # Without the deploy token the run fails here instead of silently not deploying (GitHub Pages is gone: private repository).
+  # What this does not cover: the factory job can push to main (it saves the data), so code it pushed would run here on a
+  # later run — see docs/SECURITY_ARCHITECTURE.md §5 (Cloudflare deploy token).
+  deploy:
+    needs: update
+    if: ${{ needs.update.result == 'success' && needs.update.outputs.deploy == 'true' }}
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    permissions:
+      contents: read
+    timeout-minutes: 15
+    steps:
+      - name: The commit the factory saved
+        id: commit
+        env:
+          SHA: ${{ needs.update.outputs.sha }}
+        run: |
+          if printf '%s' "$SHA" | grep -Eq '^[0-9a-f]{40}$'; then echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          else echo "::error title=Cloudflare::the factory job named no valid commit to deploy — nothing deployed"; exit 1; fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ steps.commit.outputs.sha }}
+          fetch-depth: 0               # also fetches origin/main, for the check below
+          persist-credentials: false
+      - name: The commit is on main
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then echo "::error title=Cloudflare::$SHA is not on main — nothing deployed"; exit 1; fi
       - name: Check the Cloudflare deploy token is set
-        if: steps.decide.outputs.run == 'true'
         env:
           HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
         run: |
           if [ "$HAS_TOKEN" != "true" ]; then echo "::error title=Cloudflare::CLOUDFLARE_API_TOKEN secret missing — the app was not deployed anywhere"; exit 1; fi
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      # npm resolves wrangler's dependencies and runs their install scripts here, where no secret exists
+      - name: Install wrangler (no secrets in this step)
+        run: npm install --no-save --no-fund --no-audit --prefix "$RUNNER_TEMP/wr" wrangler@4.145.0
+      - name: Deploy app/ (tools/factory.sh deploy)
+        run: bash tools/factory.sh deploy
+        env:
+          WRANGLER: ${{ runner.temp }}/wr/node_modules/.bin/wrangler
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          PUBLIC_DEPLOY: ${{ vars.PUBLIC_DEPLOY }}   # "on" = also deploy the public app; unset = admin host only (paused 2026-10-15)
   # Monitoring → Telegram (docs/SECURITY_ARCHITECTURE.md §9). A separate job, so the bot token never sits in the job where
   # the scrapers and the build ran (they could have written to GITHUB_ENV); read-only, no git credentials left on disk.
   # Without the TELEGRAM_* secrets the scripts print a notice and do nothing; they always exit 0.
   alert:
-    needs: update
+    needs: [update, deploy]
     if: always()
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     timeout-minutes: 5
@@ -73,18 +118,26 @@ jobs:
           ref: main
           persist-credentials: false
       # cancelled too: a run stopped by timeout-minutes is "cancelled", not "failure"
-      - name: Alert on factory failure (Telegram)
-        if: needs.update.result == 'failure' || needs.update.result == 'cancelled'
+      - name: Alert on factory or deploy failure (Telegram)
+        if: >-
+          needs.update.result == 'failure' || needs.update.result == 'cancelled' ||
+          needs.deploy.result == 'failure' || needs.deploy.result == 'cancelled'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT: ${{ github.event_name }}
           RESULT: ${{ needs.update.result }}
+          DEPLOY: ${{ needs.deploy.result }}
         run: |
-          case "$RESULT" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
           case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
-          python3 .github/scripts/telegram.py "윤실장 가격 공장 $WHY ($WHEN). 앱은 마지막으로 배포된 자료를 그대로 보여 줘요. 실행 기록: $RUN_URL"
+          if [ "$RESULT" = failure ] || [ "$RESULT" = cancelled ]; then
+            case "$RESULT" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+            python3 .github/scripts/telegram.py "윤실장 가격 공장 $WHY ($WHEN). 앱은 마지막으로 배포된 자료를 그대로 보여 줘요. 실행 기록: $RUN_URL"
+          else
+            case "$DEPLOY" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
+            python3 .github/scripts/telegram.py "윤실장 Cloudflare 배포 $WHY ($WHEN). 새 자료는 main에 저장됐지만 앱 주소에는 아직 안 올라갔어요. 실행 기록: $RUN_URL"
+          fi
       # Data guard hits and old data — only after a COLLECTION run (schedule, or manual without skip_scrape), not after every
       # code-push rebuild, so the same unchanged problem is not re-sent each time someone merges a PR.
       - name: Alert on data guard or old data (Telegram)

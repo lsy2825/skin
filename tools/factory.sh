@@ -7,11 +7,16 @@
 #   bash tools/factory.sh rebuild           build from saved data only (code changed, or after a check)
 #   bash tools/factory.sh price-check [N]   re-read N low prices on the clinic pages (1-200, default 40), then rebuild
 #   bash tools/factory.sh source-check      re-check the source registry (data2/sources.json)
+#   bash tools/factory.sh deploy            deploy app/ only (weekly.yml's deploy job; needs CLOUDFLARE_API_TOKEN)
 #
 # Needs: python deps from requirements.txt (FACTORY_INSTALL=1 installs them after the decision), node, git with an "origin"
 # remote it may push to. Saves by committing to main and pushing (FACTORY_NO_PUSH=1: commit only — dry runs and tests).
-# Deploys app/ with wrangler only when CLOUDFLARE_API_TOKEN is set; the token is taken out of the environment first so the
-# scrapers and build steps never see it. Two Workers can get the same app/ folder: the admin "yoonsiljang-admin"
+# Deploys app/ with wrangler only when CLOUDFLARE_API_TOKEN is set. On GitHub the factory job gets NO token at all: with
+# FACTORY_DEPLOY=separate deploy() only names the commit it saved, and weekly.yml's separate deploy job (fresh runner,
+# wrangler installed before the token arrives) runs `factory.sh deploy`. Taking the token out with `unset` (below) is not a
+# wall: anything that ran in the same job — scrapers, pip packages, build code — could still read it back from
+# /proc/<pid>/environ of this script or of the step's shell (the Cloudflare box, cf/factory, still works that way; on hold —
+# docs/CLOUDFLARE_MIGRATION.md). Two Workers can get the same app/ folder: the admin "yoonsiljang-admin"
 # (cf/admin/wrangler.jsonc, behind Cloudflare Access) on every build, and the public "yoonsiljang" (root wrangler.jsonc) ONLY
 # when PUBLIC_DEPLOY is exactly "on" — public hosting is paused by the owner's decision of 2026-10-15 (repository variable,
 # passed by weekly.yml). With the public app deployed, a public deploy failure fails the run and an admin failure is a warning.
@@ -81,6 +86,17 @@ build() {   # $1 = "" (scrape) or --skip-scrape
 }
 
 deploy() {
+  # GitHub: the job that ran the scrapers and the build holds no token; it hands the commit to weekly.yml's deploy job
+  if [ "${FACTORY_DEPLOY:-}" = separate ]; then
+    local sha; sha=$(git rev-parse HEAD)
+    if [ -n "$DEPLOY_TOKEN" ]; then
+      log "a Cloudflare token reached the factory job — it should only go to the deploy job (not used here)"
+      if [ -n "${GITHUB_ACTIONS:-}" ]; then echo "::warning title=Cloudflare::CLOUDFLARE_API_TOKEN was handed to the factory job; only the deploy job should get it"; fi
+    fi
+    log "deploy handed to the separate deploy job: $sha"
+    if [ -n "${GITHUB_OUTPUT:-}" ]; then { echo "deploy=true"; echo "sha=$sha"; } >> "$GITHUB_OUTPUT"; fi
+    return 0
+  fi
   if [ -z "$DEPLOY_TOKEN" ]; then log "no CLOUDFLARE_API_TOKEN — not deployed"; return 0; fi
   # Public hosting is paused (owner's decision 2026-10-15): the public Worker is deployed only when PUBLIC_DEPLOY is exactly
   # "on" (GitHub → Settings → Secrets and variables → Actions → Variables → PUBLIC_DEPLOY). Off, the public address keeps
@@ -124,7 +140,11 @@ case "$MODE" in
     gh_out true; install
     python scrape/sources.py
     save "Source check" data2/sources.json ;;
-  *) echo "unknown mode: $MODE (weekly|scrape|rebuild|price-check N|source-check)" >&2; exit 2 ;;
+  deploy)   # weekly.yml's deploy job: only the deploy, of the commit checked out here; a missing token is an error here
+    if [ "${FACTORY_DEPLOY:-}" = separate ]; then echo "deploy mode cannot hand the deploy on (FACTORY_DEPLOY=separate)" >&2; exit 2; fi
+    if [ -z "$DEPLOY_TOKEN" ]; then echo "deploy mode needs CLOUDFLARE_API_TOKEN" >&2; exit 1; fi
+    deploy ;;
+  *) echo "unknown mode: $MODE (weekly|scrape|rebuild|price-check N|source-check|deploy)" >&2; exit 2 ;;
 esac
 result ok
 log "done"
