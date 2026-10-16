@@ -22,19 +22,26 @@ test("run_regression.sh: commerce50/admin51 are out (they expect #ops cards that
   assert.ok(/\$\{APP_PIN:\?/.test(sh), "the suite itself requires APP_PIN");
 });
 
-// The PR checks run no browser, so an e2e script missing from this loop runs nowhere (B's alert_region, addon_col, cond_badge,
-// spec_notes and new_chains sat outside it until 2026-10-16). Helper modules that only export code are named here.
-test("run_regression.sh: every tests/e2e/*.js screen check is in the e2e loop (helpers excepted)", () => {
-  const helpers = new Set(["rows"]);
-  const names = read("tests/run_regression.sh").match(/^for t in (.+?); do$/m)[1].split(/\s+/);
+// The PR checks run no browser, so an e2e script outside the regression ran nowhere (B's alert_region, addon_col, cond_badge,
+// spec_notes and new_chains until 2026-10-16). Now the named loop is followed by a catch-all over tests/e2e/*.js, so a new
+// screen check from chat B runs without waiting for A to edit the list; helper modules are skipped by name.
+test("run_regression.sh: every tests/e2e/*.js screen check runs (named loop + catch-all), helpers skipped, no stale names", () => {
+  const sh = read("tests/run_regression.sh");
+  const names = sh.match(/^for t in (.+?); do$/m)[1].split(/\s+/);
+  const helpers = sh.match(/^E2E_HELPERS=" (.*) "$/m)[1].split(/\s+/).filter(Boolean);
   const scripts = fs.readdirSync(path.join(root, "tests/e2e")).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
   for (const h of helpers) {
-    assert.ok(scripts.includes(h), `helper ${h}.js still exists (else drop it from this list)`);
+    assert.ok(scripts.includes(h), `helper ${h}.js still exists (else drop it from E2E_HELPERS)`);
     assert.match(read(`tests/e2e/${h}.js`), /module\.exports\s*=/, `${h}.js is a helper module, not a screen check`);
+    assert.ok(!names.includes(h), `${h} is a helper, not in the named loop`);
   }
-  const missing = scripts.filter((n) => !helpers.has(n) && !names.includes(n));
-  assert.deepEqual(missing, [], "add these to the e2e loop in tests/run_regression.sh");
   for (const n of names) assert.ok(scripts.includes(n), `the loop names tests/e2e/${n}.js, which does not exist`);
+  assert.match(sh, /^E2E_LISTED=" \$\(sed -n 's\/\^for t in /m, "the catch-all reads the named list from this same file");
+  assert.match(sh, /^for f in tests\/e2e\/\*\.js; do\n  t=\$\(basename "\$f" \.js\)\n  case "\$E2E_LISTED\$E2E_HELPERS" in \*" \$t "\*\) continue ;; esac\n  run "e2e \$t \(not yet in the list above\)" node "\$f"\ndone$/m);
+  // run the catch-all's selection for real: it must pick exactly the scripts the named loop and the helpers leave out
+  const pick = spawnSync("bash", ["-c", `cd "${root}"; ${sh.match(/^E2E_LISTED=.*$/m)[0].replace('"$0"', '"tests/run_regression.sh"')}; ${sh.match(/^E2E_HELPERS=.*$/m)[0]}; for f in tests/e2e/*.js; do t=$(basename "$f" .js); case "$E2E_LISTED$E2E_HELPERS" in *" $t "*) continue ;; esac; echo "$t"; done`], { encoding: "utf8" });
+  assert.equal(pick.status, 0, pick.stderr);
+  assert.deepEqual(pick.stdout.split("\n").filter(Boolean), scripts.filter((n) => !names.includes(n) && !helpers.includes(n)));
 });
 
 test("admin_ops_browser.js: exits 2 without APP_PIN and never unlocks the gate another way", () => {
