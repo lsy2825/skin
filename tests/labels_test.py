@@ -763,6 +763,48 @@ ok("자동 묶음: 비교 기준 스냅숏이 규칙 1이면(그날 두 번째 �
    appdata.group_moved(prev_d, prow_d, now_d, [5], "2026-10-13") == {_mk} and appdata.group_moved(prev_d2, prow_d, now_d, [5], "2026-10-13") == {_mk}
    and appdata.group_moved(prev_d2, prow_d, now_d, [5], "2026-10-14") == set())
 
+# 가격 변동(changes)은 (id, 지점)마다 거름(2026-10-16): 쁨 울산점 줄이 규칙으로 TA42833F에서 빠졌다고(#83 칸 이름 '♥수목 해피아워♥')
+# 같은 id의 다른 지점 진짜 변동(강남본점 149,000 → 250,000, 이벤트 끝)까지 빼지 않음
+_D = "2026-10-14"
+prev_p = {"s": ["쁨", "울산점", "강남본점", "쥬베룩 스킨부스터 2CC", "", "TA42833F", "쥬베룩 스킨부스터 2cc", "평일 낮"], "branches": [[0, 1], [0, 2]],
+          "meta": {"brands": [["쁨"]], "kinds": appdata.KINDS, "updated": _D, "plainRules": [[2, _D]], "recl": [[_D, ["X14"]]]},
+          "keys": [["TA42833F", 2, "쥬베룩 스킨 부스터 2cc"], ["X14", 1, "울쎄라 300샷"]]}
+prow_p = [[0, 2, 3, 149000, 0, 0, 4, 5, 1, -1, 4, 4, 0, 0, 4, 0, 0, 4], [1, 2, 6, 250000, 0, 0, 4, 5, 1, -1, 4, 4, 0, 0, 4, 0, 0, 4]]
+_row = lambda branch, name, sale, tags="", days="0": dict(brand="쁨", branch=branch, name=name, sale=str(sale), kind="일반", tags=tags, keys="TA42833F",
+                                                       days=days, hours="", addon="0")
+now_p = [_row("울산점", "쥬베룩 스킨부스터 2CC", 149000, "평일 낮", "12"), _row("강남본점", "쥬베룩 스킨부스터 2cc", 250000)]
+pairs_p = appdata.recl_pairs(prev_p, prow_p, now_p)
+ok("recl_pairs: 한 지점 줄만 조건이 바뀌면 그 (id, 지점)만 — reclassified(앱 meta.recl)는 지금처럼 id",
+   pairs_p == {("TA42833F", "쁨|울산점")} and appdata.reclassified(prev_p, prow_p, now_p) == {"TA42833F"}, pairs_p)
+ok("... 줄이 id에 들어오거나 나가도(이름·가격이 같은 줄의 키) 그 지점만",
+   appdata.recl_pairs(prev_p, prow_p, [_row("울산점", "쥬베룩 스킨부스터 2CC", 149000), dict(_row("강남본점", "쥬베룩 스킨부스터 2cc", 250000), keys="")])
+   == {("TA42833F", "쁨|강남본점")})
+bk_p = ["쁨|강남본점", "쁨|울산점"]          # this build lists the branches in another order than the previous file
+recl_p = [[_D, ["TA42833F", "X14"]]]        # meta.recl of this build: the same day's ids of the previous file + this build's
+rb_p = appdata.recl_branches(prev_p, _D, recl_p, pairs_p, set(), bk_p)
+before_p = {"TA42833F|쁨|강남본점": 149000, "TA42833F|쁨|울산점": 149000, "X14|쁨|강남본점": 990000}
+best_p = {"TA42833F|쁨|강남본점": 250000, "TA42833F|쁨|울산점": 250000, "X14|쁨|강남본점": 890000}
+kid_p, bi_p = {"TA42833F": 0, "X14": 1}, {("쁨", "강남본점"): 0, ("쁨", "울산점"): 1}
+chg = lambda rb, since="2026-10-13": appdata.price_changes(before_p, best_p, *appdata.regrouped(recl_p, rb, since, bk_p), kid_p, bi_p)
+ok("이전 파일에 meta.reclBranches가 없으면 그 파일의 같은 날 id(X14)는 모든 지점(id 단위) — 이번에 찾은 것만 지점 단위",
+   rb_p == [[_D, {"TA42833F": [1]}]] and appdata.regrouped(recl_p, rb_p, "2026-10-13", bk_p) == ({"X14"}, {("TA42833F", "쁨|울산점")}), rb_p)
+ok("changes: 울산점(규칙)과 X14(id 단위)는 빼고 강남본점 149,000 → 250,000은 남김 — 예전 id 단위로는 0건",
+   chg(rb_p) == [[0, 0, 149000, 250000]] and chg([]) == [], (chg(rb_p), chg([])))
+prev_p2 = {"s": ["쁨", "강남본점", "울산점"], "branches": [[0, 1], [0, 2]], "meta": {"brands": [["쁨"]], "recl": recl_p, "reclBranches": rb_p}}
+ok("같은 수집 다시 빌드(이전 파일에 칸 있음, 새로 찾은 것 없음): 지점을 기억해 같은 결과",
+   appdata.recl_branches(prev_p2, _D, recl_p, set(), set(), bk_p) == rb_p and chg(appdata.recl_branches(prev_p2, _D, recl_p, set(), set(), bk_p)) == [[0, 0, 149000, 250000]])
+prev_p3 = dict(prev_p2, meta={k: v for k, v in prev_p2["meta"].items() if k != "reclBranches"})
+ok("... 이전 파일에 칸이 없으면(이 고침 전 data.json) 그날 id는 모두 id 단위 — 가짜 변동이 다시 나오지 않음",
+   appdata.recl_branches(prev_p3, _D, recl_p, set(), set(), bk_p) == [[_D, {}]] and chg([[_D, {}]]) == [])
+ok("... 기억한 지점이 이번 빌드에 없으면 그 id는 모든 지점, 되살아난 id(whole_now)도 모든 지점",
+   appdata.recl_branches(prev_p2, _D, recl_p, set(), set(), ["쁨|강남본점"]) == [[_D, {}]]
+   and appdata.recl_branches(None, _D, [[_D, ["T0AAAAAA"]]], {("T0AAAAAA", "쁨|강남본점")}, {"T0AAAAAA"}, bk_p) == [[_D, {}]])
+recl_n = [[_D, ["TA42833F", "X14"]], ["2026-10-21", ["X14"]]]
+rb_n = appdata.recl_branches(prev_p2, "2026-10-21", recl_n, {("X14", "쁨|강남본점")}, set(), list(reversed(bk_p)))
+ok("다음 수집: 지난 날짜 칸은 지점 이름으로 다시 번호를 매겨 이어 가고, 비교 기준 스냅숏(10-14) 이전·당일 것은 거르지 않음",
+   rb_n == [[_D, {"TA42833F": [0]}], ["2026-10-21", {"X14": [1]}]]
+   and appdata.regrouped(recl_n, rb_n, _D, list(reversed(bk_p))) == (set(), {("X14", "쁨|강남본점")}), rb_n)
+
 # C1 다음(검증 8차, 예전부터 있던 것)
 def tg(s, brand="A"):
     """the condition tags clean.main gives an item whose group title is s (time_tags + TAGS)"""
