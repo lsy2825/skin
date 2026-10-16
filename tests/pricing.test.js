@@ -470,3 +470,14 @@ test("weekday holidays: weekend-only prices are left out, the screen says clinic
   assert.equal(P.condState("", "주말 이벤트", { date: "2026-12-25", time: "" }, { days: 96 }), 1);
   assert.equal(P.condState("", "금토 이벤트", { date: "2026-12-25", time: "" }, { days: 48 }), 0);
 });
+
+test("periodOver: a visit after the event's end date (user decision 2026-10-16: mark '기간 확인 필요', do not drop)", () => {
+  assert.equal(P.periodOver("2026-10-17", { date: "2026-10-20", time: "" }), true);
+  assert.equal(P.periodOver("2026-10-17", { date: "2026-10-17", time: "" }), false);   // the last day still counts
+  assert.equal(P.periodOver("2026-10-17", { date: "2026-10-16", time: "" }), false);
+  assert.equal(P.periodOver("2026-10-17", null), false);                                 // no visit chosen
+  assert.equal(P.periodOver("", { date: "2026-10-20" }), false);
+  assert.equal(P.periodOver("posted:2026-09-01", { date: "2026-10-20" }), false);         // a posting date is not an end date
+  assert.equal(P.periodOver("2099-12-31", { date: "2026-10-20" }), false);
+});
+

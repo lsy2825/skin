@@ -325,6 +325,8 @@
   }
   function applyWhen() {
     for (const r of ROWS) r[17] = S[r[6]] || r[20] || r[21] ? Pricing.condState(S[r[6]], S[r[2]], st.when, { days: r[20], hours: r[21] }) : 0;
+    // r[22] = 1: the visit is after the event's end date — kept, marked '기간 확인 필요' (user decision 2026-10-16)
+    for (const r of ROWS) r[22] = Pricing.periodOver(S[r[10]], st.when) ? 1 : 0;
     if (gcache) gcache.clear();
   }
   const vatNote = () => st.vat === "incl" ? "가격은 부가세 10% 포함 예상가예요(병원 표시가 + 10%)." : "가격은 병원 사이트 표시가예요(대부분 부가세 10% 별도).";
@@ -442,6 +444,7 @@
     if (r[15] === 2) out.push(h("span", { class: "k kx", title: "지난 수집보다 90% 넘게 내리거나 10배 넘게 올라 확인 중이에요" }, "급변·확인 중"));
     const u = S[r[10]] || "";
     if (!r[15] && /^\d{4}-\d{2}-\d{2}$/.test(u) && u < "2099") out.push(h("span", { class: "k k4" }, `~${md2(u)}까지`));
+    if (r[22] === 1 && st.when) out.push(h("span", { class: "k kx", title: `방문일(${md2(st.when.date)})에는 이 행사가 끝났을 수 있어요(${md2(u)}까지). 병원에 확인하세요` }, "기간 확인 필요"));
     if (u.startsWith("posted:")) out.push(h("span", { class: "k k4" }, `고시표 ${u.slice(7)}`));
     if (r[12] === 1 && st.vat === "listed") out.push(h("span", { class: "k k4" }, "VAT 포함가"));
     if (r[12] === 0) out.push(h("span", { class: "k k4", title: "병원 사이트에서 부가세 포함·별도 표기를 찾지 못했어요. 범위·중간값 계산에서 빼요" }, "VAT 표기 미확인"));
@@ -759,6 +762,7 @@
     if (r[5] === 1) out.add("체험가(보통 1인 1회)");
     if (r[5] === 2) out.add("한정가(기간·수량·첫 방문 등 조건)");
     if (r[17] === 2) out.add("되는 시간대를 앱이 알지 못해요");
+    if (r[22] === 1) out.add("방문일에는 행사가 끝났을 수 있어요");
     return [...out];
   }
   // a price is 'normal' (shown as the plain lowest) only with no condition, at a branch read this week, valid on the chosen visit
@@ -932,7 +936,8 @@
     const more = rx ? byB[b].filter((i) => live(i) && rx.test(S[ROWS[i][2]])) : [];
     return [...new Set([...base, ...more])].sort((a, c) => ROWS[a][3] - ROWS[c][3]).slice(0, 80);
   }
-  const asC = (i) => ({ i, p: ROWS[i][3], special: isSpecial(ROWS[i]), repeat: condClassOf(ROWS[i]) === "repeat" });
+  // a day/time price whose event ends before the chosen visit (r[22]) is not repeated: first session only (user decision 2026-10-16)
+  const asC = (i) => ({ i, p: ROWS[i][3], special: isSpecial(ROWS[i]), repeat: condClassOf(ROWS[i]) === "repeat" && ROWS[i][22] !== 1 });
   // price of q sessions of an item at branch b (Pricing.lineCost); it.sp overrides 특가 포함 for this line, it.done (the item's
   // '전에 이 시술을 받아 봤어요' switch) leaves out the once prices (Pricing.withoutOnce) — also one picked for this branch
   const hasTag = (i, tag) => (S[ROWS[i][6]] || "").split("·").includes(tag);
@@ -1009,6 +1014,8 @@
     if (ls.some((l) => l.restacked)) w.push("첫 방문가가 여러 개라 하나만 첫 방문가로, 나머지는 다음 가격으로 계산했어요");
     if (ls.some((l) => l.stackWarn)) w.push("첫 방문가만 있는 시술이 여러 개예요 — 함께 적용되는지 병원에 확인하세요");
     if (ls.some((l) => l.rows.some((i) => ROWS[i][17] === 2))) w.push("방문 시간에 되는 가격인지 병원에 확인하세요(앱이 시간대를 알지 못해요)");
+    const over = ls.filter((l) => l.rows.some((i) => ROWS[i][22] === 1)).length;
+    if (over) w.push(`방문일에는 행사가 끝났을 수 있는 가격 ${over}개 — 병원에 확인하세요`);
     const low = ls.filter((l) => isLow(l.rows[0])).length;
     if (low) w.push(`같은 시술 중간값의 ${Math.round(LOW_SHARE * 100)}% 이하인 초저가 ${low}개 — 개당 가격·행사 조건일 수 있어요. '가격 근거'에서 원본을 확인하세요`);
     if (x.missing && x.missing.length) w.push(`이 지점에서 가격을 확인하지 못한 시술 ${x.missing.length}개 — 합계에 넣지 않았어요(0원 아님)`);

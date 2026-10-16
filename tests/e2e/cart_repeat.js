@@ -8,6 +8,7 @@
 //     the quote line and '견적 복사' name the later sessions' price ('2회째부터 …') and keep '1회 가격 … 첫 1회만'
 //  D. a once price picked for the branch (it.ov, '같은 시술로' in the add sheet) ×3 is still once: once + 2 × the next price
 //  E. a visit time the later sessions' price can't be checked at (state 2 on the second row only): '시간 확인 필요' and the warning
+//  F. a visit after the event's end date: a repeat price is not repeated (first session only), '기간 확인 필요' and a warning
 // Every case is picked from the data.json the app was served; a case the file has no rows for prints SKIP — but a file with the
 // days / hours fields that skips A, C or E, or a run that skips every case, fails.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/cart_repeat.js
@@ -233,7 +234,8 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     const vis = { date: tue, time: '14:00' };
     const stOf = (r) => (S[r[6]] || days(r) || hours(r) ? P.condState(S[r[6]], S[r[2]], vis, { days: days(r), hours: hours(r) }) : 0);
     for (const [key, xs] of byKB) {
-      const c = xs.filter((x) => stOf(x.r) !== 1).map((x) => ({ i: x.i, p: price(x.r), special: cls(x.r) !== '', repeat: cls(x.r) === 'repeat' }));
+      // as the app: a repeat price whose event ends before the visit is not repeated (case F)
+      const c = xs.filter((x) => stOf(x.r) !== 1).map((x) => ({ i: x.i, p: price(x.r), special: cls(x.r) !== '', repeat: cls(x.r) === 'repeat' && !P.periodOver(S[x.r[10]], vis) }));
       const l = P.lineCost(c, c.filter((x) => !x.special), 3, null);
       if (l && l.rows.length === 2 && stOf(D.rows[l.rows[1]]) === 2 && stOf(D.rows[l.rows[0]]) === 0) return { key, vis, l };
     }
@@ -247,6 +249,34 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     const q = await quote(b), ln = q && q.lines[0];
     ok('E1 2회째 가격에만 시간 확인이 필요해도 경고 \'방문 시간에 되는 가격인지 병원에 확인하세요\'', !!q && q.warns.some((w) => w.startsWith('방문 시간에 되는 가격인지 병원에 확인하세요')), q ? q.warns.join(' / ') : '');
     ok('E2 견적 줄: 2회째 가격 이름 뒤에 \'시간 확인 필요\'', !!ln && ln.m.indexOf('시간 확인 필요', ln.m.indexOf(`2회째부터 ${S[r2[2]]}`)) > 0, ln ? ln.m.slice(0, 220) : '');
+  }
+
+  // ---- F. a visit after the event's end date (user decision 2026-10-16: mark it '기간 확인 필요', do not drop it): at a branch whose
+  //      cheapest price for an id is a repeat price with an end date and that also has a plain price, a visit after that end date
+  //      uses the repeat price for the first session only (not 3 ×) and the plain one after; the quote warns and marks the line
+  const isoU = (r) => { const u = S[r[10]] || ''; return /^\d{4}-\d{2}-\d{2}$/.test(u) && u < '2099' ? u : ''; };
+  const visitAfter = (r) => { const u = isoU(r); if (!u) return null; const ok_ = days(r) || (S[r[6]] === '평일 낮' ? 31 : 127);
+    const d = new Date(u + 'T12:00:00'); const max = new Date(); max.setDate(max.getDate() + 118);
+    for (let i = 1; i < 15; i++) { d.setDate(d.getDate() + 1); if (d > max) return null; const s_ = ymd(d);
+      if (!P.KR_HOLIDAYS[s_] && (ok_ & bit(d.getDay()))) return s_; } return null; };
+  const F = (() => {
+    for (const [key, xs] of byKB) {
+      const rep = low(xs.filter((x) => cls(x.r) === 'repeat' && !hours(x.r) && isoU(x.r)));
+      const plain = low(xs.filter((x) => cls(x.r) === ''));
+      if (!rep || !plain || price(rep.r) >= price(plain.r)) continue;
+      const v = visitAfter(rep.r); if (v) return { key, rep, plain, vis: { date: v, time: '' } };
+    }
+    return null;
+  })();
+  if (!F) skip('F', '종료일이 있는 요일·시간 가격 + 일반가가 있는 지점 — 이 자료엔 없음(또는 120일 밖)');
+  else {
+    const [k, bs] = F.key.split('|'), b = +bs, pr = price(F.rep.r), pl = price(F.plain.r);
+    console.log(`F: ${k} @ ${bname(b)} · ${S[F.rep.r[2]]} ~${isoU(F.rep.r)} ${won(pr)} · 일반가 ${won(pl)} · 방문 ${F.vis.date}`);
+    await seed([{ t: 'k', k, q: 3 }], { ...where(b), when: F.vis });
+    const q = await quote(b), ln = q && q.lines[0];
+    ok('F1 행사가 끝난 뒤 방문: 요일·시간 가격은 3회 반복하지 않음(3 × 가격 아님)', !!ln && ln.total !== won(pr * 3), ln ? `${ln.total} · 3×${won(pr)}` : '(견적 없음)');
+    ok('F2 견적 경고 \'방문일에는 행사가 끝났을 수 있는 가격\'', !!q && q.warns.some((w) => w.startsWith('방문일에는 행사가 끝났을 수 있는 가격')), q ? q.warns.join(' / ') : '(견적 없음)');
+    ok('F3 견적 줄에 \'기간 확인 필요\'', !!ln && ln.m.includes('기간 확인 필요'), ln ? ln.m.slice(0, 200) : '');
   }
 
   ok('요일·시간 칸이 있는 자료에서 A·C·E를 건너뛰지 않음', !WHEN || !SK.some((n) => ['A', 'C', 'E'].includes(n)), SK.join(', '));
