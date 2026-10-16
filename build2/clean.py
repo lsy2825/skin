@@ -85,8 +85,13 @@ CATS = [  # first match wins; tested on category + group + option
 #               tag (B: Pricing.condState / condLabel), it shows such a price on every day and at every hour with no '시간 확인 필요'.
 # Why time conditions are tags at all (검증 8차): 126 such rows were compared as plain prices — 유앤아이 동탄점 온다 60KJ showed its
 # 400,000 happy-hour price over the 450,000 regular one.
+# '1인 1회' (once per person): '1인 1회', '1인당 1회', '1인 최대 1회', '1인1한정' (톡스앤필 천안불당점 '(1인1한정이벤트)…'), and a
+# once-per-item section: 닥터에버스 연신내점 '각 항목 별로 1회 적용가능 KakaoTalk 플러스친구 …' (78 rows, 76 of them already '평일 낮';
+# the chain's 목동점 writes the same as '*각 항목별 1인 1회 한정', 분당·구로점 as '※항목별 1회씩 적용'). '항목별 1회' needs 적용 / 한정
+# after it — '각 항목별 1회씩 진행' would say what a package holds. A '1회 한정' alone: ONE_LIMIT below.
 TAGS = [("일요일", r"일요일|썬데이|선데이"),
-        ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"), ("1인 1회", r"1인\s*1회|1인당\s*1회")]
+        ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"),
+        ("1인 1회", r"(?<!\d)1\s*인\s*(?:당\s*)?(?:최대\s*)?1\s*(?:회|한정)|항목\s*별\s*(?:로\s*)?1\s*회\s*(?:씩\s*)?(?:적용|한정)")]
 WEEKDAY_WORDS = re.compile(r"평일\s*(낮|오전|오후|한정|점심|런치|저녁|야간|타임)|화\s*/?\s*수\s*/?\s*목(?!요일)")
 # a time of day: '해피아워' (also 'HAPPY HOUR'), '뷰티아워' (닥터에버스: '화,수,목 11:00~17:00' next to it on 공덕·잠실·수원인계, alone
 # on 검단·인천·천호·청량리 — 44 rows were plain prices), '프라임 타임', '낮 시간', 'N시 이전', 'N시~M시' (with ':' the hours field finds it)
@@ -141,11 +146,44 @@ TIME_TAGS = ("평일 낮", TIME_ONLY)
 #             product box since lsy2825/skin#88 (2026-10-16: button data-cate="<n>" ↔ swiper id "tab<n>"); take 유앤아이 out of
 #             here once data2/accepted/uandi.csv comes from it and its condition tabs hold their own items.
 CAT_UNPAIRED = {"유앤아이"}
-# '신규 런칭' / '신규입고' / '신규 도입': a new device or product, not a first visit — taken out of the category before the TAGS read
-# it. In the group title and the option '신규' still reads as 첫 방문: in the saved data of 2026-10-16 that is 64 rows, all of them
-# '신규 런칭 / 입고 / 도입' (밴스 36, 쁨 16, 톡스앤필 7, 데이뷰 3, 닥터에버스 2) — a separate change (it moves 58 rows into the plain
-# comparison).
+# '신규 런칭' / '신규입고' / '신규 도입': a new device or product, not a first visit — taken out of the category, the group title and
+# the option before the TAGS read them. The first-visit words stay: '신규 고객', '신규 회원', '신규가입', '신규 방문', '첫방문 신규'
+# (and '신규 런칭 기념 신규 고객' keeps its second '신규'). Until 2026-10-16 only the category lost them, and every '신규' of the
+# group title and option made a price 첫 방문: 64 rows of the saved data, all of them a new device (data2/accepted/*.csv and
+# clean.csv have no other '신규'): 밴스 36 ('★울쎄라피프라임 신규런칭★ …' 15, '(알파팁 신규도입)'), 쁨 16 ('[신규입고] 스킨핏팅
+# 고주파, 세르프', '[신규런칭] 슈링크 유니버스 울트라 300샷'), 톡스앤필 7 ('[신규런칭] 엘라비에 RE2O', '[신규런칭이벤트]덴서티 300샷'),
+# 데이뷰 3 ('NMN X 나드샷 신규 런칭'; '첫방문 이벤트 · 호남권 신규 런칭 …' stays 첫 방문 by its own '첫방문'), 닥터에버스 2 ('탄생주사
+# 신규 런칭 : …'). Read in all three (build of 2026-10-16, --skip-scrape): the 64 lose 첫 방문 (2 keep their own 1인 1회), 58 enter
+# the plain comparison, 22 of them with a comparison key — 쁨 부평점 '[신규런칭] 슈링크 유니버스 울트라 100샷 / 300샷' (X11 / X12), 밴스
+# 광주's price list under '울쎄라피프라임 ★… 신규런칭★' / '써마지 FLX ★… 신규런칭★' (X13–X16), 톡스앤필 제주점 덴서티 300샷 / 600샷.
 NEW_ITEM = re.compile(r"신규\s*(?:런칭|입고|도입|오픈|출시)")
+# '1회 한정' (once only) is a 1인 1회 condition where it limits the price, not where it is the item's own count — read as
+# build2/xkeys.py reads 'N회 한정' (LIMIT_NOTE, lsy2825/skin#80: a purchase limit in a note, the option's count in its own words):
+#   in the category or group title (a section heading over the items): 닥터에버스 미사점 '부가세 포함 만원(1회 한정) 1.96만' (9 prices of
+#     10,000원 — 국산 사각턱보톡스 50유닛 stood for 미사점 in X01 at 10,000원 instead of its 14,000원), 데이뷰 인천구월점 '골라골라 리프팅 페스티벌 (1회 한정)' (7),
+#     데이뷰 여의도점 '1회한정 써마지FLX' (13)
+#   in the option only as a note — in brackets, closing a label, or after '*': '[1회 한정] 쥬베룩볼륨 4cc', '레스틸렌 1cc (1회 한정)',
+#     '리투오 1회 (초진/재진 1회 한정)', '1회 한정) 울쎄라피 프라임 100샷', '페이스 온다리프팅 40KJ [1회 한정]'
+# Not: '아쿠아필 1회 한정' / '비타민 관리 1회 한정' (유앤아이: the option's count, like '1회 한정가'), '1회 한정가' / '1회 한정 특가' /
+# '1회 한정 체험가' (the price of one session: '10회 한정가' is ten), a frequency ('(*주 1회 한정)' on 쁨 '바디 착색토닝 3개월
+# 이용권' — how often a pass is used; '월별 1회', '연 1회'), and one choice in a choose-N list ('택4 - 라인리페어필(1회한정)/프리미엄
+# 블랙필', 'LDM 6분(재생)(1회한정) 中 선택 4회' — that choice once within the package, 셀린). The tag never changes the session
+# count (sessions() reads the name, and a '1회 한정' there stays the count or a purchase limit as before).
+ONE_LIMIT = re.compile(r"(?<![\d.])(?<![주월년연달일별루]\s)(?<![주월년연달일별루])1\s*회\s*한정(?!\s*(?:특\s*|체험\s*)?가(?!\s*능))")
+CHOICE = re.compile(r"택\s*\d|中|선택\s*\d")
+
+
+def once_only(text, heading=False):
+    """whether a '1회 한정' in text is a once-per-person limit (see ONE_LIMIT): anywhere in a heading (category / group title),
+    only as a note in an option"""
+    for m in ONE_LIMIT.finditer(text or ""):
+        before, after = text[:m.start()], text[m.end():]
+        if CHOICE.search(text) and re.match(r"\s*\)\s*[/中]", after):
+            continue                    # one choice of a choose-N list
+        if heading or "*" in before or re.match(r"\s*[)\]]", after) or before.count("(") > before.count(")") \
+                or before.count("[") > before.count("]"):
+            return True
+    return False
 # The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as the
 # time tags (category + group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
 #   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written (every day is 0 too)
@@ -318,10 +356,15 @@ def own_when(brand, grp, opt):
 
 def cond_tags(grp, opt, cat=""):
     """the TAGS of one price (첫 방문 · 일요일 · 타임세일 · 1인 1회) from its group title and option and the site's category (cat: ''
-    for a chain in CAT_UNPAIRED). Only the TAGS words count in the category, and a new device ('…신규런칭') is no first visit:
-    닥터에버스 목동점 '*각 항목별 1인 1회 한정' › '① 아쿠아필(1,2,3단계)+LED+모델링팩' = 1인 1회"""
-    text = f"{NEW_ITEM.sub(' ', cat)} {grp} {opt}"
-    return [t for t, p in TAGS if re.search(p, text)]
+    for a chain in CAT_UNPAIRED). Only the TAGS words count in the category, and a new device ('…신규런칭', in any of the three)
+    is no first visit: 닥터에버스 목동점 '*각 항목별 1인 1회 한정' › '① 아쿠아필(1,2,3단계)+LED+모델링팩' = 1인 1회, 쁨 '[신규입고]
+    스킨핏팅 고주파, 세르프' › '세르프 리프팅 600샷' = none. A '1회 한정' is 1인 1회 in the category or group title, and in the option
+    as a note only (once_only)"""
+    text = " ".join(NEW_ITEM.sub(" ", t) for t in (cat, grp, opt))
+    out = [t for t, p in TAGS if re.search(p, text)]
+    if "1인 1회" not in out and (once_only(cat, True) or once_only(grp, True) or once_only(opt)):
+        out.append("1인 1회")
+    return out
 
 
 def merge_tags(a, b):
@@ -471,8 +514,9 @@ def main():
         # the heading stays the section (category, read for VAT), the product is what follows — read whole, the '▼' made all ten
         # products a notice and they were dropped (2026-10-15)
         sec = norm_text(r.get("category", ""))
-        # Only a '▼ … ▼' price heading: '※카카오톡 플러스친구 혜택' / '※항목별 1회씩 적용' headings are conditions (381 닥터에버스 rows
-        # stay out as before — a condition tag for them is a separate change)
+        # Only a '▼ … ▼' price heading: '※카카오톡 플러스친구 혜택' / '※항목별 1회씩 적용' headings are conditions (366 닥터에버스 rows
+        # in the saved data of 2026-10-16 stay out as notes, as before — taking them in is a separate change; TAGS reads the
+        # heading '항목별 1회씩 적용' as 1인 1회 since 2026-10-16)
         if sec.startswith("▼") and len(sec) >= 4 and opt.startswith(sec) and opt[len(sec):].strip():
             opt = opt[len(sec):].strip()
         sale, orig = price(r["sale"]), price(r["orig"])
