@@ -59,8 +59,13 @@ function audit(d) {
   const byK = KEYS.map(() => []);
   rows.forEach((r, i) => { const ks = S[r[7]]; if (ks) for (const id of ks.split(" ")) { const k = KI.get(id); if (k == null) add("rowUnknownKey", { row: i, id }); else byK[k].push(i); } });
   const prodIn = (t) => Spec.PRODUCTS.filter((p) => (Spec.norm ? Spec.norm(t) : t).includes(p));
-  // a bundle label ('눈밑 보톡스 1회 + 리쥬란아이 2회') counts its largest N회, like build2/xkeys.py sessions()
-  const labelSess = (l) => { const ms = [...l.matchAll(/(\d+)\s*회(?!당)/g)].map((m) => +m[1]); return ms.length ? (l.includes("+") ? Math.max(...ms) : ms[0]) : null; };
+  // a bundle label ('눈밑 보톡스 1회 + 리쥬란아이 2회') counts its largest N회, like build2/xkeys.py sessions(); 'N+M회' is a course
+  // of N+M sessions there too ('피코토닝 10+10회' = 20, '1+1회' = 2 — 2026-10-16: read as 10 / 1, six 밴스 keys were flagged)
+  const labelSess = (l) => {
+    const t = l.replace(/(\d+)\s*\+\s*(\d+)\s*회/g, (_, a, b) => `${+a + +b}회`);
+    const ms = [...t.matchAll(/(\d+)\s*회(?!당)/g)].map((m) => +m[1]);
+    return ms.length ? (t.includes("+") ? Math.max(...ms) : ms[0]) : null;
+  };
   for (const k of KEYS) {
     const ids = byK[k.i];
     if (!ids.length) { add("emptyKey", { id: k.id, label: k.label }); continue; }

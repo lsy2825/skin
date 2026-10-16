@@ -17,6 +17,9 @@ const { rowsOf } = require("./audit_data.js");
 const ROOT = path.join(__dirname, "..");
 const D = JSON.parse(fs.readFileSync(path.join(ROOT, "app", "data.json"), "utf8"));
 const S = D.s, ROWS = rowsOf(D), today = D.meta.updated;
+// the build's add-on call (data.json row field 15, lsy2825/skin#51), as the app reads it; a file from before has 15 fields and
+// then Classify.row reads the name (addon left undefined)
+const ADDON_COL = Classify.hasAddonField(D);
 const BRAND = D.meta.brands.map((b) => b[0]);
 const bname = (b) => `${BRAND[D.branches[b][0]]} ${S[D.branches[b][1]]}`;
 const KEYS = D.keys.map(([id, cat, label]) => ({ id, cat, label }));
@@ -40,7 +43,8 @@ for (const k of KEYS) {
   const med = median((plain.length >= 3 ? plain : ids).map(per));
   for (const i of ids) {
     const r = ROWS[i];
-    const res = Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags: (S[r[6]] || "").split("·").filter(Boolean), keyLabel: k.label, mix, price: per(i), median: med });
+    const res = Classify.row({ name: S[r[2]], sess: r[8], kind: r[5], tags: (S[r[6]] || "").split("·").filter(Boolean), keyLabel: k.label, mix, price: per(i), median: med,
+      addon: ADDON_COL ? r[Classify.ADDON_FIELD] === 1 : undefined });
     count[res.c] = (count[res.c] || 0) + 1;
     if (res.c === "R") push({ kind: "가격", cls: "R", key: k.id, label: k.label, brand_branch: bname(r[0]), name: S[r[2]], price: r[3], reason: res.why,
       action: "병원 원본과 대조 → 맞으면 data2/review_ok.csv, 틀리면 수집 규칙 수정" });

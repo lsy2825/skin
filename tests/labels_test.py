@@ -295,6 +295,39 @@ ok("장비 이름만 든 괄호 '(젠틀맥스프로+)'는 묶음이 아님 — 
 ok("회차: 괄호·'*' 메모가 아니라 옵션의 회차('5회 (*10회 53만원)' → 5), 메모에만 있으면 메모('(10회)', '*5회')",
    xkeys.sessions("[젠틀맥스] 남성 인중 + 앞턱 제모 5회 (*10회 53만원)") == 5 and xkeys.sessions("[여성] 배꼽주변 제모 (10회)") == 10
    and xkeys.sessions("남성)브라질리언제모+항문 *5회") == 5)
+# audit40 A1 (2026-10-16): '*N회 한정가·체험가'는 그 가격이 N회분 — 쁨 천안 '풀페이스 리투오 1회 (6cc) *3회 한정가' 1,450,000원이 1회 묶음에 있었음
+for n, want in [("스킨부스터 · 풀페이스 리투오 1회 (6cc) *3회 한정가", 3), ("풀페이스 리투오 1회 (6cc) (*3회 체험가)", 3), ("올리지오 300샷 1회 *3회 특가", 3),
+                ("피코 MLA(얼굴전체)1회 *1회한정가", 1)]:
+    ok(f"회차: '*N회 한정가·체험가'는 N회 — '{n}' → {want}", xkeys.sessions(n) == want, xkeys.sessions(n))
+# 반대 방향: '*' 메모와 구매 제한(최대 N회 · 1인 N회 · 메모 속 N회 한정)은 회차가 아님, 괄호 안이든 밖이든 (lsy2825/skin#74 검토: 셀린 새 수집기는
+# 설명을 괄호에 붙임)
+for n, want in [("스킨부스터 · 풀페이스 리투오 1회 (6cc) *이마제외", 1), ("리쥬란 1cc (*최대 3회 한정)", 1),
+                ("[10월](여)아이큐)얼굴전체+카프리레이저+모델링 (*아이큐 : 코,미간,헤어라인,눈썹 제외 *최대 3회 한정)", 1), ("리쥬란 1cc (*3회 한정)", 1), ("리쥬란 1cc *3회 한정", 1),
+                ("리쥬란 2cc 5회 (*최대 3회 한정)", 5), ("리쥬란 1cc *최대 3회 한정가", 1), ("울트라콜4CC 1회 (* 1인 최대 5회까지만 적용가능)", 1),
+                ("LDM · 내맘대로 LDM (최대10회) 120분", 1), ("슈링크 300샷 *1인 1회 한정", 1), ("레디어스 3회 (1인1회한정)", 3), ("[1인1회] 쥬베룩볼륨 1cc", 1),
+                ("피코토닝 1회 *3회 체험 가능", 1), ("[10월 EVENT] 쥬베룩 아이 2cc 3회 (*3회 진행 시 눈밑스킨보톡스(영국산) 포함)", 3),
+                ("베이직 내맘대로 피부패키지 10+10회 (※ 재방 고객 한정/1인 1회)", 20), ("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", 10)]:
+    ok(f"회차: 메모·구매 제한은 회차가 아님 — '{n}' → {want}", xkeys.sessions(n) == want, xkeys.sessions(n))
+# audit40 A3 (2026-10-16): tools/audit_data.js도 빌드처럼 'N+M회'를 N+M회로 읽음('피코토닝 10+10회' = 20, '1+1회 (1회)' = 2) — 만든 자료로
+import shutil, subprocess  # noqa: E402
+if shutil.which("node"):
+    _js = r"""
+const { audit } = require(process.argv[1] + '/tools/audit_data.js');
+const s = ['', '피코토닝 10+10회', '피코토닝 1+1회 (1회 체험가)', 'K1', 'K2', '지점', '주소', 'VERIFIED', 'https://x'];
+const row = (name, key, sess) => [0, 0, name, 100000, 0, 0, 0, key, sess, 0, 0, 8, 2, 0, 0, 0];
+const d = { s, meta: { updated: '2026-10-16', brands: [['밴스']], fam: [] }, branches: [[0, 5, 6, 37.5, 127, 0, 0, 0, 7]], groups: [],
+  keys: [['K1', '피부', '피코토닝 10+10회'], ['K2', '피부', '피코토닝 1+1회 (1회)']] };
+d.rows = [row(1, 3, 20), row(2, 4, 2)];
+const good = (audit(d).keyMixedSess || []).length;
+d.rows = [row(1, 3, 10), row(2, 4, 1)];
+console.log(JSON.stringify([good, (audit(d).keyMixedSess || []).map((x) => x.id)]));
+"""
+    _r = subprocess.run(["node", "-e", _js, ROOT], capture_output=True, text=True, timeout=60)
+    _got = json.loads(_r.stdout) if _r.returncode == 0 and _r.stdout.strip() else None
+    ok("tools/audit_data.js: 'N+M회' 묶음은 N+M회 줄과 맞음(10+10회 = 20, 1+1회 = 2), 10회·1회 줄은 다른 횟수로 잡음",
+       _got == [0, ["K1", "K2"]], _got if _got is not None else _r.stderr[-300:])
+else:
+    print("INFO | node 없음 — tools/audit_data.js 'N+M회' 검사 건너뜀")
 ok("괄호 안 괄호의 '추가시'는 기본가를 추가 옵션으로 만들지 않음", not xkeys.addon_only("울쎄라 100샷 (부위 추가시 (최대 2부위) 가능)") and xkeys.addon_only("울쎄라 100샷 추가시"))
 ok("'라인 모드'(브이로)는 인모드가 아님", (taxonomy.family_of("브이로 어드밴스 리프팅(고강도 집속 초음파) 라인 모드 100샷")[0] or {}).get("id") != "inmode"
    and taxonomy.family_of("인모드 FX 얼굴전체")[0]["id"] == "inmode")
