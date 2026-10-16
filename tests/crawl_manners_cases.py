@@ -436,6 +436,98 @@ ok("four Fetchers in parallel threads on one host: its robots.txt is asked once,
    urls.count("https://event.example/robots.txt") == 1 and urls.count("https://event.example/p") == 4, urls)
 reset()
 
+# --- 셀린 (scrape/cellin.py, 2026-10-16): every request — the branch list, each branch's list page, the per-event detail POST,
+# and an address a branch's old site sends us on to (<branch>.cellinclinic.com) — goes through robots.txt of its own host
+import cellin  # noqa: E402
+
+
+class RResp(Resp):
+    def __init__(self, status, text="", location=""):
+        super().__init__(status, text)
+        self.headers = {"location": location} if location else {}
+
+
+class CNet(Net):
+    """Net that also keeps the method and whether requests was told to follow redirects"""
+
+    def request(self, method, url, timeout=0, **kw):
+        self.calls = getattr(self, "calls", []) + [(method, url, kw.get("allow_redirects", True))]
+        return super().request(method, url, timeout, **kw)
+
+
+def cellin_reader(answers):
+    net = CNet(answers)
+
+    class R(cellin.Reader):
+        def __init__(self, *a, **kw):
+            super().__init__(*a, **kw)
+            self.s = net
+    return R, net
+
+
+OLD = "https://www.cellinclinic99.com"
+_cellin = cellin.Reader, cellin.write_raw
+reset()
+cellin.Reader, net = cellin_reader({
+    OLD + "/robots.txt": RResp(200, "User-agent: *\nAllow: /\nDisallow: /clinicPriceSide/_contentDetail.php\n"),
+    OLD + cellin.LIST: RResp(200, "<li class='cate' id='li_7'><div class='Name'><b>첫방문</b></div></li>"),
+    OLD + cellin.DETAIL: RResp(200, "<li class='ListBox'><div class='Name'>x</div><div class='Price'><span class='ColorTxt'><b>9,900원</b></span></div></li>")})
+_, got, log = cellin.scrape_branch("시험점", OLD, 1.0)
+ok("셀린: robots.txt first, then the list page (allowed)", [u for _, u in net.log][:2] == [OLD + "/robots.txt", OLD + cellin.LIST], net.log)
+ok("셀린: a detail POST that robots.txt disallows is not sent", all(u != OLD + cellin.DETAIL for _, u in net.log) and not got
+   and any(x["error"] == "robots.txt disallows" for x in log["fails"]), (net.log, log))
+ok("셀린: requests is told not to follow redirects by itself (the next address goes through robots.txt)",
+   all(not follow for m, u, follow in net.calls if not u.endswith("/robots.txt")), net.calls)
+
+reset()
+NEW = "https://moved.cellinclinic.com"
+cellin.Reader, net = cellin_reader({
+    OLD + "/robots.txt": RResp(200, "User-agent: *\nAllow: /\n"),
+    OLD + cellin.LIST: RResp(302, "", NEW + "/ko"),
+    NEW + "/robots.txt": RResp(200, "User-agent: *\nDisallow: /ko\n"),
+    NEW + "/ko": RResp(200, "prices")})
+_, got, log = cellin.scrape_branch("옮긴점", OLD, 1.0)
+ok("셀린: a branch whose old site redirects: the new host's robots.txt is read, and the page it disallows is not",
+   [u for _, u in net.log] == [OLD + "/robots.txt", OLD + cellin.LIST, NEW + "/robots.txt"] and not got
+   and any(x["url"] == NEW + "/ko" and x["error"] == "robots.txt disallows" for x in log["fails"]), (net.log, log))
+
+# the new platform read for real: sitemap, then its pages — a page the sitemap lists but robots.txt disallows is not asked for
+reset()
+import json  # noqa: E402
+_push = lambda s: "<script>self.__next_f.push([1,%s])</script>" % json.dumps(s)
+EV = _push('5:["$","nav",null,{"aria-label":"breadcrumb","children":[["$","span","/events",{"children":"$L1"}],["$","span",null,{"children":"첫방문 EVENT"}]]}]\n'
+           '6:["$","p",null,{"children":"이벤트기간 : 26.09.03 ~ 26.12.31"}]\n'
+           '7:["$","$L2",null,{"eventOptions":[{"id":"event-1","name":"아쿠아필","longDescription":"$undefined","originalPrice":50000,"salePrice":29000,"isFirst":true}],"packageOptions":[]}]\n')
+SM = "<urlset>" + "".join(f"<url><loc>{NEW}{p}</loc></url>" for p in ("/ko", "/ko/procedures/secret", "/ko/procedures/category/c", "/ko/events/1")) + "</urlset>"
+cellin.Reader, net = cellin_reader({
+    OLD + "/robots.txt": RResp(200, "User-agent: *\nAllow: /\n"),
+    OLD + cellin.LIST: RResp(302, "", NEW + "/ko"),
+    NEW + "/robots.txt": RResp(200, "User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /ko/procedures/secret\n"),
+    NEW + "/ko": RResp(200, "home"), NEW + "/sitemap.xml": RResp(200, SM), NEW + "/ko/events/1": RResp(200, EV),
+    NEW + "/ko/procedures/secret": RResp(200, EV)})
+_, got, log = cellin.scrape_branch("새사이트점", OLD, 1.0)
+asked = [u for _, u in net.log]
+ok("셀린 new platform: robots.txt of the new host before any of its pages; the sitemap, then the listed pages",
+   asked == [OLD + "/robots.txt", OLD + cellin.LIST, NEW + "/robots.txt", NEW + "/ko", NEW + "/sitemap.xml", NEW + "/ko/events/1"], asked)
+ok("셀린 new platform: a listed page robots.txt disallows is not requested (and no /api/ address is ever asked)",
+   NEW + "/ko/procedures/secret" not in asked and not any("/api/" in u for u in asked)
+   and any(x["url"] == NEW + "/ko/procedures/secret" and x["error"] == "robots.txt disallows" for x in log["fails"]), log["fails"])
+ok("셀린 new platform: the event's option read from the page's own data (group = title, end date, 첫방문 kept)",
+   [(r["group"], r["option"], r["sale"], r["orig"], r["until"]) for r in got] == [("첫방문 EVENT", "아쿠아필 (첫방문)", 29000, 50000, "2026-12-31")]
+   and log.get("platform") == "new" and log.get("addr_url") == NEW + "/ko/events", (got, log))
+
+reset()
+cellin.Reader, net = cellin_reader({OLD.replace("99", "10") + "/robots.txt": RResp(200, "User-agent: YoonSiljangBot\nDisallow: /clinicPriceSide/\n")})
+cellin.SEED, _seed = OLD.replace("99", "10") + cellin.LIST, cellin.SEED
+cellin.write_raw = lambda *a, **k: "x"
+_argv, sys.argv = sys.argv, ["cellin.py"]
+try:
+    cellin.main()
+finally:
+    sys.argv, cellin.SEED = _argv, _seed
+    cellin.Reader, cellin.write_raw = _cellin
+ok("셀린: the branch list page is not read when robots.txt disallows it for our name", [u for _, u in net.log] == [OLD.replace("99", "10") + "/robots.txt"], net.log)
+
 # the registry's rate text (shown on the app's 정보 screen) says what each chain really does (2026-10-16 검토: a check that only
 # looked for the numbers somewhere in the file passed '쁨 1초 간격', a gap that never applies). What each chain does:
 #   gap     the --gap of the branch Fetcher, written only where a branch Fetcher makes more than one request

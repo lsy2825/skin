@@ -22,7 +22,7 @@ def main(key, out):
     cache = json.load(open(branches.CACHE, encoding="utf-8")) if os.path.exists(branches.CACHE) else {}
     s = requests.Session()
     s.headers["User-Agent"] = UA
-    rows = [{"brand": brand, "branch": p["branch"], "cands": branches.vands_addrs(f, p["site"]) if key == "vands" else branches.page_addrs(f, p["site"] + path)}
+    rows = [{"brand": brand, "branch": p["branch"], "cands": branches.vands_addrs(f, p["site"]) if key == "vands" else branches.page_addrs(f, p.get("addr_url") or p["site"] + path)}
             for p in branches.from_log(brand, key).get("pages", []) if p.get("rows") and p.get("site")]
     for r in branches.pick_own(rows):
         g = branches.geocode(r["address"], cache, s) if r["address"] else None

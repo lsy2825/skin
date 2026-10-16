@@ -4,7 +4,7 @@ The live sites are not reachable from the dev container, so these check the page
 when a site changes its markup the weekly guard (build2/weekly.py) keeps the last good file and this test shows where.
   python3 tests/brand_parsers_test.py
 """
-import datetime, os, re, sys
+import datetime, json, os, re, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "scrape"))
@@ -140,6 +140,36 @@ rows = cellin.items(fx("cellin_detail.html"), "분당정자점", "첫방문", ""
 common("셀린", rows)
 r0 = rows[0]
 ok("셀린: item with sale and list price, condition kept in the name", (r0["option"], r0["sale"], r0["orig"]) == ("[카톡플친대상/첫방문] 턱보톡스 50U (국산)", 9900, 19000), r0)
+
+# 셀린 new platform (<slug>.cellinclinic.com — 연신내·다산·홍대; pages as fetched 2026-10-16, trimmed to the payload scripts)
+Y = "https://yeonsinnae.cellinclinic.com"
+urls = cellin.page_urls(fx("cellin_new_sitemap.xml"), "yeonsinnae.cellinclinic.com")
+ok("셀린 새 사이트: sitemap → procedure and event pages only (no category, about, 비급여 or home page)",
+   urls == [Y + "/ko/procedures/jaw-botox", Y + "/ko/procedures/thermage-flx", Y + "/ko/events/52", Y + "/ko/events/55"], urls)
+ok("셀린 새 사이트: another host in a sitemap is not followed", cellin.page_urls(fx("cellin_new_sitemap.xml"), "dasan.cellinclinic.com") == [])
+rows = cellin.new_items(fx("cellin_new_event.html"), "연신내점", Y + "/ko/events/52", "t")
+common("셀린 새 사이트 이벤트", rows)
+ok("셀린 새 사이트 이벤트: the event's 10 options, title as the group, end date from '이벤트기간 : 26.09.24 ~ 26.10.31'",
+   len(rows) == 10 and {r["group"] for r in rows} == {"10월 EVENT"} and {r["until"] for r in rows} == {"2026-10-31"}, (len(rows), rows[:1]))
+r0 = rows[0]
+ok("셀린 새 사이트 이벤트: name as the site gives it, explanation kept, prices", (r0["option"], r0["sale"], r0["orig"], r0["category"]) ==
+   ("[10월]PA필+피코슈어프로+카프리레이저+모델링 (+피부 정밀 촬영)", 109000, 210000, ""), r0)
+ok("셀린 새 사이트 이벤트: a two-line explanation becomes one line",
+   any(r["option"] == "[10월](여)아이큐)얼굴전체+카프리레이저+모델링 (*아이큐 : 코,미간,헤어라인,눈썹 제외 *최대 3회 한정)" for r in rows))
+rows = cellin.new_items(fx("cellin_new_procedure.html"), "연신내점", Y + "/ko/procedures/thermage-flx", "t")
+common("셀린 새 사이트 시술", rows)
+ok("셀린 새 사이트 시술: options and the package tab, page title as the group, menu label as the category, no end date",
+   len(rows) == 6 and {r["group"] for r in rows} == {"써마지 FLX"} and {r["category"] for r in rows} == {"리프팅"} and {r["until"] for r in rows} == {""}
+   and ("울쎄라피프라임 300샷+써마지FLX 300샷", 1840000, 3200000) in [(r["option"], r["sale"], r["orig"]) for r in rows], rows[:2])
+_p = lambda s: "<script>self.__next_f.push([1,%s])</script>" % json.dumps(s)
+odd = cellin.new_items(_p('7:["$","$L2",null,{"eventOptions":['
+                          '{"id":"a","name":"아쿠아필","longDescription":"$undefined","originalPrice":0,"salePrice":29000,"isFirst":true},'
+                          '{"id":"b","name":"상담 시술","originalPrice":100000,"salePrice":null},'
+                          '{"id":"c","name":"이벤트 옵션","originalPrice":9,"salePrice":5,"eventHref":"/events/52"},'
+                          '{"id":"a","name":"아쿠아필","salePrice":29000,"isFirst":true}],"packageOptions":null}]\n'), "x", Y + "/ko/procedures/p", "t")
+ok("셀린 새 사이트: '첫방문' badge kept in the name; no price (상담) skipped; an event's option on a procedure page left to the event page; "
+   "same option id once; list price 0 = none", [(r["option"], r["sale"], r["orig"]) for r in odd] == [("아쿠아필 (첫방문)", 29000, "")], odd)
+ok("셀린 새 사이트: an event with no end date has none", cellin.new_until("이벤트기간 : 26.09.03 ~ ") == "" and cellin.new_until("이벤트기간 : {range}") == "")
 
 # the collectors' robots.txt / Crawl-delay manners (scrape/common.py Fetcher, lienjang, branches, the weekly gate; no network):
 # their own file, run from here so the PR checks run them (2026-10-16)
