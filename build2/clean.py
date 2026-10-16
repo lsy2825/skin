@@ -71,7 +71,9 @@ CATS = [  # first match wins; tested on category + group + option
 ]
 # 해피아워·'화/수/목'·'12시~17시'·'평일 한정' are weekday hours too (검증 8차: 126 such rows were compared as plain prices — 유앤아이 동탄점
 # 온다 60KJ showed its 400,000 happy-hour price over the 450,000 regular one). Under the app's own tag ('평일 낮': app/domain/pricing.js
-# condState) the visit-day filter knows them; the exact days and hours stay in the name
+# condState) the visit-day filter drops them on weekends and holidays. The app reads every such tag as Monday-Friday: a '화/수/목'
+# or all-day '평일한정' price is not told apart, and when the days stand only in the group title (501 rows on 2026-10-16) the
+# name does not show them either (C1 다음 검토 — a day tag or column is for B's filter to ask for)
 TAGS = [("평일 낮", r"프라임\s*타임|평일\s*(낮|오전|오후|한정)|낮\s*시간|\d+시\s*이전|해피\s*아워|화\s*/?\s*수\s*/?\s*목(?!요일)|"
                   r"\d{1,2}\s*시\s*[~-]\s*\d{1,2}\s*시"), ("일요일", r"일요일|썬데이|선데이"),
         ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"), ("1인 1회", r"1인\s*1회|1인당\s*1회")]

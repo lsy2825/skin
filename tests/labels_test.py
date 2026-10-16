@@ -560,6 +560,8 @@ ok("해피아워·'화/수/목'·'12시~17시'·'평일 한정'은 시간 조건
    and tg("리쥬란힐러 2cc") == [] and tg("화요일 휴진 안내") == [])
 ok("'영국산' 톡신은 '국산'이 아니라 수입", "국산" not in taxonomy.variant("주름 보톡스 2부위 (영국산)")[0]["label"].split()
    and taxonomy.variant("주름 보톡스 2부위 (국산)")[0]["label"].startswith("국산"))
+ok("'집중 국산'·'진행중 국산'은 그대로 국산('중국산'으로 읽지 않음)", taxonomy.variant("보톡스 집중 국산 주름보톡스 3부위")[0]["label"].startswith("국산")
+   and "X02" in [k[0] for k in xkeys.X if xkeys.match(k, "이벤트 진행중 국산 주름보톡스 1부위")])
 ok("... 큐레이션 '국산' 키(X02·X07)에도 안 들어감", not [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")]
    and "X02" in [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (국산)")], [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")])
 
