@@ -69,6 +69,7 @@ def reset():
             os.remove(p)
     common._clock = None
     common._busy.clear()
+    common._slowed.clear()
     sleeps.clear()
     T[0] = 1000.0
 
@@ -83,12 +84,15 @@ common.stamp("slow.example")                      # a request made at t=1000
 T[0] = 1100
 common.wait_turn("slow.example")
 ok("a host with Crawl-delay 180 is not asked again before 180 s have passed (waited the missing 80 s)", abs(sum(sleeps) - 80) < 1e-6 and T[0] == 1180, (sleeps, T[0]))
-common.stamp("slow.example")                      # that request ended at t=1180
+common.stamp("slow.example", end=True)            # that request ended at t=1180
 T[0] = 1400
 sleeps.clear()
 common.wait_turn("slow.example")
 ok("after the delay no more waiting", not sleeps, sleeps)
-common.stamp("slow.example")
+common.stamp("slow.example")                      # a request that did not take the turn …
+ok("… does not give back the turn another request holds", "slow.example" in common._busy, common._busy)
+common.stamp("slow.example", end=True)
+ok("the request that took the turn gives it back", "slow.example" not in common._busy, common._busy)
 common.wait_turn("other.example")
 ok("a host without a delay never waits, whatever the clock says", not sleeps, sleeps)
 
@@ -98,7 +102,13 @@ common.set_delay("stuck.example", 5)
 common.wait_turn("stuck.example")                 # takes the turn at t=1000, no stamp
 common.wait_turn("stuck.example")
 ok("a turn nobody gave back is given up after BUSY_MAX seconds", abs(T[0] - 1000 - common.BUSY_MAX) <= 1, (T[0], len(sleeps)))
-common.stamp("stuck.example")
+common.stamp("stuck.example", end=True)
+reset()
+common.set_delay("stuck2.example", 180)
+common.wait_turn("stuck2.example")                # a stuck request began at t=1000 (the clock had nothing before)
+common.wait_turn("stuck2.example")
+ok("after a stuck turn is given up, the next request still waits Crawl-delay from when that turn began", T[0] >= 1180, T[0])
+common.stamp("stuck2.example", end=True)
 
 # threads reading one host with a Crawl-delay at the same time go one by one (2026-10-16 검토: before, they all went together)
 reset()
@@ -176,10 +186,18 @@ fq = fetcher({"https://q.example/p": Resp(500)}, retries=3)
 fq.get("https://q.example/p")
 ok("a host without a long delay still gets its retries", sum(1 for _, u in fq.s.log if u == "https://q.example/p") == 3, fq.s.log)
 for code in (401, 403, 429):
-    fz = fetcher({f"https://z.example/{code}": Resp(code)}, retries=3)
+    reset()
+    fz = fetcher({f"https://z.example/{code}": Resp(code), "https://z.example/next": Resp(200, "ok")}, retries=3)
     fz.get(f"https://z.example/{code}")
-    ok(f"a page answering {code} is asked once, not again with the same name in this run",
+    ok(f"a page answering {code} is asked once, not retried in that fetch",
        sum(1 for _, u in fz.s.log if u == f"https://z.example/{code}") == 1 and fz.last_error == f"HTTP {code}", fz.s.log)
+    got = fz.get("https://z.example/next")
+    if code == 429:
+        ok("after a 429 nothing more is asked of that host in this run", got is None
+           and all(u != "https://z.example/next" for _, u in fz.s.log) and "429" in fz.last_error, fz.s.log)
+    else:
+        ok(f"a {code} on one page does not stop other pages of the host", got is not None, fz.s.log)
+reset()
 
 # --- shared robots answer between steps
 reset()
