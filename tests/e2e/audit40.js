@@ -48,7 +48,11 @@ ok('A12 바뀐 비교 ID 연결표(meta.keymap)와 다시 묶은 ID 목록(meta.
 const recl = new Map(); for (const [d, ks] of D.meta.recl || []) for (const k of ks) recl.set(k, d);
 const trendLeak = [...recl].filter(([k, d]) => (D.trend.k[k] || []).some((v, i) => v && D.trend.dates[i] < d));
 ok('A13 다시 묶은 시술의 가격 이력은 그날부터(섞인 예전 값 안 보임)', !trendLeak.length, trendLeak.slice(0, 3).join(' / '));
-ok('A14 다시 묶은 시술은 "가격 변동"에 안 나옴', !(D.changes || []).some(([k]) => recl.get(D.keys[k][0]) === D.meta.updated));
+// by (id, branch) once the build says which branches were regrouped (meta.reclBranches [[date, {id: [branch…]}]], C #100): a real
+// change at another branch of a regrouped id may show; a file without the field, or an id it does not list, stays per id
+const reclAt = new Map(D.meta.reclBranches || []).get(D.meta.updated);
+const reclHit = ([k, b]) => { const id = D.keys[k][0]; return recl.get(id) === D.meta.updated && (!reclAt || !reclAt[id] || reclAt[id].includes(b)); };
+ok('A14 다시 묶은 시술(그 지점)은 "가격 변동"에 안 나옴', !(D.changes || []).some(reclHit), JSON.stringify((D.changes || []).filter(reclHit).slice(0, 3)));
 
 (async () => {
   const mapped = Object.entries(D.meta.keymap || {}).find(([, v]) => v[0] && KL[v[0]]);
