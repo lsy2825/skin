@@ -128,8 +128,9 @@
   const MAX_DEL = 5;
   const cleanDel = (list) => [...new Set((Array.isArray(list) ? list : []).filter((x) => typeof x === "string" && ID.test(x)))].slice(-MAX_DEL);
   const addDel = (list, id) => (ID.test(id || "") ? cleanDel([...cleanDel(list).filter((x) => x !== id), id]) : cleanDel(list));
-  // a DELETE answer that ends the retries: done (2xx) or the Worker no longer knows the id (404/410)
-  const delDone = (status) => (status >= 200 && status < 300) || status === 404 || status === 410;
+  // a DELETE answer that ends the retries: done (2xx), or a client error sending it again cannot change (4xx: 404/410 the
+  // Worker no longer knows it, 400/403 … it never will) — only 408/429 and 5xx (and no answer) are tried again
+  const delDone = (status) => (status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 408 && status !== 429);
 
   // what the phone keeps: { id, ep: the subscription's endpoint, h: hash of the rules last sent }, or null
   const cleanState = (s) => (s && typeof s === "object" && ID.test(s.id || "") && typeof s.ep === "string" && typeof s.h === "string" ? { id: s.id, ep: s.ep, h: s.h } : null);

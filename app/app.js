@@ -1308,7 +1308,12 @@
     const i = (byName.get(sid) || []).find((x) => ROWS[x][0] === b);
     return i == null ? [] : (S[ROWS[i][7]] || "").split(" ").filter(Boolean).map((key) => ({ key, region: BR[b].region })); };
   const pushRules = () => Push.rulesOf(st.alerts, rowPushKeys, (k) => KI[k] != null);
-  const pushFetch = (req) => fetch(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body, credentials: "omit", cache: "no-store" });
+  // ms: give up after that long (a DELETE must not hang the '끄기' button on a weak connection)
+  const pushFetch = (req, ms) => {
+    const c = ms && typeof AbortController === "function" ? new AbortController() : null, t = c ? setTimeout(() => c.abort(), ms) : null;
+    return fetch(req.url, { method: req.method, headers: req.body ? { "content-type": "application/json" } : undefined, body: req.body, credentials: "omit", cache: "no-store", signal: c ? c.signal : undefined })
+      .finally(() => { if (t) clearTimeout(t); });
+  };
   // the registration, or null: navigator.serviceWorker.ready never settles when registering failed
   const swReg = () => Promise.race([navigator.serviceWorker.getRegistration().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
   async function pushSubscribe() {
@@ -1323,6 +1328,8 @@
       const id = res.ok ? Push.idOf(await res.json().catch(() => null)) : null;
       if (!id) throw new Error(`subscribe ${res.status}`);
       store.set("push", { id, ep: sub.endpoint, h: Push.hash(rules) });
+      // an id the Worker hands out (again) is in use: it never waits for a retried DELETE
+      store.set("pushDel", Push.cleanDel(store.get("pushDel", [])).filter((x) => x !== id));
     } catch (e) {
       // the Worker did not take it (or its answer was lost): the subscription made just now is taken back, so nothing can
       // push to this phone while the screen says off (a row the Worker did keep gets 410 on its next send and goes)
@@ -1330,21 +1337,26 @@
       throw e;
     }
   }
-  // DELETE one subscription id at the Worker. When it does not get there (offline, 5xx) the id waits in 'pushDel' (this
-  // phone) and goes again at the next start — a '끄기' that failed must not leave the subscription on the server.
+  // DELETE one subscription id at the Worker (chat A's request 2026-10-16: a '끄기' that does not get there must not leave the
+  // subscription on the server). The id is written to 'pushDel' (this phone) BEFORE the request, so a page closed while it
+  // is on its way still sends it at the next start; it leaves the list only once the Worker has answered for good. An id
+  // in use again (the one in 'push') is never deleted.
   async function pushDelete(id) {
     const req = Push.unsubscribeReq(CFG, id);
     if (!req) return;
+    const drop = () => store.set("pushDel", Push.cleanDel(store.get("pushDel", [])).filter((x) => x !== id));
+    if ((pushState() || {}).id === id) { drop(); return; }
+    store.set("pushDel", Push.addDel(store.get("pushDel", []), id));
     let done = false;
-    try { done = Push.delDone((await pushFetch(req)).status); } catch (e) { /* offline */ }
-    const q = Push.cleanDel(store.get("pushDel", []));
-    store.set("pushDel", done ? q.filter((x) => x !== id) : Push.addDel(q, id));
+    try { done = Push.delDone((await pushFetch(req, 10000)).status); } catch (e) { /* offline, or no answer in 10 s */ }
+    if (done) drop();
   }
   async function pushRetryDeletes() { for (const id of Push.cleanDel(store.get("pushDel", []))) await pushDelete(id); }
   async function pushUnsubscribe() {
     const s = pushState();
     store.set("push", null);
-    if (s) await pushDelete(s.id);
+    // queued at once (inside pushDelete, before its request) and not waited for: the screen is off right away
+    if (s) pushDelete(s.id).catch(() => {});
     const reg = await swReg(), sub = reg && reg.pushManager ? await reg.pushManager.getSubscription().catch(() => null) : null;
     if (sub) await sub.unsubscribe().catch(() => {});
   }
@@ -1364,7 +1376,7 @@
       if (!rules.length) {
         await pushUnsubscribe(); render();
         // the panel says it too; a toast only when it would not cut short another action's 되돌리기
-        if (!$("#toast").classList.contains("act")) toast("남은 가격 알림이 없어 휴대폰 알림 받기를 껐어요");
+        if (!$("#toast").classList.contains("act")) toast("앱 밖으로 보낼 가격 알림이 없어 휴대폰 알림 받기를 껐어요");
         return;
       }
       if (h === s.h) return;
@@ -1401,7 +1413,7 @@
       if (sub.endpoint !== s.ep) {
         // renewed by the browser: POST the new one first; the old id goes only once that worked (offline: next start)
         await pushSubscribe();
-        pushDelete(s.id).catch(() => {});
+        if ((pushState() || {}).id !== s.id) pushDelete(s.id).catch(() => {});
         return;
       }
       pushSync();
@@ -1448,7 +1460,8 @@
           s.on.target ? h("label", { class: "flabel" }, "목표가 (이 금액 이하가 되면)", tgt) : null) : null,
         s.type === "target" || s.type === "cartdrop" ? h("label", { class: "flabel" }, s.type === "cartdrop" ? "이 금액 이하가 되면 (비우면 지금보다 내리면)" : "이 금액 이하가 되면", tgt) : null,
         h("div", { class: "sub", style: "margin-top:8px" }, "매주 실제로 모은 가격끼리 비교해서, 앱을 열 때 관심 탭과 위쪽 종 아이콘으로 알려요. 같은 변화는 다시 알리지 않아요. 값은 병원 표시가 기준이고, 화면의 부가세·지역 설정을 바꿔도 알림이 생기지 않아요."),
-        h("div", { class: "tiny", style: "margin-top:4px" }, PUSH ? (base.k || s.type === "expiring" ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
+        h("div", { class: "tiny", style: "margin-top:4px" }, PUSH ? (base.k && watched.sp === false ? "'특가 포함'이 꺼져 있어 이 알림은 이 기기에서 앱을 열 때만 알려요(앱이 닫혀 있을 때 오는 알림은 특가까지 넣어 계산해요). 앱을 닫아도 받으려면 내 설정에서 '특가 포함'을 켜고 만들어 주세요."
+          : base.k || s.type === "expiring" ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
           : "이 알림은 앱을 열 때만 알려요(앱이 닫혀 있을 때 오는 알림에는 이 종류가 없어요).")
           : "휴대폰 알림을 켜 두면 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
         h("button", { class: "btn", type: "button", style: "width:100%;margin-top:14px", onclick: () => {
@@ -1471,7 +1484,7 @@
       return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, alertName(a)), h("span", { class: "p num" }, now && now.value != null ? won(now.value) : "-"),
         h("span", { class: "m" }, h("span", { class: "k k4" }, ALERT_TYPES[a.type]), a.type === "watch" ? h("span", {}, Object.entries(Intel.WATCH_T).filter(([t]) => !a.on || a.on[t] !== false).map(([, l]) => l).join(" · ")) : null,
           a.target ? h("span", {}, `목표 ${won(a.target)}`) : null, a.base != null && typeof a.base !== "object" && a.type !== "newmatch" ? h("span", {}, `기준 ${won(a.base)}`) : null,
-          a.type === "newmatch" && a.base != null ? h("span", {}, `기준 ${a.base}곳`) : null, a.reg ? h("span", {}, a.reg) : null, h("span", { class: "sp" }),
+          a.type === "newmatch" && a.base != null ? h("span", {}, `기준 ${a.base}곳`) : null, a.reg ? h("span", {}, a.reg) : null, PUSH && a.k && a.sp === false ? h("span", { title: "'특가 포함'을 끄고 만든 알림이라 앱을 열 때만 알려요" }, "일반가만 · 이 기기만") : null, h("span", { class: "sp" }),
           h("button", { class: "addbtn", type: "button", "aria-label": `${alertName(a)} 알림 해지`, onclick: () => {
             const before = st.alerts.slice(); st.alerts = st.alerts.filter((x) => x !== a); saveAlerts(); render();
             undoToast("알림을 해지했어요", () => { st.alerts = before; saveAlerts(); render(); }); } }, "해지")))); }))
@@ -1507,7 +1520,7 @@
       else if (Notification.permission === "denied") kids.push(h("div", { class: "sub" }, "브라우저 설정에서 이 사이트의 알림이 꺼져 있어요. 켜려면 브라우저 설정에서 바꿔 주세요."));
       else if (PUSH) {
         const s = pushState(), { rules, local, cut } = pushRules();
-        const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·특가 빼고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
+        const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·'특가 포함'을 끄고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
         if (s && Notification.permission === "granted") {
           kids.push(h("div", { class: "sub" }, `켜짐 — 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 보낸 조건 ${rules.length}개.`),
             note ? h("div", { class: "tiny" }, note) : null);
@@ -1516,7 +1529,8 @@
           kids.push(off);
         } else if (!rules.length) {
           // nothing to send yet: the switch would only make an empty subscription (and remove it again)
-          kids.push(h("div", { class: "sub" }, "가격 알림을 하나 이상 만들면 켤 수 있어요. 비교 화면의 ⋯ → 가격 알림에서 만들어요."),
+          kids.push(h("div", { class: "sub" }, st.alerts.length ? "지금 가격 알림은 모두 이 기기에서 앱을 열 때만 알리는 종류예요. 앱 밖으로 받을 수 있는 알림(비교 화면의 ⋯ → 가격 알림, '특가 포함' 켬)을 하나 이상 만들면 켤 수 있어요."
+            : "가격 알림을 하나 이상 만들면 켤 수 있어요. 비교 화면의 ⋯ → 가격 알림에서 만들어요."),
             note ? h("div", { class: "tiny" }, note) : null);
         } else {
           kids.push(h("div", { class: "sub" }, "알림을 켜면 알림 주소와 지켜볼 조건만 서버에 저장돼요. 이름·연락처·위치는 저장하지 않아요. 끄거나 가격 알림을 모두 지우면 서버에서도 바로 지워요. 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 누르기 전에는 권한을 묻지 않아요."),
