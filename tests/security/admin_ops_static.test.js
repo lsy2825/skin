@@ -22,6 +22,21 @@ test("run_regression.sh: commerce50/admin51 are out (they expect #ops cards that
   assert.ok(/\$\{APP_PIN:\?/.test(sh), "the suite itself requires APP_PIN");
 });
 
+// The PR checks run no browser, so an e2e script missing from this loop runs nowhere (B's alert_region, addon_col, cond_badge,
+// spec_notes and new_chains sat outside it until 2026-10-16). Helper modules that only export code are named here.
+test("run_regression.sh: every tests/e2e/*.js screen check is in the e2e loop (helpers excepted)", () => {
+  const helpers = new Set(["rows"]);
+  const names = read("tests/run_regression.sh").match(/^for t in (.+?); do$/m)[1].split(/\s+/);
+  const scripts = fs.readdirSync(path.join(root, "tests/e2e")).filter((f) => f.endsWith(".js")).map((f) => f.slice(0, -3));
+  for (const h of helpers) {
+    assert.ok(scripts.includes(h), `helper ${h}.js still exists (else drop it from this list)`);
+    assert.match(read(`tests/e2e/${h}.js`), /module\.exports\s*=/, `${h}.js is a helper module, not a screen check`);
+  }
+  const missing = scripts.filter((n) => !helpers.has(n) && !names.includes(n));
+  assert.deepEqual(missing, [], "add these to the e2e loop in tests/run_regression.sh");
+  for (const n of names) assert.ok(scripts.includes(n), `the loop names tests/e2e/${n}.js, which does not exist`);
+});
+
 test("admin_ops_browser.js: exits 2 without APP_PIN and never unlocks the gate another way", () => {
   const src = read("tests/security/admin_ops_browser.js");
   for (const banned of ["pc:gate-ok", "gate.js", "GATE_HASH", "const HASH"]) assert.ok(!src.includes(banned), `no "${banned}" in the test`);

@@ -39,7 +39,7 @@ run "branch addresses (own address, loose forms, on saved public pages)" python3
 if [ ! -f data2/db/offers.csv ] && [ -f data2/clean.csv ]; then python3 build2/export_db.py >/dev/null 2>&1; fi
 if [ -f data2/db/offers.csv ]; then run "backup / restore" bash tests/db/backup_restore_test.sh
 else echo "SKIP | backup / restore | no data2/db/offers.csv and no data2/clean.csv — run: python build2/weekly.py --skip-scrape && python build2/export_db.py"; fi
-for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push; do
+for t in accounts_r2 devices51 qa7 ux_qa concern xss jomi objective frame table_attr compare_cards v5_features demo_features data_sync o2_home o3_search pricenow audit40 taxonomy40 pricing40 ops40 audit_ui a11y touch_targets clickable price_focus first_screens metrics push alert_region addon_col cond_badge spec_notes new_chains; do
   run "e2e $t" node tests/e2e/$t.js
 done
 exit $fail
