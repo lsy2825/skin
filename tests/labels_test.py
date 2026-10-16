@@ -646,6 +646,71 @@ _sk2 = appdata.spec_keys([dict(fid="toxin", spec="국산", one_liner=".")], _vk,
                          [dict(fam="toxin", curated=["X01", "X04"])], {"X01": "국산 사각턱 보톡스 50U", "X04": "독일산(제오민) 사각턱 보톡스 50U"})
 ok("C7 ... 큐레이션 키도 이름 낱말로('국산 사각턱 보톡스 50U'만, '미국산'·'독일산(제오민)'은 아님)", _sk2[0]["keys"] == ["T1", "X01"], _sk2)
 
+# C1 다음(2026-10-16): 요일·시간 칸 — data.json 줄의 16 days(월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64), 17 hours('HH:MM-HH:MM')
+_when = [("화/수/목", 14, ""), ("화수목 이벤트", 14, ""), ("화.수.목", 14, ""), ("화·수·목 HAPPY HOUR", 14, ""), ("수목 이벤트", 12, ""),
+         ("월~목", 15, ""), ("월-금", 31, ""), ("월·수·금", 21, ""), ("ONLY 월/화/수/목 이벤트", 15, ""), ("★밴스타임 월목금 이벤트 12시~6시", 25, "12:00-18:00"),
+         ("[EVENT] ★★(화,목,토이벤트)리쥬란힐러 2CC", 42, ""), ("SUPER SALE 금토이벤트", 48, ""), ("평일", 31, ""), ("주말특가 이벤트", 96, ""),
+         ("토·일", 96, ""), ("[주말, 공휴일]아쿠아필 1회", 96, ""), ("일요일 특가전", 64, ""), ("토요일이벤트", 32, ""), ("[EVENT · 주말제외] 겨드랑이 제모 5회", 31, ""),
+         ("평일 단독 이벤트♥ 공휴일, 주말 제외 / 오전 11시 - 오후 4시 (타임한정)", 31, "11:00-16:00"),
+         ("평일한정이벤트 월~목 오전 11시~오후4시까지 평일 방문 고객 한정! *금요일, 주말, 공휴일 불가", 15, "11:00-16:00"),
+         ("♥화/수/목 해피아워 이벤트♥ 화/수/목 11시~16시 한정 (점심시간 13시~14시 제외)", 14, "11:00-16:00"),
+         ("⭐♥10월 화수목 해피아워⭐♥ 매주 화/수/목 적용 / 이외 요일 및 공휴일 불가 *10/1~10/15*", 14, ""),
+         ("*일요일 가능/이외 요일 불가/당일소진 원칙*", 64, ""), ("첫방문 이벤트 - 스킨케어 토요일 시술 불가", 95, ""),
+         ("11시~16시", 0, "11:00-16:00"), ("12:00~17:00", 0, "12:00-17:00"), ("오전 10시~오후 3시", 0, "10:00-15:00"), ("10-15시", 0, "10:00-15:00"),
+         ("화수목 10~17시 한정! 특가 EVENT", 14, "10:00-17:00"), ("화,수,목 오전 11시~오후 5시30분 인모드FX(1부위)", 14, "11:00-17:30"),
+         ("[EVENT] (평일한정 10시30분~6시까지/이벤트)얼굴전체보톡스", 31, "10:30-18:00"), ("[EVENT] (1회체험/평일한정 10:30~6:00) 조각주사 1부위", 31, "10:30-18:00"),
+         ("미백관리 택 1 *화.수.목 1시~5까지 적용 가능", 14, "13:00-17:00"), ("[런치 타임 EVENT] 색소 올인원 1회 (12시-3시)", 0, "12:00-15:00"),
+         ("[평일4시이전] 아쿠아필 1회", 31, "00:00-16:00"), ("★주중 타임할인이벤트★ 주중 6시까지 특별 타임할인", 31, "00:00-18:00"),
+         # not a price's days or hours
+         ("화요일 휴진 안내", 0, ""), ("토요일 오전 진료", 0, ""), ("4월 21(화)입고예정/사전예약", 0, ""), ("앞 목 5회", 0, ""), ("턱/목/일자주름", 0, ""),
+         ("금일 한정 특가", 0, ""), ("화목한 분위기", 0, ""), ("이벤트 기간 10/1~10/15", 0, ""), ("시술 2~3시간 소요", 0, ""), ("1~2회 권장", 0, ""),
+         ("프라임 타임 셀렉션", 0, ""), ("해피아워이벤트", 0, ""), ("평일 오후 반짝이벤트", 31, ""), ("데이타임 이벤트", 0, ""), ("원데이 트러블 패키지", 0, ""),
+         ("월~금 월~금 월~금 토 일", 31, ""), ("월화수목금토일", 0, "")]
+_bad = [(t, d, h, clean.visit_days(t), clean.visit_hours(t)) for t, d, h in _when if (clean.visit_days(t), clean.visit_hours(t)) != (d, h)]
+ok(f"요일·시간 읽기 예시 {len(_when)}개('화요일 휴진 안내'·'21(화) 입고'·'목 주름'·'10/1~10/15'·'2~3시간'은 아님)", not _bad, _bad)
+ok("요일·시간: 묶음 제목과 이름이 둘 다 맞음(제목 '평일' + 이름 '화,수,목' = 화수목), 겹치지 않으면 이름 쪽",
+   clean.visit_when("평일한정이벤트", "화,수,목 11:00 ~17:00 물광필") == (14, "11:00-17:00")
+   and clean.visit_when("평일 10~17시 한정", "[12시-3시] 아쿠아필") == (31, "12:00-15:00")
+   and clean.visit_when("토요일이벤트", "[일요일 특가] 리쥬란") == (64, "") and clean.visit_when("화수목 이벤트", "리쥬란 힐러 2cc") == (14, ""))
+ok("요일·시간: 두 페이지의 같은 가격은 둘 다 조건이 있을 때만 남고(태그처럼), 그때는 어느 쪽 요일·시간이든 됨",
+   clean.visit_merge((14, "11:00-16:00"), (31, "10:00-15:00")) == (31, "10:00-16:00") and clean.visit_merge((14, "11:00-16:00"), (0, "")) == (0, ""))
+_raw_w = [("이벤트", "화수목 이벤트", "리쥬란 힐러 2cc", 199000), ("이벤트", "평일한정이벤트 월~목 오전 11시~오후4시까지 *금요일, 주말, 공휴일 불가", "온다 리프팅 6만줄", 150000),
+          ("이벤트", "토요일이벤트", "울쎄라피 프라임 300샷", 990000), ("이벤트", "화수목 이벤트", "슈링크 유니버스 300샷", 250000),
+          ("리프팅", "슈링크", "슈링크 유니버스 300샷", 250000), ("스킨케어", "평일 해피아워 특가", "아쿠아필 1회", 30000),
+          ("스킨케어", "화/수/목 해피아워 이벤트 (10시~15시)", "아쿠아필 1회", 30000), ("스킨케어", "화요일 휴진 안내", "라라필 1회", 40000)]
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    with open(os.path.join(tmp, "data2", "raw", "velyb.csv"), "w", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        wr.writerow(["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"])
+        for c, g, o, s in _raw_w:
+            wr.writerow(["블리비", "강남점", c, g, o, s, "", "0", "", "https://example.invalid/", "2026-10-15T06:00:00+09:00"])
+    root, rawdir = clean.ROOT, clean.RAW
+    clean.ROOT, clean.RAW = tmp, os.path.join(tmp, "data2", "raw")
+    try:
+        import contextlib, io
+        with contextlib.redirect_stdout(io.StringIO()):
+            clean.main()
+    finally:
+        clean.ROOT, clean.RAW = root, rawdir
+    _w = {(r["option"], r["group"].split()[0]): (r["days"], r["hours"]) for r in csv.DictReader(open(os.path.join(tmp, "data2", "clean.csv"), encoding="utf-8"))}
+ok("clean.csv days·hours: 요일이 묶음 제목에만 있어도 줄에 남음(예전 501줄), 같은 상품이 조건 없는 페이지에도 있으면 0(평일 + 화수목 10~15시 = 평일·시간 없음), '휴진 안내'는 0",
+   _w.get(("리쥬란 힐러 2cc", "화수목")) == ("14", "") and _w.get(("온다 리프팅 6만줄", "평일한정이벤트")) == ("15", "11:00-16:00")
+   and _w.get(("울쎄라피 프라임 300샷", "토요일이벤트")) == ("32", "") and _w.get(("슈링크 유니버스 300샷", "화수목")) == ("0", "")
+   and _w.get(("아쿠아필 1회", "평일")) == ("31", "") and _w.get(("라라필 1회", "화요일")) == ("0", ""), _w)
+import homedata  # noqa: E402
+_hd = {"s": ["", "A", "강남점", "리쥬란 2cc", "평일 낮", "X24", "11:00-16:00", "리쥬란 힐러 2cc"], "keys": [["X24", "스킨부스터", "리쥬란 힐러 2cc"]],
+       "meta": {"fam": [], "brands": [["A"]], "updated": "2026-10-16"}, "branches": [[0, 2, 0, None, None, 0, 0, 0, 0, 3]], "colDelta": [2], "groups": [],
+       "cols": [[0, 0], [2, 2], [3, -3], [199000, 190000], [0, 0], [0, 0], [4, 0], [5, 5], [1, 1], [-1, -1], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0], [0, 0],
+                [14, 0], [6, 0]]}
+_h18 = homedata.build(_hd)
+_r18 = homedata.rows_of(_h18)
+_h16 = homedata.build(dict(_hd, cols=_hd["cols"][:16]))
+ok("home.json: days는 그대로, hours는 글자표(s)를 다시 만들어도 같은 글자 — 16칸짜리 옛 data.json도 그대로 됨",
+   [(r[16], _h18["s"][r[17]]) for r in _r18] == [(14, "11:00-16:00"), (0, "")] and {len(r) for r in homedata.rows_of(_h16)} == {16},
+   [(r[16], _h18["s"][r[17]]) for r in _r18])
+ok("appdata.ROW_FIELDS = 18(days·hours를 더함), home.json의 글자 칸에 hours(17)", appdata.ROW_FIELDS == 18 and 17 in homedata.STR_FIELDS)
+
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
 bad = [(k[2], labels.problems(k[2])) for k in D["keys"] if labels.problems(k[2])]
@@ -661,6 +726,21 @@ vp = os.path.join(ROOT, "data2", "variants.json")
 if os.path.exists(vp):
     rej = json.load(open(vp, encoding="utf-8"))["stats"].get("label_rejected", [])
     print(f"INFO | 이번 빌드에서 이상한 이름이라 뺀 규격 {len(rej)}개", [r["label"] for r in rej[:5]])
+# days·hours in the data that ships: 18 fields; a data.json built before 2026-10-16 has 16 (the next factory build adds them)
+if len(D["cols"]) >= 18:
+    _days, _hrs = D["cols"][16], [D["s"][i] for i in D["cols"][17]]
+    ok(f"app/data.json days·hours: 요일 칸 {sum(1 for d in _days if d):,}줄 · 시간 칸 {sum(1 for h in _hrs if h):,}줄 모두 형식대로",
+       all(isinstance(d, int) and 0 <= d < 127 for d in _days) and all(h == "" or re.fullmatch(r"([01]\d|2[0-4]):[0-5]\d-([01]\d|2[0-4]):[0-5]\d", h) for h in _hrs))
+else:
+    print(f"INFO | app/data.json은 {len(D['cols'])}칸(요일·시간 칸 전) — 다음 공장 빌드에서 days·hours가 더해짐")
+cp = os.path.join(ROOT, "data2", "clean.csv")
+if os.path.exists(cp):
+    _cr = list(csv.DictReader(open(cp, encoding="utf-8")))
+    if _cr and "days" in _cr[0]:
+        # '평일 낮' rows whose days (화/수/목, 월~목 …, not just 평일) stand only in the group title — 501 on 2026-10-16, read as 월~금
+        _g = [r for r in _cr if "평일 낮" in r["tags"].split("·") and clean.visit_days(r["group"]) not in (0, 31) and not clean.visit_days(r["name"])]
+        ok(f"data2/clean.csv: 요일이 묶음 제목에만 있는 '평일 낮' {len(_g)}줄 모두 요일 칸이 있음", _g and all(int(r["days"]) for r in _g),
+           [(r["group"], r["name"]) for r in _g if not int(r["days"])][:5])
 
 print(f"{'FAIL: ' + str(len(fails)) + ' failing' if fails else 'ALL PASS'}")
 sys.exit(1 if fails else 0)
