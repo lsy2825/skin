@@ -35,10 +35,16 @@ data.json (compact, strings interned in `s`):
             purpose, areas, method, kinds, side effects, cautions, sources, review status; matched to families by name or base id
   keys      [id, cat, label] — hand-made X01..X36 (xkeys.py) first, then variant keys T… (taxonomy.py, data2/variants.json)
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot
+  meta.plainRules  [[rule version, first collection (YYYY-MM-DD) built with it], …] — the rule for a plain (regular) price: the
+            weekly snapshot, trend and changes, the groups' median regular price and bstat (build2/groups.py plain). 2 = kind
+            일반/고시가, no tag, days 0 and hours '' (2026-10-16: a price limited to some weekdays or hours is conditional even
+            without a tag, as in the app's '특가 제외'); 1 = no days / hours check, in a file without the field and in snapshots
+            dated before the first entry. The next build judges the previous rows by the rule they were counted with, so a rule
+            change shows in meta.recl, not as price changes
   meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9; a chain never collected is left out).
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
-Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest regular price}; the newest older one is
+Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest plain price (groups.plain)}; the newest older one is
 the 'before'.
 """
 import argparse, csv, datetime, glob, json, os, re, sys, unicodedata
@@ -402,6 +408,18 @@ def row_keys_prev(prev, prow):
     return out
 
 
+def prev_cond(prev, r):
+    """(kind, tags, days, hours) of a previous data.json row — files from before 2026-10-16 have no days / hours fields"""
+    ps, pkinds = prev["s"], prev["meta"].get("kinds") or KINDS
+    return pkinds[r[5]], ps[r[6]] or "", r[16] if len(r) > 16 else 0, ps[r[17]] if len(r) > 17 else ""
+
+
+def prev_rule(prev, date=None):
+    """the plain-price rule (groups.plain) the previous data.json used for its own collection — or, given a date, for the
+    snapshot of that date (meta.plainRules; 1 in files without it)"""
+    return G.rule_at(prev["meta"].get("plainRules"), date or prev["meta"].get("updated", ""))
+
+
 def reclassified(prev, prow, rows):
     """comparison ids whose rows changed because the rules changed, not the prices: a row that is in both builds (same brand,
     branch and name) but joined or left the id. Their 'price change' since the last snapshot would only be the new mix of
@@ -420,17 +438,20 @@ def reclassified(prev, prow, rows):
             out |= o ^ n
     # a row at the same price whose kind or condition tags changed (2026-10-15: a page-wide '평일 낮' / '첫 방문' tag dropped by the
     # fold rule) moves the key's plain lowest price without any clinic changing a price: 울쎄라 300샷 read as three price cuts
+    # The same holds for a change of the rule itself (2026-10-16: a price with days / hours but no tag is no longer plain): the
+    # previous rows are judged by the rule the previous file was built with (meta.plainRules), these by today's. A later build of
+    # the same collection finds nothing new here and keeps the ids through meta.recl's entry of that date
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
-    pkinds = prev["meta"].get("kinds") or KINDS
     was, now = defaultdict(set), defaultdict(set)
     for r in prow:
-        was[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].add((pkinds[r[5]], ps[r[6]] or ""))
+        was[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].add(prev_cond(prev, r))
     for r in rows:
-        now[(r["brand"], r["branch"], r["name"], int(r["sale"]))].add((r["kind"], r["tags"] or ""))
+        now[(r["brand"], r["branch"], r["name"], int(r["sale"]))].add((r["kind"], r["tags"] or "", int(r.get("days") or 0), r.get("hours") or ""))
     # only when that changes whether the row counts as a plain price (a 체험가 row losing '첫 방문' moves nothing: 검증 7차)
-    plain = lambda st: any(k in ("일반", "고시가") and not t for k, t in st)
+    rule = prev_rule(prev)
+    plain = lambda st, rule=G.PLAIN_RULE: any(G.plain(*c, rule=rule) for c in st)
     for ident, x in now.items():
-        if ident in was and plain(was[ident]) != plain(x):
+        if ident in was and plain(was[ident], rule) != plain(x):
             out |= new.get(ident[:3], set()) | old.get(ident[:3], set())
     # a row at the same price that joined or left an id while a same-named row at another price kept it (검증 8차: 톡스앤필 건대점
     # '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became an add-on and left T2976BFB; the 290,000 row of the same name kept it, so the
@@ -447,18 +468,21 @@ def reclassified(prev, prow, rows):
     return out & before
 
 
-def group_moved(prev, prow, rows, gid):
+def group_moved(prev, prow, rows, gid, since=None):
     """(brand|branch, group key, price) of rows that are in both builds at the same price but now count for their automatic
     group's regular price when they did not, or the other way round (2026-10-15: '[울써마지 옵션] 얼굴전체 더모톡신' 190,000 became
     an add-on, and the group read it as a price rise 190,000 → 290,000 at 톡스앤필 건대점). A change whose old or new price is such
-    a row is the rules', not the clinic's."""
+    a row is the rules', not the clinic's. The previous rows count by the plain rule of the snapshot the changes are counted from
+    (since = its date; 2026-10-16: a '토요일이벤트' price left the regular price without changing). Not by the previous file's own
+    rule: a second build of the same collection has a previous file of the new rule but still counts from the older snapshot
+    (keys keep such ids in meta.recl; groups have no such list), and would list the moved prices as '없어짐'."""
     if not prev:
         return set()
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
-    pkinds = prev["meta"].get("kinds") or KINDS
+    rule = prev_rule(prev, since)
     was = {}
     for r in prow:
-        counted = len(r) > 9 and r[9] >= 0 and pkinds[r[5]] in ("일반", "고시가") and not ps[r[6]]
+        counted = len(r) > 9 and r[9] >= 0 and G.plain(*prev_cond(prev, r), rule=rule)
         ident = (pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))
         was[ident] = was.get(ident, False) or counted
     now = {}
@@ -612,7 +636,7 @@ def main():
                          kind, S(r["tags"]), S(r["keys"]), int(r["sess"] or 1), g, S(r["until"]), S(r["url"] if re.match(r"https?://", r["url"] or "") else ""),
                          {"포함": 1, "별도": 2}.get(r.get("vat", ""), 0), 0, S(part_keys(r["name"])), int(r["addon"] == "1"),
                          int(r.get("days") or 0), S(r.get("hours", ""))])
-        if r["kind"] in ("일반", "고시가") and not r["tags"]:
+        if G.regular(r):            # plain price: no tag, no weekday / hour limit (groups.plain)
             for k in r["keys"].split():
                 kk = f"{k}|{r['brand']}|{r['branch']}"
                 best[kk] = min(best.get(kk, 10 ** 12), int(r["sale"]))
@@ -639,11 +663,11 @@ def main():
     KB["specs"] = spec_keys(KB["specs"], vj["keys"], {k[0] for k in ALLK}, vj.get("families", []), {k[0]: k[2] for k in ALLK})
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     achg, anew, agone, aprev = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
-    moved = group_moved(prev_data, prev_rows, rows, gid)
+    moved = group_moved(prev_data, prev_rows, rows, gid, aprev)
     achg = [c for c in achg if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved and (bkeys[c[1]], gkeys[c[0]], c[3]) not in moved]
     # the same for '새로 생김' / '없어짐': a row the rules moved into or out of a group is not a new or a gone price (검증 7차)
     anew = [c for c in anew if (bkeys[c[1]], gkeys[c[0]], c[2]) not in moved]
-    agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved]
+    agone = [c for c in agone if (bkeys[c[1]], c[3], c[2]) not in moved][:G.GONE_MAX]
     # a chain the previous snapshot did not have is new as a whole: its prices are not '새로 생김' one by one (2026-10-15, 개선 보고서
     # E9 — 밴스·유앤아이·데이뷰·닥터에버스·셀린 filled the list on 10-14; a chain back after a gap too, C3 검토)
     days = brand_days(hist, collected)
@@ -656,6 +680,7 @@ def main():
         "meta": {"updated": collected, "built": a.date, "prev": prev_date, "review": review, "about": about(), "rows": len(out_rows), "branches": len(branches),
                  "brands": [list(b) for b in BRANDS], "kinds": KINDS, "cats": CATS,
                  "fam": VFAM, "kb": KB, "concerns": CONCERNS, "checks": checks, "keymap": keymap, "recl": recl, "labelRules": labels.RULES,
+                 "plainRules": G.rule_marks((prev_data or {}).get("meta", {}).get("plainRules"), collected),
                  "brandFirst": first_seen(days, [b for b, *_ in BRANDS], {r["brand"] for r in rows}, collected)},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
         "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),

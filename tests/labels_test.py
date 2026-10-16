@@ -732,6 +732,37 @@ mv = appdata.group_moved(prev_g, [[0, 0, 2, 190000, 0, 0, 3, 4, 1, 5]],
 ok("자동 묶음: 같은 줄·같은 가격이 규칙 때문에 빠지면(추가 옵션이 됨) 그 가격은 '가격 변동'의 근거가 아님",
    mv == {("A|건대점", appdata.G.comp("[울써마지 옵션] 얼굴전체 더모톡신"), 190000)}, mv)
 
+# 일반가 규칙 2(2026-10-16, B 결정): 태그가 없어도 요일·시간이 적힌 가격('토요일이벤트', '주말제외')은 조건부 가격
+_G = appdata.G
+_pr = lambda **kw: dict(dict(kind="일반", tags="", days="0", hours=""), **kw)
+ok("일반가 규칙: 요일만·시간만·태그·체험가는 일반가 아님, 고시가·옛 clean.csv(요일·시간 칸 없음)는 일반가",
+   _G.regular(_pr()) and _G.regular(_pr(kind="고시가")) and _G.regular(dict(kind="일반", tags=""))
+   and not _G.regular(_pr(days="32")) and not _G.regular(_pr(days="96")) and not _G.regular(_pr(hours="12:00-17:00"))
+   and not _G.regular(_pr(kind="고시가", days="31")) and not _G.regular(_pr(tags="평일 낮")) and not _G.regular(_pr(kind="체험가")))
+ok("... 규칙 1(예전)은 요일·시간을 보지 않음 — 이전 data.json·스냅숏을 그 규칙으로 읽기 위해",
+   _G.plain("일반", "", 32, "", rule=1) and _G.plain("일반", "", 0, "11:00-17:00", rule=1) and not _G.plain("일반", "평일 낮", 0, "", rule=1)
+   and not _G.plain("일반", "", 32, "") and _G.plain("고시가", "", 0, ""))
+ok("meta.plainRules: 처음 쓴 수집일부터 규칙 2, 그 전 스냅숏은 1, 다음 빌드는 목록을 그대로 이어 감",
+   _G.rule_at(None, "2026-10-20") == 1 and _G.rule_at([[2, "2026-10-14"]], "2026-10-13") == 1 and _G.rule_at([[2, "2026-10-14"]], "2026-10-14") == 2
+   and _G.rule_marks(None, "2026-10-14") == [[2, "2026-10-14"]] and _G.rule_marks([[2, "2026-10-14"]], "2026-10-20") == [[2, "2026-10-14"]])
+# a previous data.json row: [branch, cat, name, sale, orig, kind, tags, keys, sess, group, until, url, vat, review, parts, addon, days, hours]
+prev_d = {"s": ["A", "청주점", "토요일이벤트 슈링크 300샷", "", "X12"], "branches": [[0, 1]],
+          "meta": {"brands": [["A"]], "kinds": appdata.KINDS, "updated": "2026-10-14"}, "keys": [["X12", 0, "슈링크 300샷"]]}
+prow_d = [[0, 0, 2, 99000, 0, 0, 3, 4, 1, 5, 3, 3, 0, 0, 3, 0, 32, 3]]
+now_d = [dict(brand="A", branch="청주점", name="토요일이벤트 슈링크 300샷", sale="99000", kind="일반", tags="", keys="X12", days="32", hours="", addon="0")]
+prev_d2 = dict(prev_d, meta=dict(prev_d["meta"], plainRules=[[2, "2026-10-14"]]))
+ok("규칙이 바뀐 첫 빌드: 이전 data.json(plainRules 없음)의 같은 줄·같은 가격은 옛 규칙으로 일반가 → 지금 아님 → recl(가짜 가격 변동 없음)",
+   appdata.reclassified(prev_d, prow_d, now_d) == {"X12"})
+ok("... 다음 빌드(이전 파일이 규칙 2): 그 줄은 양쪽 다 일반가 아님 → recl 다시 안 생김(같은 날 recl은 main()이 이어 붙임)",
+   appdata.reclassified(prev_d2, prow_d, now_d) == set())
+ok("... 요일·시간 칸 전의 16칸 data.json도 읽음(요일 없음 = 일반가, 지금도 요일 없으면 바뀐 것 없음)",
+   appdata.reclassified(prev_d, [r[:16] for r in prow_d], now_d) == {"X12"}
+   and appdata.reclassified(prev_d, [r[:16] for r in prow_d], [dict(now_d[0], days="0")]) == set())
+_mk = ("A|청주점", appdata.G.comp("토요일이벤트 슈링크 300샷"), 99000)
+ok("자동 묶음: 비교 기준 스냅숏이 규칙 1이면(그날 두 번째 빌드라 이전 파일은 규칙 2여도) 그 줄은 '없어짐'·'가격 변동'의 근거가 아님",
+   appdata.group_moved(prev_d, prow_d, now_d, [5], "2026-10-13") == {_mk} and appdata.group_moved(prev_d2, prow_d, now_d, [5], "2026-10-13") == {_mk}
+   and appdata.group_moved(prev_d2, prow_d, now_d, [5], "2026-10-14") == set())
+
 # C1 다음(검증 8차, 예전부터 있던 것)
 tg = lambda s: [t for t, p in clean.TAGS if re.search(p, s)]
 ok("해피아워·'화/수/목'·'12시~17시'·'평일 한정'은 시간 조건('평일 낮') — 일반가로 비교하지 않음",
