@@ -376,7 +376,7 @@ test("weekly.yml alert: a failed collection run says Run workflow WITHOUT skip_s
     fs.writeFileSync(path.join(bin, "python3"), '#!/usr/bin/env bash\n[ "$1" = .github/scripts/telegram.py ] || { echo "unexpected: $*" >&2; exit 9; }\nprintf "%s\\n" "$2" >> "$SENT"\n', { mode: 0o755 });
     const send = (env) => {
       fs.writeFileSync(sent, "");
-      const r = sb.bash(sb.tmp, script, { PATH: `${bin}:${sb.env.PATH}`, SENT: sent, RUN_URL: "https://example.invalid/run/1", EVENT: "schedule",
+      const r = sb.bash(sb.tmp, script, { PATH: `${bin}${path.delimiter}${sb.env.PATH}` /* ";" on Windows: node finds bash in this PATH */, SENT: sent, RUN_URL: "https://example.invalid/run/1", EVENT: "schedule",
         RESULT: "success", DEPLOY: "success", REDEPLOY: "skipped", COLLECT: "false", ...env });
       assert.equal(r.status, 0, r.stdout + r.stderr);
       const lines = fs.readFileSync(sent, "utf8").split("\n").filter(Boolean);
