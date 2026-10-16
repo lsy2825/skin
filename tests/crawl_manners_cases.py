@@ -542,19 +542,36 @@ DOES = {"velyb": dict(gap=1.0), "ppeum": dict(workers=4, extra=[0.5], one_page=T
         "toxnfill": dict(gap=0.7, workers=6, robots=True),
         "lienjang": dict(delay=True, robots=True), "forever": dict(gap=0.8, workers=4), "vands": dict(gap=1.0, workers=6),
         "uandi": dict(workers=6, one_page=True), "daybeau": dict(gap=1.0, workers=6), "drevers": dict(gap=1.0, workers=6),
-        "cellin": dict(gap=1.0, workers=4)}
+        "cellin": dict(gap=1.0, workers=4, robots=True)}
+
+
+def robots_calls(code):
+    """robots=True? for every Fetcher(...) call and every super().__init__(...) of a Fetcher subclass in the code — read as
+    Python, so a docstring or comment that names 'Fetcher(robots=True)' does not count (2026-10-16 검토)"""
+    import ast
+    tree, out = ast.parse(code), []
+    subs = any(isinstance(n, ast.ClassDef) and any(getattr(b, "id", getattr(b, "attr", "")) == "Fetcher" for b in n.bases)
+               for n in ast.walk(tree))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call):
+            f = n.func
+            name = getattr(f, "id", getattr(f, "attr", ""))
+            sup = name == "__init__" and isinstance(getattr(f, "value", None), ast.Call) and getattr(f.value.func, "id", "") == "super"
+            if name == "Fetcher" or (sup and subs):
+                out.append(any(k.arg == "robots" and isinstance(k.value, ast.Constant) and k.value.value is True for k in n.keywords))
+    return out
 ok("every registry chain has a line in this test", set(DOES) == set(sources.REGISTRY), set(DOES) ^ set(sources.REGISTRY))
 for key, reg in sources.REGISTRY.items():
     e, rate = DOES.get(key, {}), reg["rate"]
     code = open(os.path.join(ROOT, "scrape", f"{key}.py"), encoding="utf-8").read()
     d_gap = re.findall(r'"--gap",[^)]*default=([\d.]+)', code)
     d_workers = re.findall(r'"--workers",[^)]*default=(\d+)', code)
-    made_f = re.findall(r"\bFetcher\(([^()]*)\)", code)
+    made_f = robots_calls(code)
     code_ok = ((not e.get("gap") or [float(x) for x in d_gap] == [e["gap"]])
                and ([int(x) for x in d_workers] == ([e["workers"]] if e.get("workers") else []))
                and all(re.search(r"\bFetcher\(gap=" + re.escape(f"{x:g}") + r"[,)]", code) for x in e.get("extra", []))
                and (not e.get("delay") or "robots=True" in code)
-               and (not e.get("robots") or (made_f and all("robots=True" in m for m in made_f))))
+               and (not e.get("robots") or (made_f and all(made_f))))
     ok(f"scrape/{key}.py does what this test says ({e})", code_ok, (d_gap, d_workers, made_f))
     said_gap = sorted(float(x) for x in re.findall(r"최소 ([\d.]+)초", rate))
     said_workers = [int(x) for x in re.findall(r"(\d+)곳 동시", rate)]
