@@ -176,4 +176,60 @@ const log = (p) => p.evaluate(() => window.__push);
       && (await log(p)).unsub === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), hits.map((x) => x.m + ' ' + x.u).join(','));
     ok('시작: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
+  // 9) '끄기' while the Worker is down (DELETE 503): the id waits on the phone (pc:pushDel) and goes again at the next start
+  //    (chat A's request 2026-10-16) — the screen is off at once, the server row does not stay behind
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const failDel = (route) => (route.request().method() === 'DELETE' ? route.fulfill({ status: 503, headers: { 'access-control-allow-origin': '*' }, body: '' }) : route.fallback());
+    await ctx.route(`${API}/**`, failDel);
+    hits.length = 0;
+    await pushBtn(p, '가격 알림 끄기').click(); await p.waitForTimeout(800);
+    const queued = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('끄기 중 서버 오류(503): 화면은 바로 꺼짐, id는 pc:pushDel에 남음', hits.some((x) => x.m === 'DELETE') && queued.length === 1 && queued[0] === SUB_ID
+      && (await pushBtn(p, '가격 알림 받기').count()) === 1 && await p.evaluate(() => !JSON.parse(localStorage.getItem('pc:push') || 'null')), JSON.stringify(queued));
+    // the next start (from home: a reload would stay on #saved, which has no home cards) — the Worker still down: the id
+    // stays and goes once, not in a loop. The retry runs before the permission check (the fake resets it on each page).
+    const nextStart = async () => { hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+      await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500); };
+    await nextStart();
+    const still = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('다음 시작에도 503: id는 남고 DELETE는 1번만', hits.filter((x) => x.m === 'DELETE').length === 1 && still.length === 1 && still[0] === SUB_ID, hits.map((x) => x.m + ' ' + x.u).join(',') + ' left=' + JSON.stringify(still));
+    await ctx.unroute(`${API}/**`, failDel);
+    hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    const left = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('다음 시작: 남은 id를 다시 DELETE → 성공하면 목록 비움, 새 구독·POST 없음', hits.filter((x) => x.m === 'DELETE' && x.u === `/v1/push/subscribe/${SUB_ID}`).length === 1
+      && left.length === 0 && !hits.some((x) => x.m === 'POST'), hits.map((x) => x.m + ' ' + x.u).join(',') + ' left=' + JSON.stringify(left));
+    ok('끄기 다시 보내기: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 10) the page leaves while the DELETE is still on its way (a weak connection): the id was written before the request, so
+  //     the next start sends it again
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const held = [];
+    const hang = (route) => (route.request().method() === 'DELETE' ? held.push(route) : route.fallback());
+    await ctx.route(`${API}/**`, hang);
+    await pushBtn(p, '가격 알림 끄기').click(); await p.waitForTimeout(300);
+    const mid = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('끄기 직후(DELETE 대기 중): 화면은 꺼짐, id는 이미 pc:pushDel에', held.length === 1 && mid.length === 1 && mid[0] === SUB_ID && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify(mid));
+    await ctx.unroute(`${API}/**`, hang);
+    hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    const left = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:pushDel') || '[]'));
+    ok('페이지를 떠난 뒤 다음 시작: 그 id를 DELETE, 목록 비움', hits.some((x) => x.m === 'DELETE' && x.u === `/v1/push/subscribe/${SUB_ID}`) && left.length === 0, hits.map((x) => x.m + ' ' + x.u).join(',') + ' left=' + JSON.stringify(left));
+    ok('대기 중 떠남: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 11) an id in use is never deleted: the list holds the id this phone is subscribed with (the Worker handed it out again)
+  { const EP = 'https://fcm.googleapis.com/fcm/send/e2e-test';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: EP });
+    await watchX24(p);
+    await p.evaluate(([id, ep]) => { localStorage.setItem('pc:push', JSON.stringify({ id, ep, h: '1:x' })); localStorage.setItem('pc:pushDel', JSON.stringify([id])); }, [SUB_ID, EP]);
+    hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500);
+    const st = await p.evaluate(() => ({ push: JSON.parse(localStorage.getItem('pc:push') || 'null'), del: JSON.parse(localStorage.getItem('pc:pushDel') || '[]') }));
+    ok('쓰는 중인 id가 목록에 있어도 DELETE 없음, 목록에서만 빠지고 구독은 그대로', !hits.some((x) => x.m === 'DELETE') && st.del.length === 0 && st.push && st.push.id === SUB_ID, hits.map((x) => x.m + ' ' + x.u).join(',') + ' ' + JSON.stringify(st));
+    ok('쓰는 중인 id: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();

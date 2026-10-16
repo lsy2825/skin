@@ -66,7 +66,9 @@
   //   시술 지켜보기 → watch (+ target when its 목표가 is on, + newmatch when '새 비교 가능 지점' is on)
   //   시술 목표가 → target(max) · 시술 새 최저가 → watch (the nearest kind: a new low is a price change) · 시술 파는 지점 → newmatch
   //   지점 상품 '이벤트 종료 3일 전' → expiring for each comparison key of that product, in that branch's 시·도
-  // What stays on the phone only (no matching kind): 내 견적 합계(cartdrop) and a branch product's 목표가.
+  // What stays on the phone only (no matching kind): 내 견적 합계(cartdrop), a branch product's 목표가, and any alert made with
+  // 특가 포함 off (a.sp === false) — the Worker always counts special prices, so it would ring on prices this alert leaves out
+  // (chat A's request 2026-10-16).
   // rowKeys(row) → [{key, region}] is the app's lookup for a branch product; known(key) says the comparison still exists
   // (an alert on a key that is gone and has no successor never rings in the app either — it is not sent, and counts as
   // local). Duplicates go; a target keeps the highest max per key and region; more than 20 are cut from the end (the
@@ -84,6 +86,7 @@
     for (const a of Array.isArray(alerts) ? alerts : []) {
       if (!a || typeof a !== "object") continue;
       if (a.k && typeof known === "function" && !known(a.k)) local++;
+      else if (a.k && a.sp === false) local++;
       else if (a.k) {
         const reg = regionOf(a.reg), on = a.on || {};
         if (a.type === "watch") {
@@ -120,8 +123,17 @@
   // {id} from the subscribe answer, or null
   const idOf = (json) => (json && typeof json.id === "string" && ID.test(json.id) ? json.id : null);
 
+  // ids whose DELETE did not reach the Worker ('끄기' offline, a 5xx): kept on the phone and sent again at the next start, so a
+  // subscription switched off here does not stay on the server (chat A's request 2026-10-16). At most MAX_DEL, newest last.
+  const MAX_DEL = 5;
+  const cleanDel = (list) => [...new Set((Array.isArray(list) ? list : []).filter((x) => typeof x === "string" && ID.test(x)))].slice(-MAX_DEL);
+  const addDel = (list, id) => (ID.test(id || "") ? cleanDel([...cleanDel(list).filter((x) => x !== id), id]) : cleanDel(list));
+  // a DELETE answer that ends the retries: done (2xx), or a client error sending it again cannot change (4xx: 404/410 the
+  // Worker no longer knows it, 400/403 … it never will) — only 408/429 and 5xx (and no answer) are tried again
+  const delDone = (status) => (status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 408 && status !== 429);
+
   // what the phone keeps: { id, ep: the subscription's endpoint, h: hash of the rules last sent }, or null
   const cleanState = (s) => (s && typeof s === "object" && ID.test(s.id || "") && typeof s.ep === "string" && typeof s.h === "string" ? { id: s.id, ep: s.ep, h: s.h } : null);
 
-  return { KINDS, MAX_RULES, base, keyBytes, enabled, subJSON, rulesOf, hash, subscribeReq, rulesReq, unsubscribeReq, idOf, cleanState };
+  return { KINDS, MAX_RULES, MAX_DEL, base, keyBytes, enabled, subJSON, rulesOf, hash, subscribeReq, rulesReq, unsubscribeReq, idOf, cleanDel, addDel, delDone, cleanState };
 });

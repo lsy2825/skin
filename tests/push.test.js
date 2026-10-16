@@ -98,3 +98,36 @@ test("the rules' fingerprint changes with the rules and only then; the kept stat
   assert.deepEqual(P.cleanState({ id: "id_12345678", ep: "https://x", h: "1:a", extra: 1 }), { id: "id_12345678", ep: "https://x", h: "1:a" });
   for (const bad of [null, {}, { id: "x", ep: "https://x", h: "1" }, { id: "id_12345678", ep: 3, h: "1" }]) assert.equal(P.cleanState(bad), null);
 });
+
+test("특가 포함을 끄고 만든 알림(sp === false)은 서버 규칙으로 보내지 않고 이 기기에서만(A 부탁 ①, 2026-10-16)", () => {
+  const known = () => true;
+  const mine = [
+    { type: "watch", k: "X24", reg: "서울", sp: false, on: {} },
+    { type: "target", k: "X25", target: 100000, sp: false },
+    { type: "newlow", k: "X26", sp: false },
+    { type: "watch", k: "X27", reg: "부산", sp: true, on: {} },
+    { type: "target", k: "X28", target: 90000 },           // made before the setting existed: sp missing → sent as before
+    { type: "newmatch", k: "X29", sp: false },
+    { type: "expiring", row: { n: "상품", br: "지점" }, sp: false },   // a branch product's own event end: no 특가 question
+  ];
+  const { rules, local } = P.rulesOf(mine, () => [{ key: "X30", region: "서울" }], known);
+  assert.equal(local, 4);
+  assert.deepEqual([...new Set(rules.map((r) => r.key))].sort(), ["X27", "X28", "X30"]);
+  assert.ok(!rules.some((r) => ["X24", "X25", "X26", "X29"].includes(r.key)));
+  assert.ok(rules.some((r) => r.kind === "expiring" && r.key === "X30"));
+});
+
+test("끄기의 DELETE가 실패한 id는 폰에 남겨 다음 시작에 다시 보냄(A 부탁 ③): 목록 정리·추가·끝난 답", () => {
+  assert.deepEqual(P.cleanDel(null), []);
+  assert.deepEqual(P.cleanDel(["sub_aaaaaaaa", "bad id", 7, "sub_aaaaaaaa", "sub_bbbbbbbb"]), ["sub_aaaaaaaa", "sub_bbbbbbbb"]);
+  // the same id twice moves to the end; at most MAX_DEL, the oldest go
+  assert.deepEqual(P.addDel(["sub_aaaaaaaa", "sub_bbbbbbbb"], "sub_aaaaaaaa"), ["sub_bbbbbbbb", "sub_aaaaaaaa"]);
+  const many = ["sub_00000001", "sub_00000002", "sub_00000003", "sub_00000004", "sub_00000005"];
+  assert.equal(P.MAX_DEL, 5);
+  assert.deepEqual(P.addDel(many, "sub_00000006"), [...many.slice(1), "sub_00000006"]);
+  assert.deepEqual(P.addDel(many, "not an id"), many);
+  // done: 2xx, or a client error sending it again cannot change (404/410 gone, 400/403/422 never); tried again: no answer
+  // (offline is a thrown fetch; 0 here), 408, 429 and 5xx
+  for (const s of [200, 204, 400, 403, 404, 410, 422]) assert.equal(P.delDone(s), true, String(s));
+  for (const s of [0, 408, 429, 500, 503]) assert.equal(P.delDone(s), false, String(s));
+});
