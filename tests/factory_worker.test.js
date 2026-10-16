@@ -8,7 +8,10 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { spawnSync } = require("child_process");
-const load = () => import(path.join(__dirname, "../cf/factory/src/runs.js"));
+// import() takes a URL: a bare Windows path (C:\\…) is read as the scheme "c:" and refused (2026-10-17, owner's PC)
+const load = () => import(require("url").pathToFileURL(path.join(__dirname, "../cf/factory/src/runs.js")).href);
+// workflow text with LF line ends: a checkout with core.autocrlf=true (Windows) has CRLF, and the job/step finders look for "\n"
+const readText = (p) => fs.readFileSync(p, "utf8").replace(/\r\n/g, "\n");
 
 // The machine's environment without the variables that change what the scripts under test do: git's own (a git hook's GIT_DIR
 // would point the test at a real repository) and the factory's — these tests run inside factory runs: the GitHub factory job
@@ -95,7 +98,7 @@ test("factory deploy: public hosting paused (PUBLIC_DEPLOY unset or anything but
 });
 
 test("weekly.yml hands PUBLIC_DEPLOY to the deploy step (a repository variable, no secret)", () => {
-  const wf = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
+  const wf = readText(path.join(__dirname, "../.github/workflows/weekly.yml"));
   assert.match(wf, /^ {10}PUBLIC_DEPLOY: \$\{\{ vars\.PUBLIC_DEPLOY \}\}/m);
 });
 
@@ -203,7 +206,7 @@ const write = (dir, f, t) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { r
 const sha256 = (t) => require("crypto").createHash("sha256").update(t).digest("hex");
 
 test("weekly.yml: no secret at the workflow level, none in the factory job, in the deploy job only in the token check and the deploy step", () => {
-  const raw = fs.readFileSync(WF, "utf8");   // the raw text: a comment-stripper could be fooled by a quoted " #"
+  const raw = readText(WF);   // the raw text: a comment-stripper could be fooled by a quoted " #"
   const jobsAt = raw.indexOf("\njobs:\n");
   assert.ok(jobsAt > 0);
   const head = raw.slice(0, jobsAt);
@@ -235,7 +238,7 @@ test("weekly.yml: no secret at the workflow level, none in the factory job, in t
 });
 
 test("weekly.yml: deploy job — code from the run's start, data from the saved commit, skipped (green) when main is newer", () => {
-  const wf = fs.readFileSync(WF, "utf8");
+  const wf = readText(WF);
   const update = stripComments(job(wf, "update")), deploy = stripComments(job(wf, "deploy")), alert = stripComments(job(wf, "alert"));
   assert.match(update, /FACTORY_DEPLOY: separate/);
   assert.match(update, /deploy: \$\{\{ steps\.decide\.outputs\.deploy \}\}/);
@@ -278,7 +281,7 @@ test("weekly.yml: deploy job — code from the run's start, data from the saved 
 });
 
 test("weekly.yml: a re-run of the factory job is refused in its first step (attempt number from the environment); the deploy job may be re-run", () => {
-  const wf = fs.readFileSync(WF, "utf8");
+  const wf = readText(WF);
   const steps = stepsOf(job(wf, "update"));
   assert.match(steps[0], /^name: Refuse a re-run of the factory/, "the very first step of the factory job, before checkout and installs");
   const script = stepScript(wf, "update", "Refuse a re-run of the factory");
@@ -315,7 +318,7 @@ test("workflows: every job that gets the Cloudflare token names the GitHub Envir
   const files = { "weekly.yml": WF, "cf-workers.yml": path.join(__dirname, "../.github/workflows/cf-workers.yml") };
   const seen = [];
   for (const [file, p] of Object.entries(files)) {
-    const wf = fs.readFileSync(p, "utf8");
+    const wf = readText(p);
     const names = [...wf.slice(wf.indexOf("\njobs:\n")).matchAll(/\n  ([a-z_][\w-]*):\n/g)].map((m) => m[1]);
     assert.ok(names.length > 0, `${file} has jobs`);
     for (const name of names) {
@@ -334,7 +337,7 @@ test("workflows: every job that gets the Cloudflare token names the GitHub Envir
 });
 
 test("weekly.yml redeploy job: a deploy skipped for newer deploy code starts a fresh rebuild of main — actions: write only, no checkout, no secret", () => {
-  const wf = fs.readFileSync(WF, "utf8");
+  const wf = readText(WF);
   const raw = job(wf, "redeploy");
   const r = stripComments(raw);
   assert.match(r, /\n    needs: deploy\n/);
@@ -360,7 +363,7 @@ test("weekly.yml redeploy job: a deploy skipped for newer deploy code starts a f
 });
 
 test("weekly.yml alert: a failed collection run says Run workflow WITHOUT skip_scrape, a rebuild run says skip_scrape (chosen by env)", () => {
-  const wf = fs.readFileSync(WF, "utf8");
+  const wf = readText(WF);
   const step = stepsOf(job(wf, "alert")).find((st) => /^name: Alert on factory/.test(st));
   assert.ok(step);
   assert.match(step, /\n {10}COLLECT: \$\{\{ github\.event_name == 'schedule' \|\| \(github\.event_name == 'workflow_dispatch' && !inputs\.skip_scrape\) \}\}\n/);
@@ -407,7 +410,7 @@ test("weekly.yml alert: a failed collection run says Run workflow WITHOUT skip_s
 });
 
 test("weekly.yml deploy job: the factory's commit id is checked as a whole value — a value with a line break is refused", () => {
-  const script = stepScript(fs.readFileSync(WF, "utf8"), "deploy", "The commit the factory saved");
+  const script = stepScript(readText(WF), "deploy", "The commit the factory saved");
   const sb = sandbox("deploy-sha-");
   try {
     const run = (sha) => {
@@ -480,7 +483,7 @@ const asStart = (r) => { for (const [f, t] of Object.entries(CODE)) assert.equal
 const dataIs = (r, v) => { for (const [f, t] of Object.entries(built(v))) assert.equal(r.files[f], t, `${f} is the "${v}" build`); };
 
 test("weekly.yml deploy job: the data step takes only the four built files, from a saved commit on main, when nothing newer is on main", { skip: !python3Works && "python3 not found (the step checks data-meta.json with python3)" }, () => {
-  const script = stepScript(fs.readFileSync(WF, "utf8"), "deploy", "Take the built data from the saved commit");
+  const script = stepScript(readText(WF), "deploy", "Take the built data from the saved commit");
   // normal: the saved build also changed other factory files; main then moved on with unrelated changes → go=true, and
   // exactly the four data files differ from the start commit afterwards
   const ok = runDataStep(script, ({ commit, push }) => {
@@ -571,7 +574,7 @@ test("weekly.yml deploy job: the data step takes only the four built files, from
 });
 
 test("weekly.yml deploy job: the data step refuses a mixed build (data-meta.json checksums) and anything but regular files", { skip: !python3Works && "python3 not found (the step checks data-meta.json with python3)" }, () => {
-  const script = stepScript(fs.readFileSync(WF, "utf8"), "deploy", "Take the built data from the saved commit");
+  const script = stepScript(readText(WF), "deploy", "Take the built data from the saved commit");
   const mixed = [
     [{ "app/data.json": "{\"v\":\"other build\"}\n" }, /app\/data-meta\.json does not match app\/data\.json/],
     [{ "app/home.json": "{\"home\":\"other build\"}\n" }, /app\/data-meta\.json does not match app\/home\.json/],
