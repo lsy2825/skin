@@ -565,6 +565,15 @@ ok("'집중 국산'·'진행중 국산'은 그대로 국산('중국산'으로 �
 ok("... 큐레이션 '국산' 키(X02·X07)에도 안 들어감", not [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")]
    and "X02" in [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (국산)")], [k[0] for k in xkeys.X if xkeys.match(k, "주름보톡스 1부위 (영국산)")])
 
+# C7 규격 설명 → 키 id: 글자가 아니라 서명의 낱말로('국산' 설명이 '미국산' 키에 붙지 않음)
+_vk = [dict(id="T1", fam="toxin", sig="toxin|보톡스|국산,사각턱||||1"), dict(id="T2", fam="toxin", sig="toxin|보톡스|미국산,사각턱||||1"),
+       dict(id="T3", fam="filler", sig="filler|필러|국산||||1")]
+_sk = appdata.spec_keys([dict(fid="toxin", spec="국산", one_liner="."), dict(fid="toxin", spec="사각턱", one_liner=".")], _vk, {"T1", "T2", "T3"})
+ok("C7 규격 설명마다 붙는 키 id(서명의 낱말·같은 제품군만)", [e["keys"] for e in _sk] == [["T1"], ["T1", "T2"]], _sk)
+_sk2 = appdata.spec_keys([dict(fid="toxin", spec="국산", one_liner=".")], _vk, {"T1", "T2", "X01", "X04"},
+                         [dict(fam="toxin", curated=["X01", "X04"])], {"X01": "국산 사각턱 보톡스 50U", "X04": "독일산(제오민) 사각턱 보톡스 50U"})
+ok("C7 ... 큐레이션 키도 이름 낱말로('국산 사각턱 보톡스 50U'만, '미국산'·'독일산(제오민)'은 아님)", _sk2[0]["keys"] == ["T1", "X01"], _sk2)
+
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
 bad = [(k[2], labels.problems(k[2])) for k in D["keys"] if labels.problems(k[2])]
