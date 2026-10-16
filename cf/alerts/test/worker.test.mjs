@@ -6,9 +6,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { webcrypto as wc } from "node:crypto";
-import worker, { send, SEND_LIMIT, MAX_SUBS, NEW_PER_DAY } from "../src/worker.js";
-import { dueKinds, unb64u, addDays, inWindow, clientKey, REFUSED_DROP, RETRY_DROP, NEVER_DROP, FAIL_SLOTS, ABORT_EVIDENCE } from "../src/rules.js";
-import { watchMoved } from "../src/push.js";
+import worker, { send, SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, PAIR_CAP } from "../src/worker.js";
+import { dueKinds, unb64u, addDays, inWindow, clientKey, REFUSED_DROP, RETRY_DROP, NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES,
+  SLOW_HOLD_MINUTES } from "../src/rules.js";
+import { watchMoved, vapidJwt } from "../src/push.js";
 import * as Q from "../src/sql.js";
 import { SKIP_SQL, makeDb, makeEnv, call, subscription, pushService, vapidKeys, kst, SECRET_VALUE, spyConsole, rateLimiter } from "./helpers.mjs";
 
@@ -50,6 +51,9 @@ async function news(env, today, k = "X24", r = "") {
   if (!b) { b = { m: 100000, n: 5, med: 120000 }; await mark(env, today, [st(k, b.m, b.n, b.med, r)], nextCollection()); }
   return mark(env, today, [st(k, Math.round(b.m * 0.9), b.n, b.med, r)], nextCollection());
 }
+
+// stat 'ok:<tag> <origin>' = the first day the key (by its public key's first 12 characters) went through that push origin
+const okSince = (db, pub, origin, day) => db.raw.prepare("INSERT INTO stat (k, n) VALUES (?, ?)").run(`ok:${pub.slice(0, 12)} ${origin}`, Number(day.replace(/-/g, "")));
 
 test("promise 1: subscribe → 201 {id}; PUT rules → 200; DELETE → 204; unknown id → 404", T, async () => {
   const { env, db } = await setup();
@@ -292,12 +296,12 @@ test("nothing IP/UA-like is stored or logged; logs never show ids or endpoints (
   for (const v of ["203.0.113.77", "198.51.100.9", "TESTUA", "Mozilla", "ko-KR", "KR\"", ...subs.flatMap((s) => [s.id, s.endpoint, new URL(s.endpoint).pathname])])
     assert.equal(logs.includes(v), false, `console shows ${v}`);
   assert.equal(/fcm\.googleapis|apple-ep|moz-ep|fcm\/send/.test(logs), false);
-  // a run that stops because phones that took our pushes before refuse the token: still counts only
+  // a run in which phones that took our pushes before refuse the token (kept, not counted): still counts only
   db.raw.prepare("UPDATE subs SET pend_w = 1, last_w = '2026-10-01', fails = 0").run();
   for (let i = 0; i < 3; i++) await sub(env, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", `apple-old-${i}`), { headers });
   db.raw.prepare("UPDATE subs SET pend_w = 1, last_w = '2026-10-01', fails = 0").run();
   const stopLogs = await spyConsole(async () => { await send(env, kst("2026-10-20T09:00:00"), { fetch: pushService(() => 403).f }); });
-  assert.match(stopLogs, /refuse the VAPID token — stopped this run/);
+  assert.match(stopLogs, /refuse the VAPID token where nothing else went through — kept, not counted/);
   for (const v of db.rows("SELECT id, endpoint FROM subs").flatMap((r) => [r.id, r.endpoint])) assert.equal(stopLogs.includes(v), false);
   const all = JSON.stringify(db.binds) + JSON.stringify(db.rows("SELECT * FROM subs"));
   for (const v of ["203.0.113.77", "198.51.100.9", "TESTUA", "Mozilla", "ko-KR"]) assert.equal(all.includes(v), false, v);
@@ -329,9 +333,11 @@ test("factory endpoints need the secret (constant-time compare); watched returns
   }
   assert.equal((await internal({ ...env, ALERTS_SECRET: "" }, "GET", "/v1/internal/watched")).status, 503);
   await mark(env, "2026-10-19", [st("X24", 100000, 5, 120000)]);
-  const w = await internal(env, "GET", "/v1/internal/watched?after=%7C");
+  const w = await internal(env, "GET", "/v1/internal/watched?at=0");
   assert.equal(w.status, 200);
-  assert.deepEqual(w.body.pairs, [{ k: "T0000ABC", r: "" }, { k: "X24", r: "" }, { k: "X24", r: "서울" }, { k: "X24", r: "수도권" }]);
+  // most-watched first (X24 nationwide: two phones), then (k, r)
+  assert.deepEqual(w.body.pairs, [{ k: "X24", r: "" }, { k: "T0000ABC", r: "" }, { k: "X24", r: "서울" }, { k: "X24", r: "수도권" }]);
+  assert.deepEqual((await internal(env, "GET", "/v1/internal/watched")).body, w.body, "no at = from the start");
   assert.equal(w.body.next, null);
   const text = JSON.stringify(w.body);
   assert.equal(text.includes(a.id), false);
@@ -551,29 +557,36 @@ test("push service answers: 404/410 delete, a 4xx-style failure retries (10 in a
   const r2 = await send(env2, kst("2026-10-19T09:00:00"), { fetch: slow.f });
   assert.equal(r2.sent, 0);
   assert.ok(slow.calls.length <= 6, "no more than one parallel group hits a slow host");
-  assert.equal(db2.rows("SELECT count(*) c FROM subs WHERE pend_w = 1 AND claim IS NULL AND fails = 0")[0].c, 5);
+  assert.equal(db2.rows("SELECT count(*) c FROM subs WHERE pend_w = 1 AND claim < 0 AND fails = 0")[0].c, 5, "held back unchanged (SLOW_HOLD_MINUTES)");
+  assert.equal((await send(env2, kst("2026-10-19T09:10:00"), { fetch: slow.f })).sent, 0);
+  assert.ok(slow.calls.length <= 6, "a held row is not claimed again before its hold ends");
   // 401/403 from phones that never took a push (made with another key, or planted): refused for ever, so removed at the FIRST
   // refusal — a planted refusing row costs one try, not three
   const refused = pushService(() => 403);
-  const r3 = await send(env2, kst("2026-10-19T09:10:00"), { fetch: refused.f });
-  assert.deepEqual([r3.refused, r3.aborted, refused.calls.length], [5, undefined, 5], "every row tried, the run is not stopped");
+  const r3 = await send(env2, kst("2026-10-19T09:00:00") + SLOW_HOLD_MINUTES * 60e3, { fetch: refused.f });
+  assert.deepEqual([r3.refused, r3.spared, r3.refusing, refused.calls.length], [5, undefined, undefined, 5], "every row tried; planted rows never make a service suspect");
   assert.equal(db2.rows("SELECT count(*) c FROM subs")[0].c, 0, "never-pushed rows are removed at their first 401/403");
-  // phones that DID take a push before: one failure each, removed after REFUSED_DROP in a row
+  // phones that DID take a push before, at a push service that took another push 2xx in the same run: one failure each, and
+  // in later runs (only they are due) they were last reached before this key first went through there (stat 'ok:', written
+  // by that 2xx): still their own refusals — removed after REFUSED_DROP in a row
   const { env: env4, db: db4 } = await setup();
   for (let i = 0; i < 2; i++) await sub(env4, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", `fcm/send/took${i}`));
+  await sub(env4, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/works"));
   await news(env4, "2026-10-19");
   db4.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
-  const refused4 = pushService(() => 403);
+  const refused4 = pushService((u) => (u.endsWith("/works") ? 201 : 403));
   const r4 = await send(env4, kst("2026-10-19T09:10:00"), { fetch: refused4.f });
-  assert.deepEqual([r4.refused, r4.aborted], [2, undefined], "two such phones are not enough evidence to stop the run");
-  assert.deepEqual(db4.rows("SELECT DISTINCT fails, claim FROM subs"), [{ fails: 1, claim: null }]);
+  assert.deepEqual([r4.sent, r4.refused, r4.spared, r4.refusing], [1, 2, undefined, undefined], "a service that took a push in the run is not suspect");
+  assert.deepEqual(db4.rows("SELECT DISTINCT fails, claim FROM subs WHERE endpoint NOT LIKE '%works'"), [{ fails: 1, claim: null }]);
   for (let i = 2; i <= REFUSED_DROP; i++) await send(env4, kst("2026-10-19T09:10:00") + i * 20 * 60e3, { fetch: refused4.f });
-  assert.equal(db4.rows("SELECT count(*) c FROM subs")[0].c, 0, `${REFUSED_DROP} refusals in a row → removed`);
-  // a 401 counts the same; a success in between resets the count
-  const { env: env3, db: db3 } = await setup();
+  assert.equal(db4.rows("SELECT count(*) c FROM subs WHERE endpoint NOT LIKE '%works'")[0].c, 0, `${REFUSED_DROP} refusals in a row → removed`);
+  // a 401 counts the same; a success in between resets the count (an old subscription: last reached before this key first
+  // went through Apple)
+  const { env: env3, db: db3, k: k3 } = await setup();
   await sub(env3, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", "a401"));
   await news(env3, "2026-10-19");
   db3.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
+  okSince(db3, k3.pub, "https://web.push.apple.com", "2026-10-10");
   await send(env3, kst("2026-10-19T09:00:00"), { fetch: pushService(() => 401).f });
   assert.equal(db3.rows("SELECT fails FROM subs")[0].fails, 1);
   await send(env3, kst("2026-10-19T09:10:00"), { fetch: pushService(() => 201).f });
@@ -591,7 +604,7 @@ test("planted 403 subscriptions cannot stop everyone's pushes: 6 refusing + 30 r
   const push = pushService((u) => (u.includes("/bad/") ? 403 : 201));
   // the very first run (the six refusing rows in its first parallel group) is not stopped: everyone else is sent
   const first = await send(env, kst("2026-10-19T08:00:00"), { fetch: push.f });
-  assert.deepEqual([first.sent, first.refused, first.aborted], [30, 6, undefined]);
+  assert.deepEqual([first.sent, first.refused, first.spared, first.refusing], [30, 6, undefined, undefined]);
   let runs = 1;
   for (let m = 8 * 60 + 10; m <= 20 * 60 + 40; m += 10, runs++) await send(env, kst("2026-10-19T00:00:00") + m * 60e3, { fetch: push.f });
   assert.equal(runs, 77);
@@ -605,26 +618,41 @@ test("planted 403 subscriptions cannot stop everyone's pushes: 6 refusing + 30 r
   assert.equal(push.calls.filter((c) => c.url.includes("/bad/")).length, 6, "each planted refusing row cost exactly one try: removed at its first 401/403");
 });
 
-test("401/403 stop a run only on strong evidence (phones that took our pushes before, nothing sent) — and remove nobody then", T, async () => {
+test("401/403 where our setup may be broken (a phone that took our pushes under this key refuses, nothing went through there): every row still tried, nobody removed; one 2xx from that service in the run → counted", T, async () => {
   const { env, db } = await setup();
   for (let i = 0; i < 10; i++) await sub(env, [{ kind: "watch", key: "X24" }], subscription(i % 2 ? "web.push.apple.com" : "fcm.googleapis.com", `old/${i}`));
   await news(env, "2026-10-19");
   db.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();      // all of them took our pushes before
   const refused = pushService(() => 403);
   const r = await send(env, kst("2026-10-19T09:00:00"), { fetch: refused.f });
-  assert.equal(r.aborted, true);
-  assert.ok(refused.calls.length <= 6 + ABORT_EVIDENCE, `stopped early (${refused.calls.length} tries)`);
-  assert.equal(r.sent, 0);
-  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 10, "nobody removed in a run that looks like our setup is broken");
-  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE claim IS NOT NULL")[0].c, 0);
-  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE pend_w = 1")[0].c, 10, "the news waits");
-  // fewer than ABORT_EVIDENCE such phones, or one success in the run → not stopped
+  assert.deepEqual([r.sent, r.refused, r.spared, r.refusing], [0, 10, 10, 2], JSON.stringify(r));
+  assert.equal(refused.calls.length, 10, "no early stop: a 2xx later in the run would tell an old subscription from a broken setup");
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 10, "nobody removed");
+  assert.deepEqual(db.rows("SELECT DISTINCT fails, claim < 0 AS held, pend_w FROM subs"), [{ fails: 0, held: 1, pend_w: 1 }], "held back unchanged (HOLD_MINUTES), the news waits");
+  assert.equal((await call(worker, env, "GET", "/health", undefined, { now: kst("2026-10-19T10:00:00") })).body.refusing, true);
+  // one success from that push service in the run → the refusals there are those phones' own
   const { env: e2 } = await setup();
   for (let i = 0; i < 4; i++) await sub(e2, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", `mix/${i}`));
   await news(e2, "2026-10-19");
   e2.DB.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
   const r2 = await send(e2, kst("2026-10-19T09:00:00"), { fetch: pushService((u) => (u.endsWith("/mix/0") ? 201 : 403)).f });
-  assert.deepEqual([r2.sent, r2.refused, r2.aborted], [1, 3, undefined]);
+  assert.deepEqual([r2.sent, r2.refused, r2.spared, r2.refusing], [1, 3, undefined, undefined]);
+  assert.deepEqual(e2.DB.rows("SELECT fails FROM subs WHERE endpoint NOT LIKE '%/mix/0' GROUP BY fails"), [{ fails: 1 }]);
+});
+
+test("review finding (refusal threshold per run): Apple refuses our token, only 1 or 2 of its 30 phones have news that day — nobody is removed, /health refusing:true", T, async () => {
+  for (const due of [1, 2, 3]) {
+    const { env, db } = await setup();
+    const phones = [];
+    for (let i = 0; i < 30; i++) phones.push(await sub(env, [{ kind: "watch", key: i < due ? "X24" : "X01" }], subscription("web.push.apple.com", `a/${i}`)));
+    await news(env, "2026-10-19");                                     // news for X24 only: `due` phones
+    db.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();     // all 30 took our pushes before
+    const push = pushService(() => 403);
+    for (let m = 8 * 60; m <= 20 * 60 + 40; m += 10) await send(env, kst("2026-10-19T00:00:00") + m * 60e3, { fetch: push.f });
+    assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 30, `${due} due: all 30 phones are still there`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE fails > 0")[0].c, 0, `${due} due: nobody counted`);
+    assert.equal((await call(worker, env, "GET", "/health", undefined, { now: kst("2026-10-20T09:30:00") })).body.refusing, true, `${due} due: the monitor is told`);
+  }
 });
 
 test("a cron run that starts late is judged by the real clock: nothing after the window, TTL from the real time", T, async () => {
@@ -663,8 +691,8 @@ test("redirects are never followed: a 302 from the push service = one request; i
   const r = await send(env, kst("2026-10-19T09:00:00"), { fetch: push.f });
   assert.equal(push.calls.length, 1, "exactly one request");
   assert.equal(push.calls[0].init.redirect, "manual");
-  assert.deepEqual([r.sent, r.retry, r.held], [0, 0, 1], "a redirect and nothing else answered: the service, not the row — released");
-  assert.deepEqual(db.rows("SELECT pend_w, fails, claim FROM subs"), [{ pend_w: 1, fails: 0, claim: null }]);
+  assert.deepEqual([r.sent, r.retry, r.held], [0, 0, 1], "a redirect and nothing else answered: the service, not the row — held back, not counted");
+  assert.deepEqual(db.rows("SELECT pend_w, fails, claim < 0 AS held FROM subs"), [{ pend_w: 1, fails: 0, held: 1 }]);
   // the same origin took another push 2xx in that run: the redirect was this row's
   await sub(env, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/fine"));
   await news(env, "2026-10-20");
@@ -790,7 +818,7 @@ test("the push: empty body, TTL until 21:00 minus 60 s, VAPID JWT that verifies 
 });
 
 test("health: GET /health → 200 {ok:true,…} (what the monitor counts as alive); D1 failing → 503 {ok:false}; keys reported", T, async () => {
-  const { env } = await setup();
+  const { env, k } = await setup();
   const other = await vapidKeys();
   await sub(env, [{ kind: "watch", key: "X24" }]);
   await news(env, "2026-10-19");
@@ -801,16 +829,18 @@ test("health: GET /health → 200 {ok:true,…} (what the monitor counts as aliv
   for (const path of ["/health", "/v1/health"]) {
     const h = await call(worker, env, "GET", path, undefined, { headers: { origin: null } });
     assert.equal(h.status, 200);
-    assert.deepEqual(h.body, { ok: true, window: "08-21 KST", sending: true, finished: "2026-10-19", stale: false, capacity: "ok" });
+    assert.deepEqual(h.body, { ok: true, window: "08-21 KST", sending: true, key: k.pub, finished: "2026-10-19", stale: false, refusing: false, capacity: "ok", pairs: "ok" });
     assert.equal(h.headers.get("content-type"), "application/json; charset=utf-8");
     assert.equal(h.headers.get("cache-control"), "no-store");
   }
-  assert.equal((await call(worker, { ...env, VAPID_PRIVATE_JWK: other.jwk }, "GET", "/health")).body.sending, false);
+  assert.deepEqual((({ sending, key }) => ({ sending, key }))((await call(worker, { ...env, VAPID_PRIVATE_JWK: other.jwk }, "GET", "/health")).body),
+    { sending: false, key: null }, "VAPID_PUBLIC_KEY set to another key: nothing is sent and no key is shown");
+  assert.deepEqual((({ sending, key }) => ({ sending, key }))((await call(worker, { ...env, VAPID_PRIVATE_JWK: "" }, "GET", "/health")).body), { sending: false, key: null });
   // finished = the KST day of the factory's last finish (so a monitor sees the factory → Worker link stop); null before any
   await mark(env, "2026-10-21", []);
   assert.equal((await call(worker, env, "GET", "/health")).body.finished, "2026-10-21");
-  const { env: blank } = await setup();
-  assert.deepEqual((await call(worker, blank, "GET", "/health")).body, { ok: true, window: "08-21 KST", sending: true, finished: null, stale: false, capacity: "ok" });
+  const { env: blank, k: kb } = await setup();
+  assert.deepEqual((await call(worker, blank, "GET", "/health")).body, { ok: true, window: "08-21 KST", sending: true, key: kb.pub, finished: null, stale: false, refusing: false, capacity: "ok", pairs: "ok" });
   const down = { ...env, DB: { prepare: () => ({ bind() { return this; }, first: async () => { throw new Error("D1_ERROR: unavailable"); } }) } };
   const logs = await spyConsole(async () => {
     const h = await call(worker, down, "GET", "/health", undefined, { headers: { origin: null } });
@@ -1110,8 +1140,9 @@ test("health capacity: ok → nearly_full (≥ 80% of MAX_SUBS) → full (at the
   const refused = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }] });
   assert.deepEqual([refused.status, refused.body], [503, { error: "FULL" }]);
   h = await cap();
-  assert.deepEqual(Object.keys(h).sort(), ["capacity", "finished", "ok", "sending", "stale", "window"], "exactly these fields");
-  assert.equal(JSON.stringify(h).replace(/2026-\d\d-\d\d|08-21/g, "").match(/\d/g), null, "no numbers in the body (counts, limits)");
+  assert.deepEqual(Object.keys(h).sort(), ["capacity", "finished", "key", "ok", "pairs", "refusing", "sending", "stale", "window"], "exactly these fields");
+  assert.match(h.key, /^[A-Za-z0-9_-]{87}$/, "the VAPID public key (public information)");
+  assert.equal(JSON.stringify(h).replace(h.key, "").replace(/2026-\d\d-\d\d|08-21/g, "").match(/\d/g), null, "no numbers in the body (counts, limits)");
   await call(worker, env, "PUT", `/v1/push/rules/${ids[0]}`, { rules: [] });          // a delete-on-empty makes a seat
   assert.equal((await cap()).capacity, "nearly_full");
   await call(worker, env, "DELETE", `/v1/push/subscribe/${ids[1]}`);
@@ -1129,7 +1160,25 @@ test("health capacity: ok → nearly_full (≥ 80% of MAX_SUBS) → full (at the
 test("health stale: no factory finish for more than 2 KST days → stale:true (the monitor warns); a fresh or missing finish → false", T, async () => {
   const { env } = await setup();
   const stale = async (now) => (await call(worker, env, "GET", "/health", undefined, { headers: { origin: null }, now })).body.stale;
-  assert.equal(await stale(kst("2026-10-30T10:00:00")), false, "no finish yet: nothing to be late");
+  assert.equal(await stale(kst("2026-10-30T10:00:00")), false, "no finish yet and no subscription: nothing to be late");
+  // no finish EVER but phones subscribed: the factory → Worker link never worked (ALERTS_URL/ALERTS_SECRET/ALERTS_CODE_SHA
+  // missing, notify.mjs skipping quietly) — stale once the first subscription is more than 2 KST days old, never on day one
+  const { env: e2, db: d2 } = await setup();
+  const stale2 = async (now) => (await call(worker, e2, "GET", "/health", undefined, { headers: { origin: null }, now })).body.stale;
+  const first = await sub(e2, [{ kind: "watch", key: "X24" }], subscription(), { now: kst("2026-10-19T22:00:00") });
+  await sub(e2, [{ kind: "watch", key: "X01" }], subscription(), { now: kst("2026-10-21T10:00:00") });
+  assert.equal(await stale2(kst("2026-10-19T23:00:00")), false, "the evening a phone subscribes, before any 06:00 factory run");
+  assert.equal(await stale2(kst("2026-10-20T09:30:00")), false, "the next morning's monitor");
+  assert.equal(await stale2(kst("2026-10-21T23:59:00")), false, "two days");
+  assert.equal(await stale2(kst("2026-10-22T00:01:00")), true, "three KST days after the first subscription and still no finish");
+  assert.deepEqual(d2.rows("SELECT k FROM stat WHERE k LIKE 'new:%' ORDER BY k").map((r) => r.k), ["new:2026-10-19", "new:2026-10-21"]);
+  await call(worker, e2, "DELETE", `/v1/push/subscribe/${first.id}`);
+  assert.equal(await stale2(kst("2026-10-22T00:01:00")), true, "the earliest day counts even when that phone left (the link is what is late)");
+  assert.equal(await finishDay(e2, "2026-10-22"), 200);
+  assert.equal(await stale2(kst("2026-10-22T09:30:00")), false, "the first finish clears it (and prunes past days' counters)");
+  d2.raw.prepare("DELETE FROM subs").run();
+  d2.raw.prepare("DELETE FROM stat WHERE k = 'finish'").run();
+  assert.equal(await stale2(kst("2026-11-30T09:30:00")), false, "no finish and no subscription left: nothing to be late");
   await mark(env, "2026-10-19", []);
   assert.equal(await stale(kst("2026-10-19T12:00:00")), false);
   assert.equal(await stale(kst("2026-10-21T23:59:00")), false, "two days");
@@ -1144,19 +1193,25 @@ test("push-service trouble (5xx, redirect, timeout) deletes nobody: counted agai
   const fresh = await sub(env, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", "fresh"));
   await news(env, "2026-10-19");
   db.raw.prepare("UPDATE subs SET last_w = '2026-10-01' WHERE id = ?").run(real.id);
-  // an incident longer than every drop limit: 503, 302 and a timeout, run after run, to the only origin each row has
+  // an incident longer than every drop limit: 503, 302 and a timeout, try after try, to the only origin each row has. A row
+  // whose service gave nothing 2xx is held back HOLD_MINUTES: four tries a day (08:00, 11:00, 14:00, 17:00), and a run in
+  // between does not touch it
   const kinds = [503, 302, "throw"];
+  const slot = (i) => kst(`${addDays("2026-10-19", Math.floor(i / 4))}T08:00:00`) + (i % 4) * HOLD_MINUTES * 60e3;
   let held = 0;
   for (let i = 0; i < RETRY_DROP + 5; i++) {
-    const r = await send(env, kst("2026-10-19T09:00:00") + i * 10 * 60e3, { fetch: pushService(() => kinds[i % 3]).f });
+    const p = pushService(() => kinds[i % 3]);
+    const r = await send(env, slot(i), { fetch: p.f });
     held += r.held;
-    assert.deepEqual([r.sent, r.retry, r.gone], [0, 0, 0]);
+    assert.deepEqual([r.sent, r.retry, r.gone, p.calls.length], [0, 0, 0, 2]);
+    const between = pushService(() => kinds[i % 3]);
+    assert.deepEqual([(await send(env, slot(i) + 10 * 60e3, { fetch: between.f })).held, between.calls.length], [0, 0], "held rows wait");
   }
-  assert.equal(held, 2 * (RETRY_DROP + 5), "every try of both rows was released, not counted");
-  assert.deepEqual(db.rows("SELECT id, fails, pend_w, claim FROM subs ORDER BY id").sort((a, b) => a.id.localeCompare(b.id)),
-    [{ id: real.id, fails: 0, pend_w: 1, claim: null }, { id: fresh.id, fails: 0, pend_w: 1, claim: null }].sort((a, b) => a.id.localeCompare(b.id)), "both rows survive, fails untouched (a never-pushed row too)");
-  // the service is back: both are sent at once
-  const ok = await send(env, kst("2026-10-19T14:00:00"), { fetch: pushService().f });
+  assert.equal(held, 2 * (RETRY_DROP + 5), "every try of both rows was held back, not counted");
+  assert.deepEqual(db.rows("SELECT id, fails, pend_w, claim < 0 AS held FROM subs ORDER BY id").sort((a, b) => a.id.localeCompare(b.id)),
+    [{ id: real.id, fails: 0, pend_w: 1, held: 1 }, { id: fresh.id, fails: 0, pend_w: 1, held: 1 }].sort((a, b) => a.id.localeCompare(b.id)), "both rows survive, fails untouched (a never-pushed row too)");
+  // the service is back: both are sent at the first run after the hold
+  const ok = await send(env, slot(RETRY_DROP + 5), { fetch: pushService().f });
   assert.equal(ok.sent, 2);
 
   // the same origin took another push 2xx in that run → the failure is the row's and counts (RETRY_DROP / NEVER_DROP)
@@ -1249,4 +1304,524 @@ test("a phone's pending expiring mark is cleared when the next finish finds noth
   db.raw.prepare("UPDATE subs SET pend_x = '2026-10-23', pend_xl = '[\"X01||2026-10-23\"]', last_x = NULL WHERE id = ?").run(b.id);
   await mark(env, "2026-10-21", [calm("X24"), calm("X01")]);
   assert.equal(db.rows("SELECT pend_x FROM subs WHERE id = ?", b.id)[0].pend_x, null);
+});
+
+// ---- 6.0 round 4 (review findings 5/13/14, 7, 8, 9, 15): stale with no finish ever (above), expiring once a day, a broken
+// VAPID setup over many runs, exceptions inside a run, the public key derived from the secret
+
+test("expiring: at most ONE push with an expiring notice a day — one that rode along with the weekly bundle counts too", T, async () => {
+  const { env, db } = await setup();
+  await sub(env, [{ kind: "expiring", key: "X24", max: 80000 }, { kind: "watch", key: "X01" }]);
+  const push = pushService();
+  const ending = (u) => ({ ...st("X24", 75000, 5, 90000), e: 75000, s: 90000, u });
+  await mark(env, "2026-10-18", [st("X01", 50000, 4, 60000), st("X24", 75000, 5, 90000)]);
+  // 06:00: weekly news (X01's median 10% down) and an ending price → one push at 08:00 carries both
+  await mark(env, "2026-10-19", [ending("2026-10-21"), st("X01", 50000, 4, 54000)]);
+  assert.equal((await send(env, kst("2026-10-19T08:00:00"), { fetch: push.f })).sent, 1);
+  assert.deepEqual(db.rows("SELECT last_w, last_x, pend_w, pend_x FROM subs")[0], { last_w: "2026-10-19", last_x: "2026-10-19", pend_w: 0, pend_x: null },
+    "the weekly push carried the expiring notice: last_x is today as well");
+  // a second finish later the same day (a manual rerun) finds another end date: it waits for tomorrow
+  await mark(env, "2026-10-19", [ending("2026-10-22")]);
+  assert.equal(db.rows("SELECT pend_x FROM subs")[0].pend_x, "2026-10-22");
+  for (const t of ["11:00", "15:00", "20:40"]) await send(env, kst(`2026-10-19T${t}:00`), { fetch: push.f });
+  assert.equal(push.calls.length, 1, "no stand-alone expiring push on the day the weekly bundle carried one");
+  await send(env, kst("2026-10-20T08:00:00"), { fetch: push.f });
+  assert.equal(push.calls.length, 2, "the next day it goes, once");
+  assert.deepEqual(db.rows("SELECT last_w, last_x, pend_x FROM subs")[0], { last_w: "2026-10-19", last_x: "2026-10-20", pend_x: null });
+  // and the claim queries still pick exactly what dueKinds() calls due for such rows
+  const row = { pend_w: 0, last_w: "2026-10-19", pend_x: "2026-10-22", last_x: "2026-10-19" };
+  assert.deepEqual(dueKinds(row, "2026-10-19"), { weekly: false, expiring: false });
+  assert.deepEqual(dueKinds(row, "2026-10-20"), { weekly: false, expiring: true });
+});
+
+test("a push service refusing our VAPID token for days: kept for REFUSING_GRACE_DAYS (every run tries, nobody removed, /health refusing:true, other services unaffected), then counted as usual", T, async () => {
+  const { env, db, k } = await setup();
+  const W = [{ kind: "watch", key: "X24" }];
+  // Apple refuses everything (our token is broken there); FCM works. 8 Apple phones took our pushes before, 2 never did.
+  const pushed = [], never = [], fcm = [];
+  for (let i = 0; i < 2; i++) never.push(await sub(env, W, subscription("web.push.apple.com", `never/${i}`)));
+  for (let i = 0; i < 8; i++) pushed.push(await sub(env, W, subscription("web.push.apple.com", `took/${i}`)));
+  for (let i = 0; i < 5; i++) fcm.push(await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/ok${i}`)));
+  await news(env, "2026-10-19");
+  const took = [...pushed, ...fcm].map((x) => x.id);
+  db.raw.prepare(`UPDATE subs SET last_w = '2026-10-01' WHERE id IN (${took.map(() => "?").join(",")})`).run(...took);
+  const push = pushService((u) => (u.includes("apple") ? 403 : 201));
+  const health = async (iso) => (await call(worker, env, "GET", "/health", undefined, { headers: { origin: null }, now: kst(iso) })).body;
+  assert.equal((await health("2026-10-19T07:00:00")).refusing, false);
+  // every run of two days; a spared phone is held back HOLD_MINUTES between its tries (never at the front of every run)
+  let runs = 0, applePerRun = 0;
+  const lastTry = new Map(), tries = new Map();
+  for (const day of ["2026-10-19", "2026-10-20"]) {
+    for (let m = 8 * 60; m <= 20 * 60 + 40; m += 10, runs++) {
+      const t = kst(`${day}T00:00:00`) + m * 60e3, before = push.calls.length;
+      const r = await send(env, t, { fetch: push.f });
+      const apple = push.calls.slice(before).filter((c) => c.url.includes("apple"));
+      applePerRun = Math.max(applePerRun, apple.length);
+      for (const c of apple.filter((x) => x.url.includes("/took/"))) {
+        if (lastTry.has(c.url)) assert.ok(t - lastTry.get(c.url) >= HOLD_MINUTES * 60e3, "a spared phone waits HOLD_MINUTES before its next try");
+        lastTry.set(c.url, t);
+        tries.set(c.url, (tries.get(c.url) || 0) + 1);
+      }
+      if (apple.some((x) => x.url.includes("/took/"))) assert.equal(r.refusing, 1, `${day} run ${runs}: Apple is suspect`);
+      assert.equal(r.gone, 0);
+    }
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE claim > 0")[0].c, 0, "no row is left claimed by a run");
+    if (day === "2026-10-19") assert.equal((await health("2026-10-20T07:00:00")).refusing, true, "the next morning (before any run) the monitor still sees it");
+  }
+  assert.equal(runs, 154);
+  assert.ok(applePerRun <= 10, `each claimed Apple row is tried once a run (${applePerRun})`);
+  assert.equal(tries.size, 8);
+  for (const [u, n] of tries) assert.ok(n >= 8 && n <= 10, `${u}: tried every HOLD_MINUTES through both days (${n} tries)`);
+  // nobody was removed; the phones that took pushes before were never counted
+  const left = new Map(db.rows("SELECT id, fails, pend_w FROM subs").map((r) => [r.id, r]));
+  assert.equal(left.size, 15, "all 15 rows are still there after two days of refusals");
+  for (const p of pushed) assert.deepEqual([left.get(p.id).fails, left.get(p.id).pend_w], [0, 1], "released unchanged: fails 0, news waiting");
+  for (const n of never) assert.ok(left.get(n.id).fails >= 1, "a never-pushed row gets failures but is not removed at a suspect service");
+  // FCM was not stopped by Apple's refusals: all five got their push in the first run, once
+  assert.equal(push.calls.filter((c) => c.url.includes("fcm")).length, 5);
+  for (const x of fcm) assert.equal(left.get(x.id).pend_w, 0);
+  const h = await health("2026-10-20T21:00:00");
+  assert.deepEqual([h.ok, h.refusing, h.sending], [true, true, true]);
+  const rs = `rs:${k.pub.slice(0, 12)} https://web.push.apple.com`;
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", rs), [{ n: 20261019 }], "the stretch started on the first refusing day");
+  // still refusing one run a day: kept until REFUSING_GRACE_DAYS after the first day, then counted as usual (3 in a row
+  // removes a phone that took pushes before; a never-pushed one goes at its first counted refusal)
+  for (let d = 2; d < REFUSING_GRACE_DAYS; d++) await send(env, kst(`${addDays("2026-10-19", d)}T09:00:00`), { fetch: push.f });
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%'")[0].c, 10, `day ${REFUSING_GRACE_DAYS - 1} of the stretch: all 10 Apple rows still there`);
+  const over = addDays("2026-10-19", REFUSING_GRACE_DAYS);
+  for (let i = 0; i < REFUSED_DROP; i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%'")[0].c, 0, "after the grace days the refusing subscriptions are removed (the policy: delivery keeps failing → deleted)");
+  assert.equal((await health(`${over}T21:00:00`)).refusing, true, "and the monitor still says so");
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 5, "the FCM phones are untouched");
+
+  // Apple works again within the stretch: everyone waiting is sent and the stretch ends
+  const { env: e2, db: d2, k: k2 } = await setup();
+  for (let i = 0; i < 3; i++) await sub(e2, W, subscription("web.push.apple.com", `back/${i}`));
+  await news(e2, "2026-10-19");
+  d2.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
+  const r1 = await send(e2, kst("2026-10-19T09:00:00"), { fetch: pushService(() => 403).f });
+  assert.deepEqual([r1.refused, r1.spared, r1.refusing], [3, 3, 1], "one phone is enough to be careful (never a count per run)");
+  const fixed = pushService();
+  assert.equal((await send(e2, kst("2026-10-21T09:00:00"), { fetch: fixed.f })).sent, 3);
+  assert.deepEqual(d2.rows("SELECT k FROM stat WHERE k LIKE 'rs:%' OR k LIKE 'rl:%'"), [], "a 2xx from Apple ends the stretch");
+  assert.deepEqual(d2.rows("SELECT k, n FROM stat WHERE k LIKE 'ok:%'"), [{ k: `ok:${k2.pub.slice(0, 12)} https://web.push.apple.com`, n: 20261021 }], "and records the first day this key went through Apple");
+  assert.equal((await call(worker, e2, "GET", "/health", undefined, { now: kst("2026-10-23T09:30:00") })).body.refusing, false, "two days after the last refusing run");
+});
+
+test("review findings (key change): after a VAPID key change the phones that subscribed again get their pushes, and the old subscriptions that never did are removed — a push service that checks the key, API calls only", T, async () => {
+  const db = makeDb();
+  const k1 = await vapidKeys(), k2 = await vapidKeys();
+  const env1 = makeEnv(db, { VAPID_PRIVATE_JWK: k1.jwk }), env2 = makeEnv(db, { VAPID_PRIVATE_JWK: k2.jwk });
+  // FCM's behaviour: a subscription made with one applicationServerKey refuses a push signed with another (403)
+  const madeWith = new Map();
+  const fcm = pushService((url, n) => (madeWith.get(url) === /k=([^,]+)$/.exec(fcm.calls[n - 1].init.headers.authorization)[1] ? 201 : 403));
+  const subWith = async (env, key, path, rules) => { const s = subscription("fcm.googleapis.com", path); madeWith.set(s.endpoint, key.pub); return { ...(await sub(env, rules, s)), endpoint: s.endpoint }; };
+  const W = [{ kind: "watch", key: "X24" }];
+  const sleeping = [], active = [];
+  for (let i = 0; i < 8; i++) sleeping.push(await subWith(env1, k1, `fcm/send/sleep${i}`, W));
+  for (let i = 0; i < 20; i++) active.push(await subWith(env1, k1, `fcm/send/active${i}`, W));
+  const day = async (env, d) => { for (let m = 8 * 60; m <= 9 * 60; m += 10) await send(env, kst(`${d}T00:00:00`) + m * 60e3, { fetch: fcm.f }); };
+  await news(env1, "2026-11-02");
+  await day(env1, "2026-11-02");
+  assert.equal(new Set(fcm.calls.map((c) => c.url)).size, 28, "11-02: all 28 phones got the K1 push");
+  // 11-03: the key is changed (INCIDENT_RESPONSE_PLAN §2 VAPID ①); the 20 active phones subscribe again with the new key
+  // (the app: a different key → subscribe again, DELETE the old id), the 8 sleeping phones never open the app
+  const again = [];
+  for (const [i, a] of active.entries()) {
+    assert.equal((await call(worker, env2, "DELETE", `/v1/push/subscribe/${a.id}`)).status, 204);
+    again.push(await subWith(env2, k2, `fcm/send/again${i}`, W));
+  }
+  await news(env2, "2026-11-04");
+  const before = fcm.calls.length;
+  await day(env2, "2026-11-04");
+  assert.equal(fcm.calls.slice(before).filter((c) => c.url.includes("/again")).length, 20, "11-04: the 20 phones that subscribed again got their K2 push");
+  assert.equal(db.rows("SELECT count(*) c FROM stat WHERE k LIKE ? OR k LIKE ?", `rs:${k1.pub.slice(0, 12)} %`, `rl:${k1.pub.slice(0, 12)} %`)[0].c, 0, "the old key's refusal stretches are gone");
+  assert.equal(db.rows("SELECT count(*) c FROM stat WHERE k LIKE ?", `ok:${k1.pub.slice(0, 12)} %`)[0].c, 1, "its first-2xx day stays (one small row; never read under K2)");
+  // every day from here on brings news; the sleeping K1 rows are due again from 11-09 (7 days after their last push)
+  for (const d of ["2026-11-05", "2026-11-06", "2026-11-07", "2026-11-08", "2026-11-09", "2026-11-10", "2026-11-11", "2026-11-12"]) {
+    await news(env2, d);
+    const n = fcm.calls.length;
+    await day(env2, d);
+    if (d === "2026-11-11") assert.equal(fcm.calls.slice(n).filter((c) => c.url.includes("/again")).length, 20, "11-11: the weekly push reaches the 20 phones again — the old rows do not hold FCM up");
+  }
+  const left = new Set(db.rows("SELECT endpoint FROM subs").map((r) => r.endpoint));
+  assert.equal(sleeping.filter((s) => left.has(s.endpoint)).length, 0, "the 8 old K1 subscriptions are removed (last reached before K2 first went through FCM)");
+  assert.equal(again.filter((s) => left.has(s.endpoint)).length, 20);
+  assert.equal(fcm.calls.filter((c) => c.url.includes("/sleep")).length, 8 + 8 * REFUSED_DROP, "each old row: its K1 push, then REFUSED_DROP refusals");
+  assert.equal((await call(worker, env2, "GET", "/health", undefined, { now: kst("2026-11-12T09:30:00") })).body.refusing, false, "never suspect: no Telegram line for the old rows");
+});
+
+test("a private JWK whose d is not the key's own (x, y match VAPID_PUBLIC_KEY), or that is not a P-256 private key: skipped 'keys' before anything is claimed", T, async () => {
+  const { env, db, k } = await setup();
+  const other = await vapidKeys();
+  for (let i = 0; i < 3; i++) await sub(env, [{ kind: "watch", key: "X24" }]);
+  await news(env, "2026-10-19");
+  const good = JSON.parse(k.jwk), otherD = JSON.parse(other.jwk).d;
+  const bad = [
+    JSON.stringify({ ...good, d: otherD }),                     // x, y = VAPID_PUBLIC_KEY, d from another key
+    JSON.stringify({ ...good, d: good.d.slice(0, 20) }),        // a cut d
+    JSON.stringify({ ...good, d: "A".repeat(43) }),             // d = 0
+    JSON.stringify({ ...good, crv: "P-384" }),
+    JSON.stringify({ kty: "EC", crv: "P-256", x: good.x, y: good.y }),   // the PUBLIC key only
+    "{not json " + good.d,                                      // a broken paste (its text must never reach the logs)
+  ];
+  const push = pushService();
+  const logs = await spyConsole(async () => {
+    for (const jwk of bad) {
+      for (const pubVar of [k.pub, ""]) {
+        const e = { ...env, VAPID_PRIVATE_JWK: jwk, VAPID_PUBLIC_KEY: pubVar };
+        assert.equal((await send(e, kst("2026-10-19T09:00:00"), { fetch: push.f })).skipped, "keys", jwk.slice(0, 40));
+        const h = (await call(worker, e, "GET", "/health")).body;
+        assert.deepEqual([h.ok, h.sending, h.key], [true, false, null]);
+      }
+    }
+  });
+  assert.equal(push.calls.length, 0, "no push");
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE claim IS NOT NULL")[0].c, 0, "nothing claimed, nothing locked");
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE pend_w = 1 AND fails = 0")[0].c, 3, "the news waits, nobody counted");
+  assert.equal(logs.includes(good.d) || logs.includes(otherD) || logs.includes(good.d.slice(0, 20)), false, "the private key never reaches the logs");
+  assert.match(logs, /cannot|not a P-256 private key/);
+  // a runtime that imports such a pair without complaint (signs with d, the signature does not verify with x, y): the
+  // test signature is verified, so it is caught as well
+  const realVerify = globalThis.crypto.subtle.verify;
+  globalThis.crypto.subtle.verify = async () => false;
+  try { assert.equal((await send(env, kst("2026-10-19T09:00:00"), { fetch: push.f })).skipped, "keys"); }
+  finally { globalThis.crypto.subtle.verify = realVerify; }
+  assert.equal(push.calls.length, 0);
+  // the good key sends at once
+  assert.equal((await send(env, kst("2026-10-19T09:10:00"), { fetch: push.f })).sent, 3);
+});
+
+test("an exception inside a run never loses a SENT record: signing fails for one push service mid-run, a D1 statement throws after the pushes", T, async () => {
+  const { env, db, k } = await setup();
+  const W = [{ kind: "watch", key: "X24" }];
+  const apple = [], fcm = [];
+  for (let i = 0; i < 4; i++) apple.push(await sub(env, W, subscription("web.push.apple.com", `a/${i}`)));
+  for (let i = 0; i < 4; i++) fcm.push(await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/f${i}`)));
+  await news(env, "2026-10-19");
+  // FCM's token is cached in D1 (an earlier run); Apple needs a new signature — and every signature after the key check fails
+  const now = kst("2026-10-19T09:00:00");
+  const t = await vapidJwt("https://fcm.googleapis.com", k.jwk, APP, now);
+  db.raw.prepare(Q.SAVE_JWT).run(`${k.pub.slice(0, 12)} https://fcm.googleapis.com`, t.jwt, t.exp);
+  const realSign = globalThis.crypto.subtle.sign;
+  let signs = 0;
+  globalThis.crypto.subtle.sign = async (...a) => { if (++signs > 1) throw new Error("sign failed"); return realSign.apply(globalThis.crypto.subtle, a); };
+  const push = pushService();
+  let r;
+  const logs = await spyConsole(async () => {
+    try { r = await send(env, now, { fetch: push.f }); } finally { globalThis.crypto.subtle.sign = realSign; }
+  });
+  assert.deepEqual([r.sent, r.stopped, r.errors], [4, 4, 4], JSON.stringify(r));
+  assert.equal(push.calls.length, 4);
+  assert.ok(push.calls.every((c) => c.url.includes("fcm")));
+  assert.equal(logs.includes("sign failed"), false, "the error itself is not logged");
+  const rows = new Map(db.rows("SELECT id, pend_w, last_w, fails, claim FROM subs").map((x) => [x.id, x]));
+  for (const x of fcm) assert.deepEqual([rows.get(x.id).pend_w, rows.get(x.id).last_w], [0, "2026-10-19"], "the pushes that went out are recorded");
+  for (const x of apple) assert.deepEqual([rows.get(x.id).pend_w, rows.get(x.id).fails, rows.get(x.id).claim], [1, 0, null], "released unchanged");
+  // 20 minutes later: only the Apple phones get a push (no FCM phone twice)
+  const p2 = pushService();
+  assert.equal((await send(env, now + 20 * 60e3, { fetch: p2.f })).sent, 4);
+  assert.ok(p2.calls.every((c) => c.url.includes("apple")));
+
+  // a D1 statement that throws AFTER the pushes (while the run decides the refused rows): the run fails, but the batch
+  // still records what was sent and releases every other claimed row
+  const { env: e3, db: d3 } = await setup();
+  for (let i = 0; i < 3; i++) await sub(e3, W, subscription("fcm.googleapis.com", `fcm/send/g${i}`));
+  await sub(e3, W, subscription("web.push.apple.com", "refuses"));
+  await news(e3, "2026-10-19");
+  const prepare = e3.DB.prepare;
+  const env3 = { ...e3, DB: { ...e3.DB, prepare: (sql) => { if (sql === Q.DROP_REFUSED) throw new Error("D1_ERROR"); return prepare(sql); } } };
+  const p3 = pushService((u) => (u.includes("refuses") ? 403 : 201));
+  await assert.rejects(send(env3, now, { fetch: p3.f }), /D1_ERROR/);
+  assert.equal(p3.calls.length, 4);
+  assert.equal(d3.rows("SELECT count(*) c FROM subs WHERE pend_w = 0 AND last_w = '2026-10-19'")[0].c, 3, "the three sent pushes are recorded");
+  assert.equal(d3.rows("SELECT count(*) c FROM subs WHERE claim IS NOT NULL")[0].c, 0, "the refused row is released, not left claimed");
+  const p4 = pushService();
+  await send(e3, now + 20 * 60e3, { fetch: p4.f });
+  assert.deepEqual(p4.calls.map((c) => c.url.includes("refuses")), [true], "only the row whose outcome was lost is tried again");
+});
+
+test("VAPID public key derived from the secret: VAPID_PUBLIC_KEY empty → the JWK's own key is used (push header, /health key); set → it must match", T, async () => {
+  const { env, k } = await setup({ VAPID_PUBLIC_KEY: "" });
+  await sub(env, [{ kind: "watch", key: "X24" }]);
+  await news(env, "2026-10-19");
+  const h = (await call(worker, env, "GET", "/health")).body;
+  assert.deepEqual([h.sending, h.key], [true, k.pub]);
+  const push = pushService();
+  assert.equal((await send(env, kst("2026-10-19T09:00:00"), { fetch: push.f })).sent, 1);
+  const m = /^vapid t=([^,]+), k=(.+)$/.exec(push.calls[0].init.headers.authorization);
+  assert.equal(m[2], k.pub, "the push carries the derived public key");
+  const [hh, pp, ss] = m[1].split(".");
+  assert.equal(await wc.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k.publicKey, unb64u(ss), new TextEncoder().encode(`${hh}.${pp}`)), true);
+  // set to the same key → used; the same key written with a base64 padding character is still that key (/health shows the
+  // canonical form); another key → nothing is sent
+  for (const v of [k.pub, k.pub + "="]) {
+    const set = (await call(worker, { ...env, VAPID_PUBLIC_KEY: v }, "GET", "/health")).body;
+    assert.deepEqual([set.sending, set.key], [true, k.pub]);
+  }
+  const other = await vapidKeys();
+  assert.equal((await send({ ...env, VAPID_PUBLIC_KEY: other.pub }, kst("2026-10-19T09:10:00"), { fetch: push.f })).skipped, "keys");
+});
+
+test("static: wrangler.jsonc VAPID_PUBLIC_KEY (optional) and app/config.js pushPublicKey are the same key when both are set", () => {
+  const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  const app = readFileSync(new URL("../../../app/config.js", import.meta.url), "utf8");
+  const w = /"VAPID_PUBLIC_KEY":\s*"([^"]*)"/.exec(cfg), a = /\bpushPublicKey:\s*"([^"]*)"/.exec(app);
+  assert.ok(w, "wrangler.jsonc vars.VAPID_PUBLIC_KEY is written as a string (empty = derived from VAPID_PRIVATE_JWK)");
+  assert.ok(a, "app/config.js has pushPublicKey");
+  for (const v of [w[1], a[1]]) if (v) assert.match(v, /^[A-Za-z0-9_-]{87}$/, "a P-256 public key, base64url without padding");
+  if (w[1] && a[1]) assert.equal(w[1], a[1], "phones subscribe with app/config.js pushPublicKey; the Worker pushes with VAPID_PUBLIC_KEY — they must be one key");
+  // the Worker address the app calls is this Worker (when set)
+  const api = /\balertsApi:\s*"([^"]*)"/.exec(app);
+  assert.ok(api);
+  if (api[1]) assert.equal(new URL(api[1]).origin, "https://yoonsiljang-alerts.lsy2825.workers.dev");
+});
+
+// ---- 6.0 round 5 (review findings): the factory's D1 writes are bounded (PAIR_CAP), results written as the run goes and
+// safely retried
+
+test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of phones that took a push first, then the most-watched; /health pairs:capped; pages by offset", T, async () => {
+  const { env, db } = await setup({ PAIR_CAP: "5" });
+  const keys = (from, n) => Array.from({ length: n }, (_, i) => ({ kind: "target", key: `T${String(from + i).padStart(7, "0")}`, max: 1 }));
+  // a flood of made-up pairs (one POST each, no browser): 3 phones × 20 rules on keys that sort first
+  for (let i = 0; i < 3; i++) await sub(env, keys(i * 20, 20));
+  // a real phone that took a push before, watching X24 in two regions; two more phones on X01
+  const real = await sub(env, [{ kind: "watch", key: "X24" }, { kind: "watch", key: "X24", region: "서울" }]);
+  db.raw.prepare("UPDATE subs SET last_w = '2026-10-10' WHERE id = ?").run(real.id);
+  for (let i = 0; i < 2; i++) await sub(env, [{ kind: "watch", key: "X01" }, { kind: "target", key: "X01", max: 5 }]);
+  const now = kst("2026-10-19T06:00:00");
+  const w = await internal(env, "GET", "/v1/internal/watched?at=0", undefined, now);
+  assert.equal(w.status, 200);
+  assert.deepEqual(w.body.pairs.slice(0, 3), [{ k: "X24", r: "" }, { k: "X24", r: "서울" }, { k: "X01", r: "" }],
+    "the pairs of a phone that took a push first, then a pair two phones watch (one phone's two rules on a pair count once)");
+  assert.equal(w.body.pairs.length, 5);
+  assert.deepEqual([w.body.next, w.body.capped], [null, true]);
+  const h = async (iso) => (await call(worker, env, "GET", "/health", undefined, { now: kst(iso) })).body.pairs;
+  assert.equal(await h("2026-10-19T09:30:00"), "capped");
+  assert.equal(await h("2026-10-20T09:30:00"), "capped", "the next morning too");
+  assert.equal(await h("2026-10-21T09:30:00"), "ok", "two days later");
+  // under the cap: no stamp, no capped
+  const { env: e2 } = await setup();
+  await sub(e2, [{ kind: "watch", key: "X24" }]);
+  const w2 = await internal(e2, "GET", "/v1/internal/watched?at=0");
+  assert.deepEqual(w2.body, { pairs: [{ k: "X24", r: "" }], next: null });
+  assert.equal((await call(worker, e2, "GET", "/health")).body.pairs, "ok");
+  for (const bad of ["-1", "abc", "1.5", "6", "1e3"]) assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=${bad}`)).body, { error: "BAD_PAGE" }, bad);
+  // more than one page (PAGE 2,000): 105 phones × 20 distinct pairs = 2,100 pairs, read in two pages, nothing twice
+  const { env: e3 } = await setup();
+  for (let i = 0; i < 105; i++) await sub(e3, keys(1000 + i * 20, 20));
+  const p1 = await internal(e3, "GET", "/v1/internal/watched?at=0");
+  assert.deepEqual([p1.body.pairs.length, p1.body.next], [2000, 2000]);
+  const p2 = await internal(e3, "GET", `/v1/internal/watched?at=${p1.body.next}`);
+  assert.deepEqual([p2.body.pairs.length, p2.body.next, p2.body.capped], [100, null, undefined]);
+  assert.equal(new Set([...p1.body.pairs, ...p2.body.pairs].map((p) => p.k + p.r)).size, 2100);
+  assert.ok(PAIR_CAP >= 2100 && PAIR_CAP <= 5000, `PAIR_CAP ${PAIR_CAP}`);
+  // the arithmetic (src/worker.js, rows written per statement measured on a local D1): pushes (≈ 6 a push) + new
+  // subscriptions (5 each; a D1 day spans two KST budget days) + the finish's marks on a full table (≤ 5 per row) + the snap
+  // side of a factory run (≤ 2 × (PAIR_CAP + 500)) stays under D1 Free's 100,000 rows a day, a manual re-run included
+  const worst = 77 * SEND_LIMIT * 6 + 2 * NEW_PER_DAY * 5 + MAX_SUBS * 5 + 2 * (PAIR_CAP + 500);
+  assert.ok(worst <= 86000, `worst D1 day ${worst}`);
+  assert.ok(worst + 2 * (PAIR_CAP + 500) < 100000, "a second factory run the same day still fits");
+  const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  assert.equal(/"PAIR_CAP":\s*"(\d+)"/.exec(cfg)[1], String(PAIR_CAP), "wrangler.jsonc vars.PAIR_CAP = the code's default");
+});
+
+test("review finding (results batch): a results batch D1 refuses is tried again — a batch that committed but whose answer was lost changes nothing the second time; D1 refusing for good stops the pushes", T, async () => {
+  const W = [{ kind: "watch", key: "X24" }];
+  // (a) the first results batch commits, then the answer is lost ("Network connection lost.") → tried again: the SENT and the
+  // counted failure are recorded once
+  const { env, db } = await setup();
+  for (let i = 0; i < 3; i++) await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/ok${i}`));
+  await sub(env, W, subscription("fcm.googleapis.com", "fcm/send/bad400"));
+  await news(env, "2026-10-19");
+  db.raw.prepare("UPDATE subs SET last_w = '2026-10-01'").run();
+  const realBatch = env.DB.batch;
+  let calls = 0;
+  const lossy = { ...env, DB: { ...env.DB, batch: async (list) => { calls++; const r = await realBatch(list); if (calls === 2) throw new Error("D1_ERROR: Network connection lost."); return r; } } };
+  const push = pushService((u) => (u.endsWith("bad400") ? 400 : 201));
+  const r = await send(lossy, kst("2026-10-19T09:00:00"), { fetch: push.f, waits: [0, 0] });
+  assert.deepEqual([r.sent, r.retry, r.stalled], [3, 1, undefined]);
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE pend_w = 0 AND last_w = '2026-10-19' AND claim IS NULL")[0].c, 3);
+  assert.deepEqual(db.rows("SELECT fails, claim FROM subs WHERE endpoint LIKE '%bad400'"), [{ fails: 1, claim: null }], "one failure, not two");
+  const p2 = pushService();
+  await send(env, kst("2026-10-19T09:20:00"), { fetch: p2.f });
+  assert.deepEqual(p2.calls.map((c) => c.url.endsWith("bad400")), [true], "20 minutes later nobody gets the same push again");
+  // (b) the claim guard itself: SENT / RETRY / RELEASE do nothing to a row that no longer holds that claim
+  const id = db.rows("SELECT id FROM subs LIMIT 1")[0].id;
+  db.raw.prepare("UPDATE subs SET claim = 100, fails = 0 WHERE id = ?").run(id);
+  db.raw.prepare(Q.RETRY).run(id, 99);
+  db.raw.prepare(Q.RELEASE).run(id, 99);
+  db.raw.prepare(Q.SENT).run(id, 1, 0, "2026-10-30", null, null, 99);
+  assert.deepEqual(db.rows("SELECT claim, fails, last_w FROM subs WHERE id = ?", id), [{ claim: 100, fails: 0, last_w: "2026-10-19" }]);
+  // (c) D1 refuses every results batch: after the first group (6 pushes) the run sends nothing more, and fails
+  const { env: e3, db: d3 } = await setup();
+  for (let i = 0; i < 10; i++) await sub(e3, W, subscription("fcm.googleapis.com", `fcm/send/x${i}`));
+  await news(e3, "2026-10-19");
+  let n3 = 0;
+  const down = { ...e3, DB: { ...e3.DB, batch: async (list) => { if (++n3 > 1) throw new Error("D1_ERROR: D1 DB is overloaded."); return e3.DB.batch(list); } } };
+  const p3 = pushService();
+  await assert.rejects(send(down, kst("2026-10-19T09:00:00"), { fetch: p3.f, waits: [0, 0] }), /overloaded/);
+  assert.equal(p3.calls.length, 6, "no more pushes once D1 does not take the results");
+  assert.equal(d3.rows("SELECT count(*) c FROM subs WHERE claim IS NOT NULL")[0].c, 10, "the rows stay claimed (RESET_STALE frees them after 15 minutes)");
+});
+
+test("review finding (queue): rows held back at a push service that refuses, is down or says 429 never keep the other services' phones waiting — SEND_LIMIT + 5 Apple phones first in the queue, the FCM phones are sent in the next run", T, async () => {
+  for (const status of [403, 503, 429]) {
+    const { env, db } = await setup();
+    const W = [{ kind: "watch", key: "X24" }];
+    const apple = [], fcm = [];
+    for (let i = 0; i < SEND_LIMIT + 5; i++) apple.push(await sub(env, W, subscription("web.push.apple.com", `a/${i}`)));
+    for (let i = 0; i < 10; i++) fcm.push(await sub(env, W, subscription("fcm.googleapis.com", `fcm/send/f${i}`)));
+    await news(env, "2026-10-19");
+    // every phone took our pushes before; the Apple phones waited longest, so they are the front of the weekly queue
+    const lastW = (xs, d) => db.raw.prepare(`UPDATE subs SET last_w = ? WHERE id IN (${xs.map(() => "?").join(",")})`).run(d, ...xs.map((x) => x.id));
+    lastW(apple, "2026-10-01"); lastW(fcm, "2026-10-05");
+    const push = pushService((u) => (u.includes("apple") ? status : 201));
+    const fcmCalls = () => push.calls.filter((c) => c.url.includes("fcm")).length;
+    const r1 = await send(env, kst("2026-10-19T08:00:00"), { fetch: push.f });
+    assert.equal(fcmCalls(), 0, `${status}: run 1 holds SEND_LIMIT Apple rows`);
+    assert.equal(r1.sent, 0);
+    await send(env, kst("2026-10-19T08:10:00"), { fetch: push.f });
+    assert.equal(fcmCalls(), 10, `${status}: the FCM phones are sent in the next run, not after the hold or the grace days`);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%fcm%' AND pend_w = 1")[0].c, 0);
+    assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint LIKE '%apple%' AND fails = 0 AND pend_w = 1")[0].c, SEND_LIMIT + 5,
+      `${status}: no Apple phone was counted or removed — held back, the news waits`);
+    const wait = status === 429 ? SLOW_HOLD_MINUTES : HOLD_MINUTES;
+    const held = db.rows("SELECT DISTINCT -claim - ? AS d FROM subs WHERE endpoint LIKE '%apple%' AND claim < 0", Math.floor(kst("2026-10-19T08:00:00") / 60e3));
+    assert.equal(held.some((x) => x.d === wait), true, `${status}: held until ${wait} minutes after the run`);
+  }
+});
+
+test("review finding (D1 budget): the watched list cannot be replaced in a day — new pairs never push out pairs already computed, a new pair only takes a row a finish freed, and a factory run writes ≤ 2 × (PAIR_CAP + 500) snap rows", T, async () => {
+  const CAP = 200;
+  const { env, db } = await setup({ PAIR_CAP: String(CAP) });
+  const key = (i) => "T" + String(i).padStart(7, "0");
+  // CAP pairs from CAP / 20 subscriptions with 20 rules each (one POST each, no browser)
+  const plant = async (from) => {
+    const ids = [];
+    for (let s = 0; s < CAP / 20; s++) ids.push((await sub(env, Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: key(from + s * 20 + j) })))).id);
+    return ids;
+  };
+  const snapKeys = () => new Set(db.rows("SELECT k FROM snap").map((x) => x.k));
+  const health = async (iso) => (await call(worker, env, "GET", "/health", undefined, { now: kst(iso) })).body.pairs;
+  // one factory run as notify.mjs does it; a NEW collection every day (the costly case: every kept pair is rolled too)
+  const factory = async (today) => {
+    const before = snapKeys(), now = kst(`${today}T06:00:00`), run = `${today}|${today}`;
+    const pairs = [];
+    let at = 0, capped = false, skipped = 0;
+    for (;;) {
+      const w = (await internal(env, "GET", `/v1/internal/watched?at=${at}`, undefined, now)).body;
+      pairs.push(...w.pairs); capped = capped || w.capped === true;
+      if (w.next === null) break;
+      at = w.next;
+    }
+    for (let i = 0; i < pairs.length; i += 500) {
+      const d = await internal(env, "POST", "/v1/internal/digest", { run, entries: pairs.slice(i, i + 500).map((p) => ({ k: p.k, r: p.r, m: 1000, n: 1, med: 1000 })) }, now);
+      assert.equal(d.status, 200);
+      skipped += d.body.skipped;
+    }
+    assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today }, now)).status, 200);
+    const after = snapKeys();
+    const added = [...after].filter((k) => !before.has(k)).length, pruned = [...before].filter((k) => !after.has(k)).length;
+    const kept = [...after].filter((k) => before.has(k)).length;
+    // D1 rows of the snap side: a new pair 2, a pruned pair 2, a pair digested again 1 + its ROLL_BU/PROMOTE 1
+    const rows = 2 * added + 2 * pruned + 2 * kept;
+    assert.ok(rows <= 2 * (CAP + 500), `${today}: ${rows} snap rows written`);
+    return { added, pruned, capped, skipped };
+  };
+  const first = await plant(5000);                                  // keys that sort last
+  assert.deepEqual(await factory("2026-10-19"), { added: CAP, pruned: 0, capped: false, skipped: 0 });
+  // day 2: CAP more pairs whose keys sort first (by name they would have replaced the whole list): the pairs computed
+  // yesterday stay, the new ones are cut — nothing added, nothing pruned
+  await plant(0);
+  assert.deepEqual(await factory("2026-10-20"), { added: 0, pruned: 0, capped: true, skipped: 0 });
+  assert.equal(await health("2026-10-20T09:30:00"), "capped");
+  // day 3: the planter deletes yesterday's list (its own ids) — the new pairs still cannot come in the same day: the rows
+  // are pruned today and free tomorrow
+  for (const id of first) assert.equal((await call(worker, env, "DELETE", `/v1/push/subscribe/${id}`)).status, 204);
+  assert.deepEqual(await factory("2026-10-21"), { added: 0, pruned: CAP, capped: false, skipped: CAP });
+  assert.equal(await health("2026-10-21T09:30:00"), "capped", "a pair waiting for a free row is reported too");
+  // day 4: the freed rows take the new pairs
+  assert.deepEqual(await factory("2026-10-22"), { added: CAP, pruned: 0, capped: false, skipped: 0 });
+  // one chunk can pass the room check (it is counted once per statement): snap ≤ PAIR_CAP + 500
+  const { env: e2, db: d2 } = await setup({ PAIR_CAP: String(CAP) });
+  const many = Array.from({ length: 1000 }, (_, i) => ({ k: key(i), r: "", m: 1000, n: 1, med: 1000 }));
+  for (let i = 0; i < many.length; i += 500) await internal(e2, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: many.slice(i, i + 500) }, kst("2026-10-19T06:00:00"));
+  assert.ok(d2.rows("SELECT count(*) c FROM snap")[0].c <= CAP + 500);
+});
+
+test("review finding (stale stretch): a refusal stretch that ended without a 2xx does not shorten the next one — a new incident weeks later still gets the 7-day grace", T, async () => {
+  const { env, db } = await setup();
+  const W = [{ kind: "watch", key: "X24" }];
+  const a = await sub(env, W, subscription("web.push.apple.com", "a/0"));
+  await news(env, "2026-10-01");
+  db.raw.prepare("UPDATE subs SET last_w = '2026-09-01'").run();
+  const r1 = await send(env, kst("2026-10-01T09:00:00"), { fetch: pushService(() => 403).f });
+  assert.deepEqual([r1.refused, r1.spared, r1.refusing], [1, 1, 1], "one phone that took our pushes refuses: a stretch starts");
+  // the phone drops that rule (its news goes): nothing is due at Apple any more, and no 2xx ever ends the stretch
+  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${a.id}`, { rules: [{ kind: "newmatch", key: "X01" }] })).status, 200);
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k LIKE 'rs:%' OR k LIKE 'rl:%'").map((x) => x.n), [20261001, 20261001]);
+  // two weeks later: three Apple phones that took our pushes, and our setup breaks at Apple
+  const bs = [];
+  for (let i = 0; i < 3; i++) bs.push(await sub(env, W, subscription("web.push.apple.com", `b/${i}`)));
+  await news(env, "2026-10-15");
+  for (const b of bs) db.raw.prepare("UPDATE subs SET last_w = '2026-10-02' WHERE id = ?").run(b.id);
+  const push = pushService(() => 403);
+  for (let i = 0; i <= REFUSED_DROP; i++) {
+    const r = await send(env, kst("2026-10-15T09:00:00") + i * HOLD_MINUTES * 60e3, { fetch: push.f });
+    assert.deepEqual([r.refused, r.spared], [3, 3], `try ${i + 1}: spared, not counted`);
+  }
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 4, "nobody removed");
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k LIKE 'rs:%'"), [{ n: 20261015 }], "the new stretch starts on its own first day");
+  // the grace days still end: counted from 10-15, then removed after REFUSED_DROP refusals in a row
+  for (let d = 1; d < REFUSING_GRACE_DAYS; d++) await send(env, kst(`${addDays("2026-10-15", d)}T09:00:00`), { fetch: push.f });
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 4, `day ${REFUSING_GRACE_DAYS - 1} of the stretch: still all there`);
+  const over = addDays("2026-10-15", REFUSING_GRACE_DAYS);
+  for (let i = 0; i < REFUSED_DROP; i++) await send(env, kst(`${over}T09:00:00`) + i * 10 * 60e3, { fetch: push.f });
+  assert.deepEqual(db.rows("SELECT id FROM subs").map((x) => x.id), [a.id], "after the grace days the refusing phones are removed (the one with nothing due stays)");
+});
+
+test("review finding (key records): one run with a wrong key does not erase the right key's first day at a push service — after going back, the phones it reached are still protected; that day is written with the push that proves it", T, async () => {
+  const db = makeDb();
+  const k1 = await vapidKeys(), k2 = await vapidKeys();
+  const e1 = makeEnv(db, { VAPID_PRIVATE_JWK: k1.jwk }), e2 = makeEnv(db, { VAPID_PRIVATE_JWK: k2.jwk });
+  // six Apple phones subscribed with K1 (three watch X01, three X02); Apple takes a push only when it is signed with K1
+  const x01 = [], x02 = [];
+  for (let i = 0; i < 6; i++) (i < 3 ? x01 : x02).push(await sub(e1, [{ kind: "watch", key: i < 3 ? "X01" : "X02" }], subscription("web.push.apple.com", `p/${i}`)));
+  const keyOf = (c) => /k=([^,]+)$/.exec(c.init.headers.authorization)[1];
+  let broken = false;
+  const apple = pushService((u, n) => (!broken && keyOf(apple.calls[n - 1]) === k1.pub ? 201 : 403));
+  await news(e1, "2026-10-01", "X01"); await news(e1, "2026-10-01", "X02");
+  assert.equal((await send(e1, kst("2026-10-01T09:00:00"), { fetch: apple.f })).sent, 6);
+  const ok1 = `ok:${k1.pub.slice(0, 12)} https://web.push.apple.com`;
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", ok1), [{ n: 20261001 }]);
+  // 10-09: news for the X01 phones; ONE run with a wrong secret (K2): refused, spared — and K1's day stays
+  await news(e1, "2026-10-09", "X01");
+  const wrong = await send(e2, kst("2026-10-09T09:00:00"), { fetch: apple.f });
+  assert.deepEqual([wrong.refused, wrong.spared], [3, 3]);
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", ok1), [{ n: 20261001 }], "the right key's first day survives a wrong-key run");
+  // back to K1 (after the hold): the X01 phones get their push; K2's stretch records go
+  assert.equal((await send(e1, kst("2026-10-09T09:00:00") + HOLD_MINUTES * 60e3, { fetch: apple.f })).sent, 3);
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = ?", ok1), [{ n: 20261001 }]);
+  assert.deepEqual(db.rows("SELECT k FROM stat WHERE k LIKE 'rs:%' OR k LIKE 'rl:%'"), []);
+  // 10-12: our setup breaks at Apple; news for the X02 phones (last reached 10-01 = K1's first day: reached under K1)
+  await news(e1, "2026-10-12", "X02");
+  broken = true;
+  for (let i = 0; i < REFUSED_DROP; i++) {
+    const r = await send(e1, kst("2026-10-12T09:00:00") + i * HOLD_MINUTES * 60e3, { fetch: apple.f });
+    assert.deepEqual([r.refused, r.spared, r.refusing], [3, 3, 1], `try ${i + 1}: suspect, spared`);
+  }
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE fails = 0")[0].c, 6, "all six phones are still there, none counted");
+  assert.equal((await call(worker, e1, "GET", "/health", undefined, { now: kst("2026-10-12T21:00:00") })).body.refusing, true, "and the monitor is told");
+
+  // the first 2xx's day goes into the same results batch as that SENT: a run whose closing batch fails still has it
+  const { env: e3, db: d3, k: k3 } = await setup();
+  await sub(e3, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/one"));
+  await news(e3, "2026-10-19");
+  const realBatch = e3.DB.batch;
+  let n3 = 0;
+  const closingFails = { ...e3, DB: { ...e3.DB, batch: async (list) => { if (++n3 > 2) throw new Error("D1_ERROR: Network connection lost."); return realBatch(list); } } };
+  await assert.rejects(send(closingFails, kst("2026-10-19T09:00:00"), { fetch: pushService().f, waits: [0, 0] }), /Network connection lost/);
+  assert.deepEqual(d3.rows("SELECT last_w FROM subs"), [{ last_w: "2026-10-19" }], "the push is recorded");
+  assert.deepEqual(d3.rows("SELECT n FROM stat WHERE k = ?", `ok:${k3.pub.slice(0, 12)} https://fcm.googleapis.com`), [{ n: 20261019 }], "and so is the day it proves");
 });

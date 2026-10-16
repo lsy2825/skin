@@ -34,8 +34,16 @@ export function capacityOf(count, max) {
   const n = Number(count) || 0;
   return n >= max ? "full" : n * 5 >= max * 4 ? "nearly_full" : "ok";
 }
-// factory finish older than this many KST days → GET /health "stale": true (the monitor warns)
+// factory finish older than this many KST days → GET /health "stale": true (the monitor warns). With no finish ever: stale
+// when subscriptions exist and the first of them is older than this (the factory → Worker link never worked; the day the
+// first phone subscribes, before the next 06:00 factory run, is not an alarm)
 export const STALE_DAYS = 2;
+// a send run in which phones that took our pushes refused our VAPID token at a push service that took nothing else
+// (worker.js send) → GET /health "refusing": true on that KST day and this many days after it (the monitor runs once a day
+// at 09:30 KST: it sees a refusal from any run since the morning before). The same window for "pairs": "capped" (the
+// factory's watched list was cut at PAIR_CAP, worker.js watched).
+export const REFUSING_DAYS = 1;
+export const CAPPED_DAYS = 1;
 
 // ---- ids: 128 random bits, base64url (22 chars). The id IS the permission to change a subscription, so never log it.
 export function b64u(bytes) {
@@ -79,10 +87,14 @@ export const pushTtl = (ms) => Math.max(0, ttlUntil21(ms) - TTL_MARGIN_S);
 
 // ---- what is due for one subscription row today. weekly: watch/newmatch/target news (pend_w) at most once per 7 KST
 // days. expiring: pend_x = the earliest end date of a (pair, end date) not announced yet (sql.js MARK_EXPIRING keeps the
-// announced ones per pair in exp_sent, so a later date already announced never hides an earlier new one); at most one
-// stand-alone expiring push a day (last_x); when the weekly bundle goes out, a pending expiring rides along in the same
-// push. Ended dates are dropped. The claim queries in sql.js select exactly the rows for which this returns something
-// (tests check both agree).
+// announced ones per pair in exp_sent, so a later date already announced never hides an earlier new one); when the weekly
+// bundle goes out, a pending expiring rides along in the same push; otherwise a stand-alone expiring push only when no push
+// with an expiring notice went out today (last_x = the day of the last one, stand-alone or riding along: sql.js SENT).
+// So per phone: the weekly bundle at most once per 7 KST days, a stand-alone expiring push at most once a day and never on
+// a day a push already carried an expiring notice, and so one push a day — two only when a factory finish arrives after
+// that day's first push (the factory ran late or twice) with weekly news after an expiring push, or an expiring after the
+// weekly bundle. Ended dates are dropped. The claim queries in sql.js select exactly the rows for which this returns
+// something (tests check both agree).
 export function dueKinds(sub, today) {
   const weekly = sub.pend_w === 1 && (!sub.last_w || sub.last_w <= addDays(today, -WEEK_DAYS));
   const xLive = !!sub.pend_x && sub.pend_x >= today;
@@ -95,17 +107,19 @@ export function outcome(status) {
   if (status >= 200 && status < 300) return "sent";
   if (status >= 300 && status < 400) return "retry";       // redirects are never followed (fetch redirect: 'manual')
   if (status === 404 || status === 410) return "gone";      // the browser dropped the subscription
-  if (status === 429) return "slow";                        // stop that push host for this run
+  if (status === 429) return "slow";                        // stop that push host for this run (its rows wait SLOW_HOLD_MINUTES)
   // 401/403: that subscription refuses our VAPID token. Counted against the ROW (FCM answers 403 for a subscription made
   // with another applicationServerKey, which never heals: a phone that kept an old key, or a planted subscription), so it
-  // is removed after REFUSED_DROP refusals. Only strong evidence stops a whole run (src/worker.js send: configBroken).
+  // is removed after REFUSED_DROP refusals — except where it may be OUR setup that is broken (src/worker.js send: a phone
+  // that took our pushes under this key refuses and that push service took nothing else in the run), for up to
+  // REFUSING_GRACE_DAYS.
   if (status === 401 || status === 403) return "refused";
   return "retry";                                           // 5xx, 413, network error: try again next run
 }
 // 5xx, a redirect, a timeout/network error: that is the push SERVICE having trouble, not this subscription. Such a failure is
 // counted against the row (fails) only when the same push origin answered another push 2xx in the same run (so the service
-// was up and this row is the problem); otherwise the row is released unchanged — a push-service incident of an hour must not
-// delete phones. A 4xx (400, 413) is always the row's.
+// was up and this row is the problem); otherwise the row is held back unchanged for HOLD_MINUTES (fails does not move) — a
+// push-service incident of an hour must not delete phones. A 4xx (400, 413) is always the row's.
 export const hostTrouble = (status) => status === 0 || status >= 500 || (status >= 300 && status < 400);
 export const RETRY_DROP = 10;      // consecutive failures (5xx, 3xx, network) before a row is removed
 export const REFUSED_DROP = 3;     // consecutive failures, the last one a 401/403, before a row is removed
@@ -116,10 +130,27 @@ export const NEVER_DROP = 3;
 // of SEND_LIMIT slots in one run, at most this many go to rows that failed before (fails > 0): rows that keep failing can
 // take neither the expiring queue (nearest end date first) nor the weekly queue away from rows that never failed
 export const FAIL_SLOTS = 10;
-// a run stops early ("our VAPID setup is wrong") only when at least this many rows that DID take our pushes before
-// (last_w or last_x set) and had no failure since (fails = 0) answer 401/403, and nothing in the run was sent. A planted
-// subscription made with another key never took a push, so it can never stop the run.
-export const ABORT_EVIDENCE = 3;
+// "our VAPID setup may be broken at that push service" (src/worker.js send): a phone that took our pushes under THIS key
+// (its last push is not older than the day this key first went through there, stat 'ok:') answers 401/403, and that push
+// service took no push 2xx in the run. Judged per run and per push origin, from one such phone on — never from a count of
+// phones in one run. Then nobody refused there is removed: such phones are held back unchanged for HOLD_MINUTES (then tried
+// again), a phone that never took a push gets one failure and stays. A planted subscription never took a push, so it can
+// never cause this. The protection lasts at most this many KST days from the first such run of the stretch (stat 'rs:'):
+// a 2xx from that service ends the stretch, and so does a day with no such run at all (stat 'rl:' = the last such day; a
+// stretch whose last run is older than yesterday is over, and the next one starts again from its own first day). After the
+// grace days the refusals are counted as usual (REFUSED_DROP), so subscriptions that keep failing are removed after all —
+// the policy text says a subscription is deleted when delivery keeps failing. A user decision: the monitor warns every day
+// of the stretch (GET /health "refusing").
+export const REFUSING_GRACE_DAYS = 7;
+// A row whose push did not get through for a reason on the push service's side is HELD BACK, not released to the front of
+// the queue: the send runs take the longest-waiting rows first, so released rows would be claimed again by every run and,
+// at SEND_LIMIT or more of them, no other push service's phones would get a turn (the refusal protection above lasts a
+// week). Held = claim set to minus the epoch minute it is free again (sql.js HOLD; RESET_STALE frees it then; no claim
+// query takes it before). HOLD_MINUTES: refused at a push service where our setup may be broken (above), or that push
+// service was down (hostTrouble with no 2xx from it in the run). SLOW_HOLD_MINUTES: the service answered 429 (that row and
+// the rows of that service the run stopped after it).
+export const HOLD_MINUTES = 180;
+export const SLOW_HOLD_MINUTES = 30;
 
 // ---- the key of the per-client subscribe rate limit: IPv4 as is; IPv6 by its /64 (one household or phone usually gets
 // a whole /64, so the full address would let one client rotate through 2^64 keys). Not stored anywhere (the Rate

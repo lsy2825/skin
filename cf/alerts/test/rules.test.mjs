@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import * as R from "../src/rules.js";
-import { checkSubscription, keysMatch, quiet, watchMoved } from "../src/push.js";
+import { checkSubscription, keysMatch, publicKeyOf, quiet, watchMoved } from "../src/push.js";
 import { kst, vapidKeys } from "./helpers.mjs";
 
 test("subscribe rate-limit key: IPv4 as is, IPv6 by its /64, IPv4-mapped IPv6 = the IPv4", () => {
@@ -124,7 +124,7 @@ test("bundling: weekly once per 7 KST days; expiring once per end date, once a d
   assert.equal(R.outcome(429), "slow");
   assert.equal(R.outcome(403), "refused", "counted against that subscription, not a reason to stop everyone");
   assert.equal(R.outcome(401), "refused");
-  assert.ok(R.REFUSED_DROP < R.RETRY_DROP && R.ABORT_EVIDENCE >= 3);
+  assert.ok(R.REFUSED_DROP < R.RETRY_DROP && R.REFUSING_GRACE_DAYS >= 1 && R.CAPPED_DAYS >= 1);
   assert.equal(R.outcome(503), "retry");
   for (const c of [301, 302, 307, 308]) assert.equal(R.outcome(c), "retry", `${c}: redirects are not followed`);
   assert.equal(R.outcome(0), "retry");
@@ -166,6 +166,20 @@ test("VAPID keys: the private JWK must belong to the public key", async () => {
   assert.equal(keysMatch(a.pub, b.jwk), false);
   assert.equal(keysMatch("", a.jwk), false);
   assert.equal(keysMatch(a.pub, "{not json"), false);
+});
+
+test("VAPID public key derived from the private JWK (0x04 ‖ x ‖ y, base64url) = the key the pair was made with", async () => {
+  for (let i = 0; i < 5; i++) {
+    const k = await vapidKeys();
+    assert.equal(publicKeyOf(k.jwk), k.pub);
+    assert.equal(publicKeyOf(JSON.parse(k.jwk)), k.pub, "an object works too");
+    assert.equal(keysMatch(publicKeyOf(k.jwk), k.jwk), true);
+  }
+  const j = JSON.parse((await vapidKeys()).jwk);
+  for (const bad of ["", "{not json", "null", "[]", JSON.stringify({ ...j, d: undefined }), JSON.stringify({ ...j, d: "" }),
+    JSON.stringify({ ...j, kty: "RSA" }), JSON.stringify({ ...j, crv: "P-384" }), JSON.stringify({ ...j, x: j.x.slice(1) }),
+    JSON.stringify({ ...j, y: 12345 }), JSON.stringify({ ...j, x: "!!" + j.x.slice(2) }), undefined, null])
+    assert.equal(publicKeyOf(bad), "", String(bad).slice(0, 40));
 });
 
 const DATA = new URL("../../../app/data.json", import.meta.url);

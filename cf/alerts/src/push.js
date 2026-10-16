@@ -46,6 +46,47 @@ export function keysMatch(publicKey, privateJwk) {
   } catch { return false; }
 }
 
+// the VAPID public key of a private JWK: the uncompressed point 0x04 ‖ x ‖ y (65 bytes), base64url — the same 87
+// characters vapid-keygen.mjs prints and app/config.js pushPublicKey holds. "" when it is not an EC P-256 private JWK.
+// So the Worker needs only the secret VAPID_PRIVATE_JWK: the public key is part of it (and is public information).
+export function publicKeyOf(privateJwk) {
+  try {
+    const jwk = typeof privateJwk === "string" ? JSON.parse(privateJwk) : privateJwk;
+    if (!jwk || jwk.kty !== "EC" || jwk.crv !== "P-256" || typeof jwk.d !== "string" || !jwk.d
+      || typeof jwk.x !== "string" || typeof jwk.y !== "string") return "";
+    const x = unb64u(jwk.x), y = unb64u(jwk.y);
+    if (x.length !== 32 || y.length !== 32) return "";
+    const p = new Uint8Array(65);
+    p[0] = 4;
+    p.set(x, 1);
+    p.set(y, 33);
+    return b64u(p);
+  } catch { return ""; }
+}
+
+// The key pushes go out with, checked BEFORE a send run claims any row, and by GET /health ("sending", "key"):
+//   VAPID_PRIVATE_JWK missing                      → { key: "", why: "missing" }
+//   not an EC P-256 private JWK                    → { key: "", why: "bad_jwk" }
+//   VAPID_PUBLIC_KEY set and not the JWK's key     → { key: "", why: "mismatch" }  (empty = the JWK's own key is used)
+//   the JWK cannot sign, or its signature does not verify with its own x,y (a d that is not the pair's — some runtimes
+//   import such a JWK without complaint) → { key: "", why: "sign" }
+//   else                                           → { key }  (canonical base64url, 87 characters)
+// One ES256 signature and one verify: cheap enough for every run, and a broken secret is found before any row is locked.
+export async function vapidKey(env, nowMs = Date.now()) {
+  const priv = env.VAPID_PRIVATE_JWK || "";
+  if (!priv) return { key: "", why: "missing" };
+  const key = publicKeyOf(priv);
+  if (!key) return { key: "", why: "bad_jwk" };
+  if (env.VAPID_PUBLIC_KEY && !keysMatch(env.VAPID_PUBLIC_KEY, priv)) return { key: "", why: "mismatch" };
+  try {
+    const t = await vapidJwt("https://vapid-check.invalid", priv, env.VAPID_SUBJECT || env.ALLOWED_ORIGIN || "", nowMs);
+    const [h, p, s] = t.jwt.split(".");
+    const pub = await crypto.subtle.importKey("raw", unb64u(key), { name: "ECDSA", namedCurve: "P-256" }, false, ["verify"]);
+    if (!(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pub, unb64u(s), new TextEncoder().encode(`${h}.${p}`)))) return { key: "", why: "sign" };
+  } catch { return { key: "", why: "sign" }; }
+  return { key };
+}
+
 // the request for one push: POST, no body, VAPID auth, TTL until 21:00 KST (rules.js pushTtl, per push), one topic so a
 // newer push replaces an undelivered older one. Redirects are never followed (a 3xx counts as a failed try): the push
 // service is the only host a subscription may reach.

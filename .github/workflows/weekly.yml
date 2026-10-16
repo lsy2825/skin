@@ -286,28 +286,37 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python3 .github/scripts/health_check.py --report-only --send
 
-  # Price alerts (cf/alerts): hand the numbers of the watched treatments in the published app/data.json to the alerts
-  # Worker, which marks who gets a push (sent 08:00–21:00 KST). A job of its own on a FRESH runner, so nothing the factory
-  # ran (scrapers, `pip install -r requirements.txt` packages, build code) can touch this machine, its files, $GITHUB_ENV or
-  # the alerts token: only this job has ALERTS_*, it installs nothing, and it can only read the repository.
+  # Price alerts (cf/alerts): hand the numbers of the watched treatments in the app's data to the alerts Worker, which marks
+  # who gets a push (sent 08:00–21:00 KST). A job of its own on a FRESH runner, so nothing the factory ran (scrapers,
+  # `pip install -r requirements.txt` packages, build code) can touch this machine, its files, $GITHUB_ENV or the alerts
+  # token: only this job has ALERTS_*, it installs nothing, and it can only read the repository.
   # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
   # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
   # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
   # but cannot edit Actions variables, so nothing the factory pushes can ever become the code that holds ALERTS_SECRET.
   # (github.sha is NOT used: a scheduled run takes main's last commit, which may be a factory push nobody reviewed.) Unset or
-  # malformed → the job is skipped with a notice. The DATA is app/data.json from main (after a successful factory run the
-  # new data; when the factory failed, what was already published, so the daily expiring check still runs), copied as a
-  # regular file and only JSON.parse'd — never run. Pinned code that lags main is harmless (the shape guard in notify.mjs
-  # and the Worker's own checks refuse data it cannot read); a notice says when main's alerts code is newer than the pin.
+  # malformed → the job is skipped with a notice.
+  # The DATA is what the phones see: data-meta.json and data.json downloaded from the public app address (repository
+  # Variable PUBLIC_APP_URL, default https://yoonsiljang.lsy2825.workers.dev) — https only, no redirects, size-capped — and
+  # used only when data.json's sha256 equals data-meta.json's "sha256" (the app keeps a data.json only after the same
+  # check; three tries, 30 s apart); anything else is a ::warning and nothing is sent that day. The file is only
+  # JSON.parse'd — never run. So the numbers are never ones a phone cannot see: after a failed or skipped deploy, or while
+  # public hosting is paused (PUBLIC_DEPLOY not "on"), it is the copy still being served (no weekly news; expiring follows
+  # the rows the phones show), and finish still runs every day, so GET /health does not go stale. The job runs after the
+  # job(s) that deploy the app (`needs`), so a new build is already being served when it downloads; if the deploy moves to
+  # a job of its own, that job goes into `needs` too (tests/factory_worker.test.js checks). main is checked out (only
+  # cf/alerts and app/domain) for one thing: a notice when main's alerts code is newer than the pin. Pinned code that lags
+  # main is harmless (the shape guard in notify.mjs and the Worker's own checks refuse data they cannot read).
   # Also on 'nothing to do today' days (run=false): ending prices are checked daily. Never fails the price build: notify.mjs
-  # exits 0 with a ::warning, and continue-on-error covers anything else. Unset secrets = skipped.
+  # exits 0 with a ::warning, and continue-on-error covers anything else. ALERTS_URL defaults to the alerts Worker's
+  # workers.dev address; without the ALERTS_SECRET secret notify.mjs only prints a ::warning (nothing is sent).
   price_alerts:
     needs: update
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     permissions:
       contents: read
-    timeout-minutes: 10
+    timeout-minutes: 20       # the data step (at most 8) + notify (at most 10)
     continue-on-error: true
     steps:
       - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
@@ -331,36 +340,90 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         if: steps.pin.outputs.ok == 'true'
         with:
-          ref: main                  # the DATA: what the factory committed (only app/data.json is taken, below)
+          ref: main                  # a HINT only (the step below): is main's alerts code newer than the pin? Never run, no data
           path: published
           persist-credentials: false
+          sparse-checkout: |
+            /cf/alerts/
+            /app/domain/
+          sparse-checkout-cone-mode: false   # exactly these two folders (cone mode would add app/*.json too)
+      - name: Is main's alerts code newer than the pin? (a hint, no security role)
+        if: steps.pin.outputs.ok == 'true'
+        run: |
+          if ! diff -rq code/cf/alerts published/cf/alerts >/dev/null 2>&1 || ! diff -rq code/app/domain published/app/domain >/dev/null 2>&1; then
+            echo "::notice title=price alerts::main's cf/alerts or app/domain differs from ALERTS_CODE_SHA — after reviewing it, set the variable to the new commit"
+          fi
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
         if: steps.pin.outputs.ok == 'true'
         with:
           node-version: "22"
-      - name: Take app/data.json from main as data
+      # what the phones see: the public app's data.json, kept only when its sha256 is the one data-meta.json names (the
+      # app's own rule, app/domain/sync.js checkData). No secret in this step; the files are read as bytes and JSON only.
+      # Three tries, 30 s apart (a download that fails, or a pair caught halfway through a deploy, is tried again).
+      - name: Take data.json from the public app (checked against data-meta.json's sha256)
         id: data
         if: steps.pin.outputs.ok == 'true'
+        timeout-minutes: 8         # three tries × two downloads × 60 s + two 30 s waits = 7 min at worst
+        env:
+          APP_URL: ${{ vars.PUBLIC_APP_URL || 'https://yoonsiljang.lsy2825.workers.dev' }}
         run: |
           set -u
-          F=published/app/data.json
-          # a regular file inside the checkout (a symlink — or a symlinked app/ — could point at a file on this machine)
-          if [ -f "$F" ] && [ ! -L "$F" ] && [ "$(realpath "$F")" = "$(realpath published)/app/data.json" ]; then
-            cp "$F" "$RUNNER_TEMP/data.json"
-            echo "ok=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning title=price alerts::app/data.json on main is not a regular file — nothing sent"
-            echo "ok=false" >> "$GITHUB_OUTPUT"
-          fi
-          # a hint only (no security role): main's alerts code is newer than the pin
-          if ! diff -rq code/cf/alerts published/cf/alerts >/dev/null 2>&1 || ! diff -rq code/app/domain published/app/domain >/dev/null 2>&1; then
-            echo "::notice title=price alerts::main's cf/alerts or app/domain differs from ALERTS_CODE_SHA — after reviewing it, set the variable to the new commit"
-          fi
+          export LC_ALL=C            # byte ranges in the patterns below
+          skip() { echo "::warning title=price alerts::$1 — nothing sent today (the next run tries again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          APP_URL=${APP_URL%/}
+          # the whole value must be one https address ([[ =~ ]] anchors to the whole string, so a line break fails)
+          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)*$ ]]; then skip "repository variable PUBLIC_APP_URL is not an https address"; fi
+          D="$RUNNER_TEMP/public"
+          mkdir -p "$D"
+          # get <file> <max bytes>: HTTP 200 over https, no redirect followed, within the size cap and the time limit
+          get() {
+            local code
+            rm -f "$D/$1"
+            code=$(curl --silent --show-error --fail --proto '=https' --max-redirs 0 --max-time 60 --max-filesize "$2" \
+                     -o "$D/$1" -w '%{http_code}' "$APP_URL/$1") || return 1
+            [ "$code" = 200 ] && [ -f "$D/$1" ] && [ ! -L "$D/$1" ] && [ "$(( $(wc -c < "$D/$1") ))" -le "$2" ]
+          }
+          # one try → 0 with why = what was taken, or 1 with why = the reason
+          take() {
+            get data-meta.json 1000000 || { why="could not download data-meta.json from the public app"; return 1; }
+            get data.json 60000000 || { why="could not download data.json from the public app"; return 1; }
+            why=$(python3 -I - "$D/data-meta.json" "$D/data.json" <<'PY'
+          import hashlib, json, re, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as f:
+                  meta = json.load(f)
+          except Exception:
+              print("the public data-meta.json is not JSON"); sys.exit(1)
+          want = meta.get("sha256") if isinstance(meta, dict) else None
+          if not isinstance(want, str) or not re.fullmatch(r"[0-9a-f]{64}", want):
+              print("the public data-meta.json has no sha256"); sys.exit(1)
+          h = hashlib.sha256()
+          with open(sys.argv[2], "rb") as f:
+              for block in iter(lambda: f.read(1 << 20), b""):
+                  h.update(block)
+          if h.hexdigest() != want:
+              print("the public data.json does not match data-meta.json's sha256 (a deploy in progress?)"); sys.exit(1)
+          up = meta.get("updated")
+          print("public data of " + (up if isinstance(up, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", up) else "an unknown day"))
+          PY
+            )
+          }
+          for i in 1 2 3; do
+            if take; then
+              echo "price alerts: $why (sha256 checked)"
+              mv "$D/data.json" "$RUNNER_TEMP/data.json"
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "price alerts: try $i — $why"
+            [ "$i" = 3 ] || sleep 30
+          done
+          skip "$why"
       - name: Price alerts (cf/alerts/notify.mjs)
         if: steps.pin.outputs.ok == 'true' && steps.data.outputs.ok == 'true'
         timeout-minutes: 10
         continue-on-error: true
         run: node code/cf/alerts/notify.mjs "$RUNNER_TEMP/data.json"
         env:
-          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL }}
+          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL || 'https://yoonsiljang-alerts.lsy2825.workers.dev' }}
           ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}

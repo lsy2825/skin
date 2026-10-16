@@ -11,7 +11,7 @@
 | 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
 | 앱 주소 | 공개: Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev — **2026-10-15 판으로 고정**(공개 배포 멈춤, 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만 배포). 관리자: `yoonsiljang-admin`(Cloudflare Access 뒤)이 빌드마다 갱신 | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
 | 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
-| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(Environment `cloudflare`로 옮기면 그쪽, `docs/SECURITY_ARCHITECTURE.md` §5)(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
+| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(Environment `cloudflare`로 옮기면 그쪽, `docs/SECURITY_ARCHITECTURE.md` §5)(+ 알림을 켜면 `ALERTS_SECRET`; `ALERTS_URL`은 선택 — 기본 주소가 있어요. 저장소 변수(비밀 아님): `ALERTS_CODE_SHA`·`PUBLIC_APP_URL`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
 | 로그인·DB(Supabase) | 꺼져 있음(`app/config.js` 비어 있음) | §7은 켠 뒤에만 해당 |
 
 ## 1. 등급과 첫 대응 시간
@@ -40,8 +40,8 @@
 | 새어 나간 것 | 할 일 |
 |---|---|
 | **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 넣어요: Environment `cloudflare`로 옮겼다면 Settings → **Environments → cloudflare → Environment secrets**의 `CLOUDFLARE_API_TOKEN`(Repository secrets에 다시 만들지 않아요 — 이름이 같으면 Environment 값이 이기고, Repository secret이 생기면 합치기 전 실행의 Re-run을 막는 장치가 사라져요). 옮기기 전이면 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
-| **VAPID 비밀키(푸시)** | ① 새 키 쌍을 만들어요(`node cf/alerts/vapid-keygen.mjs`, A5 이후). ② `wrangler secret put`으로 Worker에 넣어요. ③ 공개키를 B에게 부탁 메모로 보내 `config.js`를 바꾸게 해요. 기존 구독은 새 키로 다시 구독해야 해요 |
-| **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
+| **VAPID 비밀키(푸시)** | 키를 바꾸면 모든 휴대폰이 알림을 다시 신청해야 해요(2026-10-16 절차, A5). ① **새 키 넣기:** GitHub → Actions → **cf-alerts** → Run workflow → Branch **main** → `setup_keys`와 `replace_keys`를 **둘 다** 체크 → Run. 러너 안에서 새 쌍을 만들고, 비공개키는 Worker 비밀값으로만 들어가요(출력·파일 없음). 같은 실행이 `ALERTS_SECRET`도 GitHub 값으로 다시 넣어요(키 교체에 딸린 일일 뿐 — `ALERTS_SECRET`만 바꿀 때는 아래 줄의 `sync_secret`). `cf/alerts/wrangler.jsonc`의 `VAPID_PUBLIC_KEY`는 비워 둬요(차 있으면 이 실행이 거절하고 아무것도 안 바꿔요). ② **확인:** 실행이 초록이고 요약에 새 공개키(87자)가 보여요. `https://yoonsiljang-alerts.lsy2825.workers.dev/health`가 `"sending":true`이고 `"key"`가 그 새 공개키예요. ③ **앱:** A가 새 공개키를 B에게 부탁 메모로 보내 `app/config.js`의 `pushPublicKey`를 바꾸게 해요(급하면 §1 예외). 바뀌기 전까지 감시가 'VAPID 공개키가 달라요'를 날마다 경고해요. 공개 배포가 멈춘 동안에는 바뀐 `config.js`가 휴대폰에 닿지 않아요. ④ **옛 구독(코드 기준, 2026-10-16 다시 고침):** 옛 키로 한 구독은 푸시 서비스가 거절해요. Worker는 푸시 서비스마다 **새 키가 처음 2xx를 받은 날**을 적어 두고(`stat` `ok:`), 마지막 푸시가 그날보다 오래된 행은 옛 키 구독으로 보고 401·403 3번 뒤 지워요(경고 없음) — 다시 구독한 휴대폰이 옛 행 때문에 막히지 않아요. 새 키가 그 서비스에서 아직 한 번도 통하지 않았으면(다시 구독한 휴대폰이 없음) 옛 행은 '우리 설정 고장일 수 있음'으로 보호를 받아 **7일(`REFUSING_GRACE_DAYS`)까지** 지워지지 않고(3시간마다 다시 시도 — 그동안 다른 푸시 서비스의 휴대폰은 그대로 받아요) `/health`의 `"refusing":true`와 감시 경고가 날마다 나요. 7일이 지나면 평소처럼 세어 지워요. 잘못된 키를 잠깐 넣었다가 되돌려도 맞는 키의 `ok:` 날짜는 지워지지 않아요(키마다 따로 남김, 3차 검토) — 되돌린 뒤 그 키로 받던 휴대폰은 계속 '지금 키로 받은 기기'로 보호를 받아요. B의 '키가 다르면 다시 구독' 처리(부탁 메모)가 나간 뒤에는 휴대폰이 앱을 열 때 새 키로 다시 구독하고 옛 id를 지워요. 진짜 설정 고장(새 키를 잘못 넣음, `VAPID_SUBJECT` 오류 등)도 같은 경고가 나요 — 7일 안에 ①~②를 다시 확인하세요(그 뒤에는 거절하는 구독이 지워져요) |
+| **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. ① 새 값을 내 PC에서 만들어(`docs/ARCHITECTURE.md` D19 켜는 순서 4번의 방법, 클립보드에만) GitHub 저장소 Settings → Secrets and variables → Actions → **Repository secrets**의 `ALERTS_SECRET` → Update에 붙여 넣어요. ② GitHub → Actions → **cf-alerts** → Run workflow → Branch **main** → **`sync_secret`만** 체크 → Run. 그 값을 stdin으로 Worker에 넣고 VAPID 키는 건드리지 않아요. (또는 Cloudflare 대시보드 → Workers & Pages → `yoonsiljang-alerts` → Settings → Variables and Secrets → `ALERTS_SECRET` → Edit에 같은 값을 붙여 넣어요.) ③ 클립보드를 다른 글자로 덮어요. ④ **확인:** 다음 날 06시 뒤 weekly-prices 실행의 `price_alerts`에 '401' 경고가 없고, `/health`의 `finished`가 그날로 바뀌어요. **`setup_keys`는 쓰지 않아요** — VAPID 키가 있으면 거절하고, `replace_keys`를 같이 고르면 모든 휴대폰이 다시 구독해야 해요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
 | **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 사용자가 PC에서 `tools/windows/pin.bat`을 실행해요(#81, `docs/LOCAL_SETUP_WINDOWS.md` 4-1). 번호는 화면에 안 보이게 입력하고 채팅·저장소에 남지 않아요. 도구가 `app/gate.js`의 `HASH`와 `app/sw.js`의 `VER`(날짜·시각 숫자, 지금보다 100 이상) 두 줄만 바꾼 `pin/…` PR을 열고, 그 PR을 합치면 끝이에요. **예전 번호는 공개 기록에 남아 있어요** |
 | **Supabase 키**(켠 뒤) | 대시보드에서 키를 교체해요. service_role이 나갔으면 JWT secret까지 바꿔요. Auth 로그와 `audit_logs`에서 이상 변경을 찾아요 |
 | **GitHub 토큰·계정** | §5 |
@@ -121,7 +121,7 @@
 ## 9. 남용·스팸
 
 - **집계 Worker:** 날짜·단계별 숫자만 늘어나요. 이상하게 튀면 그날 숫자를 분석에서 빼요. 저장된 개인정보가 없어서 사용자를 찾아 막는 방법은 없어요(설계상 그래요).
-- **알림 Worker:** 구독 한도와 입력 검사가 먼저 막아요. 반복되면 구독 받기를 잠시 멈추는 판(배포)을 올려요.
+- **알림 Worker:** 구독 한도와 입력 검사가 먼저 막아요. 반복되면 구독 받기를 잠시 멈추는 판(배포)을 올려요. 감시가 `"pairs":"capped"`(지켜보는 쌍이 `PAIR_CAP`에 닿음)를 경고하면 심은 구독인지 보고 정리해요(`SECURITY_ARCHITECTURE.md` §4 정리 쿼리). D1 하루 쓰기 한도(계정 전체 100,000줄)를 넘으면 09:00 KST까지 모든 D1 쿼리가 실패해 `/health`가 503이에요 — 그날 알림·집계가 멈추고 09:00 KST에 저절로 돌아와요. 하루 최악 계산은 `cf/alerts/src/worker.js` 머리 주석(약 85,500줄, `cf/metrics`는 따로 최대 80,000줄)이에요.
 - **가격 파일 대량 수집:** 도메인을 산 뒤 `data.json` 요청 제한 규칙(A9)을 켜요. 그 전에는 막을 방법이 거의 없어요.
 
 ## 10. 개인정보 요청

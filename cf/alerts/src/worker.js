@@ -3,8 +3,8 @@
 //   PUT    /v1/push/rules/{id}      {rules}               → 200 {ok:true} | 404 (subscribe again); rules [] DELETES the row
 //                                                            (200 {ok:true}; afterwards that id answers 404)
 //   DELETE /v1/push/subscribe/{id}                        → 204
-//   GET    /health (= /v1/health)                         → 200 {ok:true, window, sending, finished, stale, capacity}
-//                                                            | 503 {ok:false} when D1 fails
+//   GET    /health (= /v1/health)                         → 200 {ok:true, window, sending, key, finished, stale, refusing,
+//                                                            capacity, pairs} (health() below) | 503 {ok:false} when D1 fails
 //   /v1/internal/{watched,digest,finish,send}             → the price factory (weekly.yml → notify.mjs), Bearer ALERTS_SECRET
 //   cron '*/10 23,0-11 * * *' (UTC = 08:00–20:50 KST)     → send(): at most SEND_LIMIT pushes per run
 // No Cloudflare imports, so node tests import this file and pass their own env (DB = a D1-shaped wrapper over node:sqlite).
@@ -13,15 +13,42 @@
 // Free-plan arithmetic (re-check when changing the cron, SEND_LIMIT or MAX_SUBS):
 //   runs that may send: the cron fires 13 h × 6 = 78 times a day; inWindow() refuses 20:50 → 77 runs (08:00 … 20:40 KST)
 //   pushes: 77 runs × SEND_LIMIT 40 = 3,080 a day = 21,560 a week
-//   need: each phone gets ≤ 1 weekly bundle + expiring pushes (≤ 1 a day; budget ~1 a week) ≈ 2 pushes a week
+//   need: each phone gets ≤ 1 weekly bundle a week + pushes with an expiring notice (≤ 1 a day, rules.js dueKinds; budget
+//         ~1 a week) ≈ 2 pushes a week
 //         → 21,560 / 2 = 10,780 phones; MAX_SUBS 8,000 leaves ~25% for retries, 429-paused hosts and runs cut at 20:45.
 //         That is an average: a day with more due than 3,080 (Monday's weekly news + month-end deadlines) sends expiring
 //         rows first, nearest end date first (CLAIM_X), so a deadline is not queued behind weekly news that can wait
-//   subrequests per run: ≤ 40 push fetches (redirects never followed, so 1 each) of the 50 external allowed; D1 = 2 batch
-//         calls of the 1,000 allowed to Cloudflare services
-//   D1 writes (100,000 a day): a push ≈ 6 rows (claim + result, with index entries) → ≤ ~18,500 a day; new subscriptions
-//         ≤ NEW_PER_DAY 2,000 × ~6 rows (row, endpoint index, 2 counters, the 'day' marker) ≈ 12,000; the factory's digest ≈ 1
-//         row per pair
+//   subrequests per run: ≤ 40 push fetches (redirects never followed, so 1 each) of the 50 external allowed; D1 = the claim
+//         batch + one results batch per parallel group of 6 (≤ 7) + the closing one, each tried at most 3 times → ≤ ~27 of
+//         the 1,000 allowed to Cloudflare services
+//   D1 writes (100,000 rows a day FOR THE WHOLE ACCOUNT, 00:00–24:00 UTC = 09:00–09:00 KST — cf/metrics shares it; since
+//         2026-09-01 a free account over it gets an error for EVERY D1 query until 09:00 KST: no finish, no send, no
+//         subscribe). D1 counts every row a statement writes plus one per index entry it changes. Rows written per
+//         statement, measured on a local D1 (wrangler 4.145.0 / workerd, 2026-10-16; production is assumed to count the same
+//         way — a guess), with the snap deletes counted as 2 (row + primary-key entry, as the D1 docs describe):
+//           a push: claim 2 + its result (SENT 1, a hold 2, a counted failure 3 and a delete 2 more) ≤ 7, ≈ 6 on average
+//             → 77 runs × SEND_LIMIT 40 = 3,080 pushes × 6 ≈ 18,480
+//           a new subscription: 5 (row, primary-key and endpoint entries, the two counters). NEW_PER_DAY is per KST day and a
+//             D1 day spans two of them → ≤ 2 × 2,000 × 5 = 20,000
+//           the factory's finish on subs: PRUNE_XSENT 1 + MARK_WEEKLY 2 (row + subs_due entry) + MARK_EXPIRING 2 or
+//             CLEAR_STALE_X 1 (row + subs_x entry) → ≤ 5 rows per subscription on a day every one of them changes every
+//             mark → ≤ MAX_SUBS 8,000 × 5 = 40,000. A row that failed before adds its subs_fail entry to each mark (≤ 7);
+//             such rows are few: a real phone's push-service trouble or suspect refusal is not counted, and a planted row
+//             has no exp_sent (never sent) and is marked weekly once in its life (pend_w stays 1 until a push gets through)
+//           the factory's snap: a pair digested again 1, its PROMOTE or ROLL_BU 1, a new pair 2, a pruned pair 2. Pairs are
+//             what subscriptions say (up to MAX_SUBS × 20 = 160,000), and a subscription needs no browser (one POST with a
+//             made-up endpoint on an allowed host). So (1) watched() cuts the list at PAIR_CAP, pairs of phones that took a
+//             push first, then the pairs already in snap (sql.js WATCHED: new pairs never push yesterday's out), and (2)
+//             a new pair is added only while snap holds fewer than PAIR_CAP rows (sql.js DIGEST: ≤ PAIR_CAP + 500 rows) — a
+//             row the finish prunes is free only the next day. With S rows at the start, k digested again, x added and S − k
+//             pruned: 2k + 2x + 2(S − k) = 2(x + S) ≤ 2 × (PAIR_CAP + 500) = 7,000 per factory run (the list cannot be
+//             replaced in a day: adding x needs x free rows from an earlier finish)
+//         → a D1 day where everything peaks at once (a full table whose every row changes every mark, the pushes, two KST
+//         days of new subscriptions, a full pair turnover) ≈ 18,480 + 20,000 + 40,000 + 7,000 ≈ 85,500 of 100,000. A manual
+//         re-run of the factory the same day adds ≤ 7,000 + the marks of the rows that change again. Not counted: PUT/DELETE
+//         and a subscription sent again for the same endpoint (≈ 2–4 rows each, bounded only by the Workers request limit and
+//         SUBS_RL), and cf/metrics (src/rules.js there: up to 80,000 rows on a spammed day — the two together can pass the
+//         limit). Levers left: NEW_PER_DAY (1,000 → −10,000) and MAX_SUBS (−5 rows a day per subscription less)
 //   D1 reads (5,000,000 a day; the free limit is enforced since 2026-09-01: a day over it fails every query until
 //         00:00 UTC = 09:00 KST, which /health shows as 503): an empty cron run reads ~0 rows (partial indexes
 //         subs_due/subs_claim/subs_x hold only rows with something pending); with P rows pending, each of the three claims
@@ -29,20 +56,36 @@
 //         (every pending row walked, none due) 3 × P per run = 3 × 77 × 8,000 ≈ 1.85M a day, DROP_ENDED another ≤ P per
 //         run; the factory's finish ≈ 4 scans of subs (PRUNE_XSENT, MARK_WEEKLY, MARK_EXPIRING, CLEAR_STALE_X) + ≤ 20 snap
 //         primary-key lookups per subscription in each MARK/CLEAR (json_each × snap) ≈ 3 × 8,000 × 20 = 480,000 → worst day
-//         ≈ 3M of 5M; a normal day (a few hundred pending rows) is far below 1M
-//   CPU (10 ms): one ES256 signature per push origin per 11 h (cached in D1), JSON of ≤ 40 rows
+//         ≈ 3M of 5M; a normal day (a few hundred pending rows) is far below 1M. watched() groups subs × rules once per page
+//         of 2,000 pairs and looks every distinct pair up in snap once (its order): ≤ 2 pages × (8,000 + 160,000) ≈ 340,000;
+//         each digest chunk counts snap once (its room check): ≤ 7 × 3,500 ≈ 25,000 a day
+//   CPU (10 ms): one ES256 signature per push origin per 11 h (cached in D1), one test signature + verify per run that
+//         has a key (push.js vapidKey, before any claim; GET /health does the same), JSON of ≤ 40 rows
+// VAPID: only the secret VAPID_PRIVATE_JWK is needed — the public key is derived from it (push.js publicKeyOf). The
+//   optional var VAPID_PUBLIC_KEY, when set, must be that same key (else nothing is sent, GET /health sending:false).
 import { ID_RE, validDay, validRun, FINISH_SLACK_DAYS, daysBetween, newId, kstDay, addDays, inWindow, pushTtl, dueKinds, outcome,
-  hostTrouble, capacityOf, STALE_DAYS, validateRules, cleanEntry, clientKey, RETRY_DROP, REFUSED_DROP, NEVER_DROP, FAIL_SLOTS,
-  ABORT_EVIDENCE } from "./rules.js";
-import { checkSubscription, vapidJwt, keysMatch, pushRequest } from "./push.js";
+  hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, clientKey, RETRY_DROP, REFUSED_DROP,
+  NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES, SLOW_HOLD_MINUTES } from "./rules.js";
+import { checkSubscription, vapidJwt, vapidKey, pushRequest } from "./push.js";
 import * as Q from "./sql.js";
 
 export const SEND_LIMIT = 40;          // pushes per run: free plan allows 50 outside requests per invocation
 export const MAX_SUBS = 8000;          // what the cron can serve (arithmetic above); wrangler.jsonc vars.MAX_SUBS. Nothing evicts: full = 503 FULL
 export const NEW_PER_DAY = 2000;       // new subscriptions per KST day (D1 Free: 100,000 rows written a day)
+// (key, region) pairs the factory digests per run, and the most rows snap holds (+ one digest chunk) — its D1 writes are
+// ≤ 2 × (PAIR_CAP + 500) rows per factory run (arithmetic above). A user decision; wrangler.jsonc vars.PAIR_CAP. Past it
+// the list is cut (pairs of phones that took a push, then the pairs already computed, then the most-watched, first) or a
+// new pair waits for a free row, and GET /health says "pairs": "capped" (the monitor warns)
+export const PAIR_CAP = 3000;
 const PARALLEL = 6;                    // the runtime runs at most 6 outside fetches at once anyway
 const PUBLIC_MAX = 8 * 1024, INTERNAL_MAX = 256 * 1024;
 const PAGE = 2000, DIGEST_MAX = 500;
+// waits (ms) before the 2nd and 3rd try of a results batch (D1 retries no write by itself: "Network connection lost",
+// "overloaded", "DB reset … retry" are answers a write can get)
+const RESULT_WAITS = [100, 400];
+// a stat day number (yyyymmdd) → 'YYYY-MM-DD', or null
+const dayOfNum = (n) => { const s = n ? String(n) : ""; const d = /^\d{8}$/.test(s) ? `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6)}` : ""; return validDay(d) ? d : null; };
+const dayNum = (day) => Number(day.replace(/-/g, ""));
 
 const json = (data, status = 200, extra = {}) =>
   new Response(data === null ? null : JSON.stringify(data), { status, headers: { ...(data === null ? {} : { "content-type": "application/json; charset=utf-8" }), ...extra } });
@@ -157,22 +200,44 @@ async function unsubscribe(env, id) {
 }
 
 // ---- factory side (Bearer ALERTS_SECRET; never CORS)
-async function watched(env, url) {
-  const after = (url.searchParams.get("after") || "|").split("|");
-  const k = after[0] || "", r = after.slice(1).join("|") || "";
-  const { results } = await env.DB.prepare(Q.WATCHED).bind(k, r, PAGE).all();
-  const pairs = (results || []).map((x) => ({ k: x.k, r: x.r }));
-  const last = pairs[pairs.length - 1];
-  return { pairs, next: pairs.length === PAGE ? `${last.k}|${last.r}` : null };
+// GET /v1/internal/watched?at=<offset> → {pairs, next: <offset> | null, capped?: true}. At most PAIR_CAP pairs in all, most
+// important first (sql.js WATCHED); a list cut at the cap answers capped: true on its last page and stamps stat 'capped'
+// (GET /health "pairs"). With digest's room check this keeps the factory's D1 writes bounded however many pairs the
+// subscriptions name.
+async function watched(env, url, now) {
+  const cap = num(env.PAIR_CAP, PAIR_CAP);
+  const raw = url.searchParams.get("at") || "0";
+  const at = /^\d{1,9}$/.test(raw) ? Number(raw) : -1;
+  if (at < 0 || at > cap) throw new Bad(400, "BAD_PAGE");
+  const want = Math.min(PAGE, cap - at);
+  const { results } = await env.DB.prepare(Q.WATCHED).bind(want + 1, at).all();
+  const rows = results || [];
+  const pairs = rows.slice(0, want).map((x) => ({ k: x.k, r: x.r }));
+  const more = rows.length > want, end = at + pairs.length;
+  if (more && end >= cap) {
+    await env.DB.prepare(Q.STAT_CAPPED).bind(dayNum(kstDay(now))).run();
+    console.log("alerts watched: the list was cut at PAIR_CAP");
+    return { pairs, next: null, capped: true };
+  }
+  return { pairs, next: more ? end : null };
 }
 
-async function digest(request, env) {
+// POST /v1/internal/digest {run, entries} → {saved, skipped}. A pair not in snap yet is added only while snap holds fewer than
+// PAIR_CAP rows (sql.js DIGEST); one left out (skipped) waits for a row a finish frees, and stamps stat 'capped' (GET /health
+// "pairs": "capped") — the list is at its cap.
+async function digest(request, env, now) {
   const body = await readJson(request, INTERNAL_MAX);
   if (!body || !validRun(body.run) || !Array.isArray(body.entries) || body.entries.length > DIGEST_MAX) throw new Bad(400, "BAD_DIGEST");
   const entries = body.entries.map(cleanEntry);
   if (entries.some((e) => !e)) throw new Bad(400, "BAD_DIGEST");
-  if (entries.length) await env.DB.prepare(Q.DIGEST).bind(body.run, JSON.stringify(entries)).run();
-  return { saved: entries.length };
+  if (!entries.length) return { saved: 0, skipped: 0 };
+  const res = await env.DB.prepare(Q.DIGEST).bind(body.run, JSON.stringify(entries), num(env.PAIR_CAP, PAIR_CAP)).run();
+  const saved = Math.min(entries.length, (res && res.meta && res.meta.changes) || 0), skipped = entries.length - saved;
+  if (skipped) {
+    await env.DB.prepare(Q.STAT_CAPPED).bind(dayNum(kstDay(now))).run();
+    console.log("alerts digest: new pairs wait for room under PAIR_CAP");
+  }
+  return { saved, skipped };
 }
 
 // one atomic batch: mark the phones, THEN promote the pending numbers to the baseline (a failure promotes nothing).
@@ -206,20 +271,31 @@ async function finish(request, env, now) {
 // that starts late is judged by the clock, not by its schedule). clock() = the time right now, read before every push: by
 // default nowMs plus the real time elapsed since the call (Date.now() advances with every I/O in a Worker); tests pass
 // their own clock.
-export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock } = {}) {
+export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, waits = RESULT_WAITS } = {}) {
   const started = Date.now();
   const now = clock || (() => nowMs + (Date.now() - started));
   const out = { sent: 0, gone: 0, retry: 0, refused: 0, stopped: 0, held: 0 };
   if (!inWindow(nowMs)) { console.log("alerts send: outside 08:00-20:45 KST"); return { ...out, skipped: "window" }; }
-  const pub = env.VAPID_PUBLIC_KEY || "", priv = env.VAPID_PRIVATE_JWK || "";
-  if (!pub || !priv) { console.log("alerts send: VAPID keys not set"); return { ...out, skipped: "keys" }; }
-  if (!keysMatch(pub, priv)) { console.error("alerts send: VAPID private key does not match VAPID_PUBLIC_KEY"); return { ...out, skipped: "keys" }; }
-  const today = kstDay(nowMs), minute = Math.floor(nowMs / 60e3), nowS = Math.floor(nowMs / 1000);
+  // the key, checked BEFORE any row is claimed (push.js vapidKey): the public key comes from the secret VAPID_PRIVATE_JWK
+  // itself (VAPID_PUBLIC_KEY, when set, must be that same key) and one test signature must verify with it. A secret that
+  // is missing, broken or cannot sign locks no row and costs no push.
+  const v = await vapidKey(env, nowMs);
+  if (!v.key) {
+    if (v.why === "missing") console.log("alerts send: VAPID_PRIVATE_JWK not set");
+    else if (v.why === "mismatch") console.error("alerts send: VAPID_PUBLIC_KEY is set and is not the public key of VAPID_PRIVATE_JWK");
+    else console.error("alerts send: VAPID_PRIVATE_JWK is not a P-256 private key that signs");
+    return { ...out, skipped: "keys" };
+  }
+  const pub = v.key, priv = env.VAPID_PRIVATE_JWK;
+  const today = kstDay(nowMs), todayN = dayNum(today), minute = Math.floor(nowMs / 60e3), nowS = Math.floor(nowMs / 1000);
   const limit = num(env.SEND_LIMIT, SEND_LIMIT), weekAgo = addDays(today, -7);
-  const [, , cache, cx, cw, cf] = await env.DB.batch([
+  // the key's tag (a new key never uses an old token, nor an old key's per-origin records)
+  const tag = pub.slice(0, 12);
+  const [, , cache, origins, cx, cw, cf] = await env.DB.batch([
     env.DB.prepare(Q.RESET_STALE).bind(minute),
     env.DB.prepare(Q.DROP_ENDED).bind(today),
     env.DB.prepare(Q.VAPID_CACHE),
+    env.DB.prepare(Q.ORIGIN_STATS).bind(`${tag} `),
     env.DB.prepare(Q.CLAIM_X).bind(minute, weekAgo, today, limit),
     env.DB.prepare(Q.CLAIM_W).bind(minute, weekAgo, today, limit),
     env.DB.prepare(Q.CLAIM_F).bind(minute, weekAgo, today, limit, FAIL_SLOTS),
@@ -232,90 +308,196 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock } 
     ...(cf.results || []).sort(by((r) => r.fails, (r) => r.last_w || ""))];
   if (!subs.length) return out;
 
+  // per push origin, for this key (sql.js ORIGIN_STATS): okSince = the first day this key went through there; stretchFrom /
+  // stretchLast = the first / last day of the current stretch of refusals that may be our own setup's fault
+  const okSince = new Map(), stretchFrom = new Map(), stretchLast = new Map();
+  for (const o of origins.results || []) {
+    const d = dayOfNum(o.n), kind = o.k.slice(0, 3);
+    if (d) (kind === "ok:" ? okSince : kind === "rs:" ? stretchFrom : stretchLast).set(o.k.slice(3 + tag.length + 1), d);
+  }
   // one JWT per push origin, cached in D1 (keyed with the public key, so a new key never uses an old token)
-  const tag = pub.slice(0, 12);
   const jwts = new Map(), fresh = [];
   for (const c of cache.results || []) if (c.aud.startsWith(tag + " ") && c.exp - nowS > 3600) jwts.set(c.aud.slice(tag.length + 1), c.jwt);
   const stmts = [], slowHosts = new Set(), refused = [], trouble = [], okOrigins = new Set();
-  let abort = false, evidence = 0;
+  // queued: rows whose result statement is in stmts (or already written); waiting: rows decided after the loop (refused,
+  // push-service trouble). Every claimed row ends this run with a statement (the finally below).
+  const queued = new Set(), waiting = new Set();
+  let closed = false, stalled = false;
+  const release = (s) => env.DB.prepare(Q.RELEASE).bind(s.id, minute);
+  // held back (rules.js HOLD_MINUTES): the row is not claimed again before that, so it never holds the front of the queue
+  const hold = (s, minutes) => env.DB.prepare(Q.HOLD).bind(s.id, minute, minute + minutes);
+  const q = (s, ...st) => { queued.add(s.id); stmts.push(...st); };
   const result = (s, what, due) => {
-    if (what === "sent") { out.sent++; stmts.push(env.DB.prepare(Q.SENT).bind(s.id, due.weekly ? 1 : 0, due.expiring ? 1 : 0, today, s.pend_x ?? null, s.pend_xl ?? null)); }
-    else if (what === "gone") { out.gone++; stmts.push(env.DB.prepare(Q.GONE).bind(s.id)); }
-    else if (what === "retry") { out.retry++; stmts.push(env.DB.prepare(Q.RETRY).bind(s.id), env.DB.prepare(Q.DROP_FAILING).bind(s.id, RETRY_DROP, NEVER_DROP)); }
-    else { out.stopped++; stmts.push(env.DB.prepare(Q.RELEASE).bind(s.id)); }
+    if (what === "sent") { out.sent++; q(s, env.DB.prepare(Q.SENT).bind(s.id, due.weekly ? 1 : 0, due.expiring ? 1 : 0, today, s.pend_x ?? null, s.pend_xl ?? null, minute)); }
+    else if (what === "gone") { out.gone++; q(s, env.DB.prepare(Q.GONE).bind(s.id)); }
+    else if (what === "retry") { out.retry++; q(s, env.DB.prepare(Q.RETRY).bind(s.id, minute), env.DB.prepare(Q.DROP_FAILING).bind(s.id, RETRY_DROP, NEVER_DROP)); }
+    else if (what === "slowed") { out.stopped++; q(s, hold(s, SLOW_HOLD_MINUTES)); }   // that push service said 429
+    else { out.stopped++; q(s, release(s)); }
+  };
+  // Results are written AS THE RUN GOES: after every parallel group, what it decided (sent, gone, counted failures, stopped
+  // rows, new JWTs) goes to D1 in one batch, tried up to 3 times (RESULT_WAITS). A run cut short loses at most one group's
+  // records, and a batch that committed but whose answer was lost is harmless to write again (sql.js SENT/RETRY/RELEASE/HOLD
+  // only touch a row that still holds THIS run's claim). If D1 still refuses, the run sends nothing more (stalled) and the batch
+  // is tried once more at the end with everything else. Left: when that last try fails too (D1 down for the whole run) or
+  // the Worker is stopped mid-group, the pushes of that group are unrecorded — their rows stay claimed, the run after next
+  // frees them (RESET_STALE, 15 minutes) and those phones get the same push again about 20 minutes later.
+  const write = async (list) => {
+    for (let i = 0; ; i++) {
+      try { return await env.DB.batch(list); }
+      catch (e) { if (i >= waits.length) throw e; await new Promise((ok) => setTimeout(ok, waits[i])); }
+    }
+  };
+  let unwritten = [];
+  const flush = async () => {
+    const list = [...unwritten, ...fresh.splice(0), ...stmts.splice(0)];
+    unwritten = [];
+    if (!list.length) return;
+    try { await write(list); }
+    catch {
+      unwritten = list;
+      if (!stalled) { stalled = true; out.stalled = true; console.error("alerts send: D1 did not take the results batch — no more pushes in this run"); }
+    }
   };
   async function one(s) {
-    const due = dueKinds(s, today);
-    if (!due.weekly && !due.expiring) return result(s, "stopped", due);       // claimed but nothing due after all
-    let origin;
-    try { origin = new URL(s.endpoint).origin; } catch { return result(s, "gone", due); }
-    if (abort || slowHosts.has(origin)) return result(s, "stopped", due);
-    if (!jwts.has(origin))   // a promise, so parallel pushes to one origin sign once
-      jwts.set(origin, vapidJwt(origin, priv, env.VAPID_SUBJECT || env.ALLOWED_ORIGIN, nowMs).then((t) => {
-        fresh.push(env.DB.prepare(Q.SAVE_JWT).bind(`${tag} ${origin}`, t.jwt, t.exp));
-        return t.jwt;
-      }));
-    const jwt = await jwts.get(origin);
-    // the window is checked again right before this push, and the TTL is computed from this moment: a run that is
-    // still going at 20:45 stops, and no push can arrive after 21:00
-    const t = now();
-    if (abort || !inWindow(t)) { if (!abort) { abort = true; out.closed = true; } return result(s, "stopped", due); }
-    const req = pushRequest(s.endpoint, jwt, pub, pushTtl(t));
-    let status = 0;
-    try { status = (await f(req.url, { ...req.init, signal: AbortSignal.timeout(8000) })).status; } catch { status = 0; }
-    const what = outcome(status);
-    if (what === "sent") okOrigins.add(origin);
-    if (what === "slow") { slowHosts.add(origin); return result(s, "stopped", due); }
-    if (what === "refused") {
-      // decided after the run (below). Evidence that OUR setup is wrong: a phone that took our pushes before and had no
-      // failure since now refuses the token. Enough of it with nothing sent → stop sending in this run.
-      refused.push(s);
-      if (s.fails === 0 && (s.last_w || s.last_x)) evidence++;
-      if (out.sent === 0 && evidence >= ABORT_EVIDENCE) abort = true;
-      return;
+    let due = { weekly: false, expiring: false };
+    try {
+      due = dueKinds(s, today);
+      if (!due.weekly && !due.expiring) return result(s, "stopped", due);       // claimed but nothing due after all
+      let origin;
+      try { origin = new URL(s.endpoint).origin; } catch { return result(s, "gone", due); }
+      if (closed || stalled) return result(s, "stopped", due);
+      if (slowHosts.has(origin)) return result(s, "slowed", due);
+      if (!jwts.has(origin))   // a promise, so parallel pushes to one origin sign once
+        jwts.set(origin, vapidJwt(origin, priv, env.VAPID_SUBJECT || env.ALLOWED_ORIGIN, nowMs).then((t) => {
+          fresh.push(env.DB.prepare(Q.SAVE_JWT).bind(`${tag} ${origin}`, t.jwt, t.exp));
+          return t.jwt;
+        }));
+      const jwt = await jwts.get(origin);
+      // the window is checked again right before this push, and the TTL is computed from this moment: a run that is
+      // still going at 20:45 stops, and no push can arrive after 21:00
+      const t = now();
+      if (closed || !inWindow(t)) { if (!closed) { closed = true; out.closed = true; } return result(s, "stopped", due); }
+      if (stalled) return result(s, "stopped", due);                            // decided while this one signed
+      if (slowHosts.has(origin)) return result(s, "slowed", due);
+      const req = pushRequest(s.endpoint, jwt, pub, pushTtl(t));
+      let status = 0;
+      try { status = (await f(req.url, { ...req.init, signal: AbortSignal.timeout(8000) })).status; } catch { status = 0; }
+      const what = outcome(status);
+      if (what === "sent" && !okOrigins.has(origin)) {
+        // this origin's first 2xx in the run: the day this key went through there (kept if older) and the end of any refusal
+        // stretch go into the SAME results batch as this SENT, so a recorded push never lacks them (sql.js STAT_OK_SINCE)
+        okOrigins.add(origin);
+        stmts.push(env.DB.prepare(Q.STAT_OK_SINCE).bind(`${tag} ${origin}`, todayN), env.DB.prepare(Q.CLEAR_RS).bind(`${tag} ${origin}`));
+      }
+      if (what === "slow") { slowHosts.add(origin); return result(s, "slowed", due); }
+      // 401/403 and push-service trouble (5xx, redirect, timeout) are decided after the run (below), once every push of the
+      // run has answered: whether that push service took another push 2xx in this run is part of the decision. A refusal
+      // never stops the run for that service — a 2xx later in the same run (a phone that subscribed with the current key)
+      // is what tells an old subscription's refusal from a broken setup.
+      if (what === "refused") { waiting.add(s.id); refused.push({ s, origin }); return; }
+      if (what === "retry" && hostTrouble(status)) { waiting.add(s.id); trouble.push({ s, origin, due }); return; }
+      return result(s, what, due);
+    } catch {
+      // anything unexpected (a signature that fails after the check above, …): this row is released unchanged — never
+      // counted against it — and the run goes on. Counted in the run's log line, the error itself is not logged (a JSON
+      // or key error may quote what it parsed).
+      out.errors = (out.errors || 0) + 1;
+      if (!queued.has(s.id) && !waiting.has(s.id)) result(s, "stopped", due);
     }
-    // the push SERVICE having trouble (5xx, redirect, timeout) is decided after the run: it counts against the row only if
-    // that origin also took another push in this run (below)
-    if (what === "retry" && hostTrouble(status)) { trouble.push({ s, origin, due }); return; }
-    return result(s, what, due);
   }
-  for (let i = 0; i < subs.length; i += PARALLEL) await Promise.all(subs.slice(i, i + PARALLEL).map(one));
-  // a push origin that answered 5xx / a redirect / timed out for a row but took another push 2xx in this run: the service
-  // was up, so that failure is the row's (counted, RETRY_DROP / NEVER_DROP). An origin with no 2xx in this run may simply
-  // be down: its rows are released unchanged (fails does not move) — an hour of push-service trouble deletes nobody.
-  for (const t of trouble) {
-    if (okOrigins.has(t.origin)) result(t.s, "retry", t.due);
-    else { out.held++; stmts.push(env.DB.prepare(Q.RELEASE).bind(t.s.id)); }
+  try {
+    for (let i = 0; i < subs.length; i += PARALLEL) {
+      await Promise.all(subs.slice(i, i + PARALLEL).map(one));
+      await flush();
+    }
+    // a push origin that answered 5xx / a redirect / timed out for a row but took another push 2xx in this run: the service
+    // was up, so that failure is the row's (counted, RETRY_DROP / NEVER_DROP). An origin with no 2xx in this run may simply
+    // be down: its rows are held back unchanged for HOLD_MINUTES (fails does not move) — an hour of push-service trouble
+    // deletes nobody, and while it lasts the other services' phones get the runs' slots.
+    for (const t of trouble) {
+      if (okOrigins.has(t.origin)) result(t.s, "retry", t.due);
+      else { out.held++; q(t.s, hold(t.s, HOLD_MINUTES)); }
+    }
+    // 401/403. A row is counted (one more failure, removed after REFUSED_DROP in a row; a row that never received a push at
+    // its first refusal) unless OUR setup may be what is broken at that push origin. That is the case ("suspect") when a
+    // phone that took our pushes under THIS key refuses there and the origin took no push 2xx in this run. It starts a
+    // stretch (stat 'rs:' first day, 'rl:' last day of such runs), which ends at the origin's next 2xx, or when its last
+    // day is older than yesterday (it ended without a 2xx: those phones stopped being due) — a new incident weeks later
+    // starts its own grace days. For up to REFUSING_GRACE_DAYS from the first day of the stretch, at an origin that took
+    // nothing 2xx in the run and is suspect in it or has a stretch going: a phone that took our pushes is held back
+    // unchanged for HOLD_MINUTES (fails stays; held, not released, so these rows never keep the other push services' phones
+    // waiting — and so most runs of a stretch try none of them, which is why a stretch going is enough), and a row that
+    // never took one gets one failure and stays. Only a phone that took our pushes makes a run suspect and moves 'rl:'
+    // (planted rows can neither start nor prolong a stretch). Judged per run and per origin from one such phone on, so a
+    // quiet day with few phones due deletes nobody either.
+    // A row last reached BEFORE this key first went through that origin (stat 'ok:') is an old subscription made under an
+    // earlier key: its refusal is its own — counted, never suspect — so after a key change the phones that subscribed again
+    // are not held up by the ones that did not, and the old rows go. A row last reached ON that day counts as reached under
+    // this key (last_w/last_x hold the day only): on the day of a key change, a phone that got its last push under the old
+    // key before the new one first went through is protected like the others. A planted subscription never took a push, so
+    // it can neither make an origin suspect nor be spared. Suspect origins → stat 'refusing' → GET /health "refusing": true
+    // → a Telegram line every day of the stretch.
+    const took = (s) => !!(s.last_w || s.last_x);
+    const lastPush = (s) => ((s.last_w || "") > (s.last_x || "") ? s.last_w : s.last_x) || "";
+    const oldKey = (s, origin) => okSince.has(origin) && lastPush(s) < okSince.get(origin);
+    const suspect = new Set(refused.filter(({ s, origin }) => took(s) && !okOrigins.has(origin) && !oldKey(s, origin)).map((x) => x.origin));
+    const yesterday = addDays(today, -1);
+    const stretchSince = (origin) => { const f = stretchFrom.get(origin), l = stretchLast.get(origin); return f && l && l >= yesterday ? f : null; };
+    const careful = (origin) => !okOrigins.has(origin) && (suspect.has(origin) || !!stretchSince(origin));
+    const graceOver = (origin) => { const f = stretchSince(origin); return !!f && daysBetween(today, f) >= REFUSING_GRACE_DAYS; };
+    for (const { s, origin } of refused) {
+      out.refused++;
+      if (!careful(origin) || graceOver(origin) || (took(s) && oldKey(s, origin)))
+        q(s, env.DB.prepare(Q.RETRY).bind(s.id, minute), env.DB.prepare(Q.DROP_REFUSED).bind(s.id, REFUSED_DROP));
+      else if (took(s)) { out.spared = (out.spared || 0) + 1; q(s, hold(s, HOLD_MINUTES)); }
+      else q(s, env.DB.prepare(Q.RETRY).bind(s.id, minute));
+    }
+    if (suspect.size) {
+      out.refusing = suspect.size;
+      for (const o of suspect) {
+        if (!stretchSince(o)) stmts.push(env.DB.prepare(Q.STAT_RS_START).bind(`${tag} ${o}`, todayN));
+        stmts.push(env.DB.prepare(Q.STAT_RL).bind(`${tag} ${o}`, todayN));
+      }
+      stmts.push(env.DB.prepare(Q.STAT_REFUSING).bind(todayN));
+      console.error("alerts send: phones that took our pushes refuse the VAPID token where nothing else went through — kept, not counted (within the grace days)");
+    }
+  } finally {
+    // a claimed row left without a statement (an exception above) is released, not left claimed for 15 minutes
+    for (const s of subs) if (!queued.has(s.id)) { out.stopped++; q(s, release(s)); }
+    await write([...unwritten, ...fresh, ...stmts, env.DB.prepare(Q.DROP_OTHER_TAGS).bind(`${tag} `), env.DB.prepare(Q.DROP_OLD_JWT).bind(nowS)]);
   }
-  // 401/403 rows: one more failure each (they leave the fails = 0 queues for CLAIM_F's few slots). Removed after
-  // REFUSED_DROP in a row, a row that never received a push at its first refusal — except in a run that looks like our own
-  // setup is broken (configBroken): then nobody is removed.
-  const configBroken = out.sent === 0 && evidence >= ABORT_EVIDENCE;
-  for (const s of refused) {
-    out.refused++;
-    stmts.push(env.DB.prepare(Q.RETRY).bind(s.id));
-    if (!configBroken) stmts.push(env.DB.prepare(Q.DROP_REFUSED).bind(s.id, REFUSED_DROP));
-  }
-  if (configBroken) { out.aborted = true; console.error("alerts send: phones that took our pushes before now refuse the VAPID token — stopped this run"); }
-  await env.DB.batch([...fresh, ...stmts, env.DB.prepare(Q.DROP_OLD_JWT).bind(nowS)]);
   console.log("alerts send", JSON.stringify(out));
   return out;
 }
 
+// GET /health — what the daily monitor (.github/scripts/health_check.py) reads; words, days and the public key only:
+//   sending   a push could go out now: VAPID_PRIVATE_JWK signs, and VAPID_PUBLIC_KEY (when set) is its key (push.js vapidKey)
+//   key       the VAPID public key pushes go out with (public information; null while sending is false) — the monitor
+//             compares it with app/config.js pushPublicKey, the key phones subscribe with
+//   finished  KST day of the last factory finish (null before the first)
+//   stale     that finish is more than STALE_DAYS days old, or — no finish ever — subscriptions exist and the first is more
+//             than STALE_DAYS days old (the factory → Worker link stopped or never worked; notify.mjs fails quietly)
+//   refusing  a send run today or yesterday (REFUSING_DAYS) found phones that took our pushes refusing our VAPID token at a
+//             push service that took nothing else — kept, not counted, for up to REFUSING_GRACE_DAYS (send above)
+//   capacity  'ok' | 'nearly_full' (≥ 80% of MAX_SUBS) | 'full' — nothing is evicted, a person must purge or raise MAX_SUBS
+//   pairs     'ok' | 'capped': the factory's watched list was cut at PAIR_CAP today or yesterday (CAPPED_DAYS) — some pairs
+//             were not computed (planted subscriptions, or more real ones than the cap: purge or raise PAIR_CAP)
 async function health(env, now) {
-  const sending = !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_JWK && keysMatch(env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_JWK));
   const h = { "cache-control": "no-store" };
   let row;
   try { row = await env.DB.prepare(Q.HEALTH).first(); }
   catch { console.error("alerts health: D1 did not answer"); return json({ ok: false }, 503, h); }
-  // finished: KST day of the last factory finish (null before the first). stale: that finish is more than STALE_DAYS days
-  // old (the factory → Worker link stopped; notify.mjs fails quietly, so the monitor reads this). capacity: 'ok' |
-  // 'nearly_full' (≥ 80% of MAX_SUBS) | 'full' — nothing is evicted, a person must purge or raise MAX_SUBS; words only.
-  const fin = row && row.fin ? String(row.fin) : "";
-  const finished = /^\d{8}$/.test(fin) ? `${fin.slice(0, 4)}-${fin.slice(4, 6)}-${fin.slice(6)}` : null;
-  const stale = !!finished && validDay(finished) && daysBetween(kstDay(now), finished) > STALE_DAYS;
+  const v = await vapidKey(env, now);
+  const today = kstDay(now);
+  const within = (d, days) => !!d && daysBetween(today, d) >= 0 && daysBetween(today, d) <= days;
+  const finished = dayOfNum(row && row.fin), refusedOn = dayOfNum(row && row.ref), cappedOn = dayOfNum(row && row.cap);
+  const firstNew = row && validDay(row.first_new) ? row.first_new : null;
+  const stale = finished ? daysBetween(today, finished) > STALE_DAYS
+    : Number(row && row.subs) > 0 && !!firstNew && daysBetween(today, firstNew) > STALE_DAYS;
+  const refusing = within(refusedOn, REFUSING_DAYS);
   const capacity = capacityOf(row && row.subs, num(env.MAX_SUBS, MAX_SUBS));
-  return json({ ok: true, window: "08-21 KST", sending, finished, stale, capacity }, 200, h);
+  const pairs = within(cappedOn, CAPPED_DAYS) ? "capped" : "ok";
+  return json({ ok: true, window: "08-21 KST", sending: !!v.key, key: v.key || null, finished, stale, refusing, capacity, pairs }, 200, h);
 }
 
 async function route(request, env, now) {
@@ -345,8 +527,8 @@ async function route(request, env, now) {
     if (!env.ALERTS_SECRET) return json({ error: "NOT_CONFIGURED" }, 503);
     if (!sameSecret(bearer(request), env.ALERTS_SECRET)) return json({ error: "UNAUTHORIZED" }, 401);
     try {
-      if (m === "GET" && path === "/v1/internal/watched") return json(await watched(env, url));
-      if (m === "POST" && path === "/v1/internal/digest") return json(await digest(request, env));
+      if (m === "GET" && path === "/v1/internal/watched") return json(await watched(env, url, now));
+      if (m === "POST" && path === "/v1/internal/digest") return json(await digest(request, env, now));
       if (m === "POST" && path === "/v1/internal/finish") return json(await finish(request, env, now));
       if (m === "POST" && path === "/v1/internal/send") return json(await send(env, now));
     } catch (e) {

@@ -12,7 +12,8 @@ export WRANGLER_SEND_METRICS=false
 STATE=$(mktemp -d)
 LOG=$STATE/dev.log
 SECRET=$(node -e 'console.log(require("crypto").randomBytes(24).toString("base64url"))')
-# a throw-away VAPID pair for this run (the real one is made once with vapid-keygen.mjs and never written to a file)
+# a throw-away VAPID pair for this run (the real one is made once with vapid-keygen.mjs and never written to a file). Only
+# the private JWK goes to the Worker, as in production: it derives the public key itself (GET /health "key" must be VPUB).
 KEYS=$(node -e 'const {generateKeyPairSync}=require("crypto");const {publicKey,privateKey}=generateKeyPairSync("ec",{namedCurve:"P-256"});
 const j=privateKey.export({format:"jwk"});const p=publicKey.export({format:"jwk"});
 console.log(Buffer.concat([Buffer.from([4]),Buffer.from(p.x,"base64url"),Buffer.from(p.y,"base64url")]).toString("base64url"));console.log(JSON.stringify(j))')
@@ -35,7 +36,7 @@ $WRANGLER d1 migrations apply DB --local --config "$CONF" --persist-to "$STATE" 
 echo "== wrangler dev on :$PORT"
 setsid $WRANGLER dev --local --config "$CONF" --port "$PORT" --ip 127.0.0.1 --persist-to "$STATE" \
   --compatibility-date 2026-10-07 --test-scheduled --var "ALERTS_SECRET:$SECRET" --var "DEV_ORIGINS:http://localhost:8766" \
-  --var "VAPID_PUBLIC_KEY:$VPUB" --var "VAPID_PRIVATE_JWK:$VJWK" >"$LOG" 2>&1 &
+  --var "VAPID_PRIVATE_JWK:$VJWK" >"$LOG" 2>&1 &
 PID=$!
 for _ in $(seq 1 90); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 1; done
 curl -fsS "$BASE/health" >/dev/null 2>&1 || fail "wrangler dev did not start"
@@ -49,6 +50,8 @@ expect() { local want=$1 got=$2 what=$3; [ "${got%% *}" = "$want" ] || fail "$wh
 
 H=$(req GET /health); expect 200 "$H" "health (D1 answers)"
 case "$H" in *'{"ok":true,'*'"sending":true'*) ;; *) fail "health should be {\"ok\":true,…,\"sending\":true} with a matching VAPID pair";; esac
+case "$H" in *'"key":"'"$VPUB"'"'*) ;; *) fail "health should show the public key derived from VAPID_PRIVATE_JWK: $H";; esac
+case "$H" in *'"refusing":false'*) ;; *) fail "health should carry refusing false: $H";; esac
 case "$H" in *'"capacity":"ok"'*'"stale":false'*|*'"stale":false'*'"capacity":"ok"'*) ;; *) fail "health should carry capacity ok and stale false: $H";; esac
 
 SUB='{"subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/local-dev-1","keys":{"p256dh":"'$(printf 'B%.0s' $(seq 87))'","auth":"aaaaaaaaaaaaaaaaaaaaaa"}},"rules":[{"kind":"watch","key":"X24"},{"kind":"target","key":"X24","max":150000,"region":"서울"},{"kind":"expiring","key":"X01"}]}'
@@ -65,8 +68,8 @@ expect 400 "$(req PUT "/v1/push/rules/$ID" "$RULES21")" "21 rules refused"
 expect 200 "$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"expiring","key":"X01"},{"kind":"watch","key":"X24"},{"kind":"target","key":"X24","max":150000,"region":"서울"}]}')" "PUT rules (another order)"
 expect 404 "$(req PUT /v1/push/rules/AAAAAAAAAAAAAAAAAAAAAA '{"rules":[]}')" "PUT unknown id"
 
-expect 401 "$(req GET '/v1/internal/watched?after=%7C')" "watched without the secret"
-W=$(req GET '/v1/internal/watched?after=%7C' '' -H "authorization: Bearer $SECRET"); expect 200 "$W" "watched (factory)"
+expect 401 "$(req GET '/v1/internal/watched?at=0')" "watched without the secret"
+W=$(req GET '/v1/internal/watched?at=0' '' -H "authorization: Bearer $SECRET"); expect 200 "$W" "watched (factory)"
 case "$W" in *"$ID"*|*fcm.googleapis*) fail "watched leaked an id or endpoint";; esac
 case "$W" in *'"k":"X24","r":"서울"'*) ;; *) fail "watched misses X24|서울";; esac
 
@@ -78,7 +81,7 @@ SNAP=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --
 case "$SNAP" in *'"c": 3'*|*'"c":3'*) ;; *) fail "baselines were not stored: $SNAP";; esac
 echo "ok   baselines stored for the 3 watched pairs"
 ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify2.log"
-grep -q '^price alerts: 3 watched pairs (0 changed' "$STATE/notify2.log" || fail "the same data again must not change anything"
+grep -q '^price alerts: 3 watched pairs (0 skipped, 0 changed' "$STATE/notify2.log" || fail "the same data again must not change anything"
 echo "ok   same data again: nothing changed"
 
 expect 204 "$(req DELETE "/v1/push/subscribe/$ID")" "DELETE"
