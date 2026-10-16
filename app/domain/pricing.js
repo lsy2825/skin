@@ -115,7 +115,7 @@
   // the badge's title: what the tag means, after the days/hours the site wrote when there are any; '' for other tags
   const COND_HINT = {
     "평일 낮": "평일 중 정해진 요일·시간에만 되는 가격이에요(평일 낮·화수목·평일 해피아워 등). 정확한 요일·시간은 병원에 확인하세요",
-    "시간대": "정해진 시간에만 되는 가격이에요. 요일은 사이트에 없어요 — 병원에 확인하세요",
+    "시간대": "정해진 시간에만 되는 가격이에요. 되는 요일은 앱이 알지 못해요 — 병원에 확인하세요",   // C 2026-10-16: not 'not on the site' — some pages could not be re-read
   };
   const WHEN_HINT = "사이트에 적힌 요일·시간에만 되는 가격이에요. 병원에 확인하세요";
   function condTitle(tag, days, hours) {
