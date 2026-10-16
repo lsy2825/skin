@@ -13,8 +13,21 @@ The rule (keep both implementations to it; every step is spelled out so Python a
            order (JavaScript's '<' on strings gives the same order for text without characters above U+FFFF); a base whose
            root an earlier base already has gets 'x' appended to its root, again until it is free
   repeat = rows with the same base (a branch lists the option twice) are ordered by their source address (url, code-point
-           order), then by sale price, then by their order in the data; the first gets root, the 2nd root + '~2', the 3rd '~3' …
-           (address first: a price change on one page does not renumber the same option on another page — C8 검토 2026-10-16)
+           order), then by list price (orig, 정가; none = 0), then by sale price, then by their order in the data; the first
+           gets root, the 2nd root + '~2', the 3rd '~3' … A price is read as whole won: the leading digits of its text after
+           removing ',' (leading spaces allowed; no digits = 0), e.g. 23000 → 23000, '1,200,000' → 1200000, '' → 0.
+  inputs in the app's data.json row r: brand meta.brands[branches[r[0]][0]][0], branch s[branches[r[0]][1]], name s[r[2]],
+           kind meta.kinds[r[5]] (the name, not the number), orig r[4], sale r[3], url s[r[11]]
+
+When an id moves (C8 검토 2026-10-16 — the ids are for telling which rows changed between two builds, not for anything a
+person saves: favourites, carts and alerts keep comparison keys):
+  - a new name, branch or price kind is a new base: the old id goes, a new id comes (spaces and A-Z case aside);
+  - rows of one base on different pages never touch each other's ids (address first);
+  - rows of one base on the same page with different list prices keep their ids when sale prices change (list price before
+    sale); with the same list price, two rows whose sale prices cross swap ids, and so do rows equal in address, list and
+    sale price when the site reorders them (data order);
+  - a row of the same base added or removed on the same page moves the '~N' ids of the rows that sort after it.
+A swap shows up as both rows changed, so an update that sends changed rows by id still ends with the right content.
 usage: python build2/rowid.py   # self-test against the vectors
 """
 import json, os, re, sys
@@ -50,7 +63,7 @@ def short_id(base):
 
 
 def row_ids(rows):
-    """rows: dicts with brand, branch, name, kind, sale and url → ids in the same order"""
+    """rows: dicts with brand, branch, name, kind, sale, orig and url → ids in the same order"""
     base = [base_of(r["brand"], r["branch"], r["name"], r["kind"]) for r in rows]
     roots, owner = {}, {}
     for b in sorted(set(base)):
@@ -59,7 +72,7 @@ def row_ids(rows):
             h += "x"
         owner[h] = b
         roots[b] = h
-    order = sorted(range(len(rows)), key=lambda i: (base[i], rows[i].get("url") or "", r_num(rows[i]["sale"]), i))
+    order = sorted(range(len(rows)), key=lambda i: (base[i],) + repeat_key(rows[i]) + (i,))
     out, seen = [""] * len(rows), {}
     for i in order:
         seen[base[i]] = seen.get(base[i], 0) + 1
@@ -67,11 +80,14 @@ def row_ids(rows):
     return out
 
 
+def repeat_key(r):
+    """how rows of one base are ordered before data order: address, list price, sale price"""
+    return r.get("url") or "", r_num(r.get("orig")), r_num(r["sale"])
+
+
 def r_num(x):
-    try:
-        return int(float(str(x or 0).replace(",", "")))
-    except ValueError:
-        return 0
+    m = re.match(r"\s*(\d+)", str(x or 0).replace(",", ""))
+    return int(m.group(1)) if m else 0
 
 
 def check(path=VECTORS):

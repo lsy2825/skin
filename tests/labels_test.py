@@ -508,7 +508,19 @@ i2 = rowid.row_ids(list(reversed(r8)))[::-1]
 ok("C8 같은 줄은 순서가 바뀌어도 같은 번호", i1 == i2, (i1, i2))
 ok("C8 번호는 줄마다 다름(같은 이름이 두 줄이면 주소 순으로 '~2' — 전각 공백·대문자는 같은 이름)", len(set(i1)) == 4 and i1[1] == i1[0] + "~2", i1)
 i3 = rowid.row_ids([dict(r8[0], sale="500000"), dict(r8[1], sale="10000")] + r8[2:] + [dict(brand="A", branch="강남점", name="새 시술", kind="일반", sale="1", url="u/c")])
-ok("C8 가격이 바뀌거나 다른 줄이 생겨도 번호는 그대로(같은 이름 두 줄은 주소 순이라 가격이 바뀌어도 서로 안 바뀜)", i3[:4] == i1, (i1, i3))
+ok("C8 다른 페이지의 같은 이름 줄은 가격이 엇갈려도 번호 그대로, 다른 이름 줄이 생겨도 그대로", i3[:4] == i1, (i1, i3))
+# the same page lists one option twice (C8 검토 2026-10-16): list price before sale price, so a sale change alone does not swap
+p8 = [dict(brand="A", branch="강남점", name="착색토닝 1회", kind="일반", orig="39000", sale="29000", url="u/a"),
+      dict(brand="A", branch="강남점", name="착색토닝 1회", kind="일반", orig="80000", sale="59000", url="u/a")]
+j1 = rowid.row_ids(p8)
+ok("C8 같은 페이지·같은 이름 두 줄: 정가가 다르면 판매가가 엇갈려도 번호 그대로",
+   rowid.row_ids([dict(p8[0], sale="60000"), p8[1]]) == j1 == [j1[0], j1[0] + "~2"], (j1, rowid.row_ids([dict(p8[0], sale="60000"), p8[1]])))
+q8 = [dict(r, orig="") for r in p8]
+k1, k2 = rowid.row_ids(q8), rowid.row_ids([dict(q8[0], sale="60000"), q8[1]])
+ok("C8 (알고 있는 한계) 같은 페이지·같은 이름·같은 정가 두 줄은 판매가가 엇갈리면 번호가 맞바뀜 — 저장 열쇠로 쓰지 않음",
+   k1 == [k1[0], k1[0] + "~2"] and k2 == [k1[0] + "~2", k1[0]], (k1, k2))
+k3 = rowid.row_ids(q8 + [dict(q8[0], sale="10000")])
+ok("C8 (알고 있는 한계) 같은 페이지에 같은 이름 줄이 더 생기면 그 뒤 줄의 '~N'이 옮겨 감", k3 == [k1[0] + "~2", k1[0] + "~3", k1[0]], k3)
 ok("C8 번호는 10글자(숫자·소문자)", all(re.fullmatch(r"[0-9a-z]{10}(~\d+)?", x) for x in i1), i1)
 _sid = rowid.short_id
 rowid.short_id = lambda b: "0000000001"                # every base on one root: the clash rule
@@ -520,6 +532,23 @@ finally:
 ok("C8 다른 바탕이 같은 번호면 뒤 바탕에 'x'를 붙이고, 그 바탕의 반복은 그 뒤에 '~2'", ic == ["0000000001", "0000000001x", "0000000001x~2"], ic)
 bad_v, n_v = rowid.check()
 ok(f"C8 다른 구현 확인용 예시 {n_v}줄이 지금 규칙과 같음(tests/fixtures/rowid_vectors.json)", not bad_v, bad_v[:2])
+_rk, _lo = rowid.repeat_key, rowid.loose
+_wrong = {"주소 무시": lambda r: (_rk(r)[1], _rk(r)[2]), "정가 무시": lambda r: (_rk(r)[0], _rk(r)[2]),
+          "판매가를 정가보다 먼저": lambda r: (_rk(r)[0], _rk(r)[2], _rk(r)[1]), "데이터 순서만": lambda r: (),
+          "비싼 순": lambda r: (_rk(r)[0], -_rk(r)[1], -_rk(r)[2])}
+_caught = {}
+try:
+    for _name, _key in _wrong.items():
+        rowid.repeat_key = _key
+        _caught[_name] = len(rowid.check()[0])
+    rowid.repeat_key = _rk
+    for _name, _f in {"파이썬 \\s": lambda s: re.sub("[A-Z]", lambda m: m.group().lower(), re.sub(r"\s", "", s or "")),
+                      "전체 lower()": lambda s: rowid.SPACE.sub("", s or "").lower()}.items():
+        rowid.loose = _f
+        _caught[_name] = len(rowid.check()[0])
+finally:
+    rowid.repeat_key, rowid.loose = _rk, _lo
+ok("C8 예시가 틀린 구현을 잡음(주소·정가 무시, 판매가 먼저, 데이터 순서만, 비싼 순, 파이썬 \\s, 전체 lower())", all(_caught.values()), _caught)
 import appdata  # noqa: E402
 prev = {"s": ["A", "강남점", "울쎄라 300샷", "평일 낮", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
         "keys": [["X14", 0, "울쎄라 300샷"]]}
