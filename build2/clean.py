@@ -14,8 +14,8 @@ cat (common category), name (display name), mname (name used for matching), sess
 시간대 · 일요일 · 첫 방문), days / hours (the weekdays and hours written for the price: visit_days / visit_hours), keys (matched
 comparison ids),
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
-evidence from the site, see data2/sources.json), back ('1' = the previous build dropped this price for its words alone — its
-data2/issues.csv, read before this build writes its own — so a rule took it back: not a new price, prev_dropped).
+evidence from the site, see data2/sources.json), back ('1' = the previous build dropped this item, at any price, for its words
+alone — its data2/issues.csv, read before this build writes its own — so a rule took it back: not a new price, prev_dropped).
 """
 import csv, datetime, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
@@ -115,6 +115,12 @@ DAY_WORDS = {"블리비": re.compile(r"프라임\s*타임"), "데이뷰": re.com
 WEEKEND = 96   # 토 32 · 일 64 (row field days)
 TIME_ONLY = "시간대"
 TIME_TAGS = ("평일 낮", TIME_ONLY)
+# the site says the hour does not matter (the words of app/domain/pricing.js ANY_TIME, and '관계없이'): with days written and no
+# hours, the days alone are the condition — no time tag (time_tags). 밴스 '화수목 시간 상관 없이 방문 고객 대상 1인 1회' (30 rows) and
+# 닥터에버스 강남점 '※시간 상관없이 적용가능' over its '화/수/목 이벤트' (15) were '평일 낮' with no hours, and the app, which looks for
+# these words in the name only, asked for the hour ('시간 확인 필요') of a price the site gives at any hour (검수 2026-10-16). The days
+# keep such a price out of the plain ones (groups.plain rule 2) and the app shows it on those days only ('화·수·목만')
+ANY_TIME = re.compile(r"시간\s*(?:상관\s*(?:없이|없음|없는)|무관|관계\s*(?:없이|없음))")
 # The site's category (raw column category = row src_cat: the tab, menu or section a collector found the item under) is read for
 # the conditions too — its condition words only (C1 시간 칸, 2026-10-16): 쁨 울산점 lists its happy-hour prices under the section
 # '♥수목 해피아워♥' with names that say nothing ('쥬베룩볼륨2CC'), and 16 of them were compared as plain prices. Only the words of the
@@ -467,8 +473,11 @@ def time_tags(brand, grp, opt, days, hours, cat=""):
     '평일 낮', whatever the words: the app would drop the price on the one day it is for), [] otherwise. days / hours =
     visit_when(grp, opt, cat); cat = the site's category, '' for a chain in CAT_UNPAIRED unless own_when (only its condition
     words count: the regexes below and the days / hours). A day limit with no time window that WEEKDAY_WORDS do not name
-    ('[평일 특가]', '토요일이벤트') gets neither: a day condition, not decided here (still untagged, as before 2026-10-16)."""
+    ('[평일 특가]', '토요일이벤트') gets neither: a day condition, not decided here (still untagged, as before 2026-10-16) — nor does a
+    day limit the site says holds at any hour (ANY_TIME)."""
     text = f"{cat} {grp} {opt}"
+    if days and not hours and ANY_TIME.search(text):
+        return []
     window = bool(TIME_WORDS.search(text) or hours)
     day_word = brand in DAY_WORDS and DAY_WORDS[brand].search(text)
     weekday = bool(WEEKDAY_WORDS.search(text) or day_word)
@@ -647,12 +656,15 @@ def unglue(opt, sec):
 
 
 def back_key(r):
-    """(brand, branch, section, sale, item words) of a raw row — the same for the row an older collector wrote with its section
-    heading in front of the name and for the one a later collection writes without it. The group title is left out: a later
-    collection may title the item otherwise (scrape/drevers.py puts the 제모 menu headings there since 2026-10-16)"""
+    """(brand, branch, section, item words) of a raw row — the same for the row an older collector wrote with its section heading
+    in front of the name and for the one a later collection writes without it. The group title is left out: a later collection
+    may title the item otherwise (scrape/drevers.py puts the 제모 menu headings there since 2026-10-16). So is the price: the item
+    the previous build dropped is still no new one when its price moved before the next collection (검수 2026-10-16: 마곡점
+    '울쎄라피 프라임 100샷 1회' 239,000 → 249,000 was listed as added) — the price change is not shown either, the app never had
+    the old one"""
     sec = norm_text(r.get("category", ""))
     opt = unglue(norm_text(r.get("option", "")), sec)
-    return r.get("brand", ""), r.get("branch", ""), comp_name(sec).casefold(), price(r.get("sale")), comp_name(opt).casefold()
+    return r.get("brand", ""), r.get("branch", ""), comp_name(sec).casefold(), comp_name(opt).casefold()
 
 
 def prev_dropped(path):

@@ -49,8 +49,9 @@ data.json (compact, strings interned in `s`):
             dated before the first entry. The next build judges the previous rows by the rule they were counted with, so a rule
             change shows in meta.recl, not as price changes
   meta.recl  [[collection date, [ids]], …] (12 kept) — ids whose rows a rule moved (joined / left the id, or now count or no longer
-            count as plain, or a plain price a rule took back: came_back): the trend restarts there and the app re-bases alerts
-            on them (reclDate). A price a rule took back is no '새로 생김' either (achg.new, data-meta.json changes.added)
+            count as plain, or a price a rule took back — came_back — that is plain or the branch's first or lowest of the id):
+            the trend restarts there and the app re-bases alerts on them (reclDate). A price a rule took back is no '새로 생김'
+            either (achg.new, data-meta.json changes.added)
   meta.reclBranches  [[collection date, {id: [branch index, …]}], …], one entry per meta.recl entry — at which branches the
             rows of that id moved (2026-10-16): `changes` leaves out only those branches. An id of that meta.recl date with no
             entry here moved at every branch (an id that came back, or one a data.json from before this field listed). Read by
@@ -446,7 +447,8 @@ def came_back(prev, prow, rows):
     """(brand, branch, name, price) of this build's rows that a rule took back: the previous build dropped them for their words
     alone (clean.csv back — e.g. 391 닥터에버스 prices under '※카카오톡 플러스친구 혜택'-type headings, read as notices until
     2026-10-16) and the previous data.json does not have them. The clinic did not add them, so they are not '새로 생김'
-    (data-meta.json changes.added, achg.new); where one counts as a plain price it is a rule's move (meta.recl, the groups)"""
+    (data-meta.json changes.added, achg.new); where one moves what an id shows at its branch it is a rule's move (meta.recl:
+    recl_pairs; the groups: group_moved)"""
     if not prev:
         return set()
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
@@ -507,11 +509,22 @@ def recl_pairs(prev, prow, rows):
     for ident in wk.keys() & nk.keys():
         out |= at(ident, wk[ident] ^ nk[ident])
     # a row a rule took back (came_back: the previous build dropped it for its words) joined its ids by that rule, not by a
-    # clinic — only where it counts as a plain price (the one thing that moves the id's plain lowest at that branch)
+    # clinic: where it moves what the id shows at that branch. A plain price moves the plain lowest (trend, `changes`); any price
+    # moves the alerts' numbers when it is the branch's first row of the id or below its other rows — the app's watch and alerts
+    # and the alert Worker count the listed prices with the specials (app/app.js watchNow; 검수 2026-10-16: 41 ids read as
+    # '파는 지점이 늘면' / '새 최저가' from 첫 방문 prices the clinics had shown all along, T2545EC1 79,000 → 29,900)
     back = came_back(prev, prow, rows)
-    for r in rows:
-        if G.regular(r) and (r["brand"], r["branch"], r["name"], int(r["sale"])) in back:
-            out |= at((r["brand"], r["branch"]), r["keys"].split())
+    if back:
+        ident = lambda r: (r["brand"], r["branch"], r["name"], int(r["sale"]))
+        rest = {}                        # (id, brand, branch) → its lowest listed price without the rows taken back
+        for r in rows:
+            if ident(r) not in back:
+                for k in r["keys"].split():
+                    rest[(k, r["brand"], r["branch"])] = min(rest.get((k, r["brand"], r["branch"]), 10 ** 12), int(r["sale"]))
+        for r in rows:
+            if ident(r) in back:
+                out |= at(ident(r), [k for k in r["keys"].split()
+                                     if G.regular(r) or int(r["sale"]) < rest.get((k, r["brand"], r["branch"]), 10 ** 12)])
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return {x for x in out if x[0] in before}
