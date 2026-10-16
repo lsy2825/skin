@@ -116,6 +116,15 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   await sh.locator('input[type="date"]').fill(sat); await p.waitForTimeout(100);
   const info = await sh.locator('.sub').nth(1).textContent();
   ok('토요일을 고르면 \'주말 — 평일에만 되는 가격은 빠져요\'', info.includes('주말 — 평일에만 되는 가격은 빠져요'), `${sat} ${info}`);
+  // a weekday public holiday (within the sheet's 120 days): weekend-only prices are left out too, and the sheet says clinics differ
+  const wkHol = (() => { const d = new Date(); for (let i = 1; i < 120; i++) { d.setDate(d.getDate() + 1); const s = ymd(d); if (KR_HOLIDAYS[s] && d.getDay() >= 1 && d.getDay() <= 5) return s; } return null; })();
+  if (wkHol) {
+    await sh.locator('input[type="date"]').fill(wkHol); await p.waitForTimeout(100);
+    const hi = await sh.locator('.sub').nth(1).textContent();
+    ok(WHEN ? '평일 공휴일: 주말에만 되는 가격도 빠지고, 병원에 따라 된다고 안내' : '평일 공휴일(요일 칸 없는 자료): 평일 가격만 빠진다고 안내',
+      WHEN ? hi.includes('주말에만 되는 가격은 빠져요') && hi.includes('병원에 확인하세요') : hi.includes('평일에만 되는 가격은 빠져요') && !hi.includes('주말에만'), `${wkHol} ${hi}`);
+    await sh.locator('input[type="date"]').fill(sat); await p.waitForTimeout(100);
+  } else console.log('SKIP | 120일 안에 평일 공휴일이 없음');
   await sh.locator('button', { hasText: '적용' }).click(); await p.waitForTimeout(400);
   bad = await rowBadges();
   ok('토요일 방문: 그 가격에 \'방문일엔 안 됨\'', !!bad && bad.some(([t]) => t === '방문일엔 안 됨'), names(bad));

@@ -255,6 +255,16 @@
     return { parts, matched, extras, full: matched.length > 0 && matched.every((m) => m.state === "match") && !extras.length };
   }
 
-  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
+  // a public holiday on Mon-Fri: its name, else ''. condState leaves weekend-only prices out that day ('그 요일만'); some clinics
+  // do take weekend prices on holidays, so the screen says so and asks to check with the clinic (user decision 2026-10-16)
+  function weekdayHoliday(date, holidays = KR_HOLIDAYS) {
+    if (typeof date !== "string" || !Object.prototype.hasOwnProperty.call(holidays, date)) return "";
+    const d = new Date(date + "T12:00:00Z").getUTCDay();
+    return d >= 1 && d <= 5 ? holidays[date] : "";
+  }
+  // days with only Saturday/Sunday bits (no weekday bit): the rows a weekday holiday leaves out only because of their days
+  const weekendOnly = (days) => { const d = (days || 0) & ALL_DAYS; return d !== 0 && (d & 31) === 0; };
+
+  return { weekdayHoliday, weekendOnly, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
     condLabel, condTitle, whenBadge, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
 });
