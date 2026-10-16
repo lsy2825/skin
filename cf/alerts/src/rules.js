@@ -117,15 +117,17 @@ export function outcome(status) {
   return "retry";                                           // 5xx, 413, network error: try again next run
 }
 // 5xx, a redirect, a timeout/network error: that is the push SERVICE having trouble, not this subscription. Such a failure is
-// counted against the row (fails) only when the same push origin answered another push 2xx in the same run (so the service
-// was up and this row is the problem); otherwise the row is held back unchanged for HOLD_MINUTES (fails does not move) — a
-// push-service incident of an hour must not delete phones. A 4xx (400, 413) is always the row's.
+// counted against the row (fails) when the same push origin answered another push 2xx in the same run (so the service was up
+// and this row is the problem), or when the row never received a push and that origin never answered 2xx to any of our
+// pushes (no stat 'ok:' for any key: a made-up host that cannot answer — a planted row goes after NEVER_DROP tries).
+// Otherwise the row is held back unchanged (HOLD below; fails does not move) — a push-service incident must not delete
+// phones. A 4xx (400, 413) is always the row's.
 export const hostTrouble = (status) => status === 0 || status >= 500 || (status >= 300 && status < 400);
 export const RETRY_DROP = 10;      // consecutive failures (5xx, 3xx, network) before a row is removed
 export const REFUSED_DROP = 3;     // consecutive failures, the last one a 401/403, before a row is removed
 // a row that never received a push (last_w and last_x empty) is removed after this many consecutive COUNTED failures (see
-// hostTrouble: a push-service outage is not counted), or at its first 401/403: a planted subscription (a failing endpoint on
-// an allowed host) gets a few tries, never a week of them
+// hostTrouble: an outage of a push service that took our pushes before is not counted), or at its first 401/403: a planted
+// subscription (a failing endpoint on an allowed host) gets a few tries, never a week of them
 export const NEVER_DROP = 3;
 // of SEND_LIMIT slots in one run, at most this many go to rows that failed before (fails > 0): rows that keep failing can
 // take neither the expiring queue (nearest end date first) nor the weekly queue away from rows that never failed
@@ -133,8 +135,8 @@ export const FAIL_SLOTS = 10;
 // "our VAPID setup may be broken at that push service" (src/worker.js send): a phone that took our pushes under THIS key
 // (its last push is not older than the day this key first went through there, stat 'ok:') answers 401/403, and that push
 // service took no push 2xx in the run. Judged per run and per push origin, from one such phone on — never from a count of
-// phones in one run. Then nobody refused there is removed: such phones are held back unchanged for HOLD_MINUTES (then tried
-// again), a phone that never took a push gets one failure and stays. A planted subscription never took a push, so it can
+// phones in one run. Then nobody refused there is removed: such phones are held back unchanged (HOLD below: tried again as
+// probes, a few a run), a phone that never took a push gets one failure and stays. A planted subscription never took a push, so it can
 // never cause this. The protection lasts at most this many KST days from the first such run of the stretch (stat 'rs:'):
 // a 2xx from that service ends the stretch, and so does a day with no such run at all (stat 'rl:' = the last such day; a
 // stretch whose last run is older than yesterday is over, and the next one starts again from its own first day). After the
@@ -142,15 +144,27 @@ export const FAIL_SLOTS = 10;
 // the policy text says a subscription is deleted when delivery keeps failing. A user decision: the monitor warns every day
 // of the stretch (GET /health "refusing").
 export const REFUSING_GRACE_DAYS = 7;
-// A row whose push did not get through for a reason on the push service's side is HELD BACK, not released to the front of
-// the queue: the send runs take the longest-waiting rows first, so released rows would be claimed again by every run and,
-// at SEND_LIMIT or more of them, no other push service's phones would get a turn (the refusal protection above lasts a
-// week). Held = claim set to minus the epoch minute it is free again (sql.js HOLD; RESET_STALE frees it then; no claim
-// query takes it before). HOLD_MINUTES: refused at a push service where our setup may be broken (above), or that push
-// service was down (hostTrouble with no 2xx from it in the run). SLOW_HOLD_MINUTES: the service answered 429 (that row and
-// the rows of that service the run stopped after it).
+// A row whose push did not get through for a reason on the push service's side is HELD BACK, not put back in the queue:
+// the send runs take the longest-waiting rows first, so such rows would be claimed again by every run and, at SEND_LIMIT or
+// more of them, no other push service's phones would get a turn (the refusal protection above lasts a week). Held = claim
+// set to minus the epoch minute it may be tried again (sql.js HOLD); no claim query of the queue takes it. A held row comes
+// back in two ways only (4th review: a hold that simply ran out put every held row back at the front at once):
+//   - as a PROBE: once its minute has come, at most PROBES held rows per push origin and PROBE_SLOTS in all are tried per
+//     run (sql.js CLAIM_P, the longest-waiting first) — still failing → held again, at the back;
+//   - all at once when that push origin answers a push 2xx (sql.js RELEASE_HELD, in the same results batch as that 2xx and
+//     CLEAR_RS) — rows that received a push before only; a row that never did comes back as a probe.
+// HOLD_MINUTES: refused at a push service where our setup may be broken (above), or that push service was down
+// (hostTrouble with no 2xx from it in the run). SLOW_HOLD_MINUTES: the service answered 429 (that row and the rows of that
+// service the run stopped after it).
 export const HOLD_MINUTES = 180;
 export const SLOW_HOLD_MINUTES = 30;
+export const PROBES = 2;
+export const PROBE_SLOTS = 10;
+// (key, region) pairs the factory computes are cut at PAIR_CAP (src/worker.js watched). A pair keeps its place for this many
+// KST days after it was first computed (snap.added) even when no phone watching it took a push yet; after that a pair that
+// is not computed yet comes first (sql.js WATCHED) — so whoever fills the list first cannot keep it (4th review), and a new
+// real subscription's pair is computed within about PAIR_KEEP_DAYS + 1 days even when the list is full
+export const PAIR_KEEP_DAYS = 7;
 
 // ---- the key of the per-client subscribe rate limit: IPv4 as is; IPv6 by its /64 (one household or phone usually gets
 // a whole /64, so the full address would let one client rotate through 2^64 keys). Not stored anywhere (the Rate

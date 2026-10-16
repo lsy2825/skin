@@ -195,8 +195,8 @@ def worker_warnings(host, data, app_key=""):
     (cf/alerts/notify.mjs sends nothing when it fails, the job stays green). sending: false = no push can go out (the
     VAPID_PRIVATE_JWK secret is missing or cannot sign, or VAPID_PUBLIC_KEY is set to another key). refusing: true = a send
     run today or yesterday found phones that took our pushes refusing our VAPID token at a push service that took nothing
-    else (kept, not counted, tried again every HOLD_MINUTES = 3 hours, for up to REFUSING_GRACE_DAYS = 7 days; after that
-    they are counted and removed). pairs: "capped" = the factory's watched (key, region) list was cut at PAIR_CAP today or
+    else (kept, not counted, held back and tried again a few a run — cf/alerts rules.js PROBES — for up to
+    REFUSING_GRACE_DAYS = 7 days; after that they are counted and removed). pairs: "capped" = the factory's watched (key, region) list was cut at PAIR_CAP today or
     yesterday, or a new pair had to wait a day for a free row under it (planted subscriptions, or more real ones than the
     cap) — some alerts were not computed.
     key: the VAPID public key the Worker pushes with; when app/config.js pushPublicKey is set and differs, every phone
@@ -220,7 +220,7 @@ def worker_warnings(host, data, app_key=""):
                    "(VAPID_PUBLIC_KEY를 넣었다면 그 키와 맞지 않아요)")
     if data.get("refusing") is True:
         out.append(f"알림 Worker: 푸시를 받던 휴대폰이 우리 VAPID 키를 거절하는데 그 푸시 서비스로 성공한 푸시가 없어요 ({host}). "
-                   "우리 설정 고장일 수 있어 그 구독은 지우지 않고 3시간마다 다시 시도해요(7일까지, 그 뒤에는 평소처럼 세어 지워요). "
+                   "우리 설정 고장일 수 있어 그 구독은 지우지 않고 미뤄 두며 실행마다 몇 개씩만 다시 시도해요(7일까지, 그 뒤에는 평소처럼 세어 지워요). "
                    "VAPID 키 쌍과 app/config.js pushPublicKey를 확인하세요")
     if data.get("pairs") == "capped":
         out.append(f"알림 Worker: 지켜보는 (시술, 지역) 쌍이 상한(PAIR_CAP)에 닿아 일부만 계산했어요(새 쌍은 빈 자리가 날 때까지 기다려요) ({host}). 심은 구독이 "

@@ -2,8 +2,9 @@
 -- no names/phones/e-mails, no IP or user agent, no user-side times, and NO per-subscription 'last used' date: a subscription
 -- row stays until it is deleted (DELETE, PUT with no rules, the push service says 404/410, or repeated failures — see
 -- src/worker.js). The one clock value is subs.claim: a server send time kept only while sending (cleared when the push is
--- done, and by every send run once it is older than 15 minutes), or — negative — the minute a row held back after a push
--- service trouble is free again (at most src/rules.js HOLD_MINUTES ahead; cleared by the first send run after it).
+-- done, and by every send run once it is older than 15 minutes), or — negative — the minute from which a row held back after
+-- a push-service problem may be tried again (src/rules.js HOLD: cleared when it is tried again as a probe, a few a run, or
+-- when that push service answers a push 2xx).
 -- Applied by .github/workflows/cf-alerts.yml (wrangler d1 migrations apply DB --remote) before every deploy.
 
 -- one row per phone (push subscription). The id is the only key the phone holds: whoever has it may change the rules.
@@ -27,9 +28,9 @@ CREATE TABLE subs (
                                      -- that push service took nothing else in the run) nobody is removed for up to
                                      -- REFUSING_GRACE_DAYS, and a row that took a push before is not even counted there
   claim INTEGER                      -- server send time (epoch minutes) while a send run holds the row; minus the epoch
-                                     -- minute it is free again while it is held back (a push service refused our token
-                                     -- where our setup may be broken, was down, or said 429: src/rules.js HOLD_MINUTES);
-                                     -- NULL otherwise
+                                     -- minute from which it may be tried again while it is held back (a push service
+                                     -- refused our token where our setup may be broken, was down, or said 429:
+                                     -- src/rules.js HOLD); NULL otherwise
 ) STRICT;
 -- partial indexes: only rows with something to send, in the order the send runs take them. subs_due: rows with the weekly
 -- bundle pending that never failed (fails = 0), longest wait first, never-sent first (CLAIM_W; a row due only for an expiring
@@ -40,8 +41,8 @@ CREATE TABLE subs (
 -- full one stops after its rows without sorting.
 CREATE INDEX subs_due ON subs(fails, coalesce(last_w, '')) WHERE pend_w = 1;
 CREATE INDEX subs_fail ON subs((last_w IS NULL AND last_x IS NULL), fails, coalesce(last_w, '')) WHERE fails > 0 AND (pend_w = 1 OR pend_x IS NOT NULL);
--- the few rows a send run holds right now, and the rows held back (stale claims and passed holds are cleared through this,
--- not by scanning the table)
+-- the few rows a send run holds right now, and the rows held back (stale claims, probes and a push origin's release go
+-- through this, not through a scan of the table)
 CREATE INDEX subs_claim ON subs(claim) WHERE claim IS NOT NULL;
 -- expiring rows: fails FIRST, then the end date, so the send run claims the nearest deadline among rows that never failed
 -- (CLAIM_X: fails = 0, in index order) and a failing row can never hold the front of the queue; DROP_ENDED scans it
@@ -56,6 +57,8 @@ CREATE INDEX subs_x ON subs(fails, pend_x) WHERE pend_x IS NOT NULL;
 -- (cb/cu remember what the last collection showed: src/sql.js DIGEST). Numbers are the clinics' listed prices (병원
 -- 표시가, the app's alert engine basis). e/s/u = expiring, recomputed by every factory run. g = the day the key's rows were
 -- last regrouped (data.json meta.recl): a NEWER g re-bases the pair without news, like the app's own checkAlerts (g never goes back).
+-- added = the KST day (Worker clock) the pair was first computed: the factory's list keeps it for src/rules.js PAIR_KEEP_DAYS
+-- (src/sql.js WATCHED). About a (treatment, region) pair, never a person.
 CREATE TABLE snap (
   k TEXT NOT NULL,
   r TEXT NOT NULL,                   -- '' = nationwide, '수도권' = 서울+경기+인천, else one 시·도
@@ -72,6 +75,7 @@ CREATE TABLE snap (
   cu TEXT,                           -- that collection's date (a held-back move is taken when the NEXT collection shows it too)
   g TEXT NOT NULL DEFAULT '',        -- regroup day of the key (meta.recl) the baseline belongs to
   run TEXT NOT NULL,                 -- 'updated|day' of the factory run that last wrote the row (unwatched pairs are pruned)
+  added TEXT NOT NULL DEFAULT '',    -- KST day the pair was first computed (never updated)
   e INTEGER,                         -- expiring: lowest price ending within 3 days
   s INTEGER,                         -- expiring: lowest price that stays after that
   u TEXT,                            -- expiring: end date of e
