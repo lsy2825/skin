@@ -536,6 +536,7 @@
 제품군 패턴,얼굴전체여드름압출,얼굴전체 여드름압출,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,엑셀V|엑셀브이,엑셀V,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,여드름기본관리,여드름 기본 관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,여드름베이직,여드름 베이직,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,여드름압출얼굴전체,여드름 압출 얼굴전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,여드름약처방,여드름 약 처방,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,여드름약처방2주,여드름 약처방 2주,build2/taxonomy.py FAMILIES (data.json meta.fam)
