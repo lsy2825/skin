@@ -30,13 +30,13 @@ const COND = '추가 옵션이에요(본 시술과 함께)';
   if (has) ok('data.json 추가 옵션 칸(16번째)이 r[19]로 옮겨짐 — 실행 중 칸에 덮이지 않음', app.one === file.n && app.other === 0 && file.n > 0, `칸 ${file.n} · 앱 ${app.one} · 이름 규칙 ${app.rx}`);
   else ok('예전 data.json(칸 15개): r[19]는 모두 0, 판정은 이름 규칙', app.one === 0 && app.other === 0 && app.rx > 0, `이름 규칙 ${app.rx}`);
 
-  // rows to look at: a plain price (no 특가·조건 tags, so it is listed with 특가 off) whose name is unique in its branch
+  // rows to look at: a plain price (no 특가·조건 tags or visit days / hours, so it is listed with 특가 off) whose name is unique in its branch
   const pick = (want) => p.evaluate(([w, hasCol]) => { const S = App.data().s, rows = App.rows(), seen = new Map();
     rows.forEach((r) => { const k = `${r[0]}|${S[r[2]]}`; seen.set(k, (seen.get(k) || 0) + 1); });
     const by = { colOnly: (r, n) => hasCol && r[19] === 1 && !Classify.isAddon(n), nameOnly: (r, n) => hasCol && r[19] === 0 && Classify.isAddon(n) && /\s추가$/.test(n),
       nameOnlyAny: (r, n) => hasCol && r[19] === 0 && Classify.isAddon(n), oldAddon: (r, n) => !hasCol && Classify.isAddon(n), plain: (r, n) => !Classify.isAddon(n) && r[19] !== 1 && /\d\s*회$/.test(n) };
     for (let i = 0; i < rows.length; i++) { const r = rows[i], n = S[r[2]];
-      if (r[5] || S[r[6]] || r[15] || seen.get(`${r[0]}|${n}`) !== 1 || n.length > 60) continue;
+      if (r[5] || S[r[6]] || r[20] || r[21] || r[15] || seen.get(`${r[0]}|${n}`) !== 1 || n.length > 60) continue;   // r[20]/r[21]: the site's days / hours
       if (by[w](r, n)) return { i, b: r[0], name: n }; }
     return null; }, [want, has]);
   const look = async (x) => {

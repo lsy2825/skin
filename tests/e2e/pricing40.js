@@ -13,6 +13,10 @@ const S = D.s, ROWS = D.rows, TODAY = new Date(Date.now() + 9 * 3600e3).toISOStr
 const num = (t) => +String(t).replace(/[^\d]/g, '');
 const live = (r) => !(/^\d{4}-\d{2}-\d{2}$/.test(S[r[10]] || '') && S[r[10]] < TODAY) && !r[13];
 const VAT = (r) => (r[12] === 2 ? Math.round(r[3] * 1.1) : r[3]);   // 'VAT 포함' (default): listed + 10% where the clinic says 별도
+// a price the site limits to some weekdays or hours (data.json fields 16-17, C #71) is a conditional price, tag or not
+const Pricing = require(path.join(__dirname, '..', '..', 'app', 'domain', 'pricing.js'));
+const WHEN = Pricing.hasWhenFields(D);
+const timeLimited = (r) => WHEN && Pricing.whenLimited(r[16], S[r[17]]);
 const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).replace(/\.0$/, '')}만` : v.toLocaleString());
 
 (async () => {
@@ -33,7 +37,7 @@ const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).re
   await p.locator('#cmpmore > summary').click(); await p.waitForTimeout(200);   // 6.0: price kinds are in the folded expert section
   const cls = await p.$$eval('.pcls .pcl', (xs) => xs.map((x) => x.innerText));
   const reg = new Map();
-  for (const r of ROWS) if ((S[r[7]] || '').split(' ').includes('X29') && live(r) && r[5] === 0 && !S[r[6]]) { const v = VAT(r); if (!reg.has(r[0]) || v < reg.get(r[0])) reg.set(r[0], v); }
+  for (const r of ROWS) if ((S[r[7]] || '').split(' ').includes('X29') && live(r) && r[5] === 0 && !S[r[6]] && !timeLimited(r)) { const v = VAT(r); if (!reg.has(r[0]) || v < reg.get(r[0])) reg.set(r[0], v); }
   const rv = [...reg.values()].sort((a, b) => a - b);
   const regTxt = cls.find((t) => t.startsWith('일반가')) || '';
   ok('C1 가격 종류별 범위: 일반가·이벤트가 등 둘 이상, 한 눈금', cls.length >= 2 && await p.locator('.pcls').count() === 1, cls.map((t) => t.split('\n')[0]).join(' / '));
