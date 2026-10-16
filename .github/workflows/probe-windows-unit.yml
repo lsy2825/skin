@@ -1,0 +1,43 @@
+# Probe only (branch probe/a-windows-unit, never merged): run the unit tests on Windows the way tools/windows/setup.ps1 does
+# (Node 22, Python 3.12, Git Bash's bash/git first on PATH) and print every failing test as an annotation. No secrets.
+name: probe-windows-unit
+on:
+  push:
+    branches: ['probe/a-windows-unit']
+permissions:
+  contents: read
+jobs:
+  unit:
+    strategy:
+      fail-fast: false
+      matrix:
+        autocrlf: ['false', 'true']
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - run: git config --global core.autocrlf ${{ matrix.autocrlf }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.12'
+      - name: node --test tests/*.test.js (Windows PowerShell 5.1, Git Bash first on PATH, like setup.ps1)
+        shell: powershell
+        run: |
+          $gitRoot = 'C:\Program Files\Git'
+          $env:Path = (Join-Path $gitRoot 'bin') + ';' + (Join-Path $gitRoot 'usr\bin') + ';' + $env:Path
+          $out = Join-Path $env:RUNNER_TEMP 'unit-test-output.txt'; $err = Join-Path $env:RUNNER_TEMP 'unit-test-errors.txt'
+          $t = Start-Process -FilePath (Get-Command node).Source -ArgumentList @('--test', 'tests/*.test.js') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+          Start-Sleep -Seconds 3
+          $fs = [IO.File]::Open($out, 'Open', 'Read', [IO.FileShare]'ReadWrite, Delete'); $text = (New-Object IO.StreamReader($fs)).ReadToEnd(); $fs.Dispose()
+          Write-Host "exit code $($t.ExitCode)"
+          ($text -split "`n") | Select-String -Pattern '^# (tests|pass|fail|skipped)' | ForEach-Object { Write-Host $_ }
+          node -e "const t=require('fs').readFileSync(process.argv[1],'utf8').split(/\r?\n/);const f=[];for(let i=0;i<t.length;i++){if(/^\s*not ok /.test(t[i])&&!/# SKIP/.test(t[i])){const blk=t.slice(i,i+14).join(' ');const loc=(blk.match(/location: '([^']+)'/)||[])[1]||'';const err=(blk.match(/error: (.{0,220})/)||[])[1]||'';f.push(t[i].trim()+' @ '+loc.replace(/.*[\\/]tests[\\/]/,'tests/')+' :: '+err);}}console.log('::notice title=failures ('+f.length+')::'+(f.map(x=>x.replace(/::.*/,'')).join(' || ').slice(0,3800)||'none').replace(/%/g,'%25'));f.slice(0,10).forEach((x,n)=>console.log('::error title=fail '+(n+1)+'::'+x.slice(0,600).replace(/%/g,'%25')));" $out
+          Write-Host '--- stderr (last 40 lines) ---'
+          Get-Content $err -Tail 40
+          Write-Host '--- leftover processes started by the tests ---'
+          Get-CimInstance Win32_Process | Where-Object { $_.CreationDate -ge (Get-Item $out).CreationTime } | Select-Object Name, ProcessId, ParentProcessId | Format-Table -AutoSize | Out-String | Write-Host
