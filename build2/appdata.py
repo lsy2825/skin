@@ -22,6 +22,9 @@ data.json (compact, strings interned in `s`):
             'N시 이후' = '16:00-24:00'), '' = no hours written. Read from the group title and the option, the texts the '평일 낮'
             tag reads (2026-10-16, C1 다음: the app read every '평일 낮' as 월~금). data.json files from before have 16 fields:
             read a missing days as 0 and hours as ''
+            tags = conditions joined by '·': 평일 낮 (the site limits the days: weekdays only, often some hours) · 시간 한정 (a time
+            window, no days written — since 2026-10-16; before, these were 평일 낮) · 일요일 · 타임세일 · 첫 방문 · 1인 1회
+            (build2/clean.py TAGS / time_tags). Any tag = not a plain price. A row with hours always has 평일 낮 or 시간 한정
   branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
             this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
