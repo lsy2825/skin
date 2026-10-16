@@ -8,9 +8,10 @@ Rules (each dropped or changed row is listed in issues.csv with the reason):
   dedupe the same (brand, branch, matching name, sale) shown on several pages of one branch -> kept once
          (a category page wins over the 기획전 page, so the row keeps its real category and list price; the matching name is
          compared without word breaks or letter case; folds the old rule didn't make are listed as '합침')
-Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가), cat (common category), name (display name),
-mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 · 시간대 · 일요일 · 첫 방문), days / hours (the weekdays
-and hours written for the price: visit_days / visit_hours), keys (matched comparison ids),
+Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가 — from the option's words, else the section's: section_kind),
+cat (common category), name (display name), mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 ·
+시간대 · 일요일 · 첫 방문), days / hours (the weekdays and hours written for the price: visit_days / visit_hours), keys (matched
+comparison ids),
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
 evidence from the site, see data2/sources.json).
 """
@@ -19,7 +20,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match, ONCE, sessions, addon_only  # noqa: E402
+from xkeys import X, match, ONCE, COURSE, sessions, addon_only  # noqa: E402
 import taxonomy  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
@@ -217,6 +218,103 @@ def once_only(text, heading=False):
                 or before.count("[") > before.count("]"):
             return True
     return False
+# The price kind from the section a price is listed under (C, 2026-10-16). The kind rule read the option alone ('[1회 체험가] X',
+# 'X (1회체험가)'), so a price under a trial or returning-customer section whose own name says nothing was compared as a plain price:
+#   trial (체험가) — the section's title says it is a trial-price section: '1회 체험' / '첫 체험' (닥터에버스 홍대점 '언제나 가능한 1회 체험
+#     이벤트', 셀린 노원점 '💚10월 바디1회체험&패키지💚'), or '체험' with 가 / 특가 / 초특가 / 이벤트 / EVENT / 쿠폰 (닥터에버스 부산서면점
+#     '체험가이벤트', 밴스 '★1회체험가★', '피부관리 체험가 택 1 시술안내', 쁨 안산점's '1회 체험가' section). Not: '체험 후기' / '체험단' /
+#     '체험 가능', '…체험가와 중복 적용가능' (밴스 '[첫방문 이벤트] … *1회체험가와 중복 적용가능*' is a first-visit section that says the
+#     two offers add up), '체험전' (블리비 강남역점 '수입 레이저 체험전': a 기획전 whose one trial price says so itself). Only a price for
+#     one visit (one_visit) is the trial: a package in the same section ('내맘대로 피부관리 5회 패키지', '피코토닝 10+10회', '피코토닝
+#     10+10', '베이직 퀵 슬림바디 3주', '여성 팔 전체 제모 1년 무제한') is the section's other offer; '피코토닝 1+1회' and '얼굴 점제거(…개수
+#     무제한)' are trials.
+#   returning customers (한정가 — the app's '기간·수량·첫 방문 등 조건'; no tag of its own, user decision 2026-10-16) — '재방문' / '재내원' /
+#     '기존 고객·회원·환자' (not '기존 고객 감사 이벤트', a thank-you) / '재구매' / '재진' in the option or the section: 쁨 천안점 '재방문
+#     이벤트' (8 prices, plain until now), 밴스 '(재진고객한정)' (already 한정가 by its '한정'). Not when 초진 stands next to it: '초진/재진
+#     모두가능', '(초재진가능)', '재진도 초진도', '[카톡플친대상/초진재진1회체험]', '(초진/재진SNS등록시)' are open to new and returning
+#     customers alike. 데이뷰 '[재진] 1회 체험 이벤트' is 체험가 already (its options say 체험). The app's 내 견적 counts every 체험가 /
+#     한정가 as one time per person (app/domain/pricing.js condClass 'once'): a first-time visitor gets the returning price for the first
+#     session and '전에 이 시술을 받아 봤어요' leaves it out — the wrong way round for these 8 prices; the user decides (PR, ask to B).
+# The option's own words come first (its 체험 / 한정 / 재방문), then the section's. A kind read from the section alone holds only when
+# every page with that price says it (clean.main, like the tags): the same price on a page without the section is open to anyone —
+# also under a slightly different name in the branch's plain price list (loose_name: 밴스 동탄 '피부스케일링' / '스케일링 1회' 39,000).
+# Which section texts (section_texts): the group title always; the site's category too, except
+#   유앤아이 (CAT_UNPAIRED: its tabs hold other tabs' products; the tab name the collector glues in front of the group title,
+#            '첫방문 체험가 · 리쥬란 힐러', is taken off as well — scrape/uandi.py adds it to every '첫방문' tab's group)
+#   밴스 (CAT_MENU): the site menu '1회 체험가' also shows the branch's price-list cards, and the collector keeps the first menu a card is
+#            seen in (scrape/vands.py), which is '1회 체험가' (or '이달의 이벤트') on nearly every branch. In the saved data of 2026-10-16
+#            강남·구로점's '부위별 필러 시술안내' card under '1회 체험가' has the 필러/실리프팅 menu's prices (무제한 입술필러 89,000 · 무제한
+#            애교필러 89,000 · 턱끝필러 1cc 49,000 in both), and inside one card the site marks each trial price itself ('바디리니어지 1부위
+#            (1회체험가)' next to '바디인모드 1부위' — the collector keeps that note in the option). Of the menu's 689 saved prices with
+#            no such note under a card title that says nothing, 295 have the same price in a price-list card of the branch (names compared
+#            without brackets, 국산/수입, 1회 and sex words); read as a trial section with the rules here, the menu would make 311 of its
+#            445 일반 prices under such titles 체험가 (242 with a comparison key; menus '1회 체험가' 261, '★1회체험가★' 43, '1회체험가' 7 —
+#            the other 134 are packages or price-list twins). The collector could keep every menu a card is in (one that is only in
+#            '1회 체험가' is a trial card) — a change for a later collection.
+# Build of the saved data (collection 2026-10-14, --skip-scrape on 2026-10-17): 387 prices change kind — 379 → 체험가 (밴스 275 under
+# trial card titles, 닥터에버스 80, 셀린 18, 쁨 3, 유앤아이 3), 8 → 한정가 (쁨 천안점) — and 220 of them leave the plain comparison (137
+# with a comparison key); the others carried a condition tag already. 22 밴스 prices under a trial title stay plain: the branch's
+# price list has them at the same price (the fold, or loose_name). Session counts do not change.
+_TRIAL_SUF = r"(?:가(?!\s*능)|특가|초특가|이벤트|event|쿠폰)"
+TRIAL_HEAD = re.compile(rf"(?:(?<![\d.])1\s*회|첫)\s*체험(?!\s*(?:후기|단|관|기|담))(?:\s*{_TRIAL_SUF})?|체험\s*{_TRIAL_SUF}", re.I)
+TRIAL_NOTE = re.compile(r"\s*(?:와|과)?\s*(?:중복|함께|병행|제외|불가|미적용)")
+RETURN = re.compile(r"재\s*방문|재\s*내원|기존\s*(?:고객|회원|환자)(?!\s*(?:님\s*)?(?:께\s*)?감사)|재\s*구매|재\s*진(?![행료단])")
+NEW_OR_RETURN = re.compile(r"초\s*[/·,.]?\s*재\s*진|초\s*진")
+CAT_MENU = {"밴스"}
+# one_visit: a bare 'N+M' (N ≥ 2) with no amount after it is N+M sessions — '피코토닝 10+10' 650,000 (밴스 광주 '… 1인 1회 체험가'
+# card), which sessions() reads as 1; '3+1부위', '300+300샷', '3+1 4cc', '3+1(4부위)', '2+2+콧대' are amounts of one session
+PLUS_PACK = re.compile(r"(?<![\d.+])(?:[2-9]|\d{2,})\s*\+\s*\d+(?!\s*\(?\s*[\d.+]|\s*(?:cc|㏄|ml|샷|shot|부위|줄|유닛|unit|u(?![a-z])|개|kj|j(?![a-z])"
+                       r"|앰플|바이알|만|천))", re.I)
+FIRST_PLUS = re.compile(r"(?<![\d.+])1\s*\+\s*1\s*회")
+COUNT_FREE = re.compile(r"개수\s*무제한|(?<![\d.+])1\s*회")
+TERM = re.compile(r"이용권|패스권|회원권|(?<![\d.])\d+\s*(?:년|달|개월|주)")       # a pass or a period, not one visit
+
+
+def trial_head(text):
+    """whether a section title names a trial-price section (TRIAL_HEAD, not a note about another offer: TRIAL_NOTE)"""
+    return any(not TRIAL_NOTE.match(text[m.end():]) for m in TRIAL_HEAD.finditer(text or ""))
+
+
+def returning(text):
+    """whether a text limits the price to returning customers ('재방문 이벤트'; not '초진/재진', '초재진', '재진도 초진도')"""
+    return any(not NEW_OR_RETURN.search(text[max(0, m.start() - 8):m.end() + 8]) for m in RETURN.finditer(text or ""))
+
+
+def section_texts(brand, grp, cat):
+    """the section titles over a price that the kind rule reads (see above): the group title, and the category unless the chain is
+    in CAT_UNPAIRED or CAT_MENU; for CAT_UNPAIRED without the tab name glued in front of the group title"""
+    if brand in CAT_UNPAIRED:
+        return [grp[len(cat) + 3:] if cat and grp.startswith(f"{cat} · ") else grp]
+    return [grp] if brand in CAT_MENU else [grp, cat]
+
+
+def one_visit(mname):
+    """whether a price under a trial section is for one visit (section_kind): one session and no course — not '5회 패키지',
+    '10+10회', a bare '10+10' (PLUS_PACK) or '3주' — or the trial's own forms: '1+1회', the first session and one more (밴스 이태원
+    '피코토닝 1+1회' 9,900 — the same card lists '피코토닝 1+1회 (1회 체험가)' 9,900), and one visit with no limit on the count
+    ('얼굴 점제거(2mm이하/개당, 개수 무제한)' 100, '무제한 염증주사 1회' 9,000; not a period or a pass: '1년 무제한', '…이용권')"""
+    if COURSE.search(mname) or PLUS_PACK.search(mname):
+        return False
+    s = sessions(mname)
+    return s == 1 or (s == 2 and bool(FIRST_PLUS.search(mname))) or \
+        (s == 99 and bool(COUNT_FREE.search(mname)) and not TERM.search(mname))
+
+
+def loose_name(opt):
+    """an option as the plain-twin check of clean.main compares it: no word breaks, brackets or '·,/★♥*', no '1회' or 'THE' —
+    '피부스케일링' / '스케일링 1회', 'THE 미희주사 눈밑 1회' / '미희주사 눈밑 1회', '블랙헤드관리(나비존)' / '블랙헤드 관리(나비존) 1회'"""
+    n = unicodedata.normalize("NFKC", strip_event_prefix(opt or "")).casefold()
+    n = re.sub(r"(?<![\d.+])1\s*회|(?<![a-z])the(?![a-z])", " ", n)
+    return re.sub(r"[\s·,/★☆♥*()\[\]{}]+", "", n)
+
+
+def section_kind(brand, grp, cat, mname):
+    """the kind a price gets from its section alone: '체험가' for a one-session price under a trial section, '한정가' under a
+    returning-customer section, '' otherwise (grp / cat normalized, mname = the matching name, for the session count)"""
+    texts = section_texts(brand, grp, cat)
+    if any(trial_head(t) for t in texts) and one_visit(mname):
+        return "체험가"
+    return "한정가" if any(returning(t) for t in texts) else ""
 # The days and hours themselves (C1 다음, 2026-10-16 — data.json row fields 16 `days`, 17 `hours`), read from the same texts as the
 # time tags (category + group title + option), so B's visit-day filter can tell a 화/수/목 or a 12시~17시 price from a Monday-Friday one:
 #   days  = bit mask 월 1 · 화 2 · 수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96), 0 = no day written (every day is 0 too)
@@ -544,7 +642,7 @@ def load():
 def main():
     raw = load()
     vdef = vat_policy()
-    issues, out, seen, seen_old, sex_of = [], [], {}, {}, {}
+    issues, out, seen, seen_old, sex_of, sect_of = [], [], {}, {}, {}, {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
         # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
@@ -606,6 +704,7 @@ def main():
         if g and not re.search(r"남성|남자|여성|여자|男|女|\((?:남|여)\)|(?<![가-힣])(?:남|여)\)", unicodedata.normalize("NFKC", mname)):
             mname = f"[{g.group(1)}] {mname}"
         text = f"{r['category']} {grp} {opt}"
+        by_sect = False
         if r["brand"] == "리엔장":
             kind = "고시가"
         elif SUBS.search(f"{grp} {opt}") or (pass_group(grp, opt) and not re.search(r"\d+\s*회", opt)):
@@ -614,10 +713,12 @@ def main():
             kind = "구독권"
         elif re.search(r"체험", f"{opt}"):
             kind = "체험가"
-        elif ONCE.search(opt):
+        elif ONCE.search(opt) or returning(opt):
             kind = "한정가"
         else:
-            kind = "일반"
+            # the section's trial / returning-customer words (section_kind), read only when the option says nothing
+            kind = section_kind(r["brand"], grp, norm_text(r["category"]), mname) or "일반"
+            by_sect = kind != "일반"
         cat = next((c for c, p in CATS if re.search(p, text)), "기타")
         # 유앤아이 lists peels, skin care and boosters on its 제모 pages ('여성 제모' › 'FCR 필링 얼굴전체 1회'): filed as 제모 they became
         # '… 제모' spec labels (2026-10-14). On a 제모 page the item's own words decide when they name another kind of procedure
@@ -666,6 +767,11 @@ def main():
             # a condition stays only when every page says it: the same price on a page without it is open to anyone (a union
             # turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
             prev["tags"] = merge_tags(prev["tags"], row["tags"])
+            # a kind read from the section alone (section_kind) stays only when every page says it, like the tags
+            if sect_of.get(id(prev)) and kind == "일반":
+                prev["kind"], sect_of[id(prev)] = "일반", False
+            elif sect_of.get(id(prev)) and not by_sect and kind == prev["kind"]:
+                sect_of[id(prev)] = False
             prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
             if row["addon"] == "1":
                 prev["addon"] = "1"
@@ -685,6 +791,7 @@ def main():
         seen[k] = row
         seen_old.setdefault(k_old, []).append(row)
         sex_of[id(row)] = sex
+        sect_of[id(row)] = by_sect
         out.append(row)
     # a pass the branch lists again without the pass words: 밴스 창원 '얼굴전체' 690,000 / 정가 1,200,000원 next to '젠틀맥스프로플러스
     # 얼굴전체 1년이용권' at the same two prices — one-session prices do not match a year's pass to the won (2026-10-15)
@@ -698,6 +805,24 @@ def main():
             if len(me) >= 2 and any(me != p and me in p for p in passes.get((row["brand"], row["branch"], row["sale"], row["orig"]), [])):
                 row["kind"] = "구독권"
                 issues.append({**row, "action": "이용권으로 봄", "reason": "같은 지점의 이용권과 판매가·정가가 같음"})
+    # a kind read from the section alone (section_kind) is not the price's own when the branch's plain price list sells the same
+    # product at the same price under a slightly different name (the fold above needs the same name): 밴스 동탄's '피부관리 체험가
+    # 시술안내' cards repeat its '베이직 / 프리미엄 피부관리' cards ('피부스케일링' / '스케일링 1회' 39,000, '블랙필' / '블랙필 1회' 49,000),
+    # 이태원's '★1회체험가★' card its price list ('미희주사 눈밑 1회' / 'THE 미희주사 눈밑 1회' 290,000, '편평사마귀 제거 1개당' /
+    # '편평사마귀제거' 2,900; 밴스 천안 '[1회 체험가 초특가]' › '얼굴 점제거(2mm이하/개당, 개수 무제한)' / '점제거 (2mm이하)' 100 a mole).
+    # Same branch, sale and visits (sessions; one for a visit with no limit on the count, one_visit), one sex (or none named), a plain
+    # row (kind 일반 not from a section, no tag, no days / hours), one loose name inside the other (loose_name)
+    plain_names = defaultdict(list)
+    visits = lambda row: 1 if row["sess"] == 99 and one_visit(row["mname"]) else row["sess"]
+    for row in out:
+        if row["kind"] == "일반" and not sect_of.get(id(row)) and not row["tags"] and not row["days"] and not row["hours"]:
+            plain_names[(row["brand"], row["branch"], row["sale"], visits(row))].append((sex_of[id(row)], loose_name(row["option"])))
+    for row in out:
+        if sect_of.get(id(row)):
+            me, sx = loose_name(row["option"]), sex_of[id(row)]
+            if len(me) >= 2 and any(len(p) >= 2 and (me in p or p in me) and (x == sx or "" in (x, sx))
+                                    for x, p in plain_names.get((row["brand"], row["branch"], row["sale"], visits(row)), [])):
+                row["kind"], sect_of[id(row)] = "일반", False
     # comparison keys
     for row in out:
         if row["addon"] == "1" or row["kind"] == "구독권":
