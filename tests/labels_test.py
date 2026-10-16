@@ -389,6 +389,13 @@ for i, r in enumerate(dup):
     r.update(cat="제모", sale=str(13000 if i < 3 else 65000 if i < 6 else 9000), url="https://example.invalid/month")
 rk, ks, fs, st = taxonomy.build(dup)
 ok("한 페이지에 같은 이름·다른 가격(성별 제목을 못 읽음)인 제모 줄은 성별 없는 부위 키에 넣지 않음", rk[:6] == [""] * 6 and all(rk[6:9]), rk)
+# 2026-10-16: scrape/drevers.py keeps the 여성·남성 headings in the group, clean.py puts the sex in mname — the same page's two menus
+sx = fake_g([("닥터에버스", f"{i}점", "레이저 제모 겨드랑이 5회", f"월간 레이저 · {s} 제모(5회 기준)") for s in ("여성", "남성") for i in range(3)])
+for i, r in enumerate(sx):
+    r.update(cat="제모", sale=str(13000 if i < 3 else 65000), url="https://example.invalid/month", mname=f"[{'여성' if i < 3 else '남성'}] {r['name']}")
+rk, ks, fs, st = taxonomy.build(sx)
+ok("성별 제목을 읽은 두 메뉴(같은 이름·다른 가격)는 여성·남성 키로 나뉘어 비교에 들어감", all(rk) and len(set(rk)) == 2
+   and sorted(k["label"] for k in ks) == ["남성 겨드랑이 제모 5회", "여성 겨드랑이 제모 5회"], [k["label"] for k in ks])
 tw = fake_g([("톡스앤필", f"{i}점", n, "얼굴제모") for i in range(3) for n in ("얼굴전체 (이마제외) 5회", "얼굴전체 5회")])
 for j, r in enumerate(tw):
     r.update(cat="제모", sale=str(300000 if j % 2 == 0 else 450000), url="https://example.invalid/face")

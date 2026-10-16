@@ -296,6 +296,20 @@ def title_words(s):
     return t if t and PROC.search(t) else ""
 
 
+SEX_WORD = re.compile(r"남성|남자|여성|여자")
+
+
+def section_head(sec, grp):
+    """the section title put in front of a 닥터에버스 item name (title_words), without its sex word when the menu heading the
+    collector put in the group names the other sex: 미사점 lists its women's menu under the section '젠틀맥스 프로플러스 남성 제모'
+    ('… · 여성 제모' › '비키니라인/회음부 5회'), and the name's own '남성' won over the group's '여성' (2026-10-16)"""
+    head = title_words(sec)
+    hs, gs = SEX_WORD.search(head), SEX_WORD.search(grp or "")
+    if hs and gs and SEX.get(hs.group(), hs.group()) != SEX.get(gs.group(), gs.group()):
+        head = re.sub(r"\s+", " ", SEX_WORD.sub(" ", head)).strip()
+    return head
+
+
 def price(x):
     """'99000' / '99000.0' / '99,000' -> 99000; empty or junk -> 0"""
     try:
@@ -370,7 +384,7 @@ def main():
             sec = re.sub(r"\s+", " ", re.sub(r"[◆◇■□●○★☆♥]", " ", r["category"] or "")).strip()
             if sec and opt.startswith(sec + " "):
                 opt = opt[len(sec) + 1:]
-            head = title_words(sec)
+            head = section_head(sec, grp)
             if head and comp_name(head) not in comp_name(opt):
                 opt = f"{head} {opt}"
         hair = bool(re.search(r"제모", f"{r['category']} {grp}"))
