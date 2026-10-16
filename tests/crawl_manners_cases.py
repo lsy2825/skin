@@ -242,5 +242,19 @@ except SystemExit:
     raised = True
 ok("branches: an unreadable 블리비 address page stops the step (the old branches.csv stays)", raised)
 
+# the registry's rate text (shown on the app's 정보 screen) states the code's own numbers
+import re  # noqa: E402
+import sources  # noqa: E402
+
+for key, reg in sources.REGISTRY.items():
+    code = open(os.path.join(ROOT, "scrape", f"{key}.py"), encoding="utf-8").read()
+    gaps = {float(x) for x in re.findall(r'"--gap",[^)]*default=([\d.]+)', code) + re.findall(r"Fetcher\(gap=([\d.]+)", code)}
+    workers = {int(x) for x in re.findall(r'"--workers",[^)]*default=(\d+)', code)}
+    said_gap = {float(x) for x in re.findall(r"([\d.]+)초 간격", reg["rate"])}
+    said_workers = {int(x) for x in re.findall(r"(\d+)곳 동시", reg["rate"])}
+    ok(f"sources.py REGISTRY rate of {key} matches scrape/{key}.py ({reg['rate']})",
+       said_gap <= gaps and said_workers <= workers and (said_workers or "하나씩" in reg["rate"] or not workers)
+       and "req/s" not in reg["rate"], (gaps, workers, reg["rate"]))
+
 print("crawl manners", "OK" if not fails else f"{fails} FAIL")
 sys.exit(1 if fails else 0)

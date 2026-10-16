@@ -20,7 +20,7 @@
 | 셀린 (2026-10-15 추가) | 공개 HTML(지점별 '시술 안내/가격' 목록 + 항목을 누를 때 페이지가 보내는 상세 요청 `_contentDetail.php` POST idx) | 9곳 · 4,544행(정리 전) | 위와 같음. 목록이 스크립트로 채워져 한때 보류 → 원본 페이지 탐색(`scrape/raw_probe.py`)으로 상세 요청을 확인. 연신내 본점·다산·홍대 3곳은 새 사이트(`*.cellinclinic.com/ko`, Next.js 앱 — 첫 화면에 가격 글자 없이 화면에서 따로 불러옴, 2026-10-15 탐색)로 옮겨 아직 안 읽음: 가격을 부르는 주소와 그 주소의 robots.txt를 확인해야 함 | 미확인 | 지점(호스트)마다 1초 간격, 지점 4개 동시 | 허용(YoonSiljangBot·*) | 위와 같음 |
 | 심평원 비급여 API | 공공데이터포털 OpenAPI | **확인 불가(키 없음)** | 공공누리 조건 확인 필요 | — | — | — | — |
 
-'요청 빈도'는 코드 값이에요 — `scrape/*.py`의 `Fetcher(gap=…)`(요청 시작 사이 최소 초, 지점·호스트마다 따로 세요)와 동시에 읽는 지점 수. 리엔장 180초만은 코드가 아니라 사이트 robots.txt의 Crawl-delay를 따라요. 코드와 대조한 표는 `docs/legal/SITE_TERMS_REVIEW.md` §0-1(#45 전 main)과 §0-2(#45로 바뀐 것)에 있어요. 등록부(`scrape/sources.py` REGISTRY)의 `rate` 글자(앱 '정보' 화면·`data2/sources.json`에 나옴)는 블리비·쁨·톡스앤필·리엔장에서 이 표와 달라요 — 수집기는 그 글자를 읽지 않아요. `data2/sources.json` 저장본(2026-10-13)에는 5개 체인만 있어서, 밴스·유앤아이·데이뷰·닥터에버스·셀린의 robots.txt 칸은 `SITE_TERMS_REVIEW.md`의 사람 확인이에요.
+'요청 빈도'는 코드 값이에요 — `scrape/*.py`의 `Fetcher(gap=…)`(요청 시작 사이 최소 초, 지점·호스트마다 따로 세요)와 동시에 읽는 지점 수. 리엔장 180초만은 코드가 아니라 사이트 robots.txt의 Crawl-delay를 따라요. 코드와 대조한 표는 `docs/legal/SITE_TERMS_REVIEW.md` §0-1(#45 전 main)과 §0-2(#45로 바뀐 것)에 있어요. 등록부(`scrape/sources.py` REGISTRY)의 `rate` 글자(앱 '정보' 화면·`data2/sources.json`에 나옴)도 이 표의 코드 값으로 맞췄어요(#45). 수집기는 그 글자를 읽지 않아서 `tests/crawl_manners_cases.py`가 숫자를 코드와 대조해요. `data2/sources.json` 저장본(2026-10-13)에는 5개 체인만 있어서, 밴스·유앤아이·데이뷰·닥터에버스·셀린의 robots.txt 칸은 `SITE_TERMS_REVIEW.md`의 사람 확인이에요.
 
 정기 실행은 매일 06:00 KST에 깨어나, 월요일이거나 어느 한 체인이라도 저장된 가격의 20% 이상이 종료일을 지났으면 9개 체인을 모두 수집해요(`build2/needs_refresh.py` — 끝난 가격이 남아 있으면 매일도 수집할 수 있고 횟수 상한은 없어요). 이 밖에 사람이 누르는 수동 실행·가격 재확인·출처 재확인·시험 수집도 병원 사이트를 읽어요.
 
