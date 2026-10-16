@@ -123,6 +123,27 @@ test("PowerShell 7-only syntax and Korean glued to a variable name stay out (the
   assert.deepEqual(joinPathParts("Join-Path -Path $a -ChildPath ([x]::y('z')) -Resolve").map((j) => j.parts), [0], "named parameters are not positional parts");
 });
 
+test("the unit-test step never stops the install: shared read with retries, leftovers named, errors become a yellow line", () => {
+  // 2026-10-16 (B → A): on the owner's PC ReadAllText on unit-test-output.txt threw 'being used by another process' right
+  // after node --test and the whole setup stopped before INSTALLED.md was written.
+  const fn = ps.match(/function Read-Shared\(\[string\]\$path\) \{[\s\S]*?\n\}/);
+  assert.ok(fn, "Read-Shared exists");
+  assert.match(fn[0], /\[IO\.File\]::Open\(\$path, \[IO\.FileMode\]::Open, \[IO\.FileAccess\]::Read, \[IO\.FileShare\]'ReadWrite, Delete'\)/, "opened read-only, sharing write and delete with whoever still holds it");
+  assert.match(fn[0], /for \(\$i = 0; \$i -lt 10; \$i\+\+\)[\s\S]*Start-Sleep -Milliseconds 500[\s\S]*return \$null/, "retries, then gives up with $null (no throw)");
+  const step = ps.slice(ps.indexOf("$out = Join-Path $Tools 'unit-test-output.txt'"), ps.indexOf("Pop-Location", ps.indexOf("$out = Join-Path $Tools 'unit-test-output.txt'")));
+  assert.ok(step.length > 200, "the unit-test step is found");
+  assert.doesNotMatch(step, /ReadAllText/, "the test output is not read with ReadAllText (it denies sharing write)");
+  assert.match(step, /\$text = Read-Shared \$out/);
+  assert.match(step, /if \(\$null -eq \$text\) \{[\s\S]*?Warn /, "an unreadable file is a yellow line, not a stop");
+  assert.match(step, /^\s*try \{[\s\S]*\} catch \{[\s\S]*?Warn "단위 테스트 검사 중 오류/m, "anything else in the step is caught and becomes a yellow line");
+  assert.match(step, /try \{ \$left = @\(Leftover-Children \$t\.Id \$testStart\) \} catch \{ Warn /, "processes the tests left behind are looked for, and a failing process list (WMI) does not skip reading the results");
+  assert.doesNotMatch(step, /Stop-Process/, "and only named, not stopped");
+  const lc = ps.match(/function Leftover-Children[\s\S]*?\n\}/)[0];
+  assert.match(lc, /CreationDate -ge \$since/, "only processes started after the tests began (a reused PID is not blamed)");
+  assert.doesNotMatch(lc, /return ,\$found/, "unrolled: @() of no leftovers is an empty array, not one empty list");
+  assert.ok(ps.indexOf("Pop-Location", ps.indexOf("$text = Read-Shared $out")) < ps.indexOf("'INSTALLED.md'), ($lines"), "INSTALLED.md is written after the step");
+});
+
 test("text read back from Python is ASCII (JSON), so a Korean user folder is not garbled by the console code page", () => {
   assert.match(ps, /print\(json\.dumps\(dict\(p=/);
   assert.match(ps, /ConvertFrom-Json\)\.p/);
