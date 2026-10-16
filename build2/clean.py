@@ -173,12 +173,45 @@ ONE_LIMIT = re.compile(r"(?<![\d.])(?<![주월년연달일별루]\s)(?<![주월�
 CHOICE = re.compile(r"택\s*\d|中|선택\s*\d")
 
 
+def bracket_span(text, j):
+    """text from the bracket opening at j to its close (the end when it never closes)"""
+    d = 0
+    for k in range(j, len(text)):
+        if text[k] in "([":
+            d += 1
+        elif text[k] in ")]":
+            d -= 1
+            if not d:
+                return text[j:k + 1]
+    return text[j:]
+
+
+def in_choice(text, m):
+    """whether the '1회 한정' at match m is one item of a choose-N list: its bracket, past the note's own '(1회한정)', holds the
+    택N / 中 / 선택 N ('(택4 - 라인리페어필(1회한정)/…/라라필)' in any place of the list, '…/LDM 6분(1회한정), 크라이오)'), or
+    outside brackets it runs on into the list ('LDM 6분(재생)(1회한정) 中 선택 4회', '…(1회한정)/아쿠아필')"""
+    st = []                             # brackets open at the match, innermost last
+    for j, ch in enumerate(text[:m.start()]):
+        if ch in "([":
+            st.append(j)
+        elif ch in ")]" and st:
+            st.pop()
+    close = re.match(r"\s*[)\]]", text[m.end():])
+    rest = text[m.end():]
+    if st and close:                    # the note's own bracket: '(1회한정)'
+        st.pop()
+        rest = rest[close.end():]
+    if st:
+        return bool(CHOICE.search(bracket_span(text, st[-1])))
+    return bool(re.match(r"\s*(?:[/,·]|中)", rest))
+
+
 def once_only(text, heading=False):
     """whether a '1회 한정' in text is a once-per-person limit (see ONE_LIMIT): anywhere in a heading (category / group title),
     only as a note in an option"""
     for m in ONE_LIMIT.finditer(text or ""):
         before, after = text[:m.start()], text[m.end():]
-        if CHOICE.search(text) and re.match(r"\s*\)\s*[/中]", after):
+        if CHOICE.search(text) and in_choice(text, m):
             continue                    # one choice of a choose-N list
         if heading or "*" in before or re.match(r"\s*[)\]]", after) or before.count("(") > before.count(")") \
                 or before.count("[") > before.count("]"):
@@ -450,11 +483,15 @@ def comp_name(s):
 def title_words(s):
     """a section title as product words: itself when it reads as a product heading ('◆볼뉴머', '레이저 제모'); its product
     words when it mixes them with event / price / date wording ('볼뉴머/슈링크 유니버스 이벤트' → '볼뉴머/슈링크 유니버스');
-    '' for a tag list ('미백 | 톤업 | 색소 | 토닝'), a price tier ('20만원 39.21만') or an event name ('26년 10월 2차) 한글날 맞이 …')"""
+    '' for a tag list ('미백 | 톤업 | 색소 | 토닝'), a price tier ('20만원 39.21만') or an event name ('26년 10월 2차) 한글날 맞이 …').
+    A new device's '신규 런칭 / 입고 / 도입' (NEW_ITEM) goes whole: TITLE_PROMO took only '런칭' and left '신규', which the app reads
+    as 첫 방문 in the name — 밴스 수원망포 '셀르디엠 … 신규런칭!!! 시술안내' › '셀르디엠 1vial 캐뉼라 1회' (4 rows, 2026-10-16); a bracket
+    left empty goes too ('[이벤트] …', '[신규입고] …')"""
     s = re.sub(r"[◆◇■□●○]", " ", s or "").strip()
     if not s or re.search(r"[|｜]", s):
         return ""
-    t = TITLE_PROMO.sub(" ", TITLE_PRICE.sub(" ", TITLE_DATE.sub(" ", s)))
+    t = TITLE_PROMO.sub(" ", TITLE_PRICE.sub(" ", TITLE_DATE.sub(" ", NEW_ITEM.sub(" ", s))))
+    t = re.sub(r"\[\s*\]|\(\s*\)", " ", t)
     t = re.sub(r"\s+", " ", re.sub(r"^[\s)\]·,.:/-]+|[\s(\[·,.:/-]+$", "", t)).strip()
     if t == s:
         return s
