@@ -18,7 +18,9 @@ data-meta.json:
              {from: previous version, price: [[brand, branch, name, before, after]], added: [[brand, branch, name, price]],
               removed: [[brand, branch, name, price]], counts: {price, added, removed, new_chain}, new_chains: [[brand, rows]]}
              — lists capped at CAP each. A brand the previous data.json did not have at all is a new chain: its rows are counted in
-             new_chains, not listed as added (개선 보고서 E9; the alert Worker and the 가격 변동 screen read 'added')
+             new_chains, not listed as added (개선 보고서 E9; the alert Worker and the 가격 변동 screen read 'added'). A row a rule
+             took back (build2/appdata.py came_back: the previous build dropped it for its words — 2026-10-16, 391 닥터에버스 prices
+             under a '※…' heading) is not listed as added either: no clinic added it
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
 import argparse, datetime, hashlib, json, os, re, sys
@@ -65,7 +67,8 @@ def version_of(txt_bytes, updated):
     return f"{updated}.{hashlib.sha256(txt_bytes).hexdigest()[:8]}"
 
 
-def changes(prev, cur, prev_version):
+def changes(prev, cur, prev_version, back=None):
+    """back: {(brand, branch, name, price)} of the rows a rule took back (appdata.came_back) — never 'added'"""
     a, b = resolved(prev), resolved(cur)
     price, added, removed = [], [], []
     for k in sorted(set(a) | set(b)):
@@ -109,6 +112,7 @@ def changes(prev, cur, prev_version):
     da, db = fetched(prev), fetched(cur)
     fresh = lambda r: not (da.get((r[0], r[1])) and da.get((r[0], r[1])) == db.get((r[0], r[1])))
     price, added, removed = [r for r in price if fresh(r)], [r for r in added if fresh(r)], [r for r in removed if fresh(r)]
+    added = [r for r in added if tuple(r) not in (back or ())]
     old_brands = {k[0] for k in a}
     new_chain = Counter(r[0] for r in added if r[0] not in old_brands)
     added = [r for r in added if r[0] in old_brands]
@@ -117,7 +121,7 @@ def changes(prev, cur, prev_version):
             "new_chains": [[b, n] for b, n in sorted(new_chain.items())]}
 
 
-def build(txt, prev_txt=None, home_txt=None):
+def build(txt, prev_txt=None, home_txt=None, back=None):
     data = json.loads(txt)
     raw = txt.encode("utf-8")
     s, brands = data["s"], [b[0] for b in data["meta"]["brands"]]
@@ -139,14 +143,14 @@ def build(txt, prev_txt=None, home_txt=None):
     if prev_txt:
         try:
             prev = json.loads(prev_txt)
-            meta["changes"] = changes(prev, data, version_of(prev_txt.encode("utf-8"), prev["meta"]["updated"]))
+            meta["changes"] = changes(prev, data, version_of(prev_txt.encode("utf-8"), prev["meta"]["updated"]), back)
         except (ValueError, KeyError, IndexError, TypeError) as e:     # an older layout: no change list, never a wrong one
             print(f"  data-meta: previous data.json not comparable ({e.__class__.__name__}); no change list")
     return meta
 
 
-def write_meta(data_path, txt, prev_txt=None, home_txt=None):
-    meta = build(txt, prev_txt, home_txt)
+def write_meta(data_path, txt, prev_txt=None, home_txt=None, back=None):
+    meta = build(txt, prev_txt, home_txt, back)
     out = os.path.join(os.path.dirname(data_path), "data-meta.json")
     open(out, "w", encoding="utf-8", newline="\n").write(json.dumps(meta, ensure_ascii=False, separators=(",", ":")))
     c = meta.get("changes", {}).get("counts")

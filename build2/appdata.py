@@ -49,7 +49,8 @@ data.json (compact, strings interned in `s`):
             dated before the first entry. The next build judges the previous rows by the rule they were counted with, so a rule
             change shows in meta.recl, not as price changes
   meta.recl  [[collection date, [ids]], …] (12 kept) — ids whose rows a rule moved (joined / left the id, or now count or no longer
-            count as plain): the trend restarts there and the app re-bases alerts on them (reclDate)
+            count as plain, or a plain price a rule took back: came_back): the trend restarts there and the app re-bases alerts
+            on them (reclDate). A price a rule took back is no '새로 생김' either (achg.new, data-meta.json changes.added)
   meta.reclBranches  [[collection date, {id: [branch index, …]}], …], one entry per meta.recl entry — at which branches the
             rows of that id moved (2026-10-16): `changes` leaves out only those branches. An id of that meta.recl date with no
             entry here moved at every branch (an id that came back, or one a data.json from before this field listed). Read by
@@ -441,6 +442,19 @@ def prev_rule(prev, date=None):
     return G.rule_at(prev["meta"].get("plainRules"), date or prev["meta"].get("updated", ""))
 
 
+def came_back(prev, prow, rows):
+    """(brand, branch, name, price) of this build's rows that a rule took back: the previous build dropped them for their words
+    alone (clean.csv back — e.g. 391 닥터에버스 prices under '※카카오톡 플러스친구 혜택'-type headings, read as notices until
+    2026-10-16) and the previous data.json does not have them. The clinic did not add them, so they are not '새로 생김'
+    (data-meta.json changes.added, achg.new); where one counts as a plain price it is a rule's move (meta.recl, the groups)"""
+    if not prev:
+        return set()
+    ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
+    had = {(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3])) for r in prow}
+    back = ((r["brand"], r["branch"], r["name"], int(r["sale"])) for r in rows if r.get("back") == "1")
+    return {i for i in back if i not in had}
+
+
 def reclassified(prev, prow, rows):
     """comparison ids whose rows changed because the rules changed, not the prices: a row that is in both builds (same brand,
     branch and name) but joined or left the id. Their 'price change' since the last snapshot would only be the new mix of
@@ -492,6 +506,12 @@ def recl_pairs(prev, prow, rows):
         nk[(r["brand"], r["branch"], r["name"], int(r["sale"]))].update(r["keys"].split())
     for ident in wk.keys() & nk.keys():
         out |= at(ident, wk[ident] ^ nk[ident])
+    # a row a rule took back (came_back: the previous build dropped it for its words) joined its ids by that rule, not by a
+    # clinic — only where it counts as a plain price (the one thing that moves the id's plain lowest at that branch)
+    back = came_back(prev, prow, rows)
+    for r in rows:
+        if G.regular(r) and (r["brand"], r["branch"], r["name"], int(r["sale"])) in back:
+            out |= at((r["brand"], r["branch"]), r["keys"].split())
     # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
     before = {k[0] for k in prev.get("keys", [])}
     return {x for x in out if x[0] in before}
@@ -629,6 +649,8 @@ def group_moved(prev, prow, rows, gid, since=None):
     for r, g in zip(rows, gid):
         ident = (r["brand"], r["branch"], r["name"], int(r["sale"]))
         now[ident] = now.get(ident, False) or (g >= 0 and G.regular(r))
+    for ident in came_back(prev, prow, rows):
+        was[ident] = False          # a rule took it back (not in the previous file): it did not count there
     return {(f"{i[0]}|{i[1]}", G.comp(i[2]), i[3]) for i, c in now.items() if i in was and was[i] != c}
 
 
@@ -905,7 +927,8 @@ def main():
     assert rows_of(json.loads(txt)) == out_rows, "price columns do not turn back into the same rows"
     open(a.out, "w", encoding="utf-8", newline="\n").write(txt)
     home_txt = homedata.write(a.out, txt)        # app/home.json: the home screen's rows, read first (round-2 O2)
-    datameta.write_meta(a.out, txt, prev_txt, home_txt)   # app/data-meta.json: version, checksum, branch states, changed rows, home.json's checksum
+    # app/data-meta.json: version, checksum, branch states, changed rows (not the ones a rule took back), home.json's checksum
+    datameta.write_meta(a.out, txt, prev_txt, home_txt, back=came_back(prev_data, prev_rows, rows))
     nogeo = [s[b[1]] for b in branches if b[3] is None]
     print(f"wrote {a.out}: {len(txt) / 1e6:.2f} MB | rows {len(out_rows)} | branches {len(branches)} (no map position: {len(nogeo)})"
           f" | strings {len(s)} | changes vs {prev_date or '-'}: {len(changes)} | review pending {review} | source re-checks matched {len(checks)}")

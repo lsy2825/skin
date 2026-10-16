@@ -1277,6 +1277,81 @@ ok("clean.csv: 새 장비('[신규입고]'·'신규런칭★' 묶음 제목·'[�
 _nm_n = {r["option"]: r["name"] for r in _rows_n if r["branch"] == "수원망포"}
 ok("clean.csv: 묶음 제목을 붙인 이름에 '신규'가 남지 않음(밴스 수원망포 '셀르디엠 … 신규런칭!!! 시술안내' › '셀르디엠 1vial 캐뉼라 1회')",
    _nm_n == {"셀르디엠 1vial 캐뉼라 1회": "셀르디엠 차세대 ECM 스킨부스터 셀르디엠 !!! 시술 · 셀르디엠 1vial 캐뉼라 1회"}, _nm_n)
+# clean.main: 닥터에버스 '※…' 칸 아래 가격(2026-10-16, 391줄이 안내 문구로 빠졌음). 옛 raw는 칸 이름이 이름 앞에 붙고, 새 raw(수집기
+# 2026-10-15~)는 이름만. 칸 이름을 떼고 조건은 칸·묶음 제목대로, 칸 이름만 있거나 뒤가 다시 안내 문구면 그대로 뺌. 지난 빌드의
+# issues.csv가 글자로 뺀 줄이 돌아오면 back=1(새로 생김 아님) — 같은 가격이 빠지지 않은 페이지에도 있으면 back 없음
+_DV = [("마곡점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 울쎄라피 프라임 100샷 1회", 239000),
+       ("구로점", "※항목별 1회씩 적용", "첫방문이벤트", "※항목별 1회씩 적용 국산 주름보톡스(1부위)", 5900),
+       ("강남점", "※시간 상관없이 적용가능", "화/수/목 이벤트", "※시간 상관없이 적용가능 턱끝필러 1cc(리쥬비엘) 1회", 126000),
+       ("천호점", "※카카오톡 플러스 친구로 예약 시 적용!", "해피아워이벤트", "※카카오톡 플러스 친구로 예약 시 적용! 온다리프팅 5만줄 1회", 250000),
+       ("마곡점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 ※1인 1회 적용, 중복 할인 불가", 1000),
+       ("마곡점", "※주의사항", "첫방문이벤트", "※주의사항", 1000),
+       ("청담점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "울쎄라 100샷 1회", 190000),           # new raw: the name alone
+       ("광교점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 포텐자(RF)+크라이오+모델링팩 1회", 99000),
+       ("광교점", "10월 혜택", "10월 이벤트", "포텐자(RF)+크라이오+모델링팩 1회", 99000)]   # same item and price on another page
+_DROP = [("마곡점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 울쎄라피 프라임 100샷 1회", 239000),
+         ("구로점", "※항목별 1회씩 적용", "※항목별 1회씩 적용 국산 주름보톡스(1부위)", 5900),
+         ("청담점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 울쎄라 100샷 1회", 190000),
+         ("광교점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 포텐자(RF)+크라이오+모델링팩 1회", 99000)]
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    with open(os.path.join(tmp, "data2", "raw", "drevers.csv"), "w", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        wr.writerow(["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"])
+        for br, c, g, o, s in _DV:
+            wr.writerow(["닥터에버스", br, c, g, o, s, "", "0", "", "https://example.invalid/", "2026-10-19T06:00:00+09:00"])
+    with open(os.path.join(tmp, "data2", "issues.csv"), "w", newline="", encoding="utf-8-sig") as f:   # the previous build's
+        wr = csv.writer(f)
+        wr.writerow(["action", "reason", "brand", "branch", "category", "group", "option", "sale", "orig", "url"])
+        for br, c, o, s in _DROP:
+            wr.writerow(["제외", "안내 문구(가격 아님)", "닥터에버스", br, c, "첫방문이벤트", o, s, "", "https://example.invalid/"])
+    root, rawdir = clean.ROOT, clean.RAW
+    clean.ROOT, clean.RAW = tmp, os.path.join(tmp, "data2", "raw")
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            clean.main()
+    finally:
+        clean.ROOT, clean.RAW = root, rawdir
+    _rows_dv = list(csv.DictReader(open(os.path.join(tmp, "data2", "clean.csv"), encoding="utf-8")))
+    _iss_dv = list(csv.DictReader(open(os.path.join(tmp, "data2", "issues.csv"), encoding="utf-8-sig")))
+_got_dv = {(r["branch"], r["option"]): (r["name"], r["tags"], int(r["days"]), r["hours"], r["back"]) for r in _rows_dv}
+_want_dv = {("마곡점", "울쎄라피 프라임 100샷 1회"): ("울쎄라피 프라임 100샷 1회", "첫 방문", 0, "", "1"),
+            ("구로점", "국산 주름보톡스(1부위)"): ("국산 주름보톡스(1부위)", "첫 방문·1인 1회", 0, "", "1"),
+            ("강남점", "턱끝필러 1cc(리쥬비엘) 1회"): ("턱끝필러 1cc(리쥬비엘) 1회", "평일 낮", 14, "", ""),
+            ("천호점", "온다리프팅 5만줄 1회"): ("온다리프팅 5만줄 1회", "시간대", 0, "", ""),
+            ("청담점", "울쎄라 100샷 1회"): ("울쎄라 100샷 1회", "첫 방문", 0, "", "1"),
+            ("광교점", "포텐자(RF)+크라이오+모델링팩 1회"): ("포텐자(RF)+크라이오+모델링팩 1회", "", 0, "", "")}
+ok("닥터에버스 '※…' 칸(옛 raw는 이름 앞에 붙음) 아래 가격은 안내 문구가 아니라 상품: 칸 이름을 떼고, 조건은 칸·묶음 제목대로(첫 방문 · "
+   "'항목별 1회씩 적용' 1인 1회 · 화/수/목 평일 낮 · 해피아워 시간대), '카카오톡 플러스친구 혜택'은 조건 아님, 새 raw도 같음",
+   _got_dv == _want_dv, {k: (v, _got_dv.get(k)) for k, v in _want_dv.items() if _got_dv.get(k) != v} or sorted(set(_got_dv) - set(_want_dv)))
+ok("... 칸 이름만 있는 줄·뒤가 다시 안내 문구인 줄은 그대로 안내 문구로 뺌",
+   sorted(i["option"] for i in _iss_dv if i["reason"] == "안내 문구(가격 아님)") == ["※주의사항", "※카카오톡 플러스친구 혜택 ※1인 1회 적용, 중복 할인 불가"],
+   [(i["action"], i["option"]) for i in _iss_dv])
+ok("... 지난 빌드가 글자로 뺀 줄만 back=1(옛 raw·새 raw 모두), 같은 가격이 다른 페이지에 남아 있던 줄(광교점)과 처음 보는 줄은 back 없음",
+   sorted(r["branch"] for r in _rows_dv if r["back"] == "1") == ["구로점", "마곡점", "청담점"])
+# appdata.came_back → data-meta.json changes.added, meta.recl(recl_pairs), achg(group_moved)
+prev_cb = {"s": ["A", "강남점", "울쎄라 300샷", "", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+           "keys": [["X14", 0, "울쎄라 300샷"]]}
+prow_cb = [[0, 0, 2, 590000, 0, 0, 3, 4, 1, 5]]
+_r = lambda name, sale, tags="", back="1": dict(brand="A", branch="강남점", name=name, sale=str(sale), kind="일반", tags=tags, keys="X14", back=back,
+                                               addon="0", days="0", hours="")
+now_cb = [_r("울쎄라 300샷", 590000), _r("울쎄라 300샷 1회", 490000), _r("울쎄라 300샷 첫방문", 290000, "첫 방문"), _r("울쎄라 300샷 1회차", 390000, back="")]
+cb = appdata.came_back(prev_cb, prow_cb, now_cb)
+ok("came_back: back=1이고 지난 data.json에 없던 줄만(이미 있던 줄·back 없는 줄은 아님)",
+   cb == {("A", "강남점", "울쎄라 300샷 1회", 490000), ("A", "강남점", "울쎄라 300샷 첫방문", 290000)}, cb)
+ok("... 일반가로 돌아온 줄은 규칙이 id를 옮긴 것(meta.recl), 조건부로만 돌아오면 아님",
+   appdata.recl_pairs(prev_cb, prow_cb, now_cb[:2]) == {("X14", "A|강남점")}
+   and appdata.recl_pairs(prev_cb, prow_cb, [now_cb[0], now_cb[2]]) == set(), appdata.recl_pairs(prev_cb, prow_cb, now_cb[:2]))
+_mv = appdata.group_moved(prev_cb, prow_cb, now_cb[:3], [0, 0, 0])
+ok("... 자동 묶음: 일반가로 돌아온 가격은 '새로 생김'·'가격 변동'의 근거가 아님(조건부는 원래 묶음 가격이 아님)",
+   _mv == {("A|강남점", appdata.G.comp("울쎄라 300샷 1회"), 490000)}, _mv)
+_old = dated(mini([("강남점", "리쥬란 2cc", 200000, "일반")]), "2026-10-14")
+_new = dated(mini([("강남점", "리쥬란 2cc", 200000, "일반"), ("강남점", "쥬베룩 2cc", 250000, "일반"), ("강남점", "울쎄라 100샷 1회", 190000, "일반")]),
+             "2026-10-19")
+_c0, _c1 = datameta.changes(_old, _new, "v"), datameta.changes(_old, _new, "v", back={("A", "강남점", "울쎄라 100샷 1회", 190000)})
+ok("data-meta.json changes.added: 규칙이 되살린 줄(came_back)은 새 수집이어도 '새로 생김'이 아님, 진짜 새 줄은 그대로",
+   [x[2] for x in _c0["added"]] == ["울쎄라 100샷 1회", "쥬베룩 2cc"] and [x[2] for x in _c1["added"]] == ["쥬베룩 2cc"]
+   and _c1["counts"] == {"price": 0, "added": 1, "removed": 0, "new_chain": 0}, (_c0["added"], _c1["added"]))
 import homedata  # noqa: E402
 _hd = {"s": ["", "A", "강남점", "리쥬란 2cc", "평일 낮", "X24", "11:00-16:00", "리쥬란 힐러 2cc"], "keys": [["X24", "스킨부스터", "리쥬란 힐러 2cc"]],
        "meta": {"fam": [], "brands": [["A"]], "updated": "2026-10-16"}, "branches": [[0, 2, 0, None, None, 0, 0, 0, 0, 3]], "colDelta": [2], "groups": [],
