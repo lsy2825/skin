@@ -98,6 +98,11 @@
 | 6.0 약속 6 처리방침 화면 문구 | 해결(lsy2825/skin#40), 꺼진 동안 안 보임 | 단위·브라우저 | 설정 집계 칸·푸시 켜짐 줄·알림 설명을 C6 §4 확정 문장으로 | e2e push·metrics·clickable | 죠미 도움말·대사는 푸시를 켤 때. '오전 8시~오후 9시'는 C 문서에서 아직 ⏳ |
 | A 메모: 가격 알림 시트 최저가 기준 | 해결(#41) | 브라우저 | `alertSheet`가 `addAlert`와 같은 지역·특가로 읽음 | e2e alert_region(새) | watch '오른 경우' 규칙이 정해지면 문구(A5) |
 | '정보' 화면 Crawl-delay 문장 | 해결(#44) | 단위·브라우저 | `views.about` 리엔장 줄 문장 삭제(코드와 다름) | e2e clickable·ux_qa | 새 문장은 C(#45 뒤), 등록부 `rate` 글자 3~5곳 불일치도 C |
+| A 메모(A5 부탁 ①·③) 특가 끈 알림·끄기 재시도 | 해결(#62), 꺼진 채 | 단위·브라우저 | `Push.rulesOf`(sp === false → 이 기기만), `Push.cleanDel`·`addDel`·`delDone`, `pc:pushDel` | push.test, e2e push 9~11 | ②(expiring 뜻 맞추기)·알림 시트 문구는 A5 형식이 정해진 뒤 |
+| E9 처음 모은 체인 안내 | 해결(#67) | 단위·브라우저 | `Intel.newChains`·`newChainsNote`(brandFirst > achg.prev) | intel.test, e2e new_chains | 문장은 B 초안 — C가 정하면 바꿈(약속 6) |
+| C7 규격 낱말 뜻 | 해결(#66) | 단위·브라우저 | `Spec.notesFor`·`famWords`, 비교·담기 창 3줄 | spec.test, e2e spec_notes | 3줄에서 잘리는 규격 150개 — 줄 수는 디자인 결정 |
+| C1b 조건 배지 이름 | 해결(#68) | 단위·브라우저 | `Pricing.condLabel`, `condState` '시간 상관 없이' | pricing.test, e2e cond_badge | C #71 요일·시간 칸을 condState에 쓰기(B 다음 일), 시간 범위만 있는 줄의 태그는 C |
+| 6.0 약속 6 처리방침 화면 | 해결(#77), 꺼진 동안 안 보임 | 브라우저 | `#privacy`(C6 §3-1은 집계 켜짐, §3-2는 푸시 켜짐일 때만), 집계 칸·푸시 설명 §4 | e2e privacy(C 문서를 읽어 글자 대조) | 사용자 확인 2026-10-16(#69). 집계 켜기는 따로 승인 |
 
 ## C — 6.0 데이터(채팅 C, 2026-10-15)
 
