@@ -746,7 +746,8 @@
     [/1\s*인\s*(당\s*)?1\s*회/, "1인 1회"], [/선착순|한정\s*수량/, "선착순·수량 한정"], [/평일|주말|타임\s*세일|\d\s*시\s*(이전|전|까지)|프라임\s*타임/, "요일·시간 조건"],
     [/팁\s*(별도|미포함)|별도\s*(구매|비용)/, "추가 비용이 따로 있어요"]];
   function priceConds(i) {
-    const r = ROWS[i], n = S[r[2]], out = new Set();
+    // the name without a new device's '신규 런칭·입고·도입' (Spec.dropNewItem, C #99): that '신규' is not a first-visit price
+    const r = ROWS[i], n = Spec.dropNewItem(S[r[2]]), out = new Set();
     // the add-on line: with the build's add-on field the sheet says what the badge says (addonOf), the name only in older files
     for (const [rx, t] of COND_WORDS) if ((t === ADDON_COND && ADDON_COL) ? addonOf(r) : rx.test(n)) out.add(t);
     // '평일 낮' and '시간대' (해피아워·화수목·점심·평일 한정…): the same words as the name rule above (and no '한정', which eligOf drops)

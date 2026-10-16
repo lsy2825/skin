@@ -89,3 +89,11 @@ test("row: the data's add-on call (o.addon) wins over the name rule; without it 
   // the price-jump check still comes first
   assert.equal(c({ name: "실펌 팁", addon: true, price: 1000, median: 100000 }), "R");
 });
+
+test("classify: '신규 런칭' in a name is not a condition, '신규 고객' is (C #99)", () => {
+  const C = require("../app/domain/classify.js");
+  const c = (name) => C.row({ name, sess: 1, kind: 0, tags: [], keyLabel: "" }).c;
+  assert.equal(c("신규 고객 덴서티리프팅 300샷"), "E");
+  assert.notEqual(c("덴서티리프팅 알파팁 신규런칭 300샷"), "E");
+  assert.notEqual(c("NMN X 나드샷 신규 런칭 1회"), "E");
+});
