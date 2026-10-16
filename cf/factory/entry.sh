@@ -4,7 +4,7 @@
 #   ARTIFACTS_REMOTE    git address of the code on Cloudflare Artifacts
 #   ARTIFACTS_TOKEN     short-lived repo token (minted per run, write scope, expires on its own)
 #   REPORT_URL / RUN_ID / RUN_TOKEN   where to say how the run ended; RUN_TOKEN is good for this run only
-#   CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID   for `wrangler deploy` of the app (factory.sh hides it from the build)
+#   CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID   for `wrangler deploy` of the app (factory.sh unsets it before the build, but code in this box can still read it back from /proc — not a wall; docs/CLOUDFLARE_MIGRATION.md)
 #   PUBLIC_DEPLOY       "on" = also deploy the public Worker; anything else = admin host only (paused 2026-10-15)
 #   FACTORY_NO_PUSH=1   trial runs: commit inside the box, push and deploy nothing
 set -uo pipefail

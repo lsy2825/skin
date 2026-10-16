@@ -11,7 +11,7 @@
 | 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
 | 앱 주소 | 공개: Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev — **2026-10-15 판으로 고정**(공개 배포 멈춤, 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만 배포). 관리자: `yoonsiljang-admin`(Cloudflare Access 뒤)이 빌드마다 갱신 | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
 | 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
-| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
+| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(Environment `cloudflare`로 옮기면 그쪽, `docs/SECURITY_ARCHITECTURE.md` §5)(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
 | 로그인·DB(Supabase) | 꺼져 있음(`app/config.js` 비어 있음) | §7은 켠 뒤에만 해당 |
 
 ## 1. 등급과 첫 대응 시간
@@ -39,7 +39,7 @@
 
 | 새어 나간 것 | 할 일 |
 |---|---|
-| **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 GitHub 저장소 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`에 넣어요. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
+| **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 넣어요: Environment `cloudflare`로 옮겼다면 Settings → **Environments → cloudflare → Environment secrets**의 `CLOUDFLARE_API_TOKEN`(Repository secrets에 다시 만들지 않아요 — 이름이 같으면 Environment 값이 이기고, Repository secret이 생기면 합치기 전 실행의 Re-run을 막는 장치가 사라져요). 옮기기 전이면 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
 | **VAPID 비밀키(푸시)** | ① 새 키 쌍을 만들어요(`node cf/alerts/vapid-keygen.mjs`, A5 이후). ② `wrangler secret put`으로 Worker에 넣어요. ③ 공개키를 B에게 부탁 메모로 보내 `config.js`를 바꾸게 해요. 기존 구독은 새 키로 다시 구독해야 해요 |
 | **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
 | **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 새 번호의 해시로 `app/gate.js`의 `HASH`를 바꾸고 `app/sw.js`의 `VER`를 올려요(B 파일 → 부탁 메모, 급하면 §1 예외). **예전 번호는 공개 기록에 남아 있어요** |
@@ -64,6 +64,7 @@
    - 합친 PR 때문에 화면이 깨진 경우도 같아요. **그 PR을 올린 채팅**이 revert PR을 올려요(지시서 '충돌·사고').
 4. **확인:** 관리자 주소(공개 배포를 켠 뒤라면 공개 주소)에서 해당 시술·화면을 보고, `data2/report.md`와 검토 대기(`data2/review.csv`)를 확인해요. Access 설정 전이면 내 PC에서 `python -m http.server 8766 --directory app`으로 봐요.
 5. 원인이 수집 쪽(사이트 구조 변경 등)이면 C가 수집기·정리 규칙을 고쳐요. 데이터를 손으로 고치지 않아요(공통 규칙 9). 그 뒤 워크플로를 다시 켜고 수동 실행해요.
+6. **다시 돌리기는 Re-run 말고** Actions → weekly-prices → **Run workflow**(skip_scrape 켬, 수집 실행이 실패했으면 끔)로 해요. 공장 job의 Re-run은 첫 단계에서 거절되고(옛 코드·옛 입력), deploy job이 없는 옛 실행(배포 분리 전)은 Re-run하지 않아요(토큰이 공장 job에 가고 섞인 빌드가 push될 수 있음).
 
 ## 4. 가격 공장이 실패하거나 수집이 막혔을 때
 
