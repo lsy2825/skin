@@ -1,0 +1,314 @@
+name: cf-alerts
+
+# Price-alert Worker (cf/alerts, Cloudflare free plan). Two jobs: `test` (every run, no secret, no environment) → `deploy`
+# (main only: apply D1 migrations → deploy → the one-time key setup or the ALERTS_SECRET sync, below).
+# The app itself is deployed by weekly.yml; this never touches app/. The D1 database id is in wrangler.jsonc (the user
+# created yoonsiljang-alerts on 2026-10-16); were it ever set back to the placeholder, deploying is skipped with a notice.
+# Uses the SAME CLOUDFLARE_API_TOKEN as weekly.yml's app deploy, so there is one token to look
+# after: the deploy job names the GitHub Environment `cloudflare`, like weekly.yml's deploy job and cf-workers.yml (#82,
+# merged 2026-10-16) — once the owner moves the token into that Environment (Deployment branches: main only) and deletes
+# the repository secret, only jobs that name it get the token, and this one still does. With the D1 id set and no token
+# the deploy job is RED (a setup error, never a quiet green). Creating a Worker that does not exist yet needs the token's
+# Workers permission at Admin (Editor cannot create a new Worker), and `d1 migrations apply` needs D1 → Edit.
+# A GREEN run is NOT proof the Worker was deployed: on a branch other than main (or with a placeholder D1 id) this workflow
+# is green on purpose (tests only). Deployed = the steps 'Apply D1 migrations' and 'Deploy the Worker' ran (not skipped)
+# and the run shows no "tested, not deployed" notice.
+# wrangler is installed in a step WITHOUT the token (npm resolves and runs install scripts of its dependencies there); the
+# token only reaches the pinned copy that then runs migrations and the deploy (same pattern as cf-workers.yml), and the
+# key setup steps, where cf/alerts/vapid-keygen.mjs of this commit runs with it too (main only).
+# One token (docs/SECURITY_ARCHITECTURE.md token table): with Workers Admin + D1 Edit it can read the alerts D1 and redeploy
+# this Worker (and so read its secrets). Any code that runs in a job holding it can read it — an `unset` in a script is no
+# wall (/proc/<pid>/environ of the parent shell still has it) — so it belongs only in jobs that run no scraper, pip package
+# or build code. weekly.yml gives it only to its deploy job since the deploy split (#82); a Re-run of a weekly-prices run
+# that started before that still hands it to the factory (update) job, where the scrapers and pip packages could read it,
+# until the token lives only in the Environment `cloudflare`. weekly.yml's price_alerts job never gets it.
+#
+# Only main is deployed: "Run workflow" on any other branch only tests (a notice says so; setup_keys / sync_secret there are
+# a red run, nothing stored).
+#
+# ONE-TIME KEY SETUP — the Worker secrets VAPID_PRIVATE_JWK and ALERTS_SECRET. Actions → cf-alerts → Run workflow (branch
+# main), tick setup_keys. The repository is PUBLIC, and so are these logs: no secret is ever printed.
+#   0. First create the repository secret ALERTS_SECRET (Settings → Secrets and variables → Actions → New repository secret):
+#      a long random value made on your own computer, 32+ printable characters, no spaces (e.g. `openssl rand -base64 32`).
+#      notify.mjs (weekly.yml price_alerts) sends that same secret, so the two always match.
+#   1. After a successful deploy it refuses (red run, nothing stored) when this run did not deploy the Worker, when
+#      ALERTS_SECRET is missing or malformed, when wrangler.jsonc sets VAPID_PUBLIC_KEY (a new pair would not match it), or
+#      when the Worker already has VAPID_PRIVATE_JWK — tick replace_keys too for a deliberate rotation (every phone must
+#      subscribe again, and app/config.js pushPublicKey must change).
+#   2. ALERTS_SECRET goes to `wrangler secret put ALERTS_SECRET` through stdin (printf is a shell builtin: no argument, no
+#      file).
+#   3. `node cf/alerts/vapid-keygen.mjs --put` makes the P-256 pair on this runner, prints ::add-mask:: for the private JWK
+#      and its d before anything else, hands the JWK to `wrangler secret put VAPID_PRIVATE_JWK` through stdin and keeps it
+#      nowhere (no argument, no file, no log). Only the public key is written out.
+#   4. The public key goes to the step summary and a ::notice — chat B copies it into app/config.js pushPublicKey.
+#   5. GET /health must answer sending:true with that same key (the Worker derives the public key from the JWK, so
+#      wrangler.jsonc VAPID_PUBLIC_KEY stays empty).
+# ALERTS_SECRET ONLY (a leak, or a new value) — Run workflow (branch main), tick sync_secret: after the deploy it checks the
+# repository secret ALERTS_SECRET (as in 1.) and puts it into the Worker through stdin; the VAPID keys are not touched
+# (setup_keys refuses once the Worker has a key, and replace_keys would make every phone subscribe again). First change the
+# repository secret to the new value (docs/INCIDENT_RESPONSE_PLAN.md §2 ALERTS_SECRET row).
+# A red key run writes a Korean line to the run's summary (the last step) — the red error line under Annotations says which
+# step failed and why.
+on:
+  push:
+    branches: [main]
+    # notify.mjs imports the app's price code (app/domain/pricectx.js → pricing, match → search, classify, spec; stats) and
+    # reads data.json made by build2/appdata.py; its tests guard the app's alert-engine price basis and CAPITAL list in
+    # app/app.js and docs/ALERT_ENGINE_SPEC.md §3, and that every compare key (build2/taxonomy.py, build2/xkeys.py) and
+    # branch region (data2/branch_region_hint.json) in app/data.json matches cf/alerts/src/rules.js KEY_RE/REGIONS. The
+    # tests run whenever any of those change (not only when cf/ does).
+    paths: ["cf/alerts/**", ".github/workflows/cf-alerts.yml", "app/domain/**", "app/app.js", "docs/ALERT_ENGINE_SPEC.md",
+            "build2/appdata.py", "build2/taxonomy.py", "build2/xkeys.py", "data2/branch_region_hint.json"]
+  workflow_dispatch:
+    inputs:
+      setup_keys:
+        description: "one-time: after the deploy, store ALERTS_SECRET and a new VAPID key pair as Worker secrets (prints only the public key)"
+        type: boolean
+        default: false
+      replace_keys:
+        description: "with setup_keys: replace an existing VAPID key pair (every phone must subscribe again)"
+        type: boolean
+        default: false
+      sync_secret:
+        description: "after the deploy, put the repository secret ALERTS_SECRET into the Worker again (the VAPID keys stay)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cf-alerts
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"     # node:sqlite runs the SQL tests on the real schema
+      - name: Test (rules, SQL on the schema, send rules, factory side, console guard)
+        run: node --test cf/alerts/test/*.test.mjs
+      # the deploy job runs on main only; elsewhere say so — and a key run there is refused (red), nothing stored
+      - name: Only main deploys
+        if: github.ref != 'refs/heads/main'
+        env:
+          KEYS: ${{ github.event_name == 'workflow_dispatch' && (inputs.setup_keys || inputs.sync_secret) }}
+        run: |
+          if [ "$KEYS" = "true" ]; then
+            echo "::error title=cf-alerts key setup::키 설정(setup_keys)과 ALERTS_SECRET 넣기(sync_secret)는 main 브랜치에서만 해요. Run workflow의 Branch를 main으로 골라 다시 실행하세요. 아무것도 넣지 않았어요."
+            printf '### 알림 키 설정: 하지 않았어요\n\nmain 브랜치에서만 해요. Run workflow의 Branch를 main으로 골라 다시 실행하세요.\n' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "::notice title=cf-alerts::only main is deployed (this run is on $GITHUB_REF) — tested, not deployed"
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    # the Cloudflare token's home, as in weekly.yml's deploy job and cf-workers.yml (#82): after the owner
+    # moves CLOUDFLARE_API_TOKEN into the Environment `cloudflare` (main only) and deletes the repository secret, only jobs
+    # naming it get the token. Until then it changes nothing (a missing Environment is created without rules on first use).
+    environment: cloudflare
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"     # cf/alerts/vapid-keygen.mjs (key setup)
+      - name: Ready to deploy?
+        id: ready
+        env:
+          HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+          HAS_ACCOUNT: ${{ (secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID) != '' }}
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "::notice title=cf-alerts::only main is deployed (this run is on $GITHUB_REF) — tested, not deployed"; echo "go=false" >> "$GITHUB_OUTPUT"
+          elif grep -q '"REPLACE_WITH_D1_ID"' cf/alerts/wrangler.jsonc; then
+            echo "::notice title=cf-alerts::D1 database id not set in cf/alerts/wrangler.jsonc — tested, not deployed"; echo "go=false" >> "$GITHUB_OUTPUT"
+          elif [ "$HAS_TOKEN" != "true" ] || [ "$HAS_ACCOUNT" != "true" ]; then
+            # the D1 id is set, so this is a setup error, not a "not yet": red, so it never passes as a quiet green
+            echo "::error title=cf-alerts::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not available to this job — not deployed. Both are needed: the token (a secret) and the account id (a secret or a variable; the app deploy does not use it, so a working app deploy does not prove it is set), in the repository or in the GitHub Environment 'cloudflare' that this job names (environment: cloudflare). The token needs D1 → Edit (Apply D1 migrations) and Workers → Admin (Deploy the Worker)"
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            exit 1
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Install wrangler (and its install scripts) in a step WITHOUT the token; the steps below run that copy with it.
+      - name: Install wrangler (no secrets in this step)
+        if: steps.ready.outputs.go == 'true'
+        run: npm install --no-save --no-fund --no-audit --prefix "$RUNNER_TEMP/wr" wrangler@4.145.0
+      - name: Apply D1 migrations
+        if: steps.ready.outputs.go == 'true'
+        run: '"$RUNNER_TEMP/wr/node_modules/.bin/wrangler" d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+      - name: Deploy the Worker
+        if: steps.ready.outputs.go == 'true'
+        run: '"$RUNNER_TEMP/wr/node_modules/.bin/wrangler" deploy --config cf/alerts/wrangler.jsonc'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+
+      # ---- one-time key setup (Run workflow → setup_keys; see the header). Every step below is skipped on push runs.
+      - name: replace_keys alone does nothing
+        if: github.event_name == 'workflow_dispatch' && inputs.replace_keys && !inputs.setup_keys
+        run: echo "::notice title=cf-alerts key setup::replace_keys does nothing without setup_keys — no key was changed"
+      # shell only, no package code, no Cloudflare call. When a check fails nothing is stored.
+      - name: Key setup — check before storing anything
+        if: github.event_name == 'workflow_dispatch' && (inputs.setup_keys || inputs.sync_secret)
+        env:
+          GO: ${{ steps.ready.outputs.go }}
+          ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
+          SETUP: ${{ inputs.setup_keys }}
+          LC_ALL: C                  # [[:graph:]] = printable ASCII, no space
+        run: |
+          refuse() { echo "::error title=cf-alerts key setup::$1"; printf '### 알림 키 설정: 하지 않았어요\n\n%s\n' "$1" >> "$GITHUB_STEP_SUMMARY"; exit 1; }
+          if [ "$GO" != "true" ]; then
+            refuse "이번 실행에서 Worker를 배포하지 않아서 키를 넣지 않았어요(위의 'tested, not deployed' 알림을 보세요). main 브랜치에서 실행했는지, cf/alerts/wrangler.jsonc의 D1 id와 CLOUDFLARE_API_TOKEN·CLOUDFLARE_ACCOUNT_ID가 준비됐는지 확인한 뒤 다시 실행하세요."
+          fi
+          if [ -z "$ALERTS_SECRET" ]; then
+            refuse "저장소 비밀값 ALERTS_SECRET이 없어요. Settings → Secrets and variables → Actions → New repository secret에서 이름은 ALERTS_SECRET, 값은 내 컴퓨터에서 만든 긴 무작위 문자열(32자 이상, 띄어쓰기 없음. 예: openssl rand -base64 32)로 만든 뒤, 이 workflow를 setup_keys로 다시 실행하세요."
+          fi
+          if ! [[ $ALERTS_SECRET =~ ^[[:graph:]]{32,}$ ]]; then
+            refuse "저장소 비밀값 ALERTS_SECRET이 32자보다 짧거나, 띄어쓰기·줄바꿈·영문 밖 글자가 있어요. 같은 이름으로 다시 만든 뒤(32자 이상, 띄어쓰기 없음) 다시 실행하세요."
+          fi
+          if [ "$SETUP" = "true" ] && grep -Eq '"VAPID_PUBLIC_KEY": *"[^"]' cf/alerts/wrangler.jsonc; then
+            refuse "cf/alerts/wrangler.jsonc의 VAPID_PUBLIC_KEY가 비어 있지 않아요. 새 키와 맞지 않으니, 그 값을 비우는 PR을 먼저 합친 뒤 다시 실행하세요."
+          fi
+          echo "key setup: checks passed"
+      # secret NAMES only: wrangler secret list prints names and types, never values
+      - name: Key setup — does the Worker already have a VAPID key?
+        if: github.event_name == 'workflow_dispatch' && inputs.setup_keys
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          REPLACE: ${{ inputs.replace_keys }}
+        run: |
+          set -euo pipefail
+          out=$("$RUNNER_TEMP/wr/node_modules/.bin/wrangler" secret list --format json --config cf/alerts/wrangler.jsonc)
+          # the JSON list wrangler prints ([{"name": …, "type": …}]): the first line starting with '[' that parses as a list
+          names=$(OUT=$out python3 -I - <<'PY'
+          import json, os, sys
+          t, dec, pos = os.environ["OUT"], json.JSONDecoder(), 0
+          for line in t.splitlines(True):
+              s = line.lstrip()
+              if s.startswith("["):
+                  try:
+                      a = dec.raw_decode(t, pos + len(line) - len(s))[0]
+                  except ValueError:
+                      a = None
+                  if isinstance(a, list):
+                      print(" ".join(x["name"] for x in a if isinstance(x, dict) and isinstance(x.get("name"), str)))
+                      sys.exit(0)
+              pos += len(line)
+          print("::error title=cf-alerts key setup::could not read the secret names from wrangler secret list — nothing stored")
+          sys.exit(1)
+          PY
+          ) || { echo "$names"; exit 1; }
+          if [[ " $names " == *" VAPID_PRIVATE_JWK "* ]]; then
+            if [ "$REPLACE" != "true" ]; then
+              echo "::error title=cf-alerts key setup::이 Worker에는 이미 VAPID_PRIVATE_JWK가 있어요. 키를 바꾸면 모든 휴대폰이 알림을 다시 신청해야 해요. 정말 바꾸려면 setup_keys와 replace_keys를 함께 고르세요. ALERTS_SECRET만 바꾸려면 setup_keys 대신 sync_secret만 고르세요. 지금 공개키는 GET /health의 key에 있어요."
+              printf '### 알림 키 설정: 하지 않았어요\n\n이미 VAPID_PRIVATE_JWK가 있어요. 정말 바꾸려면 replace_keys도 고르세요. ALERTS_SECRET만 바꾸려면 sync_secret만 고르세요.\n' >> "$GITHUB_STEP_SUMMARY"
+              exit 1
+            fi
+            echo "::warning title=cf-alerts key setup::replace_keys: the VAPID key pair is replaced — every phone must subscribe again, and app/config.js pushPublicKey must change to the new public key"
+          fi
+      - name: Key setup — store ALERTS_SECRET (through stdin)
+        if: github.event_name == 'workflow_dispatch' && (inputs.setup_keys || inputs.sync_secret)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+          ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ALERTS_SECRET" | "$RUNNER_TEMP/wr/node_modules/.bin/wrangler" secret put ALERTS_SECRET --config cf/alerts/wrangler.jsonc
+      # the private key exists only inside this node process and its stdin pipe to wrangler (cf/alerts/vapid-keygen.mjs)
+      - name: Key setup — make the VAPID key pair here, store the private key (through stdin)
+        if: github.event_name == 'workflow_dispatch' && inputs.setup_keys
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"
+        run: node cf/alerts/vapid-keygen.mjs --put "$RUNNER_TEMP/wr/node_modules/.bin/wrangler" cf/alerts/wrangler.jsonc "$RUNNER_TEMP/vapid-public-key"
+      - name: Key setup — the public key (for app/config.js pushPublicKey)
+        id: pub
+        if: github.event_name == 'workflow_dispatch' && inputs.setup_keys
+        run: |
+          PUB=$(cat "$RUNNER_TEMP/vapid-public-key")
+          if ! [[ $PUB =~ ^[A-Za-z0-9_-]{87}$ ]]; then echo "::error title=cf-alerts key setup::the public key file does not hold an 87-character VAPID public key"; exit 1; fi
+          echo "key=$PUB" >> "$GITHUB_OUTPUT"
+          echo "::notice title=VAPID public key (app/config.js pushPublicKey)::$PUB"
+          {
+            echo "### 알림 공개키 (app/config.js pushPublicKey)"
+            echo
+            echo '```'
+            echo "$PUB"
+            echo '```'
+            echo
+            echo "비공개키와 ALERTS_SECRET은 Worker 비밀값으로만 들어갔어요(어디에도 출력·저장하지 않음). 이 공개키는 공개 정보예요."
+            echo "채팅 B가 app/config.js의 pushPublicKey에 그대로 넣어요. 나중에 다시 보려면 GET /health의 key를 보세요."
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Key setup — GET /health answers sending:true with this key
+        if: github.event_name == 'workflow_dispatch' && inputs.setup_keys
+        env:
+          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL || 'https://yoonsiljang-alerts.lsy2825.workers.dev' }}
+          PUB: ${{ steps.pub.outputs.key }}
+          LC_ALL: C
+        run: |
+          U=${ALERTS_URL%/}
+          if ! [[ $U =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)*$ ]]; then echo "::error title=cf-alerts key setup::ALERTS_URL is not an https address"; exit 1; fi
+          # check → prints why; 0 when /health is ok, sending:true and shows $PUB (the body is read as JSON, never printed)
+          check() {
+            local body
+            body=$(curl --silent --show-error --fail --proto '=https' --max-redirs 0 --max-time 20 --max-filesize 100000 "$U/health") || { echo "GET /health did not answer 200"; return 1; }
+            BODY=$body python3 -I - <<'PY'
+          import json, os, sys
+          try:
+              h = json.loads(os.environ["BODY"])
+          except Exception:
+              print("GET /health is not JSON"); sys.exit(1)
+          if not isinstance(h, dict) or h.get("ok") is not True:
+              print("GET /health is not ok"); sys.exit(1)
+          if h.get("sending") is not True:
+              print("GET /health says sending is not true"); sys.exit(1)
+          if h.get("key") != os.environ["PUB"]:
+              print("GET /health shows a different public key, or none"); sys.exit(1)
+          print("GET /health: sending true, the same public key")
+          PY
+          }
+          for i in 1 2 3 4 5 6; do
+            if why=$(check); then echo "key setup: $why"; exit 0; fi
+            sleep 10
+          done
+          echo "::error title=cf-alerts key setup::the keys were stored, but $why — open GET /health in a few minutes: if it shows sending:true and this public key, the setup is done (do not run it again); only if it still shows no key, run setup_keys with replace_keys"
+          exit 1
+      # sync_secret alone: nothing to check on /health (the secret is never shown) — the next price_alerts run tells
+      - name: ALERTS_SECRET sync — summary
+        if: github.event_name == 'workflow_dispatch' && inputs.sync_secret && !inputs.setup_keys
+        run: |
+          echo "::notice title=cf-alerts::ALERTS_SECRET was put into the Worker again (the VAPID keys were not touched)"
+          printf '### ALERTS_SECRET: Worker에 다시 넣었어요\n\nVAPID 키는 그대로예요. 다음 날 06시 뒤 weekly-prices 실행의 price_alerts에 401 경고가 없으면 끝이에요.\n' >> "$GITHUB_STEP_SUMMARY"
+      # any red key run: one Korean line in the summary (a failed step may have written nothing there)
+      - name: Key setup — say why in the summary (red run)
+        if: failure() && github.event_name == 'workflow_dispatch' && (inputs.setup_keys || inputs.sync_secret)
+        run: |
+          {
+            echo "### 알림 키 설정: 실패"
+            echo
+            echo "실행 화면 Annotations의 빨간 오류 줄(영어일 수 있어요)이 이유예요. 'GET /health answers sending:true' 단계만 빨갛다면,"
+            echo "몇 분 뒤 https://yoonsiljang-alerts.lsy2825.workers.dev/health 를 직접 열어 sending:true이고 key가 위 공개키와 같은지 보세요."
+            echo "같으면 키 설정은 끝났어요 — replace_keys로 다시 돌리지 않아요(모든 휴대폰이 다시 구독해야 해요)."
+          } >> "$GITHUB_STEP_SUMMARY"

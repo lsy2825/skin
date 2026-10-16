@@ -1,0 +1,58 @@
+// 가격 알림 (price alerts) Worker — Cloudflare FREE plan. Deployed by .github/workflows/cf-alerts.yml:
+//   wrangler@4.145.0 (installed in a step without the token) d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc
+//   wrangler@4.145.0 deploy --config cf/alerts/wrangler.jsonc
+// Secrets (set once in the dashboard or with `wrangler secret put`, never in this file):
+//   VAPID_PRIVATE_JWK   private key JWK from `node cf/alerts/vapid-keygen.mjs` (one line of JSON). The Worker derives the
+//                       VAPID public key from it (its x, y) and shows it at GET /health "key" — no change to this file is
+//                       needed after the key pair is made. That public key goes to app/config.js pushPublicKey (chat B);
+//                       the daily monitor (.github/scripts/health_check.py) warns when the two differ.
+//   ALERTS_SECRET       the factory's token (same value as the GitHub secret ALERTS_SECRET)
+// Not secret: VAPID_PUBLIC_KEY (optional, below), database_id, ALERTS_URL.
+{
+  "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
+  "name": "yoonsiljang-alerts",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-07",
+  "workers_dev": true,
+  // our console lines carry counts only. Invocation logs are off because they record each request URL, and
+  // PUT/DELETE URLs hold the subscription id (the phone's only key). CPU time stays visible under Metrics.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } },
+  // UTC: 23:00–11:50 = 08:00–20:50 KST, every 10 minutes = 78 runs a day; src/rules.js inWindow refuses 20:50 and is checked
+  // again before every push → 77 sending runs × SEND_LIMIT 40 = 3,080 pushes a day (src/worker.js has the full arithmetic).
+  // One cron trigger of the account's 5 on the free plan.
+  "triggers": { "crons": ["*/10 23,0-11 * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "yoonsiljang-alerts",
+      // the D1 database's id (not secret): the user created yoonsiljang-alerts in the dashboard (2026-10-16, location APAC).
+      // cf-alerts.yml would skip deploying if this were ever set back to the placeholder (REPLACE_WITH_D1_ID in quotes).
+      "database_id": "a70a7a62-d058-4efc-bf35-cb625d48ae93",
+      "migrations_dir": "migrations"
+    }
+  ],
+  // abuse guard for POST /v1/push/subscribe: 3 a minute per client per Cloudflare location. The key is the connecting IP,
+  // which lives only in this binding's in-memory counter (never in D1, never in logs). The daily budget NEW_PER_DAY in D1
+  // caps what gets past it. If the free plan refuses this binding, delete it: the code skips the check when SUBS_RL is missing.
+  "ratelimits": [{ "name": "SUBS_RL", "namespace_id": "2601", "simple": { "limit": 3, "period": 60 } }],
+  "vars": {
+    "ALLOWED_ORIGIN": "https://yoonsiljang.lsy2825.workers.dev",
+    "DEV_ORIGINS": "",
+    // optional. Empty = the public key of the secret VAPID_PRIVATE_JWK is used. When set it must be that same key (87
+    // characters, base64url), else nothing is sent and GET /health says "sending": false; a test also checks it equals
+    // app/config.js pushPublicKey when both are set. Keeping it empty means a new key pair needs only the new secret.
+    "VAPID_PUBLIC_KEY": "",
+    "VAPID_SUBJECT": "https://yoonsiljang.lsy2825.workers.dev",
+    // what the cron can serve with ~25% headroom (src/worker.js: 21,560 pushes a week ÷ ~2 per phone). Nothing evicts: at the
+    // cap new phones get 503 FULL and GET /health says capacity "full" (80% = "nearly_full"; the monitor warns)
+    "MAX_SUBS": "8000",
+    // new subscriptions per KST day (D1 Free allows 100,000 rows written a day; one new subscription ≈ 5)
+    "NEW_PER_DAY": "2000",
+    // (key, region) pairs the factory digests per run, and the most rows its snap table holds (+ one digest chunk of 500):
+    // ≤ 2 × (PAIR_CAP + 500) = 7,000 D1 rows written per full computation (the daily schedule run only — weekly.yml). The 100,000-row daily write limit is for the whole
+    // account, and over it every D1 query fails until 09:00 KST — so the list is cut here (pairs of phones that took a push
+    // first, then the pairs already computed, then the most-watched), a new pair waits for a free row, and GET /health says
+    // "pairs": "capped" (the monitor warns). A user decision (src/worker.js PAIR_CAP has the arithmetic)
+    "PAIR_CAP": "3000"
+  }
+}
