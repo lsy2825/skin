@@ -1536,7 +1536,7 @@
         const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·'특가 포함'을 끄고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
         if (s && Notification.permission === "granted") {
           kids.push(h("div", { class: "sub" }, `켜짐 — 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 보낸 조건 ${rules.length}개.`),
-            note ? h("div", { class: "tiny" }, note) : null);
+            privacyLink(), note ? h("div", { class: "tiny" }, note) : null);
           const off = h("button", { class: "btn sm gray", type: "button", style: "margin-top:8px", onclick: async () => {
             off.disabled = true; await pushUnsubscribe(); toast("가격 알림을 껐어요"); paint(); } }, "가격 알림 끄기");
           kids.push(off);
@@ -1546,8 +1546,9 @@
             : "가격 알림을 하나 이상 만들면 켤 수 있어요. 비교 화면의 ⋯ → 가격 알림에서 만들어요."),
             note ? h("div", { class: "tiny" }, note) : null);
         } else {
-          kids.push(h("div", { class: "sub" }, "알림을 켜면 알림 주소와 지켜볼 조건만 서버에 저장돼요. 이름·연락처·위치는 저장하지 않아요. 끄거나 가격 알림을 모두 지우면 서버에서도 바로 지워요. 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 누르기 전에는 권한을 묻지 않아요."),
-            note ? h("div", { class: "tiny" }, note) : null);
+          // the first three sentences: §4 '알림 설정 설명', then §4 '푸시 칸' (docs/legal/PRIVACY_POLICY_DRAFT.md, chat C — as written)
+          kids.push(h("div", { class: "sub" }, "알림을 켜면 알림 주소와 지켜볼 조건, 알림을 보낸 날 같은 전달 기록이 서버에 저장돼요. 이름·연락처·위치는 저장하지 않아요. 끄거나 가격 알림을 모두 지우면 서버에서도 지워요. 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 누르기 전에는 권한을 묻지 않아요."),
+            privacyLink(), note ? h("div", { class: "tiny" }, note) : null);
           const on = h("button", { class: "btn sm", type: "button", style: "margin-top:8px", onclick: async () => {
             on.disabled = true;
             let p = null;
@@ -2525,6 +2526,31 @@
       h("div", { class: "card" }, h("h3", {}, "정정·삭제 요청"),
         h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 근거 화면의 '신고'(가격 오류 신고)로 받아요. 지금은 GitHub 공개 글로 접수돼요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
         h("button", { class: "btn line block", type: "button", onclick: () => nav("about") }, "데이터 상태와 출처 자세히", icon("chevron-right", "sm"))));
+    return box;
+  };
+  // 개인정보 처리방침 (C6): the sentences are chat C's (docs/legal/PRIVACY_POLICY_DRAFT.md §3, promise 6) and go in as written —
+  // tests/e2e/privacy.js reads the doc and compares. Only the parts that are set up: §3-1 while 익명 집계 is (metrics.available,
+  // the same test as its 내 설정 row), §3-2 while 푸시 is (PUSH). §3-3 waits for the lawyer (§5-2). Neither set up (as
+  // shipped): no view, no way in — #privacy typed by hand is the 마이 screen (router).
+  const PRIVACY = [
+    { on: () => metrics.available, title: "윤실장이 어떻게 쓰이는지 세기", paras: [
+      "앱이 잘 쓰이는지 보려고 '앱을 열었다', '가격을 봤다', '담았다', '일주일 안에 다시 왔다' 같은 단계 이름을 보내요. 같은 단계는 하루 한 번만 보내도록 휴대폰(브라우저)에 기록을 남기지만, 서버는 누가 보냈는지 읽거나 남기지 않아요. 그래서 시크릿 창이나 다른 브라우저에서 쓸 때, 앱 데이터를 지운 뒤, 저장 공간이 막히거나 가득 찬 휴대폰, 휴대폰 시계를 바꾼 때에는 같은 날 다시 셀 수 있어요. 이름·계정·기기 번호·쿠키·검색어·가격·위치는 보내지 않고, 서버에는 날짜별·단계별 횟수만 남아요. 외부 분석 회사에는 보내지 않아요.",
+      "이 횟수는 누구의 것인지 알 수 없는 합계라서, 통계 목적으로 보관해요. 집계를 받는 서버는 한국 밖(주로 아시아·태평양 지역)의 Cloudflare 서버예요.",
+      "처음에는 켜져 있고, 마이 → 내 설정의 '익명 이용 집계 보내기'에서 끌 수 있어요. 끄면 이 브라우저에서는 보내지 않아요. 시크릿 창이나 다른 브라우저에서 쓰거나 앱 데이터를 지우면 다시 켜진 상태가 되니, 그때는 다시 꺼 주세요. 휴대폰에는 마지막으로 집계를 보낸 날짜와 그날 보낸 단계 이름만 남아요(하루 한 번만 보내고, 일주일 안에 다시 왔는지 휴대폰에서 판단하기 위해서예요)."] },
+    { on: () => PUSH, title: "관심 시술 가격 알림(푸시)", paras: [
+      "알림을 켜면 ① 브라우저가 만든 알림 주소와 ② 어떤 시술을 어떤 조건(목표가·지역)으로 지켜볼지, ③ 알림을 마지막으로 보낸 날 같은 전달 기록이 윤실장 서버에 저장돼요. 이름·연락처·위치·장바구니는 저장하지 않아요.",
+      "알림은 새 가격을 모은 뒤 보통 주 1회 묶어서 보내고, 행사 마감이 임박한 알림만 따로 보내요. 오전 8시~오후 9시 사이에만 보내요.",
+      "알림 자체에는 내용이 없어서, 알림을 전달하는 브라우저 회사(Google·Apple 등)는 어떤 시술인지 알 수 없어요. 알림 주소와 조건을 저장하는 서버는 한국 밖(주로 아시아·태평양 지역)의 Cloudflare 서버예요. 광고 알림은 보내지 않아요.",
+      "알림 주소와 조건은 알림에 쓰는 동안만 두고, 다음 때 바로 지워요: 앱에서 알림을 끌 때, 가격 알림을 모두 지웠을 때(되돌리기 시간이 지나면), 앱을 열었는데 휴대폰 알림 권한이 꺼져 있거나 알림 구독이 사라졌을 때, 알림 서비스가 이 휴대폰에 더는 전달할 수 없다고 알려 올 때, 전달이 계속 실패할 때."] },
+  ];
+  function privacyParts() { return PRIVACY.filter((x) => x.on()); }
+  // the way in under 내 설정's 집계 row and the 관심 tab's push panel (each drawn only while its part is set up)
+  function privacyLink() { return h("button", { class: "linkbtn", type: "button", onclick: () => nav("privacy") }, "처리방침 보기", icon("chevron-right", "xs")); }
+  if (privacyParts().length) views.privacy = () => {
+    const box = h("div", { class: "view" });
+    box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"),
+      h("h2", { class: "title" }, "개인정보 처리방침"),
+      ...privacyParts().map((x) => h("section", { class: "card policy" }, h("h3", {}, x.title), x.paras.map((t) => h("p", {}, t)))));
     return box;
   };
   views.about = () => {
@@ -4864,8 +4890,8 @@
         return h("li", {}, h("button", { class: "item", type: "button", onclick: () => { if (b != null) nav(`branch/${b}`); } },
           h("span", { class: "t row" }, b != null ? bdot(b) : null, brLabel(br) || "지점 미입력"), h("span", { class: "p num" }, `${v.n}회`),
           h("span", { class: "m" }, h("span", {}, `마지막 ${v.last}`), v.sum ? h("span", {}, `합계 ${won(v.sum)}`) : null, b == null ? h("span", {}, "앱 목록에 없는 곳") : null))); }))));
-    // more pages
-    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].filter(([v]) => v !== "ops" || adminHost()).map(([v, ic, l, s]) =>
+    // more pages ('개인정보 처리방침' only while 익명 집계 or 푸시 is set up — #privacy)
+    box.append(h("div", { class: "card flush menu" }, h("ul", { class: "list" }, [["saved", "heart", "관심·가격 알림", "관심 시술·지점, 알림, 최근 본 것"], ["guide", "book-open", "시술 사전", "헷갈리는 시술 종류와 차이를 쉽게"], ["table", "table", "전체 가격표", "모든 지점·모든 가격을 조건으로 찾기"], ["change", "trending-down", "가격 변동", "지난 수집보다 내리거나 오른 가격"], ["data", "database", "데이터 상태·앱 설치", "수집 상태, 저장된 가격, 홈 화면 설치, 비교 기준"], ["privacy", "lock", "개인정보 처리방침", privacyParts().map((x) => x.title).join(" · ")], ["ops", "shield", "운영 현황", "수집 상태·신선도·검토 큐·출처 정책"]].filter(([v]) => (v !== "ops" || adminHost()) && (v !== "privacy" || privacyParts().length)).map(([v, ic, l, s]) =>
       h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(v) }, h("span", { class: "t" }, h("span", { class: "mi" }, icon(ic, "sm")), h("span", {}, h("span", { style: "display:block" }, l), h("span", { class: "sub", style: "display:block;font-weight:500" }, s))), icon("chevron-right", "sm")))))));
     // ---- 내 설정 (what this phone shows) — separate from the data information below
     const theme = store.get("theme", "auto");
@@ -4901,12 +4927,14 @@
       // a server. Shown only when it is set up (config.js). Off = nothing new stored or sent from this phone; the day's one
       // record stays, so switching back on the same day does not count the phone twice.
       metrics.available ? h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "익명 이용 집계"), h("b", { class: "now" }, metricsOff() ? "지금: 보내지 않음" : "지금: 보냄")),
-        switchEl("익명 이용 집계 보내기 (단계 이름만 · 하루 한 번)", !metricsOff(), (v) => {
+        // the switch's name, the 'off' toast and the line under it: §4 '집계 칸' (docs/legal/PRIVACY_POLICY_DRAFT.md, chat C, 2026-10-16)
+        switchEl("익명 이용 집계 보내기 (단계 이름만 · 단계마다 하루 한 번)", !metricsOff(), (v) => {
           store.set("metricsOff", !v);
           const kept = store.get("metricsOff", null) === !v;   // false: storage blocked or full — memory only
           metricsOffMem = !v;
-          render(); toast(v ? "익명 이용 집계를 보내요" : kept ? "이제 이 기기에서는 집계를 보내지 않아요" : "이 화면을 닫기 전까지 집계를 보내지 않아요(설정을 저장하지 못했어요)"); }),
-        h("div", { class: "sub" }, "앱을 쓴 단계 이름만 하루 한 번 서버로 보내요(기기·위치·검색어는 보내지 않아요). 끄면 이 휴대폰에서는 보내지 않아요.")) : null,
+          render(); toast(v ? "익명 이용 집계를 보내요" : kept ? "이제 이 브라우저에서는 집계를 보내지 않아요" : "이 화면을 닫기 전까지 집계를 보내지 않아요(설정을 저장하지 못했어요)"); }),
+        h("div", { class: "sub" }, "앱을 쓴 단계 이름만, 단계마다 하루 한 번 서버로 보내요(기기·위치·검색어는 보내지 않아요). 끄면 이 브라우저에서는 보내지 않아요(앱 데이터를 지우면 다시 켜져요)."),
+        privacyLink()) : null,
       h("div", { class: "row", style: "margin-top:14px" }, h("button", { class: "btn sm gray", type: "button", onclick: () => window.lockApp && window.lockApp() }, "지금 잠그기"),
         h("button", { class: "btn sm gray", type: "button", onclick: () => { store.set("brands", null); store.set("special", true); location.reload(); } }, "설정 초기화"))));
     // ---- 데이터 안내 (information, not settings)
@@ -4961,8 +4989,8 @@
     if (!el) return;
     if (partial()) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }   // totals need every row
     const items = cur().items.filter(itemOk);
-    // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings and the map don't show it
-    if (["cart", "import", "compare", "concern", "me", "about", "ops", "map"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
+    // pages with their own bottom bar (compare's actions, the concern composer), the cart itself, settings (and the policy page) and the map don't show it
+    if (["cart", "import", "compare", "concern", "me", "about", "privacy", "ops", "map"].includes(view) || !items.length) { el.hidden = true; document.body.classList.remove("has-fcart"); return; }
     document.body.classList.add("has-fcart");
     const plan = cartPlan(items), best = plan.full[0];
     el.replaceChildren(icon("shopping-bag", "sm"), FLAGS.lowestHighlight ? `${items.length}개 · ${best ? `한 곳 ${won(best.total)}부터` : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`}`
@@ -4999,13 +5027,14 @@
     const [path, qs] = (location.hash.replace(/^#/, "") || "home").split("?");
     const [name, ...rest] = path.split("/");
     const params = new URLSearchParams(qs || "");
-    const view = views[name] ? name : name === "more" ? "me" : name === "favorites" ? "saved" : name === "data" ? "about" : "home";
+    // #privacy with neither 집계 nor 푸시 set up (no such view): the 마이 screen, where its way in would be
+    const view = views[name] ? name : name === "more" || name === "privacy" ? "me" : name === "favorites" ? "saved" : name === "data" ? "about" : "home";
     const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
     if (!same) { for (const c of [...openSheets]) c(true); pending = null; }
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
-      map: "explore", branch: "explore", about: "me", principles: "me", ops: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
+      map: "explore", branch: "explore", about: "me", principles: "me", privacy: "me", ops: "me", quick: "explore", terms: "explore", snap: "saved" }[view] ?? view;
     document.querySelectorAll("#tabs button").forEach((b) => { if (b.dataset.tab === tab) b.setAttribute("aria-current", "page"); else b.removeAttribute("aria-current"); });
     // one screen failing must not leave the previous one up or a blank page (round-2 D5): show what happened and a way back
     let node = partial() && view !== "home" ? fullWait() : null;
