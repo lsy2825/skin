@@ -15,6 +15,12 @@
   function isExpired(until, today) {
     return /^\d{4}-\d{2}-\d{2}$/.test(until || "") && until < today;
   }
+  // the chosen visit falls after the event's end date (until 'YYYY-MM-DD' < visit date): the price is still listed (pages often
+  // set one period for every price and the factory reads a new one each week) but may be over by then — '기간 확인 필요'
+  // (user decision 2026-10-16: mark it, do not drop it)
+  function periodOver(until, when) {
+    return !!(when && when.date) && /^\d{4}-\d{2}-\d{2}$/.test(until || "") && until < when.date;
+  }
 
   // ---- visit date/time conditions
   // Public holidays incl. substitute days, compiled 2026-10-13 (verify against the government notice; see docs).
@@ -299,6 +305,6 @@
   // days with only Saturday/Sunday bits (no weekday bit): the rows a weekday holiday leaves out only because of their days
   const weekendOnly = (days) => { const d = (days || 0) & ALL_DAYS; return d !== 0 && (d & 31) === 0; };
 
-  return { weekdayHoliday, weekendOnly, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
+  return { weekdayHoliday, weekendOnly, periodOver, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
     condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, cheapest, isOnce, withoutOnce, lineCost, compareClinics, limitOnce, matchPackage };
 });
