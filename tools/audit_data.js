@@ -24,7 +24,9 @@ function rowsOf(d) {
 
 function audit(d) {
   const S = d.s, rows = rowsOf(d), today = d.meta.updated;
-  const BR = d.branches.map((b, i) => ({ i, brand: d.meta.brands[b[0]], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], status: S[b[8]] }));
+  // meta.brands[i] is [name, color, how the prices were collected], as the app reads it (b[0]); before 2026-10-16 the whole
+  // entry went into the labels ('밴스,#2f9e44,지점별 … 신사')
+  const BR = d.branches.map((b, i) => ({ i, brand: (d.meta.brands[b[0]] || [])[0], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], status: S[b[8]] }));
   const bname = (b) => `${BR[b].brand} ${BR[b].name}`;
   const KEYS = d.keys.map(([id, cat, label], i) => ({ i, id, cat, label }));
   const KI = new Map(KEYS.map((k) => [k.id, k.i]));
