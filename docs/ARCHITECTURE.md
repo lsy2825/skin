@@ -191,21 +191,33 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
   p256dh/auth는 모양만 검사). **구독 행에 '마지막으로 쓴 날'은 없어요**(`touched_day` 열 삭제, 2026-10-15 결정). `PUT /v1/push/rules/{id}`에
   규칙 `[]`를 보내면 그 구독을 **삭제**해요(200 `{ok:true}`, 이후 그 id는 404 → 앱이 POST로 다시 구독). 지역은 시·도 17개 + `수도권`
   (= 서울·경기·인천, 앱 `CAPITAL`과 같음).
-- 공장: `weekly.yml`의 **별도 job `price_alerts`**(Factory job 다음, A7의 텔레그램 job `alert` 뒤, 새 러너, 읽기 권한만, 설치 없음, 공장이
-  실패해도 돎). **코드와 데이터를 다른 곳에서 가져오고, 코드는 고정해요**: 코드(`notify.mjs`와 그것이 읽는 `app/domain/*.js`)는 저장소 변수
+- 공장: `weekly.yml`의 **별도 job `price_alerts`**(새 러너, 읽기 권한만, 설치 없음, 공장이 실패해도 돎). 앱을 배포하는 job(들)이 끝난 뒤
+  돌아요(`needs`) — 배포가 따로 job이면 그 job도 `needs`에 있어야 하고 `tests/factory_worker.test.js`가 확인해요. 텔레그램 job `alert`과는
+  서로 기다리지 않아요. **코드와 데이터를 다른 곳에서 가져오고, 코드는 고정해요**: 코드(`notify.mjs`와 그것이 읽는 `app/domain/*.js`)는 저장소 변수
   **`ALERTS_CODE_SHA`가 가리키는 커밋**이에요 — 사람이 알림 코드를 리뷰·머지한 뒤 직접 올리는 값이고, 공장의 `GITHUB_TOKEN`(`contents:
   write`)은 main에 push할 수는 있어도 Actions 변수는 바꿀 수 없어요. `github.sha`는 쓰지 않아요(정기 실행의 `github.sha`는 main의 마지막
   커밋이라, 공장이 리뷰 없이 올린 코드가 다음 06시 실행에서 토큰과 만나게 돼요). 변수가 비었거나 40자리 커밋 id가 아니면 job은 건너뛰고
-  notice만 남겨요. 데이터(`app/data.json`)는 main에서 일반 파일 하나만 복사해 `JSON.parse`해요(실행하지 않음, 심볼릭 링크 거절). 핀이 main
-  보다 뒤처지면(알림 코드나 `app/domain`이 main에서 달라짐) notice가 알려 줘요 — 오래된 코드는 형태 가드가 막아 무해하고, 사람이 리뷰한 뒤 변수를
-  올리면 따라잡아요. 그래서 `node code/cf/alerts/notify.mjs $RUNNER_TEMP/data.json`이 도는 코드는 늘 리뷰된 커밋이에요. Worker에서 **지켜보는 (시술, 지역) 쌍**만 받아, 앱 코드(`pricectx.js`·
-  `pricing.js`·`stats.js`)로 최저가·지점 수·중간값·3일 안에 끝나는 최저가를 계산해 숫자만 돌려보내요(쌍마다 그 key의 마지막 재분류일
-  `meta.recl`도 함께). 가격 기준은 **앱 알림 엔진과 같은 병원 표시가**(`app.js` `watchNow`가 `r[14]`로 비교, 특가 포함이 기본,
-  `ALERT_ENGINE_SPEC.md` §3) — 화면의 부가세 설정이나 `vat_policy.json` 변경으로 숫자가 움직이지 않아요. 그래서 규칙의 `max`도 병원
-  표시가예요. data.json의 key나 지점 지역이 `rules.js`의 `KEY_RE`·`REGIONS`에 안 맞으면(분류 규칙이 바뀐 경우) `::warning`만 남기고
-  **아무것도 보내지 않아요**(finish가 없어 `/health`의 `finished`가 멈추고, 2일이 지나면 `"stale":true`가 되어 A7 감시(`health_check.py`)가 텔레그램
-  경고를 보내요 — `notify.mjs`는 조용히(초록) 끝나므로 이 `stale`이 알아내는 유일한 길). `ALERTS_URL`은 https만(localhost 제외).
-  공장 job은 알림 토큰을 모릅니다. 실패해도 가격 빌드는 성공(경고만).
+  notice만 남겨요. 핀이 main보다 뒤처지면(알림 코드나 `app/domain`이 main에서 달라짐) notice가 알려 줘요 — 이 비교에만 main을
+  `cf/alerts`·`app/domain` 두 폴더만 받아 써요. 오래된 코드는 형태 가드가 막아 무해하고, 사람이 리뷰한 뒤 변수를 올리면 따라잡아요. 그래서
+  `node code/cf/alerts/notify.mjs $RUNNER_TEMP/data.json`이 도는 코드는 늘 리뷰된 커밋이에요.
+  **데이터는 휴대폰이 보는 것이에요(2026-10-16):** 공개 앱 주소(저장소 변수 `PUBLIC_APP_URL`, 없으면 `https://yoonsiljang.lsy2825.workers.dev`)에서
+  `data-meta.json`과 `data.json`을 받아요(https만, 리다이렉트 안 따라감, HTTP 200만, 크기 상한 1MB·60MB, 한 번에 60초). `data.json`의 sha256이
+  `data-meta.json`의 `sha256`과 같을 때만 써요(앱 `sync.js`와 같은 검사, 30초 간격 3번까지). 아니면 `::warning`만 남기고 그날은 보내지 않아요.
+  받은 파일은 `JSON.parse`만 해요(실행하지 않음). 그래서 계산한 숫자는 늘 휴대폰이 볼 수 있는 숫자예요. 배포가 실패했거나 건너뛰었을 때,
+  공개 배포가 멈춘 동안(`PUBLIC_DEPLOY`가 `on`이 아님)에는 지금 내주는 판으로 계산해요(주간 소식 없음, expiring은 휴대폰이 보는 행 기준). finish는
+  날마다 가므로 `/health`가 stale이 되지 않아요. 한계(추측): Cloudflare가 압축을 요청하지 않은 curl에 원래 바이트를 준다고 보고 있어요.
+  아니면 sha가 안 맞아 경고만 나고 보내지 않아요(안전한 쪽).
+  Worker에서 **지켜보는 (시술, 지역) 쌍**만 받아(최대 `PAIR_CAP`, 아래 '표 채우기'; 그 data.json에 없는 key의 쌍은 버림 — 지어낸 key도
+  모양만 맞으면 구독할 수 있고, 계산할 숫자가 없는 쌍이 D1 쓰기만 늘리기 때문. 재분류로 없어졌던 key가 돌아오면 새 기준값이라 소식이 아니에요), 앱 코드(`pricectx.js`·`pricing.js`·`stats.js`)로 최저가·지점 수·중간값·3일 안에 끝나는
+  최저가를 계산해 숫자만 돌려보내요(쌍마다 그 key의 마지막 재분류일 `meta.recl`도 함께). 가격 기준은 **특가 포함 병원 표시가**예요(`r[3]`,
+  체험가·한정가·첫 방문·시간 조건 포함 — 앱 알림 엔진의 기본값과 같음, `ALERT_ENGINE_SPEC.md` §3). 앱에서 '특가 포함'을 끄고 만든 알림
+  (`a.sp === false`, `app.js` `watchNow`)은 이 기준과 **달라요** → B가 #62(f97f1b2)에서 서버 규칙으로 보내지 않고 휴대폰 안에서만 확인하게
+  바꿨어요(`app/domain/push.js` `rulesOf`, `a.sp === false` → local). 규칙에 `sp` 칸을 더하려면 지시서와 사용자 승인이 먼저예요(공통 규칙 6). 화면의 부가세 설정이나 `vat_policy.json` 변경으로 숫자가 움직이지 않아요.
+  그래서 규칙의 `max`도 병원 표시가예요. data.json의 key나 지점 지역이 `rules.js`의 `KEY_RE`·`REGIONS`에 안 맞으면(분류 규칙이 바뀐 경우)
+  `::warning`만 남기고 **아무것도 보내지 않아요**(finish가 없어 `/health`의 `finished`가 멈추고, 2일이 지나면 `"stale":true`가 되어 A7
+  감시(`health_check.py`)가 텔레그램 경고를 보내요 — `notify.mjs`는 조용히(초록) 끝나므로 이 `stale`이 알아내는 유일한 길). `ALERTS_URL`은
+  https만(localhost 제외), 없으면 `https://yoonsiljang-alerts.lsy2825.workers.dev`. `ALERTS_SECRET`이 없으면 `::warning`만 남기고 보내지
+  않아요. 알림 토큰(`ALERTS_SECRET`)은 이 job에만 있어요. 실패해도 가격 빌드는 성공(경고만).
 - 소식 판단은 D1 SQL(`cf/alerts/src/sql.js`): `snap` 표에 기준값(m·n·med, 수집일 bu)과 아직 반영 안 된 새 값(p=1, pm·pn·pmed)을 따로
   둬요. digest는 새 값만 쓰고, finish가 한 묶음 안에서 구독자를 표시한 **뒤에** 새 값을 기준값으로 올려요 → finish·뒷 묶음이 실패해도 소식이
   사라지지 않고, 같은 데이터를 다시 돌려도 소식이 두 번 생기지 않아요. 통계는 종료일로 거르지 않고(발행된 data.json에서만), **같은 수집
@@ -218,49 +230,177 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
   날짜 g)는 앱의 `checkAlerts`처럼 소식 없이 기준값만 다시 잡아요 — **더 새로운 날짜일 때만**(`excluded.g > snap.g`; `appdata.py`는 최근 12개 재분류일만 남기므로
   목록에서 항목이 빠져 g가 ''로 돌아가도 아무것도 다시 잡지 않고 저장된 g도 낮아지지 않아요 → 그 수집의 진짜 가격 변화는 소식). 빈틈: 같은
   수집일의 두 번째 재분류는 같은 g라 가격 변화로 읽힘.
-  watch = 중간값 ±5% 또는 새 최저가, newmatch = 지점 수 증가, target = 최저가가 max를 위에서 아래로 넘는 순간. expiring만 매일 종료일(3일
-  안, KST)로 계산하고 **(쌍, 종료일)마다** 한 번만 알려요(`subs.exp_sent`에 알린 목록, 지난 종료일은 finish가 정리) — 늦은 종료일을 먼저
+  watch = 중간값 ±5% 또는 새 최저가, newmatch = 지점 수 증가, target = 최저가가 max를 위에서 아래로 넘는 순간.
+  **expiring의 뜻(Worker 기준 한 줄):** "(시술 key, 지역)에서 3일 안(KST 오늘~3일 뒤)에 끝나는 가장 싼 가격이 max 이하이고, 끝나지 않고 남는
+  가격은 모두 max보다 비쌀 때(max가 없으면 그 끝나는 가격보다 비쌀 때) — 그 종료일마다 한 번"(`src/digest.js` `pairStats`의 e·s·u, `sql.js`
+  `X_PAIRS`). 지점 하나의 상품을 보는 뜻이 아니어서, 앱의 지점 상품 '이벤트 종료 3일 전' 알림과 뜻이 달라요. **지시서 약속 1에 같은 한 줄을
+  넣자고 제안했어요(사용자 승인 필요).** 그때까지 그 지점 상품 알림은 서버 규칙으로 보내지 않고 휴대폰 안에서만 확인하도록 B에게 부탁했어요
+  (아직 남음: main의 `push.js`는 `a.row && a.type === "expiring"`을 아직 서버 규칙으로 보내요).
+  expiring만 매일 종료일(3일 안, KST)로 계산하고 **(쌍, 종료일)마다** 한 번만 알려요(`subs.exp_sent`에 알린 목록, 지난 종료일은 finish가 정리) — 늦은 종료일을 먼저
   알렸어도 새로 생긴 더 이른 종료일은 알려요. 규칙은 정해진 순서로 저장하고, 규칙이 **빠졌을 때만** 대기 중 표시(pend_w·pend_x)를 지워요
   (순서만 바뀌거나 규칙을 더하면 그대로). 하루 종일 못 보낸 expiring 표시(`pend_x`)는 다음 finish에서 그 폰에 끝나는 가격이 더는 없으면
   지워져요(`CLEAR_STALE_X`: 행사가 연장됐는데 어제 표시가 남아 '곧 종료'가 나가는 일 없음). finish의 날짜는 **Worker 자기 시계**(KST)로 정하고, 공장이 보낸 today·run은 그 시계와 하루 안의
   달력 날짜일 때만 받아요(아니면 400, 아무것도 안 지움).
 - 발송: cron `*/10 23,0-11 * * *`(UTC = 08:00–20:50 KST, 보내는 실행 77번/일). 시작 시각은 예정 시각이 아니라 **실제 시각**(늦게 돈 cron도
   21시 뒤에 보내지 않음) + **푸시 하나마다** 시간 확인(20:45 지나면 멈춤), TTL = 그 순간부터 21시까지 − 60초. watch·newmatch·target은
-  기기당 7일에 1번으로 묶고, expiring은 종료일마다 1번·하루 1번(주간 묶음과 겹치면 한 번에). 꺼내는 순서(세 번의 claim): **실패한 적 없는
+  기기당 7일에 1번으로 묶어요. expiring 소식이 실린 푸시는 기기당 **하루 1번까지**예요(종료일마다 1번; 주간 묶음에 실려 간 날은 따로 가지 않음,
+  `last_x`). 그래서 보통 하루 1번이고, 하루 2번은 공장 finish가 그날 첫 푸시보다 늦게(또는 두 번) 와서 주간 묶음과 expiring이 따로 갈 때뿐이에요.
+  보내기 전에 키를 확인해요: 비밀값으로 서명 한 번 + 그 공개키로 검증(`push.js vapidKey`). 실패하면 아무 행도 잡지 않고 끝나요(`skipped:"keys"`).
+  행마다 예외를 잡아 그 행만 그대로 풀어 줘요. **결과는 보내는 도중에 써요(2026-10-16):** 병렬 묶음(6건)마다 그 묶음의 결과(보냄·삭제·실패·
+  풀어 줌·미뤄 둠)를 D1 batch 하나로 쓰고, D1이 거절하면 짧게 쉬며 3번까지 다시 해요(D1은 쓰기를 스스로 다시 하지 않아요). `SENT`·`RETRY`·`RELEASE`·`HOLD`는
+  **이 실행의 claim을 아직 가진 행만** 바꾸므로, 커밋은 됐는데 응답만 잃은 batch를 다시 써도 실패 수가 두 번 오르지 않아요. 3번 다 안 되면 그
+  실행은 더 보내지 않고(`stalled`) 마지막에 한 번 더 써요. 남는 빈틈: 그 마지막 시도도 실패하거나(D1이 실행 내내 죽음) Worker가 묶음 도중에
+  끊기면, 그 묶음(최대 6건)의 기록이 없어 15분 뒤 claim이 풀리고 같은 폰에 약 20분 뒤 같은 푸시가 다시 가요(알림창의 같은 `tag`라 첫 알림이
+  남아 있으면 소리 없이 덮어씀).
+  꺼내는 순서(세 번의 claim): **실패한 적 없는
   기기의 expiring 마감 가까운 것 먼저**, 그다음 실패한 적 없는 기기의 주간 묶음(오래 기다린 기기 먼저), 마지막으로 **실패가 쌓인 기기는
   실행당 10칸까지만**(`FAIL_SLOTS`) — 그 안에서도 **푸시를 받은 적 있는 기기(진짜 기기의 한 번 실패)가 받은 적 없는 구독(새 구독·심은 구독)보다 먼저**,
   그다음 실패 적은 순(색인 `subs_fail`) → 계속 실패하는 구독이 큐 앞을 차지할 수 없고, 심기가 계속돼도 진짜 기기의 재시도는 매일 일어나요. 실행당 최대 40건 → 하루 3,080건, 주
   21,560건 → `MAX_SUBS` 8,000(기기당 주 ~2건, 여유 25%). 리다이렉트는 따라가지 않아요. 15분 넘은 claim은 다음 실행이 지워요.
+  **미뤄 두기(2026-10-16 3차 검토):** 푸시 서비스 쪽 이유로 못 보낸 행(아래의 '설정 고장 보호'로 봐준 행, 2xx가 없던 서비스의 5xx·3xx·시간 초과,
+  429)은 큐 앞으로 그냥 풀어 주지 않고 **미뤄 둬요**: claim에 '다시 꺼내도 되는 분'을 음수로 적어(`HOLD`) 그때까지 어떤 claim도 그 행을 잡지
+  않아요(`HOLD_MINUTES` 180분, 429는 `SLOW_HOLD_MINUTES` 30분; 지나면 `RESET_STALE`이 지움). 그냥 풀어 주면 '오래 기다린 기기 먼저' 순서 때문에
+  그 행들이 실행마다 다시 맨 앞을 차지해, 40개(`SEND_LIMIT`)가 넘으면 다른 푸시 서비스의 기기가 보호 기간(7일) 내내 하나도 못 받았어요.
+  이제 다음 실행이 다른 기기를 꺼내요(시험: '거절·장애·429 서비스의 행이 맨 앞에 45개 있어도 FCM 기기는 다음 실행에 받음').
 - 푸시 서비스 답: 404·410 = **즉시 삭제**. 5xx·3xx·네트워크(시간 초과) = **푸시 서비스 쪽 문제**: 같은 실행에서 그 서비스(origin)가 다른
-  푸시를 2xx로 받아 줬을 때만 그 구독의 실패로 세고(10번 연속이면 삭제), 아니면 실패로 세지 않고 풀어 줘요(`held`) — 서비스 장애 한 시간이
+  푸시를 2xx로 받아 줬을 때만 그 구독의 실패로 세고(10번 연속이면 삭제), 아니면 실패로 세지 않고 3시간 미뤄 둬요(`held`) — 서비스 장애 한 시간이
   구독을 지우지 않아요. 400 등 4xx = 그 구독의 실패(바로 셈). **401·403 = 그 구독의 실패**(3번 연속이면 삭제; 다른 키로 만든 구독이나 키를
   바꾼 뒤 남은 구독). **한 번도 푸시를 받은 적 없는 구독은 첫 401·403에 삭제**(키가 안 맞으면 영영 낫지 않음), 그 밖의 실패는 3번이면
-  삭제(`NEVER_DROP`: 심은 구독은 몇 번만 시도). 실행 전체를 멈추는 것은 **예전에 우리 푸시를 받은 기기 3대 이상이 실패 없이 있다가 401·403을
-  내고 이번 실행에 성공이 하나도 없을 때**뿐이고, 그때는 아무도 지우지 않아요 → 남이 심은 403·실패 구독으로 모두의 푸시를 막을 수 없어요(남는
-  비용: 새 구독은 모두 첫 시도 한 번을 받으므로, 하루 새 구독 예산 2,000개만큼의 첫 시도는 쓰임 — 그날 실패한 진짜 기기의 재시도는 뒤쪽 실행으로 밀림).
+  삭제(`NEVER_DROP`: 심은 구독은 몇 번만 시도).
+  **우리 설정이 고장 났을 때의 보호(푸시 서비스마다, 2026-10-16 다시 고침):** 401·403은 실행이 끝난 뒤 한꺼번에 판단해요(거절이 와도 그 서비스로
+  보내기를 멈추지 않아요 — 같은 실행의 뒤쪽 2xx가 판단 근거라서). 어떤 푸시 서비스(origin)에서 **이 키로 우리 푸시를 받은 적 있는 기기가 한 대라도**
+  401·403을 내고, 그 서비스가 그 실행에서 2xx를 하나도 주지 않았으면 '우리 설정 고장일 수 있음'으로 봐요. 기준은 **한 실행·한 서비스에서 그런
+  기기가 1대 이상**이에요(실행당 몇 대인지 세지 않음 → 소식 있는 기기가 1~2대뿐인 조용한 날에도 아무도 안 지워져요). 그때 그 서비스에서 거절된
+  받은 적 있는 기기는 그대로 **3시간 미뤄 두고**(실패 수 그대로, 위 '미뤄 두기'), 받은 적 없는 구독은 실패 1번만 세고 남겨요. 그날을 `stat`의
+  `refusing`에 적어 `/health`가 그날과 다음 날 `"refusing":true`를 보여요(감시가 날마다 경고). 봐준 기기가 미뤄져 있어 대부분의 실행은 그 기기를
+  시도하지 않으므로, **이어지는 거절 구간이 있는 서비스**에서는 그 실행에 받은 적 있는 기기가 없어도 받은 적 없는 구독을 지우지 않아요(실패 1번만).
+  **기한이 있어요:** 거절 구간의 첫날(`stat` `rs:<키 꼬리표> <origin>`)부터 `REFUSING_GRACE_DAYS`(7일, 사용자 결정) 뒤에는 평소처럼 세어요
+  (받은 적 있는 기기 3번, 받은 적 없는 구독 첫 거절에 삭제) — 처리방침의 '전달이 계속 실패하면 지움'과 맞추려고. 구간은 그 서비스의 다음 2xx로
+  끝나고, **2xx 없이 끝난 구간도 끝나요**: 구간의 마지막 날(`stat` `rl:<키 꼬리표> <origin>`)이 어제보다 오래됐으면(봐준 기기가 규칙을 바꾸거나
+  지워져 더는 차례가 오지 않음) 다음 거절은 새 구간이라 그날부터 7일을 다시 받아요(3차 검토: 예전에는 낡은 `rs:`가 남아 몇 주 뒤 진짜 고장에서
+  유예 0일로 30분 만에 지워질 수 있었어요). 받은 적 있는 기기의 거절만 구간을 시작·연장해요(심은 구독은 못 함). **키를 바꾼 뒤의 옛 구독:** 그
+  서비스에서 지금 키가 처음 2xx를 받은 날(`stat` `ok:<키 꼬리표> <origin>`)보다 마지막 푸시가 오래된 행은 옛 키로 받은 구독이라, 그 거절은 그
+  행의 문제로 세요(보호 근거도 아님) → 다시 구독한 기기가 옛 행 때문에 막히지 않고, 옛 행은 3번 거절 뒤 지워져요. 지금 키가 그 서비스에서 아직
+  한 번도 통하지 않았으면(키를 바꾼 직후, 다시 구독한 기기가 없음) 옛 행도 보호를 받다가 7일 뒤 지워져요. `ok:`는 **키를 바꿔도 지우지 않아요**
+  (서비스·키마다 한 줄): 잘못된 키로 한 번 돈 실행이 맞는 키의 날짜를 지우면, 되돌린 뒤 그 키로 받던 기기가 모두 '옛 키 구독'으로 보여 다음 고장에서
+  보호 없이 지워졌어요(3차 검토). 다른 키의 `rs:`·`rl:`만 지워요. `ok:`는 그 서비스의 첫 2xx `SENT`와 **같은 결과 batch**에 써요(마지막 batch가
+  실패해도 날짜가 빠지지 않음). 다른 푸시 서비스는 계속 보내요. 남이 심은 구독은 푸시를 받은 적이 없어 보호를 켤 수도, 보호를 받을 수도 없어요.
+  비용: 고장이 이어지는 동안 그 서비스의 봐준 행이 3시간마다 다시 시도돼요. 경계(문서로만): 행에는 마지막 푸시의 **날짜**만 있어서, 지금 키가 그
+  서비스에서 처음 통한 날과 같은 날에 마지막으로 받은 행은 '지금 키로 받은 행'으로 봐요 — 키를 바꾼 날 새 키가 처음 통하기 전에 옛 키로 받은 행도
+  그래서, 같은 실행에 2xx가 없으면 보호를 받아요(7일 뒤 지워짐).
+  남는 비용: **규칙에 소식이 생긴** 새 구독만 첫 시도를 받아요. 발송 칸을 쓰게 하려는 사람이 소식이 잘 생기는 규칙을 고르면, 하루 새 구독
+  예산 2,000개만큼의 첫 시도가 쓰일 수 있어요(그날 실패한 진짜 기기의 재시도는 뒤쪽 실행으로 밀림). 소식이 안 생기는 규칙의 구독은 시도를 받지
+  않아요 — 아래 '표 채우기'.
 - 남용 방지: 클라이언트별 60초 3번(Rate Limiting 바인딩, 키 = IPv4 주소 또는 IPv6 /64, 메모리 카운터에만 — 한 주소만으로도 하루 4,320번이
   가능하므로 하루 예산이 진짜 상한), 하루 새 구독 2,000개(다 쓰면 429; 오늘 날짜는 Worker 시계로 같은 D1 batch의 `day` 줄에 적고 `subs_ins`
   트리거가 `new:날짜` 카운터를 올려요 — 구독 행에 날짜 없음), 전체 8,000개. **꽉 차면 503 FULL이고 아무도 밀어내지 않아요**. 자세히
   `SECURITY_ARCHITECTURE.md` §4.
 - **보관·삭제(2026-10-15 사용자 결정): 보관 기간은 없어요.** 구독은 ① `DELETE /v1/push/subscribe/{id}` ② 규칙 `[]` PUT ③ 푸시 서비스 404·410
-  ④ 연속 실패 규칙(위)일 때만 즉시 지워져요. 365일 정리(`PRUNE_SUBS`)·'꽉 차면 쉬는 구독 밀어내기'(`EVICT_IDLE`, `subs_idle`)·`touched_day`는
-  없앴어요(데이터 최소화). **트레이드오프:** 밀어내기가 없으니 며칠에 걸친 심기가 표를 채울 수 있어요 — 답은 자동 보관 규칙이 아니라 용량 알림
-  (`/health`의 `capacity`, 아래)과 사람이 하는 정리 또는 `MAX_SUBS` 상향이에요. 시크릿은 `VAPID_PRIVATE_JWK`·`ALERTS_SECRET`(Worker),
-  `ALERTS_SECRET`(GitHub). 배포 토큰은 앱과 같은 `CLOUDFLARE_API_TOKEN`(Workers → Admin + D1 → Edit 권한이 있어야 새 Worker를 만들고
-  마이그레이션을 적용할 수 있어요). **받아들인 결과:** 공장(`update`) job도 같은 토큰을 받으므로 이 권한으로는 알림 D1을 읽고 알림 Worker를 다시
-  배포할 수 있어요 — 공장 job과 알림 저장소를 가르는 것은 `tools/factory.sh`가 수집기 실행 전에 토큰을 환경에서 빼는 한 줄뿐(더 좁히려면 알림용
-  토큰을 따로; `SECURITY_ARCHITECTURE.md` 토큰 표). `cf-alerts.yml`은 wrangler를 토큰 없는 단계에서 설치해요.
-- 상태: `GET /health` → 200 `{"ok":true,"window","sending","finished":"YYYY-MM-DD"|null,"stale":bool,"capacity":"ok"|"nearly_full"|"full"}`, D1이
-  안 되면 503 `{"ok":false}`(A7 감시는 200 + `ok:true`만 '살아 있음'으로 셈). `finished` = 공장이 마지막으로 finish한 KST 날짜(Worker 시계, 없으면
-  null), `stale` = 그것이 2일보다 오래됨 → 공장 → Worker 연결(토큰·주소·코드·data.json 형식)이 끊긴 것. `capacity` = `stat` 카운터로 계산
-  (`MAX_SUBS`의 80% 이상 `nearly_full`, 상한 `full`, 숫자는 본문에 없음). `health_check.py`가 `capacity`가 `ok`가 아니거나 `stale`이 true이면
-  텔레그램 경고 한 줄(필드 없음·`ok`는 경고 없음). 감시가 이 Worker를 보려면 GitHub 변수 `MONITOR_WORKER_URLS`에 주소가 있어야 해요.
+  ④ 연속 실패 규칙(위 — 단 '우리 설정 고장'일 수 있는 푸시 서비스에서는 7일(`REFUSING_GRACE_DAYS`)까지 아무도 지우지 않음)일 때만 즉시 지워져요. 365일 정리(`PRUNE_SUBS`)·
+  '꽉 차면 쉬는 구독 밀어내기'(`EVICT_IDLE`, `subs_idle`)·`touched_day`는 없앴어요(데이터 최소화).
+  **트레이드오프(표 채우기, 2026-10-16 고쳐 씀):** 표를 채우는 데 브라우저는 필요 없어요. 허용된 푸시 호스트의 지어낸 주소(예:
+  `fcm.googleapis.com/fcm/send/<아무 글자>`; p256dh·auth는 모양만 검사)와 소식이 생기지 않을 규칙(예: 아주 낮은 `max`의 target)을 담은 HTTP
+  POST 한 번이면 행 하나가 생겨요. 그런 행은 푸시 시도를 한 번도 받지 않아 실패도 쌓이지 않으니 **영영 지워지지 않아요**. IP 하나로도 하루
+  예산(`NEW_PER_DAY` 2,000)을 다 쓸 수 있어 `MAX_SUBS`(8,000)는 **4일**이면 차요. 행에 날짜가 없어 '오래된 것부터 정리'도 할 수 없어요. 답은
+  용량 알림(`/health`의 `capacity`, 아래)과 사람이 하는 정리 또는 `MAX_SUBS` 상향이에요. 정리 쿼리와 그 부작용(아직 소식을 못 받은 진짜
+  구독도 지워짐)은 `SECURITY_ARCHITECTURE.md` §4 '남은 위험'에 있어요. `NEW_PER_DAY`를 낮추면 채우는 데 더 오래 걸려요(예: 300이면 약 27일,
+  그 전에 `nearly_full` 경고) — 대신 진짜 새 구독이 몰리는 날 더 일찍 429가 나요. **이 사실로 사용자에게 위험 수용을 다시 받아야 해요.**
+  **D1 하루 쓰기 한도(2026-10-16 검토 발견, 3차 검토에서 다시 셈):** D1 무료 한도(하루 100,000줄, 00:00 UTC = 09:00 KST에 초기화)는 **계정 전체**
+  (`cf/metrics` 포함)이고, 넘으면 09:00 KST까지 **모든 D1 쿼리가 실패**해 finish·발송·구독이 다 멈춰요(2026-09-01 Cloudflare 변경). D1은 문장이
+  쓴 행에 그 문장이 바꾼 색인 항목마다 한 줄을 더 세요. 문장마다 쓰는 줄은 로컬 D1(wrangler 4.145.0 workerd, 2026-10-16)에서 재서 셌어요(운영도
+  같다고 봄 — 추측). 쌍은 구독이 정하는 것이라 최대 8,000 × 20 = 160,000쌍이고, 구독은 브라우저 없이 POST 한 번이에요. 그래서 ① Worker의
+  `watched`가 **`PAIR_CAP`(3,000쌍, 사용자 결정, `wrangler.jsonc` vars)에서 목록을 자르고** — 순서는 우리 푸시를 받은 기기가 보는 쌍 → **이미
+  계산 중인 쌍(snap에 있음)** → 많은 기기가 보는 쌍 → (key, 지역): 새 쌍이 아무리 많아도 어제의 목록을 밀어내지 못해요 — ② 새 쌍은 snap에
+  `PAIR_CAP`보다 적은 행이 있을 때만 들어가요(digest가 문장마다 한 번 세므로 한 묶음 500개까지 넘을 수 있음: snap ≤ `PAIR_CAP` + 500). finish가
+  지운 행은 **다음 날에야** 빈 자리라, 하루에 목록을 통째로 넣고 빼는 일이 없어요(예전 계산은 '목록이 다 바뀌는 날' 넣기 40,000 + 지우기 40,000을
+  빼먹었어요). 공장 한 번의 snap 쓰기 ≤ 2 × (`PAIR_CAP` + 500) = 7,000줄(남는 쌍 digest 1 + ROLL_BU·PROMOTE 1, 새 쌍 2, 지운 쌍 2).
+  **하루 최악(모든 것이 한날 최대)** ≈ 발송 3,080건 × 6 = 18,480 + 새 구독 4,000 × 5 = 20,000(새 구독 예산은 KST 날마다라 D1 하루에 이틀치가
+  걸침) + finish의 구독 표시 8,000 × 5 = 40,000(지난 종료일 정리 1 + 주간 표시 2 + expiring 표시 2; 색인 `subs_due`에서 pend_x를 빼 expiring 표시가
+  1줄 줄었어요) + snap 7,000 ≈ **85,500줄 / 100,000줄**. 공장을 같은 날 손으로 한 번 더 돌리면 7,000줄 + 다시 바뀐 표시가 더해져요. 계산에 없는 것:
+  PUT·DELETE와 같은 endpoint 재구독(각 2~4줄, Workers 요청 한도와 `SUBS_RL`만이 상한), 그리고 **`cf/metrics`(스팸 날 최대 80,000줄 — 둘을 합치면
+  한도를 넘을 수 있음)**. 남은 손잡이: `NEW_PER_DAY`(1,000이면 −10,000)와 `MAX_SUBS`(구독 하나 줄 때마다 하루 −5줄). 쌍이 잘리거나 새 쌍이 빈
+  자리를 기다린 날은 `stat` `capped` → `/health` `"pairs":"capped"`(그날과 다음 날) → 감시 경고, 공장 로그에 `::warning`. 남는 점: 심은 구독이 실제
+  key로 상한을 채우면 아직 푸시를 받은 적 없는 진짜 기기(새 구독)의 쌍이 잘릴 수 있어요 — 그 사이 그 기기는 소식을 못 받아요. 답은 경고 뒤 사람이
+  하는 정리(`SECURITY_ARCHITECTURE.md` §4) 또는 `PAIR_CAP` 조정이에요.
+  **사용자 결정 필요: `PAIR_CAP` 값(3,000), 하루 최악 85,500줄을 받아들일지(또는 `NEW_PER_DAY`·`MAX_SUBS`를 낮출지), `cf/metrics` 상한, 그리고
+  '표가 차도 기존 구독의 푸시는 그대로'였던 설명이 D1 한도 때문에 틀렸던 점(위험 다시 받기).**
+  시크릿은 `VAPID_PRIVATE_JWK`·`ALERTS_SECRET`(Worker), `ALERTS_SECRET`(GitHub). Worker의 둘은 `cf-alerts.yml`의 한 번만 하는 키 설정(Run
+  workflow → `setup_keys`)이 넣어요: GitHub의 `ALERTS_SECRET` 값을 stdin으로 Worker에 복사하고, VAPID 키 쌍은 러너 안에서 만들어 비공개키를
+  stdin으로만 Worker에 넣어요(출력·파일 없음, 공개키만 출력). Worker는 공개키를 비공개키에서 계산해요(`push.js publicKeyOf`, `/health`의
+  `key`). 그래서 `wrangler.jsonc`의 `VAPID_PUBLIC_KEY`는 비워 둬요(채우면 같은 키여야 하고, 다르면 아무것도 보내지 않음). 저장소 변수:
+  `ALERTS_CODE_SHA`(필수, 위), `ALERTS_URL`·`PUBLIC_APP_URL`(없으면 기본 주소), `MONITOR_WORKER_URLS`(감시, 아래).
+  **`ALERTS_SECRET`만 바꿀 때(샜을 때 등):** GitHub의 `ALERTS_SECRET`을 새 값으로 바꾼 뒤 `cf-alerts` → Run workflow(main) → **`sync_secret`만**
+  체크. 그 값을 stdin으로 Worker에 넣고 VAPID 키는 건드리지 않아요(`setup_keys`는 키가 이미 있으면 거절하고, `replace_keys`는 모든 휴대폰을 다시
+  구독하게 해요). 대시보드(Workers & Pages → `yoonsiljang-alerts` → Settings → Variables and Secrets)에서 바꿔도 돼요
+  (`INCIDENT_RESPONSE_PLAN.md` §2 `ALERTS_SECRET` 줄).
+  **배포 토큰(2026-10-16 고쳐 씀):** 앱과 같은 `CLOUDFLARE_API_TOKEN`(Workers → Admin + D1 → Edit — 새 Worker를 만들고 마이그레이션을
+  적용하려면 필요). 이 권한이면 알림 D1의 모든 endpoint·규칙을 읽고, 알림 Worker를 다시 배포해(→ 비밀값을 읽고) 아무 때나 푸시할 수 있어요.
+  **이 토큰을 받는 job에서 도는 코드는 모두 이 토큰을 읽을 수 있어요.** 스크립트의 `unset`은 차단선이 아니에요(`/proc/<부모 셸>/environ`,
+  러너의 sudo로 다시 읽힘) — 자식 프로세스·로그로 실수로 새는 것만 줄여요. 그래서 공장(`update`) job이 이 토큰을 받는 동안에는 그 job의
+  수집기·`requirements.txt` 패키지·빌드 코드가 알림 저장소에 닿을 수 있어요. PR `platform/deploy-job`이 합쳐지기 전의 `weekly.yml`이 그래요.
+  그 PR이 합쳐지면 공장 job은 토큰을 받지 않고, 새 러너의 deploy job 배포 단계만 받아요. 그 뒤에 남는 길은 공장이 main에 push한 코드가 다음에
+  배포하는 실행에서 토큰과 함께 도는 것이에요(`SECURITY_ARCHITECTURE.md` §5 'Cloudflare 배포 토큰' 줄). `cf-alerts.yml`은 wrangler를 토큰
+  없는 단계에서 설치하고, 토큰은 그 고정된 wrangler와 키 설정의 `vapid-keygen.mjs`(그 실행 커밋의 코드)에만 줘요. 배포·키 설정은 main에서만 해요.
+  `cf-alerts.yml`의 토큰을 받는 job(`deploy`, main에서만, `needs: test`)은 GitHub Environment **`cloudflare`**를 적어요 — deploy-job PR의
+  안내대로 토큰을 그 Environment로 옮기고 저장소 secret을 지워도 이 job은 계속 토큰을 받아요(시험 job은 비밀값·Environment 없음).
+  더 좁히려면 알림용 토큰을 따로 만들어 `cf-alerts.yml`에만 두면 돼요(지금은 '토큰 하나' 결정). **이 사실로 사용자에게 위험 수용을 다시 받아야 해요.**
+- 상태: `GET /health` → 200 `{"ok":true,"window":"08-21 KST","sending":bool,"key":"<87자>"|null,"finished":"YYYY-MM-DD"|null,"stale":bool,
+  "refusing":bool,"capacity":"ok"|"nearly_full"|"full","pairs":"ok"|"capped"}`, D1이 안 되면 503 `{"ok":false}`(A7 감시는 200 + `ok:true`만 '살아 있음'으로 셈).
+  `sending` = 지금 푸시를 보낼 수 있음(비밀값 `VAPID_PRIVATE_JWK`로 서명하고 그 공개키로 검증까지 됨, `VAPID_PUBLIC_KEY`를 채웠다면 같은 키).
+  `key` = 푸시에 쓰는 VAPID 공개키(공개 정보, 보낼 수 없으면 null) — `app/config.js`의 `pushPublicKey`와 같아야 해요. `finished` = 공장이
+  마지막으로 finish한 KST 날짜(Worker 시계, 없으면 null). `stale` = finish가 있으면 그것이 2일보다 오래됨, finish가 한 번도 없으면 구독이 있고
+  첫 구독일(남아 있는 `new:날짜` 중 가장 이른 날 — 첫 finish 전에는 아무것도 지우지 않음)이 2일보다 오래됨 → 공장 → Worker 연결(토큰·주소·코드·
+  data.json 형식)이 끊겼거나 한 번도 안 된 것(구독한 첫날 저녁·다음 날 아침에는 경고하지 않음). `refusing` = 오늘이나 어제 보내기 실행에서 이 키로
+  받은 적 있는 기기가 거절했는데 그 서비스로 성공한 푸시가 없음(위 보호, 7일까지 아무도 안 지움). `pairs` = 오늘이나 어제 공장의 지켜보는 쌍 목록이
+  `PAIR_CAP`에서 잘렸거나, 새 쌍이 그 상한 아래 빈 자리를 기다림(위 'D1 하루 쓰기 한도'). `capacity` = `stat` 카운터로 계산(`MAX_SUBS`의 80% 이상 `nearly_full`, 상한 `full`,
+  숫자는 본문에 없음). `health_check.py`가 텔레그램 경고 한 줄씩: `capacity`가 `ok`가 아님, `stale`(finish가 한 번도 없으면 'ALERTS_URL·
+  ALERTS_SECRET·ALERTS_CODE_SHA 확인' 문장), `sending:false`, `refusing:true`, `pairs:"capped"`, `key`가 감시 체크아웃(main)의 `app/config.js` `pushPublicKey`와
+  다름(그 값이 차 있을 때만, 메시지에 키 값 없음). 필드가 없으면 경고 없음. 공개 배포가 멈춘 동안 실제 공개 앱의 `config.js`와는 비교하지 않아요.
+  감시가 이 Worker를 보려면 GitHub 변수 `MONITOR_WORKER_URLS`에 주소가 있어야 해요.
 - **서버가 저장하는 항목(최종):** `subs`(id·endpoint·rules·pend_w·last_w·pend_x·pend_xl·exp_sent·last_x·fails·claim), `snap`(k·r·m·n·med·p·pm·pn·
-  pmed·bu·pu·cb·cu·g·run·e·s·u), `vapid`(aud·jwt·exp: 서명한 토큰 캐시), `stat`(키 `subs`·`new:날짜`·`day`·`finish`). 구독자 개인 정보·IP·UA·
-  행마다의 '마지막 사용' 날짜는 없어요(B용 메모에 쉬운 말 목록).
-- 배포: `.github/workflows/cf-alerts.yml`(테스트 → wrangler 설치(토큰 없음) → D1 마이그레이션 → 배포). D1 id가 비어 있거나 토큰이 없으면 테스트만 하고
-  건너뛰어요 — **그때도 실행은 초록**이므로, 배포됐는지는 'Apply D1 migrations'·'Deploy the Worker' 단계가 건너뛰어지지 않고 실행됐는지(맨 위에 'tested,
-  not deployed' 공지가 없는지)로 봐요.
+  pmed·bu·pu·cb·cu·g·run·e·s·u), `vapid`(aud·jwt·exp: 서명한 토큰 캐시), `stat`(키 `subs`·`new:날짜`·`day`·`finish`·`refusing`·`capped`, 푸시 서비스마다
+  `ok:<키 꼬리표> <origin>`·`rs:<키 꼬리표> <origin>`·`rl:<키 꼬리표> <origin>` — 푸시 서비스 주소와 날짜뿐, 사람과 이어지지 않음). 구독자 개인
+  정보·IP·UA·행마다의 '마지막 사용' 날짜는 없어요(B용 메모에 쉬운 말 목록).
+- 배포: `.github/workflows/cf-alerts.yml`의 job 두 개 — `test`(모든 실행, 비밀값 없음) → `deploy`(main만, `environment: cloudflare`: wrangler
+  설치(토큰 없음) → D1 마이그레이션 → 배포 → (Run workflow의 `setup_keys`·`sync_secret`일 때만) 키 설정·`ALERTS_SECRET` 넣기). 다른 브랜치의
+  Run workflow는 시험만(키 설정을 고르면 빨간 실행, 아무것도 안 넣음). D1 id가 자리표시면 테스트만 하고 건너뛰어요 — **그때 실행은 초록**이므로, 배포됐는지는 'Apply D1 migrations'·'Deploy the Worker' 단계가 건너뛰어지지 않고 실행됐는지(맨 위에 'tested, not
+  deployed' 공지가 없는지)로 봐요. D1 id가 채워졌는데 이 job이 토큰을 못 받으면 **빨간 실행**이에요(설정 오류, 조용한 초록 아님). 키 설정은 이미 `VAPID_PRIVATE_JWK`가 있으면 거절하고, 일부러 바꿀 때만 `replace_keys`를 함께 골라요(모든
+  휴대폰이 다시 구독해야 함 — `INCIDENT_RESPONSE_PLAN.md` §2 VAPID 줄).
+- **켜는 순서(처음 한 번, 2026-10-16 사용자 승인 뒤).** 각 단계 끝의 '확인'이 되면 다음으로 가요.
+  1. **D1 데이터베이스 만들기 — 사용자.** Cloudflare 대시보드 → Storage & databases → D1 SQL database → Create(화면 이름은 바뀔 수 있어요).
+     이름 `yoonsiljang-alerts`, 위치(Location)는 **Asia-Pacific**. 만든 뒤 그 데이터베이스 화면의 **Database ID**(긴 영문·숫자, 비밀 아님)를
+     A에게 알려 줘요(이 id는 비밀이 아니에요). **A의 세션에서는 권한이 없어 D1을 만들지 못했어요(2026-10-16 시도)** — 그래서 이 단계는
+     사용자가 대시보드에서 해요. 확인: D1 목록에 `yoonsiljang-alerts`가 보여요.
+  2. **id 적기 — A(PR).** A가 `cf/alerts/wrangler.jsonc`의 `REPLACE_WITH_D1_ID`를 그 id로 바꾸는 PR을 올리고, 사용자가 승인해 합쳐요.
+     확인: PR의 자동 검사가 초록.
+  3. **Worker 배포 — 자동.** 합치면 `cf-alerts`가 돌아요. 확인: Actions → cf-alerts → 그 실행에서 'Apply D1 migrations'와 'Deploy the Worker'에
+     초록 체크(회색 '건너뜀'이 아님)가 있고, 맨 위에 'tested, not deployed' 알림이 없어요. 브라우저로
+     `https://yoonsiljang-alerts.lsy2825.workers.dev/health`를 열면 `"ok":true`. 아직 키가 없으니 `"sending":false`, `"key":null`이 정상이에요.
+     권한 오류는 'Apply D1 migrations'(토큰에 D1 → Edit 필요)나 'Deploy the Worker'(Workers → Admin 필요)에서 빨갛게 나요(지금 토큰의 권한은 모름).
+     'Ready to deploy?'가 'CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not available to this job'으로 빨갛다면, **둘 다** — 토큰
+     `CLOUDFLARE_API_TOKEN`(secret)과 계정 id `CLOUDFLARE_ACCOUNT_ID`(secret 또는 변수) — 가 저장소나 Environment `cloudflare`(이 job이 적는 곳)에
+     있는지 봐요. 앱 배포는 계정 id를 쓰지 않아서, 앱 배포가 된다고 계정 id가 있다는 뜻은 아니에요(지금 있는지는 모름).
+  4. **`ALERTS_SECRET` 만들기 — 사용자.** GitHub 저장소 → Settings → Secrets and variables → Actions → **Secrets** 탭 → New repository secret.
+     이름 `ALERTS_SECRET`, 값은 내 PC에서 만든 긴 무작위 글자(32자 이상, 띄어쓰기 없음). 비밀번호 관리자에서 영문·숫자 40자를 만들어도 되고,
+     Windows PowerShell에서 아래 한 줄을 실행하면 화면에 보이지 않고 클립보드에만 40자가 들어가요(이 환경에는 PowerShell이 없어 실행해 보지
+     못했어요): `$c=[char[]]'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789'; $b=New-Object byte[] 40; [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b); -join ($b | ForEach-Object { $c[$_ % 62] }) | Set-Clipboard`
+     값 칸에 Ctrl+V로 붙여 넣고 저장한 뒤, 아무 글자나 복사해 클립보드를 덮어요. **이 값은 채팅·문서 어디에도 붙여 넣지 않아요.** 따로 적어 둘
+     필요도 없어요(6번이 Worker에 복사해요). 확인: Secrets 목록에 `ALERTS_SECRET`이 보여요(값은 다시 볼 수 없는 게 정상).
+  5. **`ALERTS_CODE_SHA` 넣기 — 사용자.** 같은 화면의 **Variables** 탭 → New repository variable. 이름 `ALERTS_CODE_SHA`, 값은 A가 알려 주는
+     합친 커밋 id(40자, 리뷰한 알림 코드가 든 커밋). 확인: 다음 날 06시 뒤 weekly-prices 실행의 `price_alerts` job에 'ALERTS_CODE_SHA is not
+     set' 알림이 없어요. 5와 6은 같은 날 해요(6 전에 `price_alerts`가 돌면 Worker에 아직 비밀값이 없어 경고 한 줄만 나요).
+  6. **키 설정 — 사용자(한 번).** Actions → cf-alerts → Run workflow → Branch는 **main** → `setup_keys`만 체크(`replace_keys`는 체크하지 않음)
+     → Run. 확인: 실행이 초록이고, 실행 요약에 '알림 공개키' 87자가 보여요. `/health`가 `"sending":true`이고 `"key"`가 그 87자와 같아요(이
+     실행의 마지막 단계가 이미 확인해요). 빨간 실행이면 실행 화면 **Annotations의 빨간 오류 줄(영어일 수 있음)과 요약**을 함께 봐요. '/health'
+     확인 단계만 빨갛다면 몇 분 뒤 `/health`를 직접 열어 `"sending":true`이고 `"key"`가 요약의 공개키와 같은지 보고, 같으면 다시 돌리지 않아요
+     (`replace_keys`로 다시 돌리면 키가 또 바뀌어요).
+  7. **앱 설정 — A → B.** A가 B에게 주소 `https://yoonsiljang-alerts.lsy2825.workers.dev`와 공개키(`/health`의 `key`)를 부탁 메모로 보내요.
+     B가 `app/config.js`의 `alertsApi`·`pushPublicKey`와 `index.html` CSP `connect-src`에 그 주소를 넣는 PR을 올려요. 사용자는 저장소 변수
+     `MONITOR_WORKER_URLS`에 이 주소를 더해요(감시). 확인: B의 PR이 초록(`cf/alerts/test/worker.test.mjs`의 정적 시험이 키 형식·주소를 봐요),
+     합친 다음 날 09:30 감시에 이 Worker 경고가 없어요.
+  8. **휴대폰에 닿는 때.** Worker는 공개 앱 주소(`ALLOWED_ORIGIN` = `https://yoonsiljang.lsy2825.workers.dev`)에서 온 구독만 받아요. 공개 배포가
+     멈춘 동안(`PUBLIC_DEPLOY`가 `on`이 아님) 공개 앱은 옛 판이라 `config.js`에 알림 주소가 없어요 → **푸시는 공개 배포를 다시 켠 뒤에만
+     휴대폰에 닿아요.** 확인: 공개 배포 뒤 내 휴대폰에서 알림을 켜고, `/health`의 `finished`가 날마다 그날 날짜로 바뀌고, 감시 경고가 없어요.
 
 ## 3. 프런트 구조 (app/app.js)
 - **해시 라우터**

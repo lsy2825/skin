@@ -7,9 +7,9 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, rmSync, mkdirSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import worker from "../src/worker.js";
@@ -111,7 +111,7 @@ test("notify: baselines first, then target/watch/newmatch/expiring news for exac
   for (const p of Object.values(phones)) { assert.equal(out.includes(p.id), false); assert.equal(out.includes(p.endpoint), false); }
   assert.equal(/fcm\.googleapis|p256dh/.test(out), false);
   assert.equal(/X24|X01|서울/.test(logs.join("\n")), false);
-  assert.match(logs[1], /^price alerts: 5 watched pairs \(\d+ changed/);
+  assert.match(logs[1], /^price alerts: 5 watched pairs \(0 skipped, \d+ changed/);
 });
 
 test("(i) a failed finish, then the next run: the news is still delivered, once", T, async () => {
@@ -276,7 +276,7 @@ test("CLI: never fails the price build — unset env skips, a failure is a ::war
   const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
   const skip = spawnSync(process.execPath, [cli, "/nonexistent/data.json"], { env: { PATH: process.env.PATH }, encoding: "utf8" });
   assert.equal(skip.status, 0);
-  assert.match(skip.stdout, /not set — skipped/);
+  assert.match(skip.stdout, /^::notice title=price alerts::ALERTS_URL and ALERTS_SECRET are not set — price alerts skipped$/m);
   const down = spawnSync(process.execPath, [cli, "/nonexistent/data.json"], { env: { PATH: process.env.PATH, ALERTS_URL: "http://127.0.0.1:9", ALERTS_SECRET: "x" }, encoding: "utf8" });
   assert.equal(down.status, 0);
   assert.match(down.stdout, /^::warning title=price alerts::/m);
@@ -311,15 +311,21 @@ test("cf-alerts.yml: wrangler is installed in a step WITHOUT the token; only the
   assert.ok(install, "an install step");
   assert.match(install, /npm install --no-save --no-fund --no-audit --prefix "\$RUNNER_TEMP\/wr" wrangler@4\.145\.0/);
   assert.equal(/secrets\.|env:|CLOUDFLARE_/.test(install), false, "no secret and no env in the install step");
-  // the token's VALUE reaches exactly two steps; the 'Ready to deploy?' step only learns whether it is set (a boolean) and runs grep
+  // the token's VALUE reaches exactly five steps (migrations, deploy, and three of the one-time key setup); the 'Ready to
+  // deploy?' step only learns whether it is set (a boolean) and runs grep
   const withToken = steps.filter((st) => /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/.test(st));
-  assert.equal(withToken.length, 2, "migrations and deploy only");
+  assert.deepEqual(withToken.map((st) => /name: ([^\n]*)/.exec(st)[1]), ["Apply D1 migrations", "Deploy the Worker",
+    "Key setup — does the Worker already have a VAPID key?", "Key setup — store ALERTS_SECRET (through stdin)",
+    "Key setup — make the VAPID key pair here, store the private key (through stdin)"]);
   const ready = steps.find((st) => /id: ready/.test(st));
   assert.match(ready, /HAS_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN != '' \}\}/);
   assert.equal(/\bnpm\b|\bnpx\b|node_modules|\bnode\b|\bwrangler\b [a-z]/.test(ready.replace(/::notice[^\n]*/g, "")), false, "the ready step runs no package code");
+  const WR = '"\\$RUNNER_TEMP/wr/node_modules/\\.bin/wrangler"';
+  for (const st of withToken.slice(0, 2)) assert.match(st, new RegExp(`run: '${WR} (d1 migrations apply DB --remote|deploy) --config cf/alerts/wrangler\\.jsonc'`));
   for (const st of withToken) {
-    assert.match(st, /run: '"\$RUNNER_TEMP\/wr\/node_modules\/\.bin\/wrangler" (d1 migrations apply DB --remote|deploy) --config cf\/alerts\/wrangler\.jsonc'/);
     assert.match(st, /WRANGLER_SEND_METRICS: "false"/);
+    // the only package code run with the token is the pinned copy (and, in the key step, cf/alerts/vapid-keygen.mjs from this checkout)
+    assert.ok(st.includes('"$RUNNER_TEMP/wr/node_modules/.bin/wrangler"'), "the pinned wrangler");
   }
   // green is not deployed: the header says how to tell
   assert.match(yml, /A GREEN run is NOT proof the Worker was deployed/);
@@ -478,11 +484,382 @@ test("CLI: a data file that is not JSON is reported without echoing its content 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("CLI: ALERTS_URL / ALERTS_SECRET — neither set is a ::notice, one without the other a ::warning; exit 0, no value printed", () => {
+  const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
+  const run = (env) => spawnSync(process.execPath, [cli, "/nonexistent/data.json"], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
+  const none = run({});
+  assert.equal(none.status, 0);
+  assert.equal(none.stdout, "::notice title=price alerts::ALERTS_URL and ALERTS_SECRET are not set — price alerts skipped\n");
+  // weekly.yml gives ALERTS_URL a default, so a missing repository secret is this warning — it says what to create, and where
+  const noSecret = run({ ALERTS_URL: "https://alerts.example.workers.dev" });
+  assert.equal(noSecret.status, 0);
+  assert.match(noSecret.stdout, /^::warning title=price alerts::ALERTS_SECRET is not set \(ALERTS_URL is\) — price alerts skipped\. Create the repository secret ALERTS_SECRET \(Settings → Secrets and variables → Actions → New repository secret\), then run the cf-alerts workflow \(Run workflow, branch main\) so the Worker gets the same value: setup_keys the first time, sync_secret afterwards/);
+  assert.equal(noSecret.stdout.split("\n").filter(Boolean).length, 1);
+  assert.equal(noSecret.stdout.includes("alerts.example"), false, "the address is not printed");
+  const noUrl = run({ ALERTS_SECRET: "hunter2-super-secret-value-0123456789" });
+  assert.equal(noUrl.status, 0);
+  assert.match(noUrl.stdout, /^::warning title=price alerts::ALERTS_URL is not set \(ALERTS_SECRET is\) — price alerts skipped\./);
+  assert.equal((noUrl.stdout + noUrl.stderr).includes("hunter2"), false, "the secret is never printed");
+  // the source: one notice and two warnings, all exit 0, none prints a value
+  const src = readFileSync(new URL("../notify.mjs", import.meta.url), "utf8");
+  const skips = src.split("\n").filter((l) => /process\.exit\(0\); \}$/.test(l) && /not set/.test(l));
+  assert.equal(skips.length, 3);
+  for (const l of skips) assert.equal(/\$\{/.test(l), false, `no value in: ${l.trim().slice(0, 60)}`);
+});
+
+// ---- the one-time key setup (cf-alerts.yml, Run workflow → setup_keys) and cf/alerts/vapid-keygen.mjs.
+// The repository and its Actions logs are PUBLIC: these tests run the steps as written, with a fake wrangler and curl, and
+// check that no secret value is ever printed, put in an argument or left in a file.
+const ROOT = fileURLToPath(new URL("../../../", import.meta.url));
+const CF_ALERTS_YML = readFileSync(new URL("../../../.github/workflows/cf-alerts.yml", import.meta.url), "utf8");
+const KEYGEN = fileURLToPath(new URL("../vapid-keygen.mjs", import.meta.url));
+const KEY_STEPS = ["Key setup — check before storing anything", "Key setup — does the Worker already have a VAPID key?",
+  "Key setup — store ALERTS_SECRET (through stdin)", "Key setup — make the VAPID key pair here, store the private key (through stdin)",
+  "Key setup — the public key (for app/config.js pushPublicKey)", "Key setup — GET /health answers sending:true with this key"];
+const stepsOf = (yml) => yml.split(/\n {6}- /).slice(1);
+const stepNamed = (name) => { const st = stepsOf(CF_ALERTS_YML).find((s) => s.startsWith(`name: ${name}\n`)); assert.ok(st, `step ${name}`); return st; };
+// the run script as the runner gets it: a block scalar without its 10-space indent, or the one-line value
+function runOf(st) {
+  const lines = st.split("\n");
+  const i = lines.findIndex((l) => /^ {8}run: /.test(l));
+  assert.ok(i > 0, "a run line");
+  const head = lines[i].slice(13);
+  if (head !== "|") return head.startsWith("'") ? head.slice(1, -1).replace(/''/g, "'") : head;
+  const body = [];
+  for (const l of lines.slice(i + 1)) { if (l.trim() && !l.startsWith("          ")) break; body.push(l.slice(10)); }
+  return body.join("\n").replace(/\n+$/, "") + "\n";
+}
+const envNames = (st) => { const m = /\n {8}env:\n((?: {10}[^\n]*\n?)*)/.exec(st); return m ? m[1].split("\n").filter((l) => /^ {10}\w+:/.test(l)).map((l) => l.trim().split(":")[0]) : []; };
+// a sandbox: a fake wrangler at $RUNNER_TEMP/wr/node_modules/.bin/wrangler (logs its arguments; `secret put NAME` keeps what
+// came through stdin in $STORE/NAME; `secret list` prints $FAKE_LIST; exits $FAKE_RC), fake curl (prints $HEALTH_FILE for
+// /health; FAKE_CURL=fail → exit 22) and sleep, a GitHub output and summary file
+function keySandbox() {
+  const dir = mkdtempSync(join(tmpdir(), "alerts-keys-"));
+  const rt = join(dir, "rt"), bin = join(dir, "bin"), store = join(dir, "store"), wrbin = join(rt, "wr/node_modules/.bin");
+  for (const d of [bin, store, wrbin]) mkdirSync(d, { recursive: true });
+  writeFileSync(join(wrbin, "wrangler"), [
+    "#!/usr/bin/env bash",
+    'printf "%s\\n" "$*" >> "$WR_LOG"',
+    'if [ "$1 $2" = "secret put" ]; then cat > "$STORE/$3"; echo "✨ Success! Uploaded secret $3"; fi',
+    'if [ "$1 $2" = "secret list" ]; then printf "%s\\n" "${FAKE_LIST:-[]}"; fi',
+    'exit "${FAKE_RC:-0}"',
+  ].join("\n") + "\n", { mode: 0o755 });
+  writeFileSync(join(bin, "curl"), '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$CURL_LOG"\n[ "${FAKE_CURL:-}" = fail ] && { echo "curl: (22) fake 503" >&2; exit 22; }\ncat "$HEALTH_FILE"\n', { mode: 0o755 });
+  writeFileSync(join(bin, "sleep"), "#!/usr/bin/env bash\nexit 0\n", { mode: 0o755 });
+  const files = { WR_LOG: join(dir, "wr.log"), CURL_LOG: join(dir, "curl.log"), GITHUB_OUTPUT: join(dir, "output"), GITHUB_STEP_SUMMARY: join(dir, "summary"), HEALTH_FILE: join(dir, "health.json") };
+  for (const f of Object.values(files)) writeFileSync(f, "");
+  const run = (name, env = {}, cwd = ROOT) => {
+    const r = spawnSync("bash", ["-e", "-c", runOf(stepNamed(name))], { cwd, encoding: "utf8",
+      env: { PATH: `${bin}:${dirname(process.execPath)}:${process.env.PATH}`, HOME: dir, RUNNER_TEMP: rt, STORE: store, ...files, ...env } });
+    return { status: r.status, stdout: r.stdout, all: r.stdout + r.stderr };
+  };
+  const read = (k) => readFileSync(files[k], "utf8");
+  return { dir, rt, store, run, read, files, done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+test("cf-alerts.yml key setup: Run workflow only (setup_keys / sync_secret), after the deploy steps, in a fixed order; replace_keys is a separate choice; only main deploys", () => {
+  assert.match(CF_ALERTS_YML, /\n  workflow_dispatch:\n    inputs:\n      setup_keys:\n(?: {8}[^\n]*\n)*? {8}type: boolean\n {8}default: false\n      replace_keys:\n(?: {8}[^\n]*\n)*? {8}type: boolean\n {8}default: false\n      sync_secret:\n(?: {8}[^\n]*\n)*? {8}type: boolean\n {8}default: false\n/);
+  const names = stepsOf(CF_ALERTS_YML).map((s) => (/^name: ([^\n]*)/.exec(s) || [])[1]).filter(Boolean);
+  const deploy = names.indexOf("Deploy the Worker");
+  assert.ok(deploy > 0);
+  assert.deepEqual(names.slice(deploy + 1), ["replace_keys alone does nothing", ...KEY_STEPS, "ALERTS_SECRET sync — summary", "Key setup — say why in the summary (red run)"],
+    "the key steps come after the deploy, in this order");
+  // every key step runs only on Run workflow (setup_keys; the check and the ALERTS_SECRET put also for sync_secret, which
+  // leaves the VAPID keys alone), and only when every step before it succeeded (no always(), no failure(), no
+  // continue-on-error): a refusal stops everything after it
+  const both = ["Key setup — check before storing anything", "Key setup — store ALERTS_SECRET (through stdin)"];
+  for (const n of KEY_STEPS) {
+    const st = stepNamed(n);
+    if (both.includes(n)) assert.match(st, /\n {8}if: github\.event_name == 'workflow_dispatch' && \(inputs\.setup_keys \|\| inputs\.sync_secret\)\n/, n);
+    else assert.match(st, /\n {8}if: github\.event_name == 'workflow_dispatch' && inputs\.setup_keys\n/, n);
+    assert.equal(/always\(\)|failure\(\)|continue-on-error/.test(st), false, n);
+  }
+  assert.match(stepNamed("Key setup — say why in the summary (red run)"), /\n {8}if: failure\(\) && github\.event_name == 'workflow_dispatch' && \(inputs\.setup_keys \|\| inputs\.sync_secret\)\n/);
+  // only main is deployed (and so only main can get keys): a Run workflow on another branch only tests
+  const ready = runOf(stepNamed("Ready to deploy?"));
+  assert.match(ready, /^if \[ "\$GITHUB_REF" != "refs\/heads\/main" \]; then\n[^\n]*echo "go=false" >> "\$GITHUB_OUTPUT"\n/);
+});
+
+test("cf-alerts.yml key setup: secrets reach the steps only through env, ALERTS_SECRET only the check and the stdin put; nothing turns on tracing", () => {
+  const code = CF_ALERTS_YML.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+  for (const st of stepsOf(code)) if (/\n {8}run: /.test(st)) assert.equal(runOf(st).includes("${{"), false, `no expression inside a run script: ${st.split("\n")[0]}`);
+  assert.deepEqual(code.match(/^ {10}ALERTS_SECRET: \$\{\{ secrets\.ALERTS_SECRET \}\}$/gm).length, 2);
+  assert.equal((code.match(/secrets\.ALERTS_SECRET\b/g) || []).length, 2, "the check and the put step only");
+  assert.ok(envNames(stepNamed("Key setup — check before storing anything")).includes("ALERTS_SECRET"));
+  assert.ok(envNames(stepNamed("Key setup — store ALERTS_SECRET (through stdin)")).includes("ALERTS_SECRET"));
+  assert.equal(/set -x|set -o xtrace|xtrace|ACTIONS_STEP_DEBUG|ACTIONS_RUNNER_DEBUG|WRANGLER_LOG|NODE_DEBUG|\btee\b/.test(code), false, "nothing that echoes commands or logs requests");
+  // $ALERTS_SECRET: tested in the check step, piped by printf (a shell builtin: no process argument) in the put step — never echoed
+  const check = runOf(stepNamed("Key setup — check before storing anything"));
+  const put = runOf(stepNamed("Key setup — store ALERTS_SECRET (through stdin)"));
+  assert.deepEqual(check.match(/[^\n]*\$\{?ALERTS_SECRET[^\n]*/g).map((l) => l.trim()), ['if [ -z "$ALERTS_SECRET" ]; then', "if ! [[ $ALERTS_SECRET =~ ^[[:graph:]]{32,}$ ]]; then"]);
+  assert.equal(put, `set -euo pipefail\nprintf '%s' "$ALERTS_SECRET" | "$RUNNER_TEMP/wr/node_modules/.bin/wrangler" secret put ALERTS_SECRET --config cf/alerts/wrangler.jsonc\n`);
+  // the private key never has a name in the workflow: it is made and handed over inside cf/alerts/vapid-keygen.mjs
+  const keygen = stepNamed("Key setup — make the VAPID key pair here, store the private key (through stdin)");
+  assert.equal(runOf(keygen), 'node cf/alerts/vapid-keygen.mjs --put "$RUNNER_TEMP/wr/node_modules/.bin/wrangler" cf/alerts/wrangler.jsonc "$RUNNER_TEMP/vapid-public-key"');
+  assert.deepEqual(envNames(keygen), ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "WRANGLER_SEND_METRICS"]);
+  assert.equal(/JWK|PRIVATE/.test(code.replace(/VAPID_PRIVATE_JWK/g, "")), false, "no variable or env holds the private key");
+  // the public key and /health steps get no secret but the alerts address
+  assert.equal(/secrets\./.test(stepNamed("Key setup — the public key (for app/config.js pushPublicKey)")), false);
+  assert.deepEqual(stepNamed("Key setup — GET /health answers sending:true with this key").match(/secrets\.\w+/g), ["secrets.ALERTS_URL"]);
+  // vapid-keygen.mjs --put: the masks go out first, the JWK only through stdin, only the public key goes to a file
+  const src = readFileSync(KEYGEN, "utf8");
+  const put2 = src.slice(src.indexOf('if (args[0] === "--put")'), src.indexOf("} else if (args.length)"));
+  assert.ok(put2.indexOf('if (process.env.GITHUB_ACTIONS === "true") writeSync(1, `::add-mask::${jwk}\\n::add-mask::${d}\\n`)') > 0, "::add-mask:: for the JWK and its d (on Actions)");
+  assert.ok(put2.indexOf("::add-mask::") < put2.indexOf("spawnSync("), "masked before wrangler starts");
+  assert.match(put2, /spawnSync\(wrangler, \["secret", "put", "VAPID_PRIVATE_JWK", "--config", config\], \{ input: jwk, /);
+  assert.equal(/console\.(log|error)\([^)]*\b(jwk|d)\b/.test(put2), false, "the JWK and d are never logged");
+  assert.deepEqual(put2.match(/writeFileSync\([^)]*\)/g), ["writeFileSync(pubFile, `${pub}\\n`)"], "only the public key is written to a file");
+});
+
+test("cf-alerts.yml key setup, check step (run as written): refuses without a deploy, without ALERTS_SECRET (saying what to create, and where), with a malformed one or a set VAPID_PUBLIC_KEY", () => {
+  const sb = keySandbox();
+  try {
+    const cwd = join(sb.dir, "repo");
+    mkdirSync(join(cwd, "cf/alerts"), { recursive: true });
+    const cfg = readFileSync(join(ROOT, "cf/alerts/wrangler.jsonc"), "utf8");
+    assert.match(cfg, /"VAPID_PUBLIC_KEY": ""/, "the repository's wrangler.jsonc leaves VAPID_PUBLIC_KEY empty");
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg);
+    const GOOD = "Qx7-pL2_vR9+zT4/wK8=mN3#bJ6@cH1!fG5~";       // 36 printable characters, no space
+    const check = (env) => sb.run("Key setup — check before storing anything", { LC_ALL: "C", GO: "true", ALERTS_SECRET: GOOD, SETUP: "true", ...env }, cwd);
+    let r = check({});
+    assert.equal(r.status, 0, r.all);
+    assert.match(r.stdout, /key setup: checks passed/);
+    r = check({ GO: "false" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^::error title=cf-alerts key setup::이번 실행에서 Worker를 배포하지 않아서 키를 넣지 않았어요/m);
+    r = check({ ALERTS_SECRET: "" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^::error title=cf-alerts key setup::저장소 비밀값 ALERTS_SECRET이 없어요\. Settings → Secrets and variables → Actions → New repository secret에서 이름은 ALERTS_SECRET/m);
+    assert.match(sb.read("GITHUB_STEP_SUMMARY"), /ALERTS_SECRET이 없어요/, "the reason is in the run's summary too");
+    for (const bad of ["short-secret", "with a space but long enough to pass 32", `${GOOD}\nsecond-line`, `${GOOD}é`]) {
+      r = check({ ALERTS_SECRET: bad });
+      assert.equal(r.status, 1, JSON.stringify(bad));
+      assert.match(r.stdout, /ALERTS_SECRET이 32자보다 짧거나/);
+      assert.equal(r.all.includes(bad.split("\n")[0]), false, "the value is never printed");
+    }
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg.replace('"VAPID_PUBLIC_KEY": ""', '"VAPID_PUBLIC_KEY": "BOld"'));
+    r = check({});
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /VAPID_PUBLIC_KEY가 비어 있지 않아요/);
+    // sync_secret alone (SETUP false) makes no key, so a filled VAPID_PUBLIC_KEY does not stop it; ALERTS_SECRET is checked the same
+    assert.equal(check({ SETUP: "false" }).status, 0);
+    assert.match(check({ SETUP: "false", ALERTS_SECRET: "short" }).stdout, /ALERTS_SECRET이 32자보다 짧거나/);
+    assert.equal(sb.read("WR_LOG"), "", "the check step calls no wrangler");
+    assert.equal(sb.read("GITHUB_STEP_SUMMARY").includes(GOOD), false);
+  } finally { sb.done(); }
+});
+
+test("cf-alerts.yml key setup, 'already has a VAPID key?' step (run as written): refuses when VAPID_PRIVATE_JWK exists unless replace_keys; an unreadable list stops the run", () => {
+  const sb = keySandbox();
+  try {
+    const list = (names) => JSON.stringify(names.map((name) => ({ name, type: "secret_text" })), null, "  ");
+    const step = (env) => sb.run("Key setup — does the Worker already have a VAPID key?", { REPLACE: "false", ...env });
+    let r = step({ FAKE_LIST: list(["ALERTS_SECRET"]) });
+    assert.equal(r.status, 0, r.all);
+    assert.equal(sb.read("WR_LOG"), "secret list --format json --config cf/alerts/wrangler.jsonc\n");
+    assert.equal(step({ FAKE_LIST: "[]" }).status, 0);
+    // a line before the list that starts with '[' (a warning) does not confuse it
+    assert.equal(step({ FAKE_LIST: `[WARNING] something\n${list(["X"])}` }).status, 0);
+    r = step({ FAKE_LIST: list(["ALERTS_SECRET", "VAPID_PRIVATE_JWK"]) });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^::error title=cf-alerts key setup::이 Worker에는 이미 VAPID_PRIVATE_JWK가 있어요[^\n]*ALERTS_SECRET만 바꾸려면 setup_keys 대신 sync_secret만 고르세요/m);
+    r = step({ FAKE_LIST: list(["VAPID_PRIVATE_JWK"]), REPLACE: "true" });
+    assert.equal(r.status, 0, r.all);
+    assert.match(r.stdout, /^::warning title=cf-alerts key setup::replace_keys: the VAPID key pair is replaced/m);
+    // never "no key" by mistake: wrangler failing, or output that is not the list, fails the step (nothing stored after it)
+    assert.notEqual(step({ FAKE_RC: "1" }).status, 0);
+    r = step({ FAKE_LIST: "Authentication error" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /could not read the secret names from wrangler secret list — nothing stored/);
+    assert.deepEqual(readdirSync(sb.store), [], "this step stores nothing");
+  } finally { sb.done(); }
+});
+
+test("cf-alerts.yml key setup, put + key pair + public key + /health (run as written, fake wrangler and curl): secrets only through stdin, masks first, only the public key printed, /health must show that key", async () => {
+  const { publicKeyOf } = await import("../src/push.js");
+  const sb = keySandbox();
+  try {
+    const FAKE_ALERTS_VALUE = "Zt5-hunter2_super+secret/value=0123456789";
+    // 1. ALERTS_SECRET: through stdin, exactly (no newline added), never in an argument or the log
+    let r = sb.run("Key setup — store ALERTS_SECRET (through stdin)", { ALERTS_SECRET: FAKE_ALERTS_VALUE, CLOUDFLARE_API_TOKEN: "tok" });
+    assert.equal(r.status, 0, r.all);
+    assert.equal(readFileSync(join(sb.store, "ALERTS_SECRET"), "utf8"), FAKE_ALERTS_VALUE);
+    assert.equal(sb.read("WR_LOG"), "secret put ALERTS_SECRET --config cf/alerts/wrangler.jsonc\n");
+    assert.equal(r.all.includes("hunter2"), false);
+    // 2. the key pair: made here, ::add-mask:: for the JWK and d before anything else, the JWK only through wrangler's stdin
+    r = sb.run("Key setup — make the VAPID key pair here, store the private key (through stdin)", { CLOUDFLARE_API_TOKEN: "tok", GITHUB_ACTIONS: "true" });
+    assert.equal(r.status, 0, r.all);
+    const jwkText = readFileSync(join(sb.store, "VAPID_PRIVATE_JWK"), "utf8");
+    const jwk = JSON.parse(jwkText);
+    assert.deepEqual(Object.keys(jwk), ["kty", "crv", "x", "y", "d"]);
+    assert.equal(jwk.kty + jwk.crv, "ECP-256");
+    const lines = r.stdout.split("\n");
+    assert.deepEqual(lines.slice(0, 2), [`::add-mask::${jwkText}`, `::add-mask::${jwk.d}`], "the masks are the first output, before wrangler starts");
+    const rest = [lines.slice(2).join("\n"), r.all.slice(r.stdout.length)].join("\n");
+    assert.equal(rest.includes(jwk.d), false, "the private key is never printed (only inside the two mask commands)");
+    assert.match(rest, /✨ Success! Uploaded secret VAPID_PRIVATE_JWK/);
+    assert.equal(sb.read("WR_LOG").split("\n")[1], "secret put VAPID_PRIVATE_JWK --config cf/alerts/wrangler.jsonc", "no key in wrangler's arguments");
+    const pub = readFileSync(join(sb.rt, "vapid-public-key"), "utf8").trim();
+    assert.match(pub, /^[A-Za-z0-9_-]{87}$/);
+    assert.equal(pub, publicKeyOf(jwkText), "the public key written out is the one the Worker derives from the stored JWK");
+    // the keygen left no file holding the private key ($STORE is the fake Cloudflare)
+    const files = (d) => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(d, e.name)) : [join(d, e.name)]));
+    for (const f of files(sb.dir).filter((f) => !f.startsWith(sb.store + "/"))) assert.equal(readFileSync(f, "utf8").includes(jwk.d), false, `${f} holds the private key`);
+    // 3. the public key: to GITHUB_OUTPUT, a ::notice and the summary — and nothing else
+    r = sb.run("Key setup — the public key (for app/config.js pushPublicKey)");
+    assert.equal(r.status, 0, r.all);
+    assert.equal(r.stdout, `::notice title=VAPID public key (app/config.js pushPublicKey)::${pub}\n`);
+    assert.equal(sb.read("GITHUB_OUTPUT"), `key=${pub}\n`);
+    const summary = sb.read("GITHUB_STEP_SUMMARY");
+    assert.ok(summary.includes(pub));
+    for (const v of [jwk.d, FAKE_ALERTS_VALUE]) assert.equal(summary.includes(v), false);
+    // 4. GET /health: sending:true with that same key passes; anything else fails the run (after a few tries)
+    const health = (o) => writeFileSync(sb.files.HEALTH_FILE, JSON.stringify({ ok: true, window: "08-21 KST", sending: true, key: publicKeyOf(jwkText), ...o }));
+    const check = (env = {}) => sb.run("Key setup — GET /health answers sending:true with this key", { ALERTS_URL: "https://alerts.example.test/", PUB: pub, LC_ALL: "C", ...env });
+    health({});
+    r = check();
+    assert.equal(r.status, 0, r.all);
+    assert.match(r.stdout, /key setup: GET \/health: sending true, the same public key/);
+    assert.match(sb.read("CURL_LOG"), /--fail --proto =https --max-redirs 0 --max-time 20 --max-filesize 100000 https:\/\/alerts\.example\.test\/health\n/);
+    for (const [o, why] of [[{ sending: false, key: null }, /sending is not true/], [{ key: "B".repeat(87) }, /a different public key/], [{ ok: false }, /is not ok/]]) {
+      health(o);
+      r = check();
+      assert.equal(r.status, 1, JSON.stringify(o));
+      assert.match(r.stdout, new RegExp(`::error title=cf-alerts key setup::the keys were stored, but GET /health [^\n]*${why.source}`));
+    }
+    health({});
+    assert.equal(check({ FAKE_CURL: "fail" }).status, 1);
+    r = check({ ALERTS_URL: "http://alerts.example.test" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /ALERTS_URL is not an https address/);
+    assert.equal(r.all.includes(FAKE_ALERTS_VALUE) || r.all.includes(jwk.d), false);
+  } finally { sb.done(); }
+});
+
+test("cf-alerts.yml: tests run in a job with no secret; only the deploy job (needs: test, main only) names the GitHub Environment 'cloudflare' and gets the token; a set D1 id without the token is red", () => {
+  const code = CF_ALERTS_YML.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+  const jobs = code.slice(code.indexOf("\njobs:\n")).split(/\n  (?=[a-z_]+:\n)/).slice(1);
+  assert.deepEqual(jobs.map((j) => j.split(":")[0]), ["test", "deploy"]);
+  const [testJob, deployJob] = jobs;
+  assert.equal(/secrets\.|environment:/.test(testJob), false, "the test job gets no secret and names no Environment");
+  assert.match(testJob, /node --test cf\/alerts\/test\/\*\.test\.mjs/);
+  assert.match(deployJob, /^deploy:\n    needs: test\n    if: github\.ref == 'refs\/heads\/main'\n(?: {4}[^\n]*\n)*? {4}environment: cloudflare\n/);
+  assert.equal((code.match(/CLOUDFLARE_API_TOKEN/g) || []).length, (deployJob.match(/CLOUDFLARE_API_TOKEN/g) || []).length, "every use of the token is in the deploy job");
+  const ready = runOf(stepNamed("Ready to deploy?"));
+  assert.match(ready, /elif \[ "\$HAS_TOKEN" != "true" \] \|\| \[ "\$HAS_ACCOUNT" != "true" \]; then\n(?:[^\n]*\n)*?\s*echo "::error title=cf-alerts::[^\n]*environment: cloudflare[^\n]*"\n\s*echo "go=false" >> "\$GITHUB_OUTPUT"\n\s*exit 1\n/);
+  // run as written: placeholder id → notice (green); id set, no token → ::error, exit 1
+  const sb = keySandbox();
+  try {
+    const cwd = join(sb.dir, "repo");
+    mkdirSync(join(cwd, "cf/alerts"), { recursive: true });
+    const cfg = readFileSync(join(ROOT, "cf/alerts/wrangler.jsonc"), "utf8");
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg);
+    const go = (env) => sb.run("Ready to deploy?", { GITHUB_REF: "refs/heads/main", HAS_TOKEN: "true", HAS_ACCOUNT: "true", ...env }, cwd);
+    let r = go({ HAS_TOKEN: "false" });
+    assert.equal(r.status, 0, "the placeholder id comes first: a notice");
+    assert.match(r.stdout, /D1 database id not set/);
+    writeFileSync(join(cwd, "cf/alerts/wrangler.jsonc"), cfg.replace('"REPLACE_WITH_D1_ID"', '"0123abcd-0000-0000-0000-000000000000"'));
+    r = go({ HAS_TOKEN: "false" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^::error title=cf-alerts::CLOUDFLARE_API_TOKEN or CLOUDFLARE_ACCOUNT_ID is not available to this job/m);
+    assert.equal(go({}).status, 0);
+    assert.match(sb.read("GITHUB_OUTPUT"), /go=true\n$/);
+  } finally { sb.done(); }
+});
+
+test("cf-alerts.yml: a key run on another branch is red (nothing stored); sync_secret alone says what to check next; any red key run leaves a Korean line in the summary", () => {
+  const sb = keySandbox();
+  try {
+    let r = sb.run("Only main deploys", { KEYS: "true", GITHUB_REF: "refs/heads/x" });
+    assert.equal(r.status, 1);
+    assert.match(r.stdout, /^::error title=cf-alerts key setup::키 설정\(setup_keys\)과 ALERTS_SECRET 넣기\(sync_secret\)는 main 브랜치에서만 해요/m);
+    assert.match(sb.read("GITHUB_STEP_SUMMARY"), /main 브랜치에서만 해요/);
+    r = sb.run("Only main deploys", { KEYS: "false", GITHUB_REF: "refs/heads/x" });
+    assert.equal(r.status, 0);
+    assert.match(r.stdout, /tested, not deployed/);
+    r = sb.run("ALERTS_SECRET sync — summary");
+    assert.equal(r.status, 0);
+    assert.match(sb.read("GITHUB_STEP_SUMMARY"), /ALERTS_SECRET: Worker에 다시 넣었어요[\s\S]*price_alerts에 401 경고가 없으면 끝/);
+    r = sb.run("Key setup — say why in the summary (red run)");
+    assert.equal(r.status, 0);
+    assert.match(sb.read("GITHUB_STEP_SUMMARY"), /알림 키 설정: 실패[\s\S]*Annotations[\s\S]*replace_keys로 다시 돌리지 않아요/);
+    assert.equal(sb.read("WR_LOG"), "", "none of them calls wrangler");
+    assert.equal(/secrets\./.test(stepNamed("ALERTS_SECRET sync — summary") + stepNamed("Key setup — say why in the summary (red run)") + stepNamed("Only main deploys")), false);
+  } finally { sb.done(); }
+});
+
+test("vapid-keygen.mjs: a failed wrangler drops the key (exit 1, no public key file, nothing printed but the masks); without --put it refuses to print keys on GitHub Actions", () => {
+  const sb = keySandbox();
+  try {
+    const r = sb.run("Key setup — make the VAPID key pair here, store the private key (through stdin)", { FAKE_RC: "1", GITHUB_ACTIONS: "true" });
+    assert.equal(r.status, 1);
+    assert.equal(existsSync(join(sb.rt, "vapid-public-key")), false);
+    const jwkText = readFileSync(join(sb.store, "VAPID_PRIVATE_JWK"), "utf8");
+    const { d } = JSON.parse(jwkText);
+    const lines = r.stdout.split("\n");
+    assert.deepEqual(lines.slice(0, 2), [`::add-mask::${jwkText}`, `::add-mask::${d}`]);
+    assert.equal([lines.slice(2).join("\n"), r.all.slice(r.stdout.length)].join("\n").includes(d), false);
+    assert.match(r.all, /wrangler secret put VAPID_PRIVATE_JWK failed \(exit 1\) — the new key was dropped/);
+    // the plain mode prints the private key, so it never runs on Actions (public logs)
+    const plain = spawnSync(process.execPath, [KEYGEN], { env: { PATH: process.env.PATH, GITHUB_ACTIONS: "true" }, encoding: "utf8" });
+    assert.equal(plain.status, 1);
+    assert.equal(plain.stdout, "");
+    assert.match(plain.stderr, /the logs of this repository are public — on GitHub Actions use --put/);
+    // --put off Actions (someone's own computer): no mask lines, so nothing at all shows the private key
+    const local = sb.run("Key setup — make the VAPID key pair here, store the private key (through stdin)", { FAKE_RC: "0" });
+    assert.equal(local.status, 0, local.all);
+    const localD = JSON.parse(readFileSync(join(sb.store, "VAPID_PRIVATE_JWK"), "utf8")).d;
+    assert.equal(local.all.includes(localD), false);
+    assert.equal(local.all.includes("::add-mask::"), false);
+    const bad = spawnSync(process.execPath, [KEYGEN, "--put", "x"], { env: { PATH: process.env.PATH }, encoding: "utf8" });
+    assert.equal(bad.status, 2);
+    assert.equal(bad.stdout, "");
+  } finally { sb.done(); }
+});
+
+test("review finding (D1 write limit): made-up keys and a flood of pairs cost no D1 writes beyond PAIR_CAP — keys not in data.json are skipped, the cut list is a ::warning", T, async () => {
+  const db = makeDb(), env = makeEnv(db, { PAIR_CAP: "4" });
+  // 4 phones × 20 rules on keys of the right shape that data.json does not have (one POST each, no browser)
+  for (let p = 0; p < 4; p++) {
+    const res = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: Array.from({ length: 20 }, (_, i) => ({ kind: "target", key: `T${String(p * 20 + i).padStart(7, "0")}`, max: 1 })) });
+    assert.equal(res.status, 201);
+  }
+  // a real phone that took a push: its pairs come first in the Worker's list
+  const real = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }, { kind: "watch", key: "X01" }] });
+  db.raw.prepare("UPDATE subs SET last_w = '2026-10-01' WHERE id = ?").run(real.body.id);
+  const logs = [];
+  const r = await run(env, WEEK1, "2026-10-12", { log: (l) => logs.push(l) });
+  assert.equal(r.pairs, 2, "only X24 and X01 (in data.json) are digested");
+  assert.deepEqual(db.rows("SELECT k FROM snap ORDER BY k").map((x) => x.k), ["X01", "X24"], "D1 holds rows for the real pairs only");
+  assert.match(logs[0], /^::warning title=price alerts::the Worker cut the watched list at PAIR_CAP/);
+  assert.match(logs[1], /^price alerts: 2 watched pairs \(2 skipped, /);
+  assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-12T09:30:00+09:00") })).body.pairs, "capped");
+});
+
+test("review finding (D1 budget): a pair new to the Worker waits for a row the finish frees when its table is at PAIR_CAP — the day's run says so (::warning, /health pairs: capped), the next day computes it", T, async () => {
+  const db = makeDb(), env = makeEnv(db, { PAIR_CAP: "1" });
+  const res = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }] });
+  assert.equal(res.status, 201);
+  await run(env, WEEK1, "2026-10-12");
+  assert.deepEqual(db.rows("SELECT k FROM snap").map((x) => x.k), ["X24"]);
+  // the phone moves to X01: the list (one pair) is not cut, but the table still holds X24 until today's finish prunes it
+  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${res.body.id}`, { rules: [{ kind: "watch", key: "X01" }] })).status, 200);
+  const logs = [];
+  await run(env, WEEK1, "2026-10-13", { log: (l) => logs.push(l) });
+  assert.match(logs[0], /^::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP/);
+  assert.deepEqual(db.rows("SELECT k FROM snap").map((x) => x.k), [], "X24 pruned, X01 not added the same day");
+  assert.equal((await call(worker, env, "GET", "/health", undefined, { now: Date.parse("2026-10-13T09:30:00+09:00") })).body.pairs, "capped");
+  const next = [];
+  await run(env, WEEK1, "2026-10-14", { log: (l) => next.push(l) });
+  assert.deepEqual(db.rows("SELECT k FROM snap").map((x) => x.k), ["X01"], "the freed row takes it the next day");
+  assert.equal(next.some((l) => l.startsWith("::warning")), false);
+});
+
 test("everything notify.mjs logged in this file holds counts only: no secret, URL, host, id, endpoint, key or region name", () => {
   assert.ok(ALL_LOGS.length >= 8, `only ${ALL_LOGS.length} log lines were collected`);
   const text = ALL_LOGS.join("\n");
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: \d+ watched pairs \(\d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });

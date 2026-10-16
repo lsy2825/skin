@@ -2,9 +2,12 @@
 //   wrangler@4.145.0 (installed in a step without the token) d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc
 //   wrangler@4.145.0 deploy --config cf/alerts/wrangler.jsonc
 // Secrets (set once in the dashboard or with `wrangler secret put`, never in this file):
-//   VAPID_PRIVATE_JWK   private key JWK from `node cf/alerts/vapid-keygen.mjs` (one line of JSON)
+//   VAPID_PRIVATE_JWK   private key JWK from `node cf/alerts/vapid-keygen.mjs` (one line of JSON). The Worker derives the
+//                       VAPID public key from it (its x, y) and shows it at GET /health "key" — no change to this file is
+//                       needed after the key pair is made. That public key goes to app/config.js pushPublicKey (chat B);
+//                       the daily monitor (.github/scripts/health_check.py) warns when the two differ.
 //   ALERTS_SECRET       the factory's token (same value as the GitHub secret ALERTS_SECRET)
-// Not secret: VAPID_PUBLIC_KEY (also app/config.js pushPublicKey), database_id, ALERTS_URL.
+// Not secret: VAPID_PUBLIC_KEY (optional, below), database_id, ALERTS_URL.
 {
   "$schema": "https://unpkg.com/wrangler@4.145.0/config-schema.json",
   "name": "yoonsiljang-alerts",
@@ -35,12 +38,21 @@
   "vars": {
     "ALLOWED_ORIGIN": "https://yoonsiljang.lsy2825.workers.dev",
     "DEV_ORIGINS": "",
+    // optional. Empty = the public key of the secret VAPID_PRIVATE_JWK is used. When set it must be that same key (87
+    // characters, base64url), else nothing is sent and GET /health says "sending": false; a test also checks it equals
+    // app/config.js pushPublicKey when both are set. Keeping it empty means a new key pair needs only the new secret.
     "VAPID_PUBLIC_KEY": "",
     "VAPID_SUBJECT": "https://yoonsiljang.lsy2825.workers.dev",
     // what the cron can serve with ~25% headroom (src/worker.js: 21,560 pushes a week ÷ ~2 per phone). Nothing evicts: at the
     // cap new phones get 503 FULL and GET /health says capacity "full" (80% = "nearly_full"; the monitor warns)
     "MAX_SUBS": "8000",
     // new subscriptions per KST day (D1 Free allows 100,000 rows written a day; one new subscription ≈ 5)
-    "NEW_PER_DAY": "2000"
+    "NEW_PER_DAY": "2000",
+    // (key, region) pairs the factory digests per run, and the most rows its snap table holds (+ one digest chunk of 500):
+    // ≤ 2 × (PAIR_CAP + 500) = 7,000 D1 rows written per factory run. The 100,000-row daily write limit is for the whole
+    // account, and over it every D1 query fails until 09:00 KST — so the list is cut here (pairs of phones that took a push
+    // first, then the pairs already computed, then the most-watched), a new pair waits for a free row, and GET /health says
+    // "pairs": "capped" (the monitor warns). A user decision (src/worker.js PAIR_CAP has the arithmetic)
+    "PAIR_CAP": "3000"
   }
 }

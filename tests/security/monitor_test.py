@@ -277,6 +277,60 @@ probs, notes = cap_probs(b'{"ok":true,"capacity":"surprise"}')
 check("workers: unknown capacity value → a warning (not silence)", len(probs) == 1 and "알 수 없어요" in probs[0], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","stale":true}')
 check("workers: stale true → one warning line", len(probs) == 1 and "2일 넘게" in probs[0] and "price_alerts" in probs[0], str(probs))
+# no finish EVER (finished: null) while phones subscribed more than 2 days ago: the factory → Worker link never worked
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","finished":null,"stale":true}')
+check("workers: stale with finished null → 'never received' line naming the ALERTS_* settings",
+      len(probs) == 1 and "한 번도" in probs[0] and "ALERTS_URL" in probs[0] and "price_alerts" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","finished":"2026-10-12","stale":true}')
+check("workers: stale with an old finished day → the '2일 넘게' line", len(probs) == 1 and "2일 넘게" in probs[0] and "한 번도" not in probs[0], str(probs))
+# sending false: the VAPID secret is missing / cannot sign / VAPID_PUBLIC_KEY is another key — no push can go out
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":false,"key":null,"stale":false}')
+check("workers: sending false → one warning line (VAPID), still alive", len(probs) == 1 and "보낼 수 없어요" in probs[0]
+      and "VAPID_PRIVATE_JWK" in probs[0] and any("살아 있음" in n for n in notes), str(probs))
+# refusing true: phones that took our pushes refused our VAPID token today or yesterday where nothing else went through — kept (grace days)
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":true}')
+check("workers: refusing true → one warning line", len(probs) == 1 and "거절" in probs[0] and "pushPublicKey" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":false,"stale":false}')
+check("workers: sending true, refusing false → no warning", probs == [], str(probs))
+# pairs capped: the factory's watched list was cut at PAIR_CAP (D1 write bound) — some alerts not computed
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":false,"pairs":"capped"}')
+check("workers: pairs capped → one warning line", len(probs) == 1 and "PAIR_CAP" in probs[0] and "심은 구독" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":false,"pairs":"ok"}')
+check("workers: pairs ok → no warning", probs == [], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"full","sending":false,"refusing":true,"finished":null,"stale":true}')
+check("workers: several problems in one body → one line each", len(probs) == 4, str(probs))
+
+# the Worker's VAPID public key ("key", derived from its secret) against app/config.js pushPublicKey (the key phones use)
+KA, KB = "B" + "a" * 86, "B" + "b" * 86
+
+
+def key_probs(body, app_key):
+    f = fetcher({"https://alerts.example.workers.dev/health": (200, body)})
+    return hc.check_workers(f, "https://alerts.example.workers.dev", app_key)[0]
+
+
+h = lambda key: json.dumps({"ok": True, "capacity": "ok", "sending": True, "key": key, "stale": False, "refusing": False}).encode()
+r = key_probs(h(KB), KA)
+check("workers: Worker key ≠ app/config.js pushPublicKey → one warning, no key printed",
+      len(r) == 1 and "pushPublicKey" in r[0] and "달라요" in r[0] and KA not in r[0] and KB not in r[0], str(r))
+check("workers: same key → no warning", key_probs(h(KA), KA) == [])
+check("workers: pushPublicKey empty in app/config.js (push not switched on) → not compared", key_probs(h(KB), "") == [])
+check("workers: Worker shows no key (null, or an older Worker / the metrics Worker without the field) → not compared",
+      key_probs(h(None), KA) == [] and key_probs(b'{"ok":true}', KA) == [])
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "app"))
+    check("app_push_key: no app/config.js → ''", hc.app_push_key(tmp) == "")
+    open(os.path.join(tmp, "app", "config.js"), "w", encoding="utf-8").write(f'window.APP_CONFIG = {{\n  alertsApi: "https://x",\n  pushPublicKey: "{KA}",\n}};\n')
+    check("app_push_key: reads pushPublicKey from app/config.js", hc.app_push_key(tmp) == KA)
+    json.dump(meta_of(["블리비", 58, 58, 0, "2026-10-13", "2026-10-13"]), open(os.path.join(tmp, "app", "data-meta.json"), "w", encoding="utf-8"))
+    for worker_key, want in ((KB, 1), (KA, 0)):
+        f = fetcher({"https://alerts.example.workers.dev/health": (200, h(worker_key))})
+        probs, notes, msg = hc.run(hc.parse_args(["--today", "2026-10-16", "--root", tmp]), {"MONITOR_WORKER_URLS": "https://alerts.example.workers.dev"},
+                                   fetch=f, now=datetime.datetime(2026, 10, 16, 0, 30, tzinfo=datetime.timezone.utc), send=lambda *a, **k: None)
+        check(f"run: the daily monitor compares the Worker key with the checkout's app/config.js ({'differs' if want else 'same'})",
+              sum("pushPublicKey" in p for p in probs) == want, str(probs))
+check("app_push_key: the repository's app/config.js reads without error", isinstance(hc.app_push_key(ROOT), str))
+
 probs, notes = cap_probs(b'{"ok":false,"capacity":"full"}')
 check("workers: ok:false stays 'down' (capacity of a dead Worker is not read)", len(probs) == 1 and "상태 확인 실패" in probs[0], str(probs))
 probs, notes = cap_probs(b'[1,2]')
