@@ -197,8 +197,10 @@ def worker_warnings(host, data, app_key=""):
     run today or yesterday found phones that took our pushes refusing our VAPID token at a push service that took nothing
     else (kept, not counted, held back and tried again a few a run — cf/alerts rules.js PROBES — for up to
     REFUSING_GRACE_DAYS = 7 days; after that they are counted and removed). pairs: "capped" = the factory's watched (key, region) list was cut at PAIR_CAP today or
-    yesterday, or a new pair had to wait a day for a free row under it (planted subscriptions, or more real ones than the
-    cap) — some alerts were not computed.
+    yesterday, or a new pair had to wait a day for a free row under it (subscriptions planted on real keys, or more real
+    ones than the cap — keys the factory's data.json does not have never take a place since the 5th review) — some alerts
+    were not computed. The message points at the NARROW cleanup query first; the wide one also removes real phones that
+    have not received a push yet (at launch, nearly all of them) and needs a user decision (docs/SECURITY_ARCHITECTURE.md §4).
     key: the VAPID public key the Worker pushes with; when app/config.js pushPublicKey is set and differs, every phone
     subscribes with a key the Worker cannot push to (the push services refuse, the subscriptions end up removed)."""
     out = []
@@ -224,7 +226,8 @@ def worker_warnings(host, data, app_key=""):
                    "VAPID 키 쌍과 app/config.js pushPublicKey를 확인하세요")
     if data.get("pairs") == "capped":
         out.append(f"알림 Worker: 지켜보는 (시술, 지역) 쌍이 상한(PAIR_CAP)에 닿아 일부만 계산했어요(새 쌍은 빈 자리가 날 때까지 기다려요) ({host}). 심은 구독이 "
-                   "있는지 보고 정리하거나 상한을 올리세요(D1 하루 쓰기 한도 때문에 둔 상한이에요)")
+                   "있는지 보고 좁은 정리 쿼리부터 쓰거나 상한을 올리세요(D1 하루 쓰기 한도 때문에 둔 상한이에요). 넓은 정리 쿼리는 아직 푸시를 못 받은 "
+                   "진짜 구독도 지우므로 사용자 결정 뒤에만 써요(docs/SECURITY_ARCHITECTURE.md §4)")
     key = data.get("key")
     if app_key and isinstance(key, str) and key and key != app_key:
         out.append(f"알림 Worker의 VAPID 공개키가 app/config.js pushPublicKey와 달라요 ({host}): 이대로면 휴대폰 구독이 "

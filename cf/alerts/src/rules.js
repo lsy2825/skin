@@ -7,6 +7,17 @@ export const MAX_RULES = 20;
 export const MAX_PRICE = 100_000_000;                     // real prices are 100 – 19,000,000 won
 // compare keys in app/data.json: X01–X36 (hand-made groups) and T + 7 (auto variants). Checked against data.json in tests.
 export const KEY_RE = /^(X\d{2}|T[0-9A-Z]{7})$/;
+// the factory's key set (POST /v1/internal/keys, sql.js SET_KEYS): the compare keys of the data.json it computes from —
+// 1 to MAX_KEYS, each KEY_RE, in strictly ascending order (each once, one spelling per set, so the stored row changes only
+// when the set does) → that JSON, else null. app/data.json has ~5,600 (2026-10: 62 KB as JSON; MAX_KEYS × 11 bytes stays
+// under the factory's 256 KB body cap). notify.mjs checks the count first (shapeProblems), so a bigger data.json is a
+// ::warning and no finish (GET /health "stale"), never a silent drop.
+export const MAX_KEYS = 20000;
+export function keySetJson(keys) {
+  if (!Array.isArray(keys) || !keys.length || keys.length > MAX_KEYS) return null;
+  for (let i = 0; i < keys.length; i++) if (typeof keys[i] !== "string" || !KEY_RE.test(keys[i]) || (i > 0 && !(keys[i - 1] < keys[i]))) return null;
+  return JSON.stringify(keys);
+}
 // the 17 short region names data.json branches use (branches[5]); '' = 전국. Checked against data.json in tests.
 export const REGIONS = ["서울", "경기", "인천", "부산", "대구", "광주", "대전", "울산", "세종", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주"];
 // region groups the app offers (app/app.js `const CAPITAL = ["서울", "경기", "인천"]`, its default region view '수도권';

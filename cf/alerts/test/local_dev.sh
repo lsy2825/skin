@@ -83,6 +83,18 @@ echo "ok   baselines stored for the 3 watched pairs"
 ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify2.log"
 grep -q '^price alerts: 3 watched pairs (0 skipped, 0 changed' "$STATE/notify2.log" || fail "the same data again must not change anything"
 echo "ok   same data again: nothing changed"
+# notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
+# does not have is refused (400 UNKNOWN_KEY, the unknown keys listed), and a malformed key set is 400 BAD_KEYS
+KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"
+NKEYS=$(node -e 'const d=JSON.parse(require("fs").readFileSync("app/data.json","utf8"));console.log(new Set(d.keys.map((k)=>k[0])).size)')
+case "$KS" in *'"c": 1'*'"n": '"$NKEYS"*|*'"c":1'*'"n":'"$NKEYS"*) ;; *) fail "the key set should be one row of $NKEYS keys: $KS";; esac
+echo "ok   key set stored: one row, $NKEYS keys"
+# (a PUT, so the subscribe rate limit of 3 a minute stays for the subscriptions below; POST takes the same path: node tests)
+U=$(req PUT "/v1/push/rules/$ID" '{"rules":[{"kind":"watch","key":"X24"},{"kind":"watch","key":"TZZZZZZZ"}]}' -H "origin: $APP")
+expect 400 "$U" "a rule naming a key data.json does not have"
+case "$U" in *'"error":"UNKNOWN_KEY","keys":["TZZZZZZZ"]'*) ;; *) fail "should answer UNKNOWN_KEY with the unknown key: $U";; esac
+expect 400 "$(req POST /v1/internal/keys '{"keys":["X24","X01"]}' -H "authorization: Bearer $SECRET")" "a key set out of order (BAD_KEYS)"
+expect 401 "$(req POST /v1/internal/keys '{"keys":["X01"]}')" "key set without the secret"
 
 expect 204 "$(req DELETE "/v1/push/subscribe/$ID")" "DELETE"
 expect 404 "$(req PUT "/v1/push/rules/$ID" '{"rules":[]}')" "PUT after DELETE"

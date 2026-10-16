@@ -2,10 +2,12 @@
 //   POST   /v1/push/subscribe       {subscription, rules} → 201 {id}       (the phone keeps the id; nothing personal stored)
 //   PUT    /v1/push/rules/{id}      {rules}               → 200 {ok:true} | 404 (subscribe again); rules [] DELETES the row
 //                                                            (200 {ok:true}; afterwards that id answers 404)
+//     both: 400 {error:"UNKNOWN_KEY", keys:[…]} when a rule names a key the factory's last data.json does not have (once
+//           the factory stored its key set; nothing is written — the app keeps those rules on the phone, sql.js UNKNOWN_KEYS)
 //   DELETE /v1/push/subscribe/{id}                        → 204
 //   GET    /health (= /v1/health)                         → 200 {ok:true, window, sending, key, finished, stale, refusing,
 //                                                            capacity, pairs} (health() below) | 503 {ok:false} when D1 fails
-//   /v1/internal/{watched,digest,finish,send}             → the price factory (weekly.yml → notify.mjs), Bearer ALERTS_SECRET
+//   /v1/internal/{keys,watched,digest,finish,send}        → the price factory (weekly.yml → notify.mjs), Bearer ALERTS_SECRET
 //   cron '*/10 23,0-11 * * *' (UTC = 08:00–20:50 KST)     → send(): at most SEND_LIMIT pushes per run
 // No Cloudflare imports, so node tests import this file and pass their own env (DB = a D1-shaped wrapper over node:sqlite).
 // src/index.js re-exports only the default handler (a Worker entry may export nothing else).
@@ -40,15 +42,19 @@
 //             has no exp_sent (never sent) and is marked weekly once in its life (pend_w stays 1 until a push gets through)
 //           the factory's snap: a pair digested again 1, its PROMOTE or ROLL_BU 1, a new pair 2, a pruned pair 2. Pairs are
 //             what subscriptions say (up to MAX_SUBS × 20 = 160,000), and a subscription needs no browser (one POST with a
-//             made-up endpoint on an allowed host). So (1) watched() cuts the list at PAIR_CAP (sql.js WATCHED: pairs of
-//             phones that took a push, then pairs computed in the last PAIR_KEEP_DAYS, then pairs not computed yet, then the
-//             rest), and (2) a new pair is added only while snap holds fewer than PAIR_CAP rows (sql.js DIGEST: ≤ PAIR_CAP +
+//             made-up endpoint on an allowed host). So (1) watched() ranks only pairs of keys in the factory's key set and
+//             cuts the list at PAIR_CAP (sql.js WATCHED: pairs of phones that took a push, then pairs computed in the last
+//             PAIR_KEEP_DAYS, then pairs not computed yet, then the rest), and (2) a new pair is added only while snap holds fewer than PAIR_CAP rows (sql.js DIGEST: ≤ PAIR_CAP +
 //             500 rows) — a row the finish prunes is free only the next day. With S rows at the start, k digested again, x
 //             added and S − k pruned: 2k + 2x + 2(S − k) = 2(x + S) ≤ 2 × (PAIR_CAP + 500) = 7,000 per factory run (the list
 //             cannot be replaced in a day: adding x needs x free rows from an earlier finish; the order does not matter here)
+//           the factory's key set (sql.js SET_KEYS): 1 row when the data.json's keys changed, 0 when not (one row, INTEGER
+//             PRIMARY KEY: no index entry) → ≤ 1 per factory run, a few a week. A subscribe or PUT refused for an unknown key
+//             (400 UNKNOWN_KEY) writes nothing (SET_DAY writes only when the KST day changes), so after the first key set a
+//             made-up key costs 0 rows where it cost 5 (5th review)
 //         → a D1 day where everything peaks at once (a full table whose every row changes every mark, every push at its most
-//         rows, two KST days of new subscriptions, a full pair turnover) ≈ 24,640 + 20,000 + 40,000 + 7,000 ≈ 91,600 of
-//         100,000. A manual re-run of the factory the same day adds ≤ 7,000 + the marks of the rows that change again (≈ 98,600
+//         rows, two KST days of new subscriptions, a full pair turnover, a new key set) ≈ 24,640 + 20,000 + 40,000 + 7,000 + 1
+//         ≈ 91,600 of 100,000. A manual re-run of the factory the same day adds ≤ 7,000 + the marks of the rows that change again (≈ 98,600
 //         plus those). Not counted: PUT/DELETE and a subscription sent again for the same endpoint (≈ 2–4 rows each, bounded
 //         only by the Workers request limit and SUBS_RL), and cf/metrics, which shares the account's limit (src/rules.js
 //         there: up to 80,000 rows on a spammed day — the two together can pass it). The levers are NEW_PER_DAY (1,000 →
@@ -63,14 +69,16 @@
 //         ≈ 3M of 5M; a normal day (a few hundred pending rows) is far below 1M. Held rows (H, 0 on a normal day): CLAIM_P
 //         reads those whose minute has come once per run (≤ 77 × H) and RELEASE_HELD walks them once when a push origin
 //         with held rows answers 2xx again — H = 2,000 adds ≈ 160,000 a day. watched() groups subs × rules once per page
-//         of 2,000 pairs and looks every distinct pair up in snap once (its order): ≤ 2 pages × (8,000 + 160,000) ≈ 340,000;
-//         each digest chunk counts snap once (its room check): ≤ 7 × 3,500 ≈ 25,000 a day
+//         of 2,000 pairs, reads the key set once (json_each of the one keyset row: ~5,600 keys) and looks every distinct pair
+//         up in snap once (its order): ≤ 2 pages × (8,000 + 160,000 + 5,600) ≈ 350,000; each digest chunk counts snap once
+//         (its room check): ≤ 7 × 3,500 ≈ 25,000 a day; a subscribe or PUT reads the keyset row once more (one row, ≤ 20
+//         rule entries — a string search in it, not a json_each of the set)
 //   CPU (10 ms): one ES256 signature per push origin per 11 h (cached in D1), one test signature + verify per run that
 //         has a key (push.js vapidKey, before any claim; GET /health does the same), JSON of ≤ 40 rows
 // VAPID: only the secret VAPID_PRIVATE_JWK is needed — the public key is derived from it (push.js publicKeyOf). The
 //   optional var VAPID_PUBLIC_KEY, when set, must be that same key (else nothing is sent, GET /health sending:false).
 import { ID_RE, validDay, validRun, FINISH_SLACK_DAYS, daysBetween, newId, kstDay, addDays, inWindow, pushTtl, dueKinds, outcome,
-  hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, clientKey, RETRY_DROP, REFUSED_DROP,
+  hostTrouble, capacityOf, STALE_DAYS, REFUSING_DAYS, CAPPED_DAYS, validateRules, cleanEntry, keySetJson, clientKey, RETRY_DROP, REFUSED_DROP,
   NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES, SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PAIR_KEEP_DAYS } from "./rules.js";
 import { checkSubscription, vapidJwt, vapidKey, pushRequest } from "./push.js";
 import * as Q from "./sql.js";
@@ -79,9 +87,10 @@ export const SEND_LIMIT = 40;          // pushes per run: free plan allows 50 ou
 export const MAX_SUBS = 8000;          // what the cron can serve (arithmetic above); wrangler.jsonc vars.MAX_SUBS. Nothing evicts: full = 503 FULL
 export const NEW_PER_DAY = 2000;       // new subscriptions per KST day (D1 Free: 100,000 rows written a day)
 // (key, region) pairs the factory digests per run, and the most rows snap holds (+ one digest chunk) — its D1 writes are
-// ≤ 2 × (PAIR_CAP + 500) rows per factory run (arithmetic above). A user decision; wrangler.jsonc vars.PAIR_CAP. Past it
-// the list is cut (sql.js WATCHED: pairs of phones that took a push, then pairs computed this week, then pairs not computed
-// yet, then the rest) or a new pair waits for a free row, and GET /health says "pairs": "capped" (the monitor warns)
+// ≤ 2 × (PAIR_CAP + 500) rows per factory run (arithmetic above). A user decision; wrangler.jsonc vars.PAIR_CAP. Only
+// pairs of keys in the factory's key set count (a key the data.json does not have never takes a place). Past it the list
+// is cut (sql.js WATCHED: pairs of phones that took a push, then pairs computed this week, then pairs not computed yet,
+// then the rest) or a new pair waits for a free row, and GET /health says "pairs": "capped" (the monitor warns)
 export const PAIR_CAP = 3000;
 const PARALLEL = 6;                    // the runtime runs at most 6 outside fetches at once anyway
 const PUBLIC_MAX = 8 * 1024, INTERNAL_MAX = 256 * 1024;
@@ -104,7 +113,8 @@ export function sameSecret(a, b) {
   return d === 0;
 }
 
-class Bad extends Error { constructor(status, code) { super(code); this.status = status; this.code = code; } }
+// a refused request: status, error code, and (UNKNOWN_KEY only) more fields for the body
+class Bad extends Error { constructor(status, code, more) { super(code); this.status = status; this.code = code; this.more = more; } }
 
 // the body, at most max bytes, read as a stream with a running count (a body without Content-Length cannot make the
 // Worker buffer more than max): too big → 413 (stream cancelled), the client going away mid-body → 400
@@ -160,7 +170,8 @@ async function subscribe(request, env, now) {
   const v = validateRules(body.rules);
   // an empty subscription would never send and sit in D1 for ever
   if (v.error || !v.rules.length) throw new Bad(400, "BAD_RULES");
-  // Per-client rate limit (after validation, so junk requests do not use it up). The key is the connecting IP
+  // Per-client rate limit (after validation, so junk requests do not use it up; a request refused for an unknown key —
+  // decided in D1 below — does count: it costs a D1 read). The key is the connecting IP
   // (cf-connecting-ip): IPv4 as is, IPv6 cut to its /64 (rules.js clientKey — one client usually holds a whole /64). It
   // goes ONLY to the Rate Limiting binding, whose counter lives in Cloudflare's memory at that location for the 60-second
   // period: it is never written to D1, never logged, never returned. Missing binding (node tests, a local run without
@@ -170,17 +181,22 @@ async function subscribe(request, env, now) {
     if (!(await env.SUBS_RL.limit({ key })).success) throw new Bad(429, "RATE_LIMITED");
   }
   const today = kstDay(now), max = num(env.MAX_SUBS, MAX_SUBS), perDay = num(env.NEW_PER_DAY, NEW_PER_DAY);
+  const rules = JSON.stringify(v.rules);
   // one batch: the Worker's own KST day first (the subs_ins trigger names today's 'new:' counter from it), then the INSERT
   const res = await env.DB.batch([
     env.DB.prepare(Q.SET_DAY).bind(Number(today.replace(/-/g, ""))),
-    env.DB.prepare(Q.SUBSCRIBE).bind(newId(), sub.endpoint, JSON.stringify(v.rules), today, max, perDay),
+    env.DB.prepare(Q.SUBSCRIBE).bind(newId(), sub.endpoint, rules, today, max, perDay),
   ]);
   const row = res[1] && res[1].results && res[1].results[0];
   if (!row) {
-    const c = await env.DB.prepare(Q.SUBS_COUNTS).bind(today).first();
-    // today's new-subscription budget used up: 429 (checked first, so a flood does not read as "full"); else the table is
-    // full: 503 FULL. Nothing is evicted — GET /health "capacity" tells the operator (the monitor warns), who purges or
-    // raises MAX_SUBS.
+    const [u, cs] = await env.DB.batch([env.DB.prepare(Q.UNKNOWN_KEYS).bind(rules), env.DB.prepare(Q.SUBS_COUNTS).bind(today)]);
+    // a rule names a key the factory's last data.json does not have (its pairs would never be computed): 400 UNKNOWN_KEY
+    // with those keys (checked first: subscribing again later would not help). Else today's new-subscription budget used up:
+    // 429 (so a flood does not read as "full"); else the table is full: 503 FULL. Nothing is evicted — GET /health
+    // "capacity" tells the operator (the monitor warns), who purges or raises MAX_SUBS.
+    const unknown = ((u && u.results) || []).map((x) => x.k);
+    if (unknown.length) throw new Bad(400, "UNKNOWN_KEY", { keys: unknown });
+    const c = cs && cs.results && cs.results[0];
     if (!c || c.today >= perDay) throw new Bad(429, "RATE_LIMITED");
     throw new Bad(503, "FULL");
   }
@@ -193,10 +209,17 @@ async function putRules(request, env, id) {
   const v = validateRules(body && body.rules);
   if (v.error) throw new Bad(400, v.error);
   // no rules left = the phone switched every alert off: the row is deleted (unknown id → 404 as for any other PUT)
+  const rules = JSON.stringify(v.rules);
   const row = v.rules.length
-    ? await env.DB.prepare(Q.PUT_RULES).bind(id, JSON.stringify(v.rules)).first()
+    ? await env.DB.prepare(Q.PUT_RULES).bind(id, rules).first()
     : await env.DB.prepare(Q.DELETE_SUB_RETURNING).bind(id).first();
-  if (!row) throw new Bad(404, "NOT_FOUND");
+  if (!row) {
+    // nothing changed: a rule names a key the factory's last data.json does not have (400 UNKNOWN_KEY, the row is left as
+    // it was), else the id is unknown (404)
+    const unknown = v.rules.length ? ((await env.DB.prepare(Q.UNKNOWN_KEYS).bind(rules).all()).results || []).map((x) => x.k) : [];
+    if (unknown.length) throw new Bad(400, "UNKNOWN_KEY", { keys: unknown });
+    throw new Bad(404, "NOT_FOUND");
+  }
   return { status: 200, body: { ok: true } };
 }
 
@@ -206,8 +229,21 @@ async function unsubscribe(env, id) {
 }
 
 // ---- factory side (Bearer ALERTS_SECRET; never CORS)
-// GET /v1/internal/watched?at=<offset> → {pairs, next: <offset> | null, capped?: true}. At most PAIR_CAP pairs in all, most
-// important first (sql.js WATCHED; a pair keeps its place PAIR_KEEP_DAYS after it was first computed, by the Worker's clock);
+// POST /v1/internal/keys {keys} → {keys: <how many>, changed}. The compare keys of the data.json the factory is about to
+// compute, each once in ascending order (rules.js keySetJson; else 400 BAD_KEYS). Stored as ONE row, rewritten only when
+// it differs (sql.js SET_KEYS). notify.mjs sends it before the first watched page: WATCHED then ranks only pairs of these
+// keys, and subscribe/PUT refuse a rule naming any other key (400 UNKNOWN_KEY).
+async function storeKeys(request, env) {
+  const body = await readJson(request, INTERNAL_MAX);
+  const set = keySetJson(body && body.keys);
+  if (!set) throw new Bad(400, "BAD_KEYS");
+  const res = await env.DB.prepare(Q.SET_KEYS).bind(set).run();
+  return { keys: body.keys.length, changed: ((res && res.meta && res.meta.changes) || 0) > 0 };
+}
+
+// GET /v1/internal/watched?at=<offset> → {pairs, next: <offset> | null, capped?: true}. At most PAIR_CAP pairs in all, only
+// pairs whose key is in the stored key set (storeKeys above), most important first (sql.js WATCHED; a pair keeps its place
+// PAIR_KEEP_DAYS after it was first computed, by the Worker's clock);
 // a list cut at the cap answers capped: true on its last page and stamps stat 'capped' (GET /health "pairs"). With digest's
 // room check this keeps the factory's D1 writes bounded however many pairs the subscriptions name.
 async function watched(env, url, now) {
@@ -540,7 +576,7 @@ async function route(request, env, now) {
       else r = { status: 404, body: { error: "NOT_FOUND" } };
     } catch (e) {
       if (!(e instanceof Bad)) throw e;
-      r = { status: e.status, body: { error: e.code } };
+      r = { status: e.status, body: { error: e.code, ...e.more } };
     }
     return json(r.body, r.status, c.headers);
   }
@@ -549,6 +585,7 @@ async function route(request, env, now) {
     if (!env.ALERTS_SECRET) return json({ error: "NOT_CONFIGURED" }, 503);
     if (!sameSecret(bearer(request), env.ALERTS_SECRET)) return json({ error: "UNAUTHORIZED" }, 401);
     try {
+      if (m === "POST" && path === "/v1/internal/keys") return json(await storeKeys(request, env));
       if (m === "GET" && path === "/v1/internal/watched") return json(await watched(env, url, now));
       if (m === "POST" && path === "/v1/internal/digest") return json(await digest(request, env, now));
       if (m === "POST" && path === "/v1/internal/finish") return json(await finish(request, env, now));

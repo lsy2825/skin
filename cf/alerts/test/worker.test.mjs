@@ -323,14 +323,16 @@ test("the log spy sees inside objects (Headers, Request, Error, nested), as a lo
 });
 
 test("factory endpoints need the secret (constant-time compare); watched returns pairs only (no ids, endpoints or numbers)", T, async () => {
-  const { env } = await setup();
+  const { env, db } = await setup();
   const a = await sub(env, [{ kind: "watch", key: "X24" }, { kind: "target", key: "X24", max: 90000, region: "서울" }, { kind: "newmatch", key: "T0000ABC" }, { kind: "watch", key: "X24", region: "수도권" }]);
   await sub(env, [{ kind: "watch", key: "X24" }]);
   for (const h of [{}, { authorization: "Bearer wrong" }, { authorization: `Bearer ${SECRET_VALUE}x` }, { authorization: `Basic ${SECRET_VALUE}` }]) {
     assert.equal((await call(worker, env, "GET", "/v1/internal/watched", undefined, { headers: { ...h, origin: null } })).status, 401);
     assert.equal((await call(worker, env, "POST", "/v1/internal/finish", { run: "2026-10-19|2026-10-19", today: "2026-10-19" }, { headers: { ...h, origin: null } })).status, 401);
     assert.equal((await call(worker, env, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: [] }, { headers: { ...h, origin: null } })).status, 401);
+    assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24"] }, { headers: { ...h, origin: null } })).status, 401);
   }
+  assert.deepEqual(db.rows("SELECT * FROM keyset"), [], "nothing stored without the secret");
   assert.equal((await internal({ ...env, ALERTS_SECRET: "" }, "GET", "/v1/internal/watched")).status, 503);
   await mark(env, "2026-10-19", [st("X24", 100000, 5, 120000)]);
   const w = await internal(env, "GET", "/v1/internal/watched?at=0");
@@ -900,6 +902,13 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
   assert.match(plan(Q.CLAIM_P, 100, PROBES, PROBE_SLOTS), /USING INDEX subs_claim \(claim>\? AND claim<\?\)/, "the probes read the held rows only");
   assert.match(plan(Q.RELEASE_HELD, "https://fcm.googleapis.com"), /USING INDEX subs_claim \(claim<\?\)/, "a push origin's release walks the held rows only");
   assert.match(plan(Q.DROP_ENDED, "2026-10-19"), /USING INDEX subs_x/, "the partial index: rows with a pending expiring only");
+  // the watched list reads the factory's key set once per statement (an uncorrelated list subquery over json_each of the one
+  // keyset row), never once per rule; subscribe/PUT search the one keyset row and never walk the set row by row
+  const watchedPlan = plan(Q.WATCHED, 2001, 0, "2026-10-12");
+  assert.match(watchedPlan, /LIST SUBQUERY \d+/, watchedPlan);
+  assert.equal(/CORRELATED/.test(watchedPlan), false, watchedPlan);
+  for (const k of ["SUBSCRIBE", "PUT_RULES", "UNKNOWN_KEYS"]) assert.equal(/json_each\((ks|keyset)\.keys\)/.test(Q[k]), false, k);
+  assert.match(plan(Q.UNKNOWN_KEYS, '[{"kind":"watch","key":"X24"}]'), /SCAN ks/);
   // sending runs a day: every cron minute of wrangler.jsonc that inWindow() accepts
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   const cron = /"crons": \["([^"]+)"\]/.exec(cfg)[1];
@@ -1043,6 +1052,11 @@ test("logs stay counts-only in every error and abuse branch too (429 rate limit/
     assert.equal((await call(worker, env, "GET", "/v1/push/nothing/UNKNOWNID_abcdefghijk", undefined, { headers })).status, 404);
     assert.equal((await call(worker, env, "POST", "/v1/internal/finish", { run: "2026-10-19|9999-12-31", today: "9999-12-31" }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
     assert.equal((await call(worker, env, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: [{ k: "X24", r: "", id: "LEAKID" }] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 400);
+    // the factory's key set: a malformed one (400 BAD_KEYS), then rules naming a key outside it (400 UNKNOWN_KEY)
+    assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24", "TLEAKKEY"] }, { headers: { ...headers, ...AUTH, origin: null } })).body.error, "BAD_KEYS");
+    assert.equal((await call(worker, env, "POST", "/v1/internal/keys", { keys: ["X24"] }, { headers: { ...headers, ...AUTH, origin: null } })).status, 200);
+    assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.error, "UNKNOWN_KEY");
+    assert.equal((await call(worker, env, "PUT", "/v1/push/rules/UNKNOWNID_abcdefghijkl", { rules: [{ kind: "watch", key: "TLEAKKEY" }] }, { headers })).body.error, "UNKNOWN_KEY");
     // push service answers 404 / 410 / 429 / 302 / network error
     for (const [i, host] of ["fcm.googleapis.com", "web.push.apple.com", "updates.push.services.mozilla.com", "wns2-par02p.notify.windows.com", "fcm.googleapis.com"].entries()) {
       const s = subscription(host, `push/abuse-ep-${i + 2}`);
@@ -1065,7 +1079,7 @@ test("logs stay counts-only in every error and abuse branch too (429 rate limit/
   assert.match(logs, /alerts error/);
   assert.match(logs, /alerts send failed/);
   assert.match(logs, /"gone":2/);
-  for (const v of [ip, "198.51.100.9", "TESTUA", "Mozilla", "ko-KR", "LEAKID", "UNKNOWNID", "evil.example", "abuse-ep", "fcm.googleapis", "apple.com", "mozilla.com", "windows.com", "/push/", "/fcm/", ...ids, ...endpoints])
+  for (const v of [ip, "198.51.100.9", "TESTUA", "Mozilla", "ko-KR", "LEAKID", "TLEAKKEY", "UNKNOWNID", "evil.example", "abuse-ep", "fcm.googleapis", "apple.com", "mozilla.com", "windows.com", "/push/", "/fcm/", ...ids, ...endpoints])
     assert.equal(logs.includes(v), false, `console shows ${v}`);
 });
 
@@ -1113,6 +1127,8 @@ test("data minimisation: no per-row date, no retention, no eviction anywhere in 
   assert.deepEqual(db.rows("PRAGMA table_info(subs)").map((c) => c.name), ["id", "endpoint", "rules", "pend_w", "last_w", "pend_x", "pend_xl", "exp_sent", "last_x", "fails", "claim"]);
   assert.deepEqual(db.rows("PRAGMA table_info(snap)").map((c) => c.name), ["k", "r", "m", "n", "med", "p", "pm", "pn", "pmed", "bu", "pu", "cb", "cu", "g", "run", "added", "e", "s", "u"]);
   assert.deepEqual(db.rows("SELECT k FROM stat").map((x) => x.k), ["subs"], "an empty database holds the one counter");
+  assert.deepEqual(db.rows("PRAGMA table_info(keyset)").map((c) => c.name), ["id", "keys"], "the factory's key set: public treatment keys, one row");
+  assert.deepEqual(db.rows("SELECT * FROM keyset"), [], "no key set until the factory sends one");
   assert.deepEqual(db.rows("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'subs' AND name NOT LIKE 'sqlite_%' ORDER BY name").map((x) => x.name), ["subs_claim", "subs_due", "subs_fail", "subs_x"]);
   for (const f of ["../migrations/0001_init.sql", "../src/sql.js", "../src/worker.js", "../src/rules.js"]) {
     const src = readFileSync(new URL(f, import.meta.url), "utf8");
@@ -1990,18 +2006,171 @@ test("4th review (first come keeps the list): pairs that filled the list first m
   assert.deepEqual(w.pairs[0], { k: "X24", r: "" }, "a phone that took a push puts its pair first for good");
 });
 
-test("4th review (cleanup query): the query the docs give (SECURITY_ARCHITECTURE §4) removes every subscription that never received a push — held, with news waiting, or idle — and nothing a send run holds right now or a phone that took a push", T, async () => {
+test("4th/5th review (cleanup queries): the narrow query the docs give first (SECURITY_ARCHITECTURE §4) removes only never-pushed subscriptions none of whose keys is in the factory's key set — nothing while no set is stored; the wide one (a user decision) removes every subscription that never received a push; neither touches a row a send run holds or a phone that took a push", T, async () => {
   const doc = readFileSync(new URL("../../../docs/SECURITY_ARCHITECTURE.md", import.meta.url), "utf8");
-  const del = /`(DELETE FROM subs WHERE [^`]+)`/.exec(doc), count = /`(SELECT count\(\*\) FROM subs WHERE [^`]+)`/.exec(doc);
-  assert.ok(del && count, "both queries are in the doc");
-  assert.equal(count[1].replace(/^SELECT count\(\*\)/, "").trim(), del[1].replace(/^DELETE/, "").trim(), "the count and the delete name the same rows");
-  const { db } = await setup();
-  const ins = db.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_w, last_w, fails, claim) VALUES (?, ?, '[]', ?, ?, ?, ?)");
-  const rows = [["heldPlant", 1, null, 0, -29000000], ["duePlant", 1, null, 0, null], ["idlePlant", 0, null, 0, null], ["failedPlant", 1, null, 2, null],
+  const all = (re) => [...doc.matchAll(re)].map((m) => m[1]);
+  const dels = all(/`(DELETE FROM subs WHERE [^`]+)`/g), counts = all(/`(SELECT count\(\*\) FROM subs WHERE [^`]+)`/g);
+  const narrowDel = dels.find((q) => q.includes("keyset")), narrowCount = counts.find((q) => q.includes("keyset"));
+  const wideDel = dels.find((q) => /WHERE last_w IS NULL AND last_x IS NULL AND \(claim IS NULL OR claim < 0\);$/.test(q));
+  const wideCount = counts.find((q) => /WHERE last_w IS NULL AND last_x IS NULL AND \(claim IS NULL OR claim < 0\);$/.test(q));
+  assert.ok(narrowDel && narrowCount && wideDel && wideCount, "all four queries are in the doc");
+  assert.ok(doc.indexOf(narrowDel) < doc.indexOf(wideDel), "the narrow one comes first");
+  assert.match(doc, /넓은 쿼리[^\n]*사용자 결정/, "the doc says the wide one needs a user decision");
+  for (const [c, d] of [[narrowCount, narrowDel], [wideCount, wideDel]])
+    assert.equal(c.replace(/^SELECT count\(\*\)/, "").trim(), d.replace(/^DELETE/, "").trim(), "the count and the delete name the same rows");
+  const run = (db, sql) => db.rows(sql.replace(/;$/, ""))[0]["count(*)"];
+  // narrow: [id, rules' keys, last_w, claim]
+  const { db, env } = await setup();
+  const ins = db.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_w, last_w, claim) VALUES (?, ?, ?, 1, ?, ?)");
+  const rk = (...keys) => JSON.stringify(keys.map((key) => ({ kind: "newmatch", key })));
+  const rows = [["plantUnknown", rk("T0000001", "T0000002"), null, null], ["plantUnknownHeld", rk("T0000003"), null, -29000000],
+    ["plantMixed", rk("T0000001", "X24"), null, null], ["realNeverPushed", rk("X24"), null, null],
+    ["realTookPushKeyGone", rk("T0000004"), "2026-10-01", null], ["sendingNow", rk("T0000005"), null, 29000000]];
+  for (const [id, rules, lastW, claim] of rows) ins.run(id.padEnd(22, "x"), `https://fcm.googleapis.com/${id}`, rules, lastW, claim);
+  assert.equal(run(db, narrowCount), 0, "no key set stored yet: the narrow query names nothing");
+  assert.equal((await internal(env, "POST", "/v1/internal/keys", { keys: ["X01", "X24"] })).status, 200);
+  assert.equal(run(db, narrowCount), 2);
+  db.raw.exec(narrowDel);
+  assert.deepEqual(db.rows("SELECT id FROM subs ORDER BY id").map((x) => x.id.replace(/x+$/, "")), ["plantMixed", "realNeverPushed", "realTookPushKeyGone", "sendingNow"]);
+  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'subs'")[0].n, 4, "the counter follows (trigger)");
+  // wide
+  const { db: d2 } = await setup();
+  const ins2 = d2.raw.prepare("INSERT INTO subs (id, endpoint, rules, pend_w, last_w, fails, claim) VALUES (?, ?, '[]', ?, ?, ?, ?)");
+  const rows2 = [["heldPlant", 1, null, 0, -29000000], ["duePlant", 1, null, 0, null], ["idlePlant", 0, null, 0, null], ["failedPlant", 1, null, 2, null],
     ["sendingNow", 1, null, 0, 29000000], ["realHeld", 1, "2026-10-01", 0, -29000000], ["realIdle", 0, "2026-10-01", 0, null]];
-  for (const [id, pend, lastW, fails, claim] of rows) ins.run(id.padEnd(22, "x"), `https://fcm.googleapis.com/${id}`, pend, lastW, fails, claim);
-  assert.equal(db.rows(count[1].replace(/;$/, ""))[0]["count(*)"], 4);
-  db.raw.exec(del[1]);
-  assert.deepEqual(db.rows("SELECT id FROM subs ORDER BY id").map((x) => x.id.replace(/x+$/, "")), ["realHeld", "realIdle", "sendingNow"]);
-  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'subs'")[0].n, 3, "the counter follows (trigger)");
+  for (const [id, pend, lastW, fails, claim] of rows2) ins2.run(id.padEnd(22, "x"), `https://fcm.googleapis.com/${id}`, pend, lastW, fails, claim);
+  assert.equal(run(d2, wideCount), 4);
+  d2.raw.exec(wideDel);
+  assert.deepEqual(d2.rows("SELECT id FROM subs ORDER BY id").map((x) => x.id.replace(/x+$/, "")), ["realHeld", "realIdle", "sendingNow"]);
+  assert.equal(d2.rows("SELECT n FROM stat WHERE k = 'subs'")[0].n, 3, "the counter follows (trigger)");
+});
+
+// ---- 5th review: keys the factory cannot compute (not in the data.json it reads) never take a place in the watched list;
+// once the factory's key set is stored, subscribe/PUT refuse them (400 UNKNOWN_KEY); the set is one row written on change
+
+const putKeys = (env, keys, now) => internal(env, "POST", "/v1/internal/keys", { keys }, now);
+const written = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
+// made-up keys of the right shape (T + 7), none in any data.json of the tests
+const fake = (i) => "T" + String(i).padStart(7, "0");
+
+test("5th review (key set): POST /v1/internal/keys stores ONE row, rewritten only when the set changes; a malformed set is 400 BAD_KEYS and changes nothing; MAX_KEYS keys fit the body cap", T, async () => {
+  const { env, db } = await setup();
+  let w = written(db);
+  const r1 = await putKeys(env, ["T0000ABC", "X01", "X24"]);
+  assert.deepEqual([r1.status, r1.body], [200, { keys: 3, changed: true }]);
+  assert.deepEqual(db.rows("SELECT id, keys FROM keyset"), [{ id: 1, keys: '["T0000ABC","X01","X24"]' }]);
+  assert.equal(written(db) - w, 1, "one row written");
+  // the same set again (every factory run of an unchanged data.json): nothing written
+  w = written(db);
+  assert.deepEqual((await putKeys(env, ["T0000ABC", "X01", "X24"])).body, { keys: 3, changed: false });
+  assert.equal(written(db) - w, 0, "an unchanged set writes no row");
+  // a changed set: the one row is rewritten
+  w = written(db);
+  assert.deepEqual((await putKeys(env, ["X01", "X24"])).body, { keys: 2, changed: true });
+  assert.equal(written(db) - w, 1);
+  assert.deepEqual(db.rows("SELECT id, keys FROM keyset"), [{ id: 1, keys: '["X01","X24"]' }]);
+  // malformed: refused, the stored set stays
+  for (const keys of [undefined, [], ["X24", "X01"], ["X01", "X01"], ["X1"], ["x24"], [24], "X24", Array.from({ length: 20001 }, (_, i) => "T" + i.toString(36).toUpperCase().padStart(7, "0")).sort()]) {
+    const r = await internal(env, "POST", "/v1/internal/keys", keys === undefined ? {} : { keys });
+    assert.deepEqual([r.status, r.body], [400, { error: "BAD_KEYS" }], String(JSON.stringify(keys)).slice(0, 40));
+  }
+  assert.deepEqual(db.rows("SELECT keys FROM keyset"), [{ keys: '["X01","X24"]' }]);
+  // MAX_KEYS keys (≈ 220 KB) are taken: the cap holds ~3.5 × today's data.json
+  const max = Array.from({ length: 20000 }, (_, i) => "T" + i.toString(36).toUpperCase().padStart(7, "0")).sort();
+  assert.deepEqual((await putKeys(env, max)).body, { keys: 20000, changed: true });
+});
+
+test("5th review (subscribe/PUT): before the first key set every key of the right shape is taken; afterwards a rule naming a key outside it is 400 UNKNOWN_KEY {keys} — nothing written, the budget untouched, the same endpoint keeps its row and id; PUT [] still deletes; an unknown id with known keys is still 404", T, async () => {
+  const { env, db } = await setup();
+  const now = kst("2026-10-19T12:00:00");
+  const sa = subscription();
+  const a = await sub(env, [{ kind: "watch", key: "T0000ABC" }], sa, { now });
+  assert.ok(a.id, "no key set yet: accepted as before");
+  assert.equal((await putKeys(env, ["X01", "X24"], now)).status, 200);
+  const w = written(db), budget = () => db.rows("SELECT n FROM stat WHERE k = 'new:2026-10-19'")[0].n;
+  // a new phone naming unknown keys (with a known one): refused, every unknown key listed once
+  const s = subscription();
+  const rules = [{ kind: "watch", key: "X24" }, { kind: "target", key: "T0000ZZZ", max: 1 }, { kind: "newmatch", key: "T0000AAA" }, { kind: "watch", key: "T0000ZZZ", region: "부산" }];
+  const r = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: s, rules }, { now });
+  assert.deepEqual([r.status, r.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000AAA", "T0000ZZZ"] }]);
+  assert.equal(r.headers.get("access-control-allow-origin"), APP, "the app can read the answer");
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE endpoint = ?", s.endpoint)[0].c, 0);
+  assert.equal(budget(), 1, "today's budget is not used");
+  // the same endpoint as phone a again, with an unknown key: refused, a keeps its id and rules
+  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: sa, rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).body.error, "UNKNOWN_KEY");
+  assert.deepEqual(db.rows("SELECT id, rules FROM subs WHERE endpoint = ?", sa.endpoint), [{ id: a.id, rules: '[{"kind":"watch","key":"T0000ABC"}]' }]);
+  // PUT: its old rule (its key is no longer in the set) plus a known one → refused, the row unchanged; the known one alone → 200
+  const p1 = await call(worker, env, "PUT", `/v1/push/rules/${a.id}`, { rules: [{ kind: "watch", key: "T0000ABC" }, { kind: "watch", key: "X24" }] }, { now });
+  assert.deepEqual([p1.status, p1.body], [400, { error: "UNKNOWN_KEY", keys: ["T0000ABC"] }]);
+  assert.equal(db.rows("SELECT rules FROM subs WHERE id = ?", a.id)[0].rules, '[{"kind":"watch","key":"T0000ABC"}]');
+  assert.equal(written(db) - w, 0, "the refused requests wrote nothing");
+  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${a.id}`, { rules: [{ kind: "watch", key: "X24" }] }, { now })).body, { ok: true });
+  // an unknown id: known keys → 404 (subscribe again), unknown keys → 400 (subscribing again would be refused too)
+  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key: "X01" }] }, { now })).status, 404);
+  assert.equal((await call(worker, env, "PUT", `/v1/push/rules/${"A".repeat(22)}`, { rules: [{ kind: "watch", key: "T0000AAA" }] }, { now })).body.error, "UNKNOWN_KEY");
+  // known keys: subscribe works as before; PUT [] deletes whatever the stored rules name
+  const b = await sub(env, [{ kind: "watch", key: "X01" }, { kind: "target", key: "X24", max: 100000, region: "수도권" }], subscription(), { now });
+  db.raw.prepare("UPDATE subs SET rules = ? WHERE id = ?").run('[{"kind":"watch","key":"T0000ABC"}]', b.id);
+  assert.deepEqual((await call(worker, env, "PUT", `/v1/push/rules/${b.id}`, { rules: [] }, { now })).body, { ok: true });
+  assert.equal(db.rows("SELECT count(*) c FROM subs WHERE id = ?", b.id)[0].c, 0);
+});
+
+test("5th review (no cap slot): pairs of keys outside the factory's key set are never ranked — planted before the first set, watched by more phones than the real pairs, they no longer cut the list or come first", T, async () => {
+  const { env, db } = await setup({ PAIR_CAP: "3" });
+  // before any key set: 2 × 5 subscriptions × 20 made-up keys (each made-up pair watched by 2 phones) are accepted
+  for (let rep = 0; rep < 2; rep++) for (let s = 0; s < 5; s++) await sub(env, Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: fake(s * 20 + j) })));
+  // a planted row that names one real key too: only that pair counts
+  await sub(env, [{ kind: "newmatch", key: fake(500) }, { kind: "newmatch", key: "X01" }]);
+  // a real phone that never took a push
+  await sub(env, [{ kind: "watch", key: "X24" }, { kind: "watch", key: "X24", region: "서울" }]);
+  // what the 5th review found: without the key set the made-up pairs take the whole list (2 phones each, never computed)
+  const w0 = (await internal(env, "GET", "/v1/internal/watched?at=0")).body;
+  assert.equal(w0.capped, true);
+  assert.ok(w0.pairs.every((p) => p.k.startsWith("T000")), JSON.stringify(w0.pairs));
+  db.raw.exec("DELETE FROM stat WHERE k = 'capped'");
+  // the factory's key set: only real pairs are ranked, the list is not cut
+  assert.equal((await putKeys(env, ["X01", "X24"])).status, 200);
+  const w = (await internal(env, "GET", "/v1/internal/watched?at=0")).body;
+  assert.deepEqual(w, { pairs: [{ k: "X01", r: "" }, { k: "X24", r: "" }, { k: "X24", r: "서울" }], next: null });
+  assert.equal((await call(worker, env, "GET", "/health")).body.pairs, "ok");
+  // pages: a later page never shows a made-up pair either
+  assert.deepEqual((await internal(env, "GET", "/v1/internal/watched?at=2")).body, { pairs: [{ k: "X24", r: "서울" }], next: null });
+});
+
+test("5th review (flood + new real pair): a flood of unknown-key pairs planted before the first key set (more than PAIR_CAP, 2 phones each) and a real phone that subscribes the next day — its pair is computed on that day's factory run and gets its news; the flood never enters snap; /health pairs stays ok", T, async () => {
+  const CAP = 200;
+  const { env, db } = await setup({ PAIR_CAP: String(CAP) });
+  for (let rep = 0; rep < 2; rep++) for (let s = 0; s < CAP / 20 + 2; s++) await sub(env, Array.from({ length: 20 }, (_, j) => ({ kind: "newmatch", key: fake(s * 20 + j) })), subscription(), { now: kst("2026-10-18T12:00:00") });
+  // one factory run as notify.mjs does it: the key set of its data.json first, then the watched pages, digest, finish
+  const KEYS = ["X01", "X07", "X24"];
+  const factory = async (today, x24m = 100000) => {
+    const now = kst(`${today}T06:00:00`), run = `${today}|${today}`, pairs = [];
+    assert.equal((await putKeys(env, KEYS, now)).status, 200);
+    for (let at = 0; ;) {
+      const w = (await internal(env, "GET", `/v1/internal/watched?at=${at}`, undefined, now)).body;
+      assert.notEqual(w.capped, true, `${today}: the list is not cut`);
+      pairs.push(...w.pairs);
+      if (w.next === null) break;
+      at = w.next;
+    }
+    assert.ok(pairs.every((p) => KEYS.includes(p.k)), "only keys the factory can compute");
+    if (pairs.length) {
+      const entries = pairs.map((p) => ({ k: p.k, r: p.r, m: p.k === "X24" ? x24m : 1000, n: 5, med: 120000 }));
+      const d = await internal(env, "POST", "/v1/internal/digest", { run, entries }, now);
+      assert.deepEqual(d.body, { saved: entries.length, skipped: 0 });
+    }
+    assert.equal((await internal(env, "POST", "/v1/internal/finish", { run, today }, now)).status, 200);
+    return pairs;
+  };
+  assert.deepEqual(await factory("2026-10-19"), [], "day 1: the flood is not in the list");
+  // day 2: a real phone subscribes (X24 nationwide); planting more made-up keys is refused now
+  const real = await sub(env, [{ kind: "newmatch", key: "X24" }, { kind: "watch", key: "X24" }], subscription(), { now: kst("2026-10-19T12:00:00") });
+  assert.equal((await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "newmatch", key: fake(9999) }] }, { now: kst("2026-10-19T12:00:00") })).body.error, "UNKNOWN_KEY");
+  assert.deepEqual(await factory("2026-10-20"), [{ k: "X24", r: "" }]);
+  assert.deepEqual(db.rows("SELECT k, added FROM snap"), [{ k: "X24", added: "2026-10-20" }], "computed the next morning; nothing of the flood in snap");
+  await factory("2026-10-21", 90000);                                   // a 10% lower lowest price
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", real.id)[0].pend_w, 1, "the real phone has its news");
+  assert.equal((await send(env, kst("2026-10-21T09:00:00"), { fetch: pushService().f })).sent, 1);
+  for (const d of ["2026-10-19", "2026-10-20", "2026-10-21"]) assert.equal((await call(worker, env, "GET", "/health", undefined, { now: kst(`${d}T09:30:00`) })).body.pairs, "ok", d);
+  assert.equal(db.rows("SELECT count(*) c FROM subs")[0].c, 2 * (CAP / 20 + 2) + 1, "the flood rows stay until a person runs the narrow cleanup query");
 });

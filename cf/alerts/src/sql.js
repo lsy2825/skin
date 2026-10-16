@@ -10,16 +10,34 @@ const RULE_PAIR = "d.k = j.value->>'$.key' AND d.r = coalesce(j.value->>'$.regio
 // rule or sending the same rules (in any order) keeps them — news that was already promoted would otherwise be lost.
 const RULES_DROPPED = (old, nu) => `EXISTS (SELECT 1 FROM json_each(${old}) o WHERE o.value NOT IN (SELECT value FROM json_each(${nu})))`;
 
+// ---- the factory's key set (table keyset, ONE row): the compare keys of the data.json the factory last read, a JSON array
+// (rules.js keySetJson). notify.mjs sends it before it asks for the watched pairs (POST /v1/internal/keys, src/worker.js
+// keys). The factory computes those keys only, so a pair whose key is not in it would never be computed: it is left out
+// of WATCHED, and once a set is stored subscribe and PUT refuse a rule naming such a key (400 UNKNOWN_KEY). Until the
+// first set is stored both take every key of the right shape, as before.
+// ?1 the set's JSON. Written only when it differs (an unchanged set writes 0 rows; a change 1 row — INTEGER PRIMARY KEY,
+// no index entry): a few rows a week.
+export const SET_KEYS = "INSERT INTO keyset (id, keys) VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET keys = excluded.keys WHERE keys <> excluded.keys";
+// rule j's key is in the stored set ks: one search in the one row for '"KEY"' (a KEY_RE key has no quote, so it matches that
+// array element only). Reads the keyset row once and ≤ MAX_RULES rule entries, however many keys the set holds.
+const KNOWN_J = `instr(ks.keys, '"' || (j.value->>'$.key') || '"') > 0`;
+// a rule list (normalized JSON) names a key the stored set does not hold — false while no set is stored
+const HAS_UNKNOWN = (rules) => `EXISTS (SELECT 1 FROM keyset ks, json_each(${rules}) j WHERE NOT ${KNOWN_J})`;
+// ?1 rules (normalized JSON): its keys that the stored set does not hold (none while no set is stored) — why SUBSCRIBE or
+// PUT_RULES returned nothing; the 400 UNKNOWN_KEY body lists them so the app can keep those rules on the phone
+export const UNKNOWN_KEYS = `SELECT DISTINCT j.value->>'$.key' AS k FROM keyset ks, json_each(?1) j WHERE NOT ${KNOWN_J} ORDER BY 1`;
+
 // ?1 yyyymmdd — the Worker's own KST day, written in the same D1 batch right before SUBSCRIBE: the subs_ins trigger (migration)
 // names today's 'new:<day>' counter from it, so the budget never reads a per-row date (no row holds one)
 export const SET_DAY = "INSERT INTO stat (k, n) VALUES ('day', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 // ?1 id ?2 endpoint ?3 rules ?4 today ?5 MAX_SUBS ?6 NEW_PER_DAY. Same endpoint again → new id (the old one stops working),
 // allowed even when full or over today's budget; last_w/last_x/exp_sent stay (subscribing again never gets around once a
-// week), pending marks are reset only when a rule was removed. No row back = full or today's budget used up (nothing is
-// ever evicted to make room: a full table answers 503 FULL and /health "capacity" says so).
+// week), pending marks are reset only when a rule was removed. No row back = a rule names a key the stored key set does not
+// hold (nothing written, the same endpoint's row and id stay as they were), or the table is full or today's budget used up
+// (nothing is ever evicted to make room: a full table answers 503 FULL and /health "capacity" says so).
 export const SUBSCRIBE = `INSERT INTO subs (id, endpoint, rules)
-  SELECT ?1, ?2, ?3 WHERE EXISTS (SELECT 1 FROM subs WHERE endpoint = ?2)
-    OR ((SELECT n FROM stat WHERE k = 'subs') < ?5 AND coalesce((SELECT n FROM stat WHERE k = 'new:' || ?4), 0) < ?6)
+  SELECT ?1, ?2, ?3 WHERE NOT ${HAS_UNKNOWN("?3")} AND (EXISTS (SELECT 1 FROM subs WHERE endpoint = ?2)
+    OR ((SELECT n FROM stat WHERE k = 'subs') < ?5 AND coalesce((SELECT n FROM stat WHERE k = 'new:' || ?4), 0) < ?6))
   ON CONFLICT(endpoint) DO UPDATE SET id = excluded.id, rules = excluded.rules,
     pend_w = CASE WHEN ${RULES_DROPPED("subs.rules", "excluded.rules")} THEN 0 ELSE subs.pend_w END,
     pend_x = CASE WHEN ${RULES_DROPPED("subs.rules", "excluded.rules")} THEN NULL ELSE subs.pend_x END,
@@ -28,12 +46,13 @@ export const SUBSCRIBE = `INSERT INTO subs (id, endpoint, rules)
 // ?1 today — why SUBSCRIBE returned nothing: total (MAX_SUBS) or today's new rows (NEW_PER_DAY)
 export const SUBS_COUNTS = "SELECT (SELECT n FROM stat WHERE k = 'subs') AS total, coalesce((SELECT n FROM stat WHERE k = 'new:' || ?1), 0) AS today";
 // ?1 id ?2 rules (≥ 1; a PUT with none is DELETE_SUB_RETURNING) — a removed rule resets the pending marks; send history
-// (last_w, last_x, exp_sent) stays
+// (last_w, last_x, exp_sent) stays. No row back = unknown id, or a rule names a key the stored key set does not hold (the
+// row is left as it was)
 export const PUT_RULES = `UPDATE subs SET rules = ?2,
     pend_w = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN 0 ELSE pend_w END,
     pend_x = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN NULL ELSE pend_x END,
     pend_xl = CASE WHEN ${RULES_DROPPED("rules", "?2")} THEN NULL ELSE pend_xl END
-  WHERE id = ?1 RETURNING id`;
+  WHERE id = ?1 AND NOT ${HAS_UNKNOWN("?2")} RETURNING id`;
 export const DELETE_SUB = "DELETE FROM subs WHERE id = ?1";
 // PUT with no rules = the phone switched everything off: the row goes (an unknown id gets no row back → 404)
 export const DELETE_SUB_RETURNING = "DELETE FROM subs WHERE id = ?1 RETURNING id";
@@ -50,7 +69,11 @@ export const HEALTH = `SELECT (SELECT n FROM stat WHERE k = 'subs') AS subs, (SE
 // ?1 page size ?2 offset ?3 today − PAIR_KEEP_DAYS (the Worker's clock). Pairs only — never ids, endpoints or numbers (they
 // would leave Cloudflare for the runner). The factory digests every pair it gets, and every digested pair is D1 rows written
 // (D1 Free allows 100,000 rows written a day FOR THE WHOLE ACCOUNT — over it every D1 query of the account fails until 00:00
-// UTC = 09:00 KST). So the list is CUT at PAIR_CAP (src/worker.js watched) and comes in this order:
+// UTC = 09:00 KST). Only pairs whose key is in the stored key set are ranked (every pair while none is stored): the
+// factory computes only the keys of the data.json it reads, so a pair of any other key would hold a place in the list for
+// ever without being computed (never in snap, so never 'added', never news, never a push — 5th review). The set is read
+// once per statement (a list subquery: json_each of the one keyset row). So the list is CUT at PAIR_CAP (src/worker.js
+// watched) and comes in this order:
 //   1. pairs watched by more phones that already received a push from us (planted subscriptions never did);
 //   2. pairs first computed less than PAIR_KEEP_DAYS ago (snap.added): a list of new pairs, however many phones name them,
 //      cannot push out the pairs computed this week — the list is never replaced in a day;
@@ -66,7 +89,9 @@ export const WATCHED = `SELECT w.k AS k, w.r AS r FROM (
     SELECT j.value->>'$.key' AS k, coalesce(j.value->>'$.region', '') AS r,
       count(DISTINCT CASE WHEN subs.last_w IS NOT NULL OR subs.last_x IS NOT NULL THEN subs.id END) AS got,
       count(DISTINCT subs.id) AS c
-    FROM subs, json_each(subs.rules) j GROUP BY 1, 2
+    FROM subs, json_each(subs.rules) j
+    WHERE NOT EXISTS (SELECT 1 FROM keyset) OR j.value->>'$.key' IN (SELECT value FROM keyset, json_each(keyset.keys))
+    GROUP BY 1, 2
   ) w LEFT JOIN snap s ON s.k = w.k AND s.r = w.r
   ORDER BY w.got DESC, CASE WHEN s.added > ?3 THEN 0 WHEN s.k IS NULL THEN 1 ELSE 2 END, w.c DESC, s.added DESC, w.k, w.r
   LIMIT ?1 OFFSET ?2`;
