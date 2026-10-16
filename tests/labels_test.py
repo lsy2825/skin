@@ -326,8 +326,27 @@ console.log(JSON.stringify([good, (audit(d).keyMixedSess || []).map((x) => x.id)
     _got = json.loads(_r.stdout) if _r.returncode == 0 and _r.stdout.strip() else None
     ok("tools/audit_data.js: 'N+M회' 묶음은 N+M회 줄과 맞음(10+10회 = 20, 1+1회 = 2), 10회·1회 줄은 다른 횟수로 잡음",
        _got == [0, ["K1", "K2"]], _got if _got is not None else _r.stderr[-300:])
+    # 2026-10-16: the audit's branch labels are '<브랜드> <지점>' — meta.brands[i] is [name, color, how collected], and the
+    # whole entry used to go into them ('밴스,#2f9e44,지점별 … 홍대')
+    _js = r"""
+const { audit } = require(process.argv[1] + '/tools/audit_data.js');
+const s = ['', '시술 1회', 'K1', '홍대', '홍대점', '신촌', '주소', 'VERIFIED', 'https://x'];
+const row = (b, price) => [b, 0, 1, price, 0, 0, 0, 2, 1, 0, 0, 8, 2, 0, 0, 0];
+const d = { s, meta: { updated: '2026-10-16', brands: [['밴스', '#2f9e44', '지점별 시술소개 가격'], ['쁨', '#e8437f', '지점별 온라인 예약']], fam: [] },
+  branches: [[0, 3, 6, 37.5, 127, 0, 0, 0, 7], [1, 4, 6, 37.5, 127, 0, 0, 0, 7], [0, 5, 6, null, null, 0, 0, 0, 7], [0, 3, 6, 37.6, 127.1, 0, 0, 0, 7]],
+  groups: [], keys: [['K1', '피부', '시술 1회']] };
+d.rows = [row(0, 1000), row(0, 1000), row(3, 10000), row(1, 100000)];
+const o = audit(d), m = (k, f) => (o[k] || []).map(f);
+console.log(JSON.stringify([m('dupBranch', (x) => x.branch), m('sameCoords', (x) => [x.a, x.b]), m('branchNoGeo', (x) => x.branch),
+  m('keyWideSpread', (x) => [x.lo.branch, x.hi.branch]), m('dupRow', (x) => x.branch)]));
+"""
+    _r = subprocess.run(["node", "-e", _js, ROOT], capture_output=True, text=True, timeout=60)
+    _got = json.loads(_r.stdout) if _r.returncode == 0 and _r.stdout.strip() else None
+    ok("tools/audit_data.js: 지점 이름은 '<브랜드> <지점>'(같은 좌표·좌표 없음·가격 폭·같은 줄), 같은 지점 두 번은 '<브랜드>|<지점>'",
+       _got == [["밴스|홍대"], [["밴스 홍대", "쁨 홍대점"]], ["밴스 신촌"], [["밴스 홍대", "쁨 홍대점"]], ["밴스 홍대"]],
+       _got if _got is not None else _r.stderr[-300:])
 else:
-    print("INFO | node 없음 — tools/audit_data.js 'N+M회' 검사 건너뜀")
+    print("INFO | node 없음 — tools/audit_data.js 검사('N+M회'·지점 이름) 건너뜀")
 ok("괄호 안 괄호의 '추가시'는 기본가를 추가 옵션으로 만들지 않음", not xkeys.addon_only("울쎄라 100샷 (부위 추가시 (최대 2부위) 가능)") and xkeys.addon_only("울쎄라 100샷 추가시"))
 ok("'라인 모드'(브이로)는 인모드가 아님", (taxonomy.family_of("브이로 어드밴스 리프팅(고강도 집속 초음파) 라인 모드 100샷")[0] or {}).get("id") != "inmode"
    and taxonomy.family_of("인모드 FX 얼굴전체")[0]["id"] == "inmode")
