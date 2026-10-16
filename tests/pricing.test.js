@@ -225,9 +225,9 @@ test("condition badge words: '평일 낮' reads '평일·시간 한정', '시간
   assert.ok(!P.condLabel("시간대").includes("한정"));
   for (const t of ["일요일", "타임세일", "첫 방문", "1인 1회", "새 조건"]) assert.equal(P.condLabel(t), t);
   // titles: what the tag means, after the days / hours the site wrote; the '시간대' title says the days are unknown only when they are
-  assert.equal(P.condTitle("시간대", 0, ""), "정해진 시간에만 되는 가격이에요. 요일은 사이트에 없어요 — 병원에 확인하세요");
-  assert.equal(P.condTitle("시간대", 0, "12:00-15:00"), "되는 시간: 12:00~15:00. 정해진 시간에만 되는 가격이에요. 요일은 사이트에 없어요 — 병원에 확인하세요");
-  assert.ok(!P.condTitle("시간대", 96, "10:00-15:00").includes("요일은 사이트에 없어요"));
+  assert.equal(P.condTitle("시간대", 0, ""), "정해진 시간에만 되는 가격이에요. 되는 요일은 앱이 알지 못해요 — 병원에 확인하세요");
+  assert.equal(P.condTitle("시간대", 0, "12:00-15:00"), "되는 시간: 12:00~15:00. 정해진 시간에만 되는 가격이에요. 되는 요일은 앱이 알지 못해요 — 병원에 확인하세요");
+  assert.ok(!P.condTitle("시간대", 96, "10:00-15:00").includes("되는 요일은 앱이 알지 못해요"));
   assert.ok(P.condTitle("시간대", 96, "10:00-15:00").startsWith("되는 요일: 주말, 되는 시간: 10:00~15:00."));
   assert.ok(/해피아워/.test(P.condTitle("평일 낮", 0, "")) && /화수목/.test(P.condTitle("평일 낮", 0, "")));
   assert.ok(P.condTitle("평일 낮", 14, "11:00-16:00").startsWith("되는 요일: 화·수·목, 되는 시간: 11:00~16:00."));

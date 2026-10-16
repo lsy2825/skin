@@ -246,7 +246,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
     bad = await rowBadges(r[0], n, SLOT);
     ok('시간대 태그: 배지는 \'정해진 시간만\'', !!bad, `${n} | ${names(bad)}`);
     const ti = bad ? (bad.find(([x]) => x === SLOT) || [])[1] : '';
-    ok('시간대 배지 설명: 정해진 시간에만 되는 가격', /정해진 시간에만 되는 가격이에요/.test(ti || '') && (P.dayList(daysOf(r)) ? !ti.includes('요일은 사이트에 없어요') : ti.includes('요일은 사이트에 없어요')), ti);
+    ok('시간대 배지 설명: 정해진 시간에만 되는 가격', /정해진 시간에만 되는 가격이에요/.test(ti || '') && (P.dayList(daysOf(r)) ? !ti.includes('되는 요일은 앱이 알지 못해요') : ti.includes('되는 요일은 앱이 알지 못해요')), ti);
     ok('시간대 태그: 토요일 방문으로 빠지지 않음', !!bad && !bad.some(([x]) => x === '방문일엔 안 됨'), `${sat} | ${names(bad)}`);
     const st = await sheetOf(n, SLOT);
     ok('시간대 태그: 가격 확인 조건은 \'요일·시간 조건\'(\'시간대 조건\' 아님)', st.includes('요일·시간 조건') && !st.includes('시간대 조건'), n);
