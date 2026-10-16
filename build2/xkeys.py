@@ -173,6 +173,17 @@ SESS = re.compile(r"(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))")
 # a program of N weeks ('여드름 집중케어 프로그램 (6주)', '피코토닝 플러스 프로그램 · … 5주') is a course, not one session
 COURSE = re.compile(r"(?<![\d.])\d+\s*주(?![가-힣])")
 COURSE_WORD = re.compile(r"프로그램|패키지|PKG|챌린지|솔루션|케어")
+# a '*' note that prices N sessions: the count straight after the '*', then 한정가 / 체험가 / 특가 ('풀페이스 리투오 1회 (6cc) *3회 한정가'
+# 1,450,000원 is the 3-session price — the same branch's '풀페이스 리투오 1회 (6cc) *이마제외' is 600,000원, 쁨 잠실 '풀페이스 리투오 3회'
+# 1,500,000원; 2026-10-16 audit40 A1: read as 1회, it sat in the 1회 key whose six other branches are 600,000원). A note that prices
+# another package ('5회 (*10회 53만원)') or says what comes with it ('*3회 진행 시 … 포함') stays a note; '체험 가능' is not a price
+PRICED_NOTE = re.compile(r"\*\s*(\d+)\s*회\s*(?:(?:한정|체험)\s*(?:특\s*)?가(?!\s*능)|특가)")
+# a purchase limit says how often one may buy, not how many sessions the price is for — never a count, in or out of brackets:
+# '(* 1인 최대 5회까지만 적용가능)', '(1인1회한정)', '(*최대 3회 한정)', 'LDM 내맘대로 LDM (최대10회) 120분' (read as 10회). 'N회 한정'
+# without 가 is one in a note — brackets or after '*' ('리쥬란 1cc (*3회 한정)'; the new 셀린 collector puts each explanation in
+# brackets, lsy2825/skin#74 review 2026-10-16); in the option's own words before any note it is still the option's count
+LIMIT = re.compile(r"최대\s*\d+\s*회|(?<!\d)1\s*인\s*(?:당\s*)?(?:최대\s*)?\d+\s*회")
+LIMIT_NOTE = re.compile(r"\d+\s*회\s*한정(?!\s*(?:특\s*)?가)")
 
 
 def sessions(name):
@@ -182,8 +193,10 @@ def sessions(name):
     # the option's own count, not a note in brackets or after '*': '[젠틀맥스] 남성 인중 + 앞턱 제모 5회 (*10회 53만원)' is a 5-session
     # price (2026-10-15: read as 10회, 셀린 청주 5회 prices sat in 10회 keys). A count written only in a note ('배꼽주변 제모 (10회)',
     # '브라질리언제모+항문 *5회') still counts.
-    outside = re.sub(r"\([^()]*\)", " ", name)
-    text = next((t for t in (outside.split("*")[0], outside) if SESS.search(t)), name)
+    # A purchase limit is never a count (LIMIT, and LIMIT_NOTE in a note).
+    bare = LIMIT.sub(" ", name)
+    outside = re.sub(r"\([^()]*\)", " ", bare)
+    text = next((t for t in (outside.split("*")[0], LIMIT_NOTE.sub(" ", outside)) if SESS.search(t)), LIMIT_NOTE.sub(" ", bare))
     s = 1
     for m in SESS.finditer(text):
         try:
@@ -194,6 +207,9 @@ def sessions(name):
     # 50,000원 sat in the 1회 key whose median is 12,000원)
     for m in re.finditer(r"(\d+)\s*\+\s*(\d+)\s*회(?!\s*(차|이상|이내|당|째|분))", text):
         s = max(s, int(m.group(1)) + int(m.group(2)))
+    # '… 1회 (6cc) *3회 한정가': the note prices three sessions (PRICED_NOTE), in or out of brackets
+    for m in PRICED_NOTE.finditer(name):
+        s = max(s, int(m.group(1)))
     return s
 
 
@@ -300,7 +316,11 @@ if __name__ == "__main__":
     # sessions: 'N회 한정가/체험가' is N sessions; a program of weeks is a course (99)
     for name, want in [("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", 10), ("에버클V(PLLA 콜라겐부스터) 4cc 3회 체험가", 3),
                        ("셀르디엠(동종진피 ECM 부스터) 6cc 1회 체험가", 1), ("여성 겨드랑이 제모 1회 (1인1회/선결제 불가)", 1), ("1회한정 슈링크 100샷", 1),
-                       ("포텐자 여드름 집중케어 프로그램 (6주)", 99), ("수액주사(멀티블루 5주) 1회", 1), ("레이저토닝 10회", 10)]:
+                       ("포텐자 여드름 집중케어 프로그램 (6주)", 99), ("수액주사(멀티블루 5주) 1회", 1), ("레이저토닝 10회", 10),
+                       ("스킨부스터 풀페이스 리투오 1회 (6cc) *3회 한정가", 3), ("스킨부스터 풀페이스 리투오 1회 (6cc) *이마제외", 1),
+                       ("리쥬란 1cc (*최대 3회 한정)", 1), ("리쥬란 1cc (*3회 한정)", 1), ("리쥬란 2cc 5회 (*최대 3회 한정)", 5),
+                       ("울트라콜4CC 1회 (* 1인 최대 5회까지만 적용가능)", 1), ("LDM 내맘대로 LDM (최대10회) 120분", 1), ("[1인1회] 쥬베룩볼륨 1cc", 1),
+                       ("레디어스 3회 (1인1회한정)", 3)]:
         if sessions(name) != want:
             tests.append(("X01", name, None))   # counted as a failure below
             print("FAIL sessions", name, sessions(name), "want", want)
