@@ -3,7 +3,8 @@
 usage: python build2/clean.py
 Rules (each dropped or changed row is listed in issues.csv with the reason):
   drop   price missing/0 · option empty · notes (※, ▶) · paperwork fees (진단서·소견서·제증명·수수료) · price > 5천만원
-         · event already over (until = YYYY-MM-DD before today, KST)
+         · event already over (until = YYYY-MM-DD before today, KST). A section heading written in front of the item name
+         ('※카카오톡 플러스친구 혜택 …', '▼ … ▼ …') is taken off first: priced items under it are no notes (NOTE_SECTION)
   fix    list price below the sale price, or 10x+ the sale price -> list price removed (typo on the site)
   dedupe the same (brand, branch, matching name, sale) shown on several pages of one branch -> kept once
          (a category page wins over the 기획전 page, so the row keeps its real category and list price; the matching name is
@@ -13,7 +14,8 @@ cat (common category), name (display name), mname (name used for matching), sess
 시간대 · 일요일 · 첫 방문), days / hours (the weekdays and hours written for the price: visit_days / visit_hours), keys (matched
 comparison ids),
 vat (포함 / 별도 / '' unknown: from the row's own wording, else the brand default in data2/vat_policy.json — set only with
-evidence from the site, see data2/sources.json).
+evidence from the site, see data2/sources.json), back ('1' = the previous build dropped this item, at any price, for its words
+alone — its data2/issues.csv, read before this build writes its own — so a rule took it back: not a new price, prev_dropped).
 """
 import csv, datetime, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
@@ -113,6 +115,12 @@ DAY_WORDS = {"블리비": re.compile(r"프라임\s*타임"), "데이뷰": re.com
 WEEKEND = 96   # 토 32 · 일 64 (row field days)
 TIME_ONLY = "시간대"
 TIME_TAGS = ("평일 낮", TIME_ONLY)
+# the site says the hour does not matter (the words of app/domain/pricing.js ANY_TIME, and '관계없이'): with days written and no
+# hours, the days alone are the condition — no time tag (time_tags). 밴스 '화수목 시간 상관 없이 방문 고객 대상 1인 1회' (30 rows) and
+# 닥터에버스 강남점 '※시간 상관없이 적용가능' over its '화/수/목 이벤트' (15) were '평일 낮' with no hours, and the app, which looks for
+# these words in the name only, asked for the hour ('시간 확인 필요') of a price the site gives at any hour (검수 2026-10-16). The days
+# keep such a price out of the plain ones (groups.plain rule 2) and the app shows it on those days only ('화·수·목만')
+ANY_TIME = re.compile(r"시간\s*(?:상관\s*(?:없이|없음|없는)|무관|관계\s*(?:없이|없음))")
 # The site's category (raw column category = row src_cat: the tab, menu or section a collector found the item under) is read for
 # the conditions too — its condition words only (C1 시간 칸, 2026-10-16): 쁨 울산점 lists its happy-hour prices under the section
 # '♥수목 해피아워♥' with names that say nothing ('쥬베룩볼륨2CC'), and 16 of them were compared as plain prices. Only the words of the
@@ -465,8 +473,11 @@ def time_tags(brand, grp, opt, days, hours, cat=""):
     '평일 낮', whatever the words: the app would drop the price on the one day it is for), [] otherwise. days / hours =
     visit_when(grp, opt, cat); cat = the site's category, '' for a chain in CAT_UNPAIRED unless own_when (only its condition
     words count: the regexes below and the days / hours). A day limit with no time window that WEEKDAY_WORDS do not name
-    ('[평일 특가]', '토요일이벤트') gets neither: a day condition, not decided here (still untagged, as before 2026-10-16)."""
+    ('[평일 특가]', '토요일이벤트') gets neither: a day condition, not decided here (still untagged, as before 2026-10-16) — nor does a
+    day limit the site says holds at any hour (ANY_TIME)."""
     text = f"{cat} {grp} {opt}"
+    if days and not hours and ANY_TIME.search(text):
+        return []
     window = bool(TIME_WORDS.search(text) or hours)
     day_word = brand in DAY_WORDS and DAY_WORDS[brand].search(text)
     weekday = bool(WEEKDAY_WORDS.search(text) or day_word)
@@ -618,6 +629,58 @@ def price(x):
         return 0
 
 
+# A section heading that starts with a note mark stands over priced items: '▼ 부가세 포함 10만원 19.6만 ▼' (2026-10-15), and the
+# 닥터에버스 headings '※카카오톡 플러스친구 혜택' (19 branches), '※항목별 1회씩 적용' (구로·분당), '※시간 상관없이 적용가능' (강남, over its
+# '화/수/목 이벤트'), '※카카오톡 플러스 친구로 예약 시 적용!' (천호, over '해피아워이벤트'). The collector before 2026-10-15 wrote the
+# heading in front of every item name ('※카카오톡 플러스친구 혜택 올타이트 400샷 1회'; data2/accepted/drevers.csv of 2026-10-14), and
+# NOTE read the name as a notice: 391 prices of 21 branches were dropped (2026-10-16). The heading is taken off the name (unglue)
+# and stays the row's category, where the rules read its words like any section's: '항목별 1회씩 적용' → 1인 1회 (TAGS), VAT words
+# (vat_of); a price heading is no product word (title_words). Its items all sit under a condition of their own as well
+# (group '첫방문이벤트' → 첫 방문, '화/수/목 이벤트' → 평일 낮 · 화수목, '해피아워이벤트' → 시간대), so none is a plain price.
+# '카카오톡 플러스친구 혜택' itself is no condition here: the price is for whoever adds the clinic's KakaoTalk channel (free, at once,
+# no limit written) — like 데이뷰's '카톡플친 적용가' and 셀린's '[카톡플친대상/첫방문]' (shown in the name) and 닥터에버스's
+# '해피아워 이벤트(카톡친구대상)' (the event name), none of which is a tag or a 한정가. What follows the heading is still checked as
+# a notice (NOTE), and an item without a price never gets here (the collector skips it, '가격 없음(0원)'). The collector since
+# 2026-10-15 keeps the name alone (scrape/drevers.py), so a new collection needs none of this.
+NOTE_SECTION = re.compile(r"^[※▼]")
+# the reasons a row is dropped for its words alone (NOTE, PAPER): a later rule can take such a row back without any clinic adding it
+WORD_DROPS = ("안내 문구(가격 아님)", "서류 발급비(시술 아님)")
+
+
+def unglue(opt, sec):
+    """the option without the section heading written in front of it ('※카카오톡 플러스친구 혜택 올타이트 400샷 1회' under the
+    section '※카카오톡 플러스친구 혜택' → '올타이트 400샷 1회'); as it is when the heading is not in front or nothing follows it"""
+    if sec and len(sec) >= 4 and opt.startswith(sec) and opt[len(sec):].strip():
+        return opt[len(sec):].strip()
+    return opt
+
+
+def back_key(r):
+    """(brand, branch, section, item words) of a raw row — the same for the row an older collector wrote with its section heading
+    in front of the name and for the one a later collection writes without it. The group title is left out: a later collection
+    may title the item otherwise (scrape/drevers.py puts the 제모 menu headings there since 2026-10-16). So is the price: the item
+    the previous build dropped is still no new one when its price moved before the next collection (검수 2026-10-16: 마곡점
+    '울쎄라피 프라임 100샷 1회' 239,000 → 249,000 was listed as added) — the price change is not shown either, the app never had
+    the old one"""
+    sec = norm_text(r.get("category", ""))
+    opt = unglue(norm_text(r.get("option", "")), sec)
+    return r.get("brand", ""), r.get("branch", ""), comp_name(sec).casefold(), comp_name(opt).casefold()
+
+
+def prev_dropped(path):
+    """back_key of the rows a build dropped for their words alone (WORD_DROPS), from its issues.csv; empty when there is none.
+    A row of this build with such a key is marked back (clean.csv): a rule took it back, the clinic did not add it — the app data
+    (build2/appdata.py came_back) keeps it out of '새로 생김' (data-meta.json changes.added, achg.new). The key ignores the group
+    title (back_key): a new collection writes the same item without the heading in front, and may title it otherwise."""
+    if not os.path.exists(path):
+        return set()
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            return {back_key(r) for r in csv.DictReader(f) if r.get("action") == "제외" and r.get("reason") in WORD_DROPS}
+    except (OSError, csv.Error, UnicodeDecodeError, KeyError):
+        return set()
+
+
 def vat_of(r, grp, opt, vdef):
     """the row's own wording first — its option, group title or the page's section heading ('부가세 포함 만원(1회 한정) 1.96만' is
     the 닥터에버스 미사점 heading of 9 rows, 2026-10-15) — then the brand default unless that branch is unconfirmed"""
@@ -641,19 +704,19 @@ def load():
 
 def main():
     raw = load()
+    # what the previous build dropped by its words alone, from its data2/issues.csv (the factory saves it with every build; this
+    # build writes its own at the end) — a row of it that this build keeps is marked back
+    dropped_before = prev_dropped(os.path.join(ROOT, "data2", "issues.csv"))
     vdef = vat_policy()
     issues, out, seen, seen_old, sex_of, sect_of = [], [], {}, {}, {}, {}
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
         # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
-        # the heading stays the section (category, read for VAT), the product is what follows — read whole, the '▼' made all ten
-        # products a notice and they were dropped (2026-10-15)
+        # the heading stays the section (category, read for VAT and the conditions), the product is what follows — read whole, the
+        # mark made the products a notice and they were dropped (NOTE_SECTION)
         sec = norm_text(r.get("category", ""))
-        # Only a '▼ … ▼' price heading: '※카카오톡 플러스친구 혜택' / '※항목별 1회씩 적용' headings are conditions (366 닥터에버스 rows
-        # in the saved data of 2026-10-16 stay out as notes, as before — taking them in is a separate change; TAGS reads the
-        # heading '항목별 1회씩 적용' as 1인 1회 since 2026-10-16)
-        if sec.startswith("▼") and len(sec) >= 4 and opt.startswith(sec) and opt[len(sec):].strip():
-            opt = opt[len(sec):].strip()
+        if NOTE_SECTION.match(sec):
+            opt = unglue(opt, sec)
         sale, orig = price(r["sale"]), price(r["orig"])
         why = None
         if not opt:
@@ -737,7 +800,7 @@ def main():
                "addon": "1" if OPTION_LABEL.match(opt) or addon_name(mname) else r["addon"], "sess": sessions(mname), "tags": "·".join(dict.fromkeys(tags)),
                "days": days, "hours": hours,
                "until": r["until"], "url": r["url"], "fetched_at": r["fetched_at"],
-               "vat": vat_of(r, grp, opt, vdef)}
+               "vat": vat_of(r, grp, opt, vdef), "back": "1" if back_key(r) in dropped_before else ""}
         # the same item shown on two pages of one branch ('[메가세일] X 체험가' and 'X 체험가', same price) -> one row.
         # 2026-10-15 (개선 보고서 E4·E10): the list price no longer has to match — a 기획전 page and the category page often give the
         # same item at the same price with different list prices (블리비 덴서티 600샷 1,590,000원: 정가 3,100,000 / 3,000,000) —
@@ -775,6 +838,8 @@ def main():
             prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
             if row["addon"] == "1":
                 prev["addon"] = "1"
+            if row["back"] != "1":
+                prev["back"] = ""        # one of its pages was kept by the previous build too: the price was there
             if event_page(prev) and not event_page(row):
                 # the price list row wins: its category, link, list price and end date (an event's end date expired the row); the
                 # category stays when the first row's own words already gave one (a '필러/실리프팅' page read as 리프팅)

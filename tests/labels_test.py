@@ -160,6 +160,17 @@ ok("이름에 성별이 없으면 묶음 제목의 성별을 서명·이름에(�
 _, ks, _, st = taxonomy.build(fake(["[남성] 제모 10회"] * 3))
 ok("'부위 미표기' 제모는 비교 묶음을 만들지 않음", not ks and st["label_rejected"] and st["label_rejected"][0]["why"] == ["부위 미표기"], st["label_rejected"])
 ok("'!' 든 홍보 문구 이름은 막음", "기호" in labels.problems("초음파 리프팅 안에서 올려주고! 밖에서 당겨주는 더블업 리프팅"))
+# 검수 2026-10-16: 손으로 만든 키(X17)가 규격의 주인인지는 전체 줄과 일반가 줄 모두에서 절반 이상일 때만. 한 체인의 첫 방문 줄이 몰려
+# 들어와 전체만 절반을 넘으면(닥터에버스 '※' 칸 9줄로 'inmode|인모드|FORMA' 25/46) 자동 키가 사라지고 X17 없는 일반가 줄이 키를 잃었음
+_ow = lambda i, x, tag: dict(brand="B" if tag else "A", branch=f"{i}점", name="인모드 FORMA 1회", mname="인모드 FORMA 1회", addon="0", kind="일반",
+                             tags=tag, days="0", hours="", cat="리프팅", keys=x)
+_own1 = [_ow(i, "", "") for i in range(4)] + [_ow(4 + i, "X17", "") for i in range(2)] + [_ow(6 + i, "X17", "첫 방문") for i in range(4)]
+_own2 = [_ow(i, "", "") for i in range(2)] + [_ow(2 + i, "X17", "") for i in range(4)] + [_ow(6 + i, "X17", "첫 방문") for i in range(4)]
+rk1, ks1, _, st1 = taxonomy.build(_own1)
+rk2, ks2, _, st2 = taxonomy.build(_own2)
+ok("X17이 전체 6/10이어도 일반가 2/6이면 자동 키를 둠(모든 줄에), 일반가도 4/6이면 X17의 규격(자동 키 없음)",
+   len(ks1) == 1 and all(rk1) and st1["owned"] == 0 and not ks2 and not any(rk2) and st2["owned"] == 1,
+   ([k["label"] for k in ks1], rk1, st1["owned"], [k["label"] for k in ks2], st2["owned"]))
 
 # 검증 4차(합치기·이용권 관점)
 ok("'10+1회'는 11회, '12+1회'는 13회(1회 묶음에 들어가지 않음)", xkeys.sessions("[남성] 겨드랑이 제모 10+1회") == 11 and xkeys.sessions("다리전체 제모 12+1회") == 13
@@ -1083,6 +1094,19 @@ _cw = [  # 조건 칸 → 태그
 _cb = [(c, g, o, b, want, tgc(c, g, o, b)) for c, g, o, b, want in _cw if tgc(c, g, o, b) != want]
 ok(f"칸 이름의 시간·요일 {len(_cw)}개: 조건 칸('화수목 이벤트'·'♥수목 해피아워♥'·'해피아워 이벤트')은 태그, 메뉴 이름('리프팅'·'타임 리버스 리프팅'·'데이타임 이벤트')은 그대로",
    not _cb, _cb)
+# 검수 2026-10-16: 사이트가 '시간 상관없이'라고 쓴 요일 조건은 요일 칸만(시간 태그 없음). '평일 낮'에 시간 칸이 비면 앱이 이름에서만 이
+# 낱말을 찾아 '시간 확인 필요'로 보였음(닥터에버스 강남점 15, 밴스 30줄). 요일 칸이 있으니 여전히 일반가가 아님(groups.plain 2)
+_at = [("※시간 상관없이 적용가능", "화/수/목 이벤트", "턱끝필러 1cc(리쥬비엘) 1회", "닥터에버스", (14, "", [])),
+       ("", "화수목 시간 상관 없이 방문 고객 대상 1인 1회 / KEEP 불가", "여성) 인중+겨드랑이제모", "밴스", (14, "", [])),
+       ("", "♥화수목 해피아워♥ 시간 상관 없이 화/수/목요일 방문 고객님 대상 (1인 1회, keep 불가)", "아쿠아필 1회", "밴스", (14, "", [])),
+       ("", "토요일 시간 무관 이벤트", "아쿠아필 1회", "A", (32, "", [])),
+       # 요일이 없으면 시간 태그를 그대로(빼면 일반가가 됨), 시간이 적혀 있으면 그 시간이 조건
+       ("", "해피아워 시간 상관없이", "아쿠아필 1회", "A", (0, "", ["시간대"])),
+       ("", "화/수/목 11:00~16:00 (시간 관계없이 예약 가능)", "아쿠아필 1회", "A", (14, "11:00-16:00", ["평일 낮"]))]
+_ab = [(c, g, o, b, want, tgc(c, g, o, b)) for c, g, o, b, want in _at if tgc(c, g, o, b) != want]
+import groups as _grp  # noqa: E402
+ok(f"'시간 상관없이' {len(_at)}개: 요일이 적히고 시간이 없으면 요일 칸만(시간 태그 없음, 일반가 아님), 요일이 없거나 시간이 적히면 그대로",
+   not _ab and not _grp.plain("일반", "", 14, ""), _ab)
 _plain = [("", "화수목 이벤트", "리쥬란 힐러 2cc"), ("", "[해피아워]리모드", "리모드"), ("", "평일한정이벤트 월~목 오전 11시~오후4시까지", "온다 리프팅 6만줄")]
 ok("칸 이름이 메뉴 이름이면 묶음 제목·이름만 읽을 때와 같음", all(tgc(m, g, o, "쁨") == tgc("", g, o, "쁨") for m in ("리프팅", "보톡스·윤곽", "이달의 이벤트", "기획전")
                                                        for _, g, o in _plain))
@@ -1277,6 +1301,134 @@ ok("clean.csv: 새 장비('[신규입고]'·'신규런칭★' 묶음 제목·'[�
 _nm_n = {r["option"]: r["name"] for r in _rows_n if r["branch"] == "수원망포"}
 ok("clean.csv: 묶음 제목을 붙인 이름에 '신규'가 남지 않음(밴스 수원망포 '셀르디엠 … 신규런칭!!! 시술안내' › '셀르디엠 1vial 캐뉼라 1회')",
    _nm_n == {"셀르디엠 1vial 캐뉼라 1회": "셀르디엠 차세대 ECM 스킨부스터 셀르디엠 !!! 시술 · 셀르디엠 1vial 캐뉼라 1회"}, _nm_n)
+# clean.main: 닥터에버스 '※…' 칸 아래 가격(2026-10-16, 391줄이 안내 문구로 빠졌음). 옛 raw는 칸 이름이 이름 앞에 붙고, 새 raw(수집기
+# 2026-10-15~)는 이름만. 칸 이름을 떼고 조건은 칸·묶음 제목대로, 칸 이름만 있거나 뒤가 다시 안내 문구면 그대로 뺌. 지난 빌드의
+# issues.csv가 글자로 뺀 줄이 돌아오면 back=1(새로 생김 아님) — 같은 가격이 빠지지 않은 페이지에도 있으면 back 없음
+_DV = [("마곡점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 울쎄라피 프라임 100샷 1회", 239000),
+       ("구로점", "※항목별 1회씩 적용", "첫방문이벤트", "※항목별 1회씩 적용 국산 주름보톡스(1부위)", 5900),
+       ("강남점", "※시간 상관없이 적용가능", "화/수/목 이벤트", "※시간 상관없이 적용가능 턱끝필러 1cc(리쥬비엘) 1회", 126000),
+       ("천호점", "※카카오톡 플러스 친구로 예약 시 적용!", "해피아워이벤트", "※카카오톡 플러스 친구로 예약 시 적용! 온다리프팅 5만줄 1회", 250000),
+       ("마곡점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 ※1인 1회 적용, 중복 할인 불가", 1000),
+       ("마곡점", "※주의사항", "첫방문이벤트", "※주의사항", 1000),
+       ("청담점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "울쎄라 100샷 1회", 190000),           # new raw: the name alone
+       ("광교점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "※카카오톡 플러스친구 혜택 포텐자(RF)+크라이오+모델링팩 1회", 99000),
+       ("광교점", "10월 혜택", "10월 이벤트", "포텐자(RF)+크라이오+모델링팩 1회", 99000)]   # same item and price on another page
+_DROP = [("마곡점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 울쎄라피 프라임 100샷 1회", 239000),
+         ("구로점", "※항목별 1회씩 적용", "※항목별 1회씩 적용 국산 주름보톡스(1부위)", 5900),
+         ("청담점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 울쎄라 100샷 1회", 179000),   # its price moved since
+         ("광교점", "※카카오톡 플러스친구 혜택", "※카카오톡 플러스친구 혜택 포텐자(RF)+크라이오+모델링팩 1회", 99000)]
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    with open(os.path.join(tmp, "data2", "raw", "drevers.csv"), "w", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        wr.writerow(["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"])
+        for br, c, g, o, s in _DV:
+            wr.writerow(["닥터에버스", br, c, g, o, s, "", "0", "", "https://example.invalid/", "2026-10-19T06:00:00+09:00"])
+    with open(os.path.join(tmp, "data2", "issues.csv"), "w", newline="", encoding="utf-8-sig") as f:   # the previous build's
+        wr = csv.writer(f)
+        wr.writerow(["action", "reason", "brand", "branch", "category", "group", "option", "sale", "orig", "url"])
+        for br, c, o, s in _DROP:
+            wr.writerow(["제외", "안내 문구(가격 아님)", "닥터에버스", br, c, "첫방문이벤트", o, s, "", "https://example.invalid/"])
+    root, rawdir = clean.ROOT, clean.RAW
+    clean.ROOT, clean.RAW = tmp, os.path.join(tmp, "data2", "raw")
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            clean.main()
+    finally:
+        clean.ROOT, clean.RAW = root, rawdir
+    _rows_dv = list(csv.DictReader(open(os.path.join(tmp, "data2", "clean.csv"), encoding="utf-8")))
+    _iss_dv = list(csv.DictReader(open(os.path.join(tmp, "data2", "issues.csv"), encoding="utf-8-sig")))
+_got_dv = {(r["branch"], r["option"]): (r["name"], r["tags"], int(r["days"]), r["hours"], r["back"]) for r in _rows_dv}
+_want_dv = {("마곡점", "울쎄라피 프라임 100샷 1회"): ("울쎄라피 프라임 100샷 1회", "첫 방문", 0, "", "1"),
+            ("구로점", "국산 주름보톡스(1부위)"): ("국산 주름보톡스(1부위)", "첫 방문·1인 1회", 0, "", "1"),
+            ("강남점", "턱끝필러 1cc(리쥬비엘) 1회"): ("턱끝필러 1cc(리쥬비엘) 1회", "", 14, "", ""),
+            ("천호점", "온다리프팅 5만줄 1회"): ("온다리프팅 5만줄 1회", "시간대", 0, "", ""),
+            ("청담점", "울쎄라 100샷 1회"): ("울쎄라 100샷 1회", "첫 방문", 0, "", "1"),
+            ("광교점", "포텐자(RF)+크라이오+모델링팩 1회"): ("포텐자(RF)+크라이오+모델링팩 1회", "", 0, "", "")}
+ok("닥터에버스 '※…' 칸(옛 raw는 이름 앞에 붙음) 아래 가격은 안내 문구가 아니라 상품: 칸 이름을 떼고, 조건은 칸·묶음 제목대로(첫 방문 · "
+   "'항목별 1회씩 적용' 1인 1회 · '화/수/목 이벤트'는 '※시간 상관없이 적용가능' 칸이라 요일 칸만 · 해피아워 시간대), "
+   "'카카오톡 플러스친구 혜택'은 조건 아님, 새 raw도 같음",
+   _got_dv == _want_dv, {k: (v, _got_dv.get(k)) for k, v in _want_dv.items() if _got_dv.get(k) != v} or sorted(set(_got_dv) - set(_want_dv)))
+ok("... 칸 이름만 있는 줄·뒤가 다시 안내 문구인 줄은 그대로 안내 문구로 뺌",
+   sorted(i["option"] for i in _iss_dv if i["reason"] == "안내 문구(가격 아님)") == ["※주의사항", "※카카오톡 플러스친구 혜택 ※1인 1회 적용, 중복 할인 불가"],
+   [(i["action"], i["option"]) for i in _iss_dv])
+ok("... 지난 빌드가 글자로 뺀 줄만 back=1(옛 raw·새 raw 모두, 그 뒤 가격이 바뀐 청담점도), 같은 가격이 다른 페이지에 남아 있던 줄(광교점)과 "
+   "처음 보는 줄은 back 없음",
+   sorted(r["branch"] for r in _rows_dv if r["back"] == "1") == ["구로점", "마곡점", "청담점"])
+# appdata.came_back → data-meta.json changes.added, meta.recl(recl_pairs), achg(group_moved)
+prev_cb = {"s": ["A", "강남점", "울쎄라 300샷", "", "X14", ""], "branches": [[0, 1]], "meta": {"brands": [["A"]], "kinds": appdata.KINDS},
+           "keys": [["X14", 0, "울쎄라 300샷"]]}
+prow_cb = [[0, 0, 2, 590000, 0, 0, 3, 4, 1, 5]]
+_r = lambda name, sale, tags="", back="1": dict(brand="A", branch="강남점", name=name, sale=str(sale), kind="일반", tags=tags, keys="X14", back=back,
+                                               addon="0", days="0", hours="")
+now_cb = [_r("울쎄라 300샷", 590000), _r("울쎄라 300샷 1회", 490000), _r("울쎄라 300샷 첫방문", 290000, "첫 방문"), _r("울쎄라 300샷 1회차", 390000, back="")]
+cb = appdata.came_back(prev_cb, prow_cb, now_cb)
+ok("came_back: back=1이고 지난 data.json에 없던 줄만(이미 있던 줄·back 없는 줄은 아님)",
+   cb == {("A", "강남점", "울쎄라 300샷 1회", 490000), ("A", "강남점", "울쎄라 300샷 첫방문", 290000)}, cb)
+_hi = _r("울쎄라 300샷 첫방문 (2회차)", 690000, "첫 방문")      # a conditional price above the branch's 590,000
+ok("... 돌아온 줄은 규칙이 id를 옮긴 것(meta.recl): 일반가면 언제나, 조건부(첫 방문)는 그 지점 그 id의 첫 줄이거나 다른 줄보다 쌀 때 — 알림은 "
+   "특가까지 넣은 표시가로 셈(앱 watchNow·알림 Worker, 검수 2026-10-16: 41개 id가 '새 최저가'·'파는 지점이 늘면'으로 읽힘). 더 비싼 조건부 줄은 아님",
+   appdata.recl_pairs(prev_cb, prow_cb, now_cb[:2]) == {("X14", "A|강남점")}
+   and appdata.recl_pairs(prev_cb, prow_cb, [now_cb[0], now_cb[2]]) == {("X14", "A|강남점")}
+   and appdata.recl_pairs(prev_cb, prow_cb, [now_cb[0], _hi]) == set()
+   and appdata.recl_pairs(prev_cb, prow_cb, [dict(_r("울쎄라 300샷 첫방문", 790000, "첫 방문"), branch="역삼점")]) == {("X14", "A|역삼점")},
+   [appdata.recl_pairs(prev_cb, prow_cb, x) for x in (now_cb[:2], [now_cb[0], now_cb[2]], [now_cb[0], _hi])])
+_mv = appdata.group_moved(prev_cb, prow_cb, now_cb[:3], [0, 0, 0])
+ok("... 자동 묶음: 일반가로 돌아온 가격은 '새로 생김'·'가격 변동'의 근거가 아님(조건부는 원래 묶음 가격이 아님)",
+   _mv == {("A|강남점", appdata.G.comp("울쎄라 300샷 1회"), 490000)}, _mv)
+_old = dated(mini([("강남점", "리쥬란 2cc", 200000, "일반")]), "2026-10-14")
+_new = dated(mini([("강남점", "리쥬란 2cc", 200000, "일반"), ("강남점", "쥬베룩 2cc", 250000, "일반"), ("강남점", "울쎄라 100샷 1회", 190000, "일반")]),
+             "2026-10-19")
+_c0, _c1 = datameta.changes(_old, _new, "v"), datameta.changes(_old, _new, "v", back={("A", "강남점", "울쎄라 100샷 1회", 190000)})
+ok("data-meta.json changes.added: 규칙이 되살린 줄(came_back)은 새 수집이어도 '새로 생김'이 아님, 진짜 새 줄은 그대로",
+   [x[2] for x in _c0["added"]] == ["울쎄라 100샷 1회", "쥬베룩 2cc"] and [x[2] for x in _c1["added"]] == ["쥬베룩 2cc"]
+   and _c1["counts"] == {"price": 0, "added": 1, "removed": 0, "new_chain": 0}, (_c0["added"], _c1["added"]))
+# 끝-끝(검수 2026-10-16): clean.main → appdata.main을 임시 폴더에서 두 번(10-14 수집, 10-19 새 수집). 10-14 빌드는 옛 규칙처럼 마곡점
+# '※카카오톡 플러스친구 혜택' 칸의 울쎄라 줄을 안내 문구로 뺐고(issues.csv), 10-19 수집은 그 줄을 이름만으로(새 수집기), 값도 바꿔 가져옴.
+# appdata.main이 그 줄을 data-meta.json changes.added에 넣지 않고(진짜 새 줄은 넣음), 마곡점의 첫 X13 줄이라 meta.recl에 넣는지 봄 —
+# main()이 datameta.write_meta에 came_back을 넘기지 않으면 이 시험이 실패함
+_E_COLS = ["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"]
+_e_base = [("강남점", "리프팅", "울쎄라", "울쎄라 100샷 1회", 300000), ("마곡점", "리프팅", "슈링크", "슈링크 유니버스 300샷 1회", 99000)]
+_e_back = ("마곡점", "※카카오톡 플러스친구 혜택", "첫방문이벤트", "울쎄라 100샷 1회", 199000)
+_e_new = ("강남점", "부스터", "리쥬란", "리쥬란 힐러 2cc 1회", 250000)
+
+
+def _e_build(tmp, rows, day):
+    with open(os.path.join(tmp, "data2", "raw", "drevers.csv"), "w", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        wr.writerow(_E_COLS)
+        for br, c, g, o, s in rows:
+            wr.writerow(["닥터에버스", br, c, g, o, s, "", "0", "", "https://example.invalid/", f"{day}T06:00:00+09:00"])
+    saved = clean.ROOT, clean.RAW, appdata.ROOT, sys.argv
+    clean.ROOT, clean.RAW, appdata.ROOT = tmp, os.path.join(tmp, "data2", "raw"), tmp
+    sys.argv = ["appdata.py", "--date", day, "--out", os.path.join(tmp, "app", "data.json")]
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            clean.main()
+            appdata.main()
+    finally:
+        clean.ROOT, clean.RAW, appdata.ROOT, sys.argv = saved
+    return json.load(open(os.path.join(tmp, "app", "data.json"), encoding="utf-8")), json.load(open(os.path.join(tmp, "app", "data-meta.json"), encoding="utf-8"))
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    os.makedirs(os.path.join(tmp, "app"))
+    with open(os.path.join(tmp, "data2", "branches.csv"), "w", newline="", encoding="utf-8") as f:
+        f.write("brand,branch,address,lat,lng\n")
+    _e_prev, _ = _e_build(tmp, _e_base, "2026-10-14")
+    with open(os.path.join(tmp, "data2", "issues.csv"), "a", newline="", encoding="utf-8-sig") as f:   # what the old rule dropped
+        csv.writer(f).writerow(["제외", "안내 문구(가격 아님)", "닥터에버스", "마곡점", _e_back[1], _e_back[2], f"{_e_back[1]} {_e_back[3]}", 189000, "",
+                                "https://example.invalid/"])
+    _e_cur, _e_meta = _e_build(tmp, _e_base + [_e_back, _e_new], "2026-10-19")
+_e_added = [(x[1], x[3]) for x in _e_meta["changes"]["added"]]
+_e_raw = [(x[1], x[3]) for x in datameta.changes(_e_prev, _e_cur, "v")["added"]]       # the same two files, without came_back
+_e_recl = dict((d, ks) for d, ks in _e_cur["meta"]["recl"])
+ok("끝-끝 clean.main → appdata.main: 규칙이 되살린 줄(값이 바뀐 것도)은 data-meta.json changes.added에 없고 진짜 새 줄만 있음, "
+   "마곡점의 첫 X13 줄이라 meta.recl(10-19)에 X13",
+   _e_added == [("강남점", 250000)] and _e_meta["changes"]["counts"]["added"] == 1 and sorted(_e_raw) == [("강남점", 250000), ("마곡점", 199000)]
+   and "X13" in _e_recl.get("2026-10-19", []) and len(datameta.rows_of(_e_cur)) == 4,
+   (_e_added, _e_raw, _e_cur["meta"]["recl"], len(datameta.rows_of(_e_cur))))
 import homedata  # noqa: E402
 _hd = {"s": ["", "A", "강남점", "리쥬란 2cc", "평일 낮", "X24", "11:00-16:00", "리쥬란 힐러 2cc"], "keys": [["X24", "스킨부스터", "리쥬란 힐러 2cc"]],
        "meta": {"fam": [], "brands": [["A"]], "updated": "2026-10-16"}, "branches": [[0, 2, 0, None, None, 0, 0, 0, 0, 3]], "colDelta": [2], "groups": [],

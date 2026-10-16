@@ -23,6 +23,7 @@ import hashlib, re, sys, unicodedata
 from collections import Counter, defaultdict
 
 from xkeys import ADDON, COND, addon_only, comp, sessions
+import groups
 import labels
 
 # compare-tab categories (same names as xkeys categories)
@@ -935,9 +936,17 @@ def build(rows, min_branches=3):
         branches = {(rows[i]["brand"], rows[i]["branch"]) for i in idx}
         if len(branches) < min_branches:
             continue
-        cur = Counter(k for i in idx for k in (rows[i].get("keys") or "").split() if k.startswith("X"))
+        # A spec is a hand-made key's own when that key holds at least half of its rows — and of its plain prices (groups.plain)
+        # too, when it has any: one chain's event copies of an item do not hand a spec over. 2026-10-16: 9 닥터에버스
+        # '첫방문이벤트' rows that came back from the notes (clean.py NOTE_SECTION) carried X17 and made it 25 of 46 rows of
+        # 'inmode|인모드|FORMA||||1' (16 of 37 before): the auto key TB4F1107 '인모드 FORMA' went away, and 21 plain rows of 6 brands
+        # without X17 lost their only key. Plain rows alone would not do either: '레이저토닝 포토나' (T3D0DADE) would go the other
+        # way. Both counts only ever keep an auto key (TABDBE5E '인모드 FX', gone before 2026-10-16, is back with it)
+        xk = lambda i: [k for k in (rows[i].get("keys") or "").split() if k.startswith("X")]
+        cur = Counter(k for i in idx for k in xk(i))
         top = cur.most_common(1)
-        if top and top[0][1] >= len(idx) / 2:
+        reg = [i for i in idx if groups.plain(rows[i].get("kind") or "일반", rows[i].get("tags") or "", rows[i].get("days"), rows[i].get("hours") or "")]
+        if top and top[0][1] >= len(idx) / 2 and (not reg or sum(top[0][0] in xk(i) for i in reg) >= len(reg) / 2):
             owned[sig] = top[0][0]          # this spec is one of the hand-made keys: keep using that key
             continue
         v = vs[idx[0]]
