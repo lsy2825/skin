@@ -277,6 +277,9 @@
   const timeLimited = (r) => Pricing.whenLimited(r[20], r[21]);
   const condOf = (r) => S[r[6]] !== "" || timeLimited(r);
   const isSpecial = (r) => r[5] === 1 || r[5] === 2 || condOf(r);
+  // why a special price is special (Pricing.condClass): "once" 체험가·한정가·첫 방문·1인 1회·타임세일 — one time per person,
+  // "repeat" a visit day / time only ('평일 낮', '시간대', '일요일', the site's days / hours) — the same price on every visit that fits
+  const condClassOf = (r) => Pricing.condClass(r[5], S[r[6]], r[20], r[21]);
   const isFirstVisit = (r) => (S[r[6]] || "").split("·").includes("첫 방문");
   const isBundle = (r) => (S[r[2]] || "").includes("+");          // several items in one price ('A+B'): 묶음
   const prodMemo = new Map();                                     // product / device names a clinic wrote in the option name
@@ -713,7 +716,7 @@
             h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = cmpRk(ranking(v.k, "price"));   // lowestHighlight off: the middle price, not '최저'
               return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
                 h("b", {}, v.label), h("span", { class: "num" }, !vr.length ? "가격 없음" : FLAGS.lowestHighlight ? `최저 ${won(vr[0].p)}` : `중간 ${won(median(vr.map((x) => x.p)))}`)); }))) : null,
-          h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:13px" }, "2회째부터는 지점의 일반가로 계산")),
+          h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:13px" }, "체험가·한정가·첫 방문가는 첫 회만 그 가격")),
             h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
           cartPicker(s.ci, (i) => { s.ci = i; paint(); }),
           top ? h("div", { class: "hero", style: "margin-top:14px" }, h("span", { class: "hl" }, `${KEYS[s.k].label} · 가장 싼 곳`), h("span", { class: "hb" }, bname(top.b)),
@@ -929,25 +932,38 @@
     const more = rx ? byB[b].filter((i) => live(i) && rx.test(S[ROWS[i][2]])) : [];
     return [...new Set([...base, ...more])].sort((a, c) => ROWS[a][3] - ROWS[c][3]).slice(0, 80);
   }
-  const asC = (i) => ({ i, p: ROWS[i][3], special: isSpecial(ROWS[i]) });
-  // price of q sessions of an item at branch b (Pricing.lineCost); it.sp overrides 특가 포함 for this line
+  const asC = (i) => ({ i, p: ROWS[i][3], special: isSpecial(ROWS[i]), repeat: condClassOf(ROWS[i]) === "repeat" });
+  // price of q sessions of an item at branch b (Pricing.lineCost); it.sp overrides 특가 포함 for this line, it.done (the item's
+  // '전에 이 시술을 받아 봤어요' switch) leaves out the once prices (Pricing.withoutOnce) — also one picked for this branch
   const hasTag = (i, tag) => (S[ROWS[i][6]] || "").split("·").includes(tag);
+  // the row picked for branch b (it.ov holds its name), or null
+  function ovRow(it, b) {
+    const n = it.ov && it.ov[bkey(b)];
+    if (n == null || !SI.has(n)) return null;
+    const i = (byName.get(SI.get(n)) || []).find((x) => ROWS[x][0] === b && live(x));
+    return i == null ? null : i;
+  }
+  // a picked once price the switch leaves out: the pick stays stored (back when the switch is off) but is not in use
+  const ovDropped = (it, b) => { const i = it.done ? ovRow(it, b) : null; return i != null && Pricing.isOnce(asC(i)); };
   function lineAt(it, b, noOnce = false) {
-    const ovName = it.ov && it.ov[bkey(b)];
-    let ov = null;
-    if (ovName != null && SI.has(ovName)) {
-      const i = (byName.get(SI.get(ovName)) || []).find((x) => ROWS[x][0] === b && live(x));
-      if (i != null) ov = { i, p: ROWS[i][3], sess: sessOf(i), special: isSpecial(ROWS[i]) };
-    }
+    const oi = ovRow(it, b);
+    let ov = oi == null ? null : { ...asC(oi), sess: sessOf(oi) };
     const sp = it.sp ?? st.special;
     const keep = (i) => !noOnce || !hasTag(i, "첫 방문");
-    if (ov && !keep(ov.i)) ov = null;
-    return Pricing.lineCost(itemRows(it, b, sp).filter(keep).map(asC), itemRows(it, b, false).filter(keep).map(asC), it.q || 1, ov);
+    const cands = (list) => { const c = list.filter(keep).map(asC); return it.done ? Pricing.withoutOnce(c) : c; };
+    if (ov && (!keep(ov.i) || ovDropped(it, b))) ov = null;
+    return Pricing.lineCost(cands(itemRows(it, b, sp)), cands(itemRows(it, b, false)), it.q || 1, ov);
   }
+  // the item has a once price at some branch in view, so '전에 이 시술을 받아 봤어요' changes something
+  const itemHasOnce = (it) => BR.some((x) => branchOk(x.i) && itemRows(it, x.i, true).some((i) => condClassOf(ROWS[i]) === "once"));
+  // a line that keeps a visit day / time price for its sessions (Pricing.lineCost repeat): the words under it
+  const REPEAT_TXT = "방문일·시간 조건이 맞을 때 매번 이 가격";
+  // the row used after the first session when it is another one (a once price first, Pricing.lineCost rows[1]), or null
+  const laterRow = (l) => (l && l.rows.length > 1 ? ROWS[l.rows[1]] : null);
   const branchOk = (b) => brandOn(b) && regionOk(b) && (!st.maxKm || !st.loc || (dist(b) != null && dist(b) <= st.maxKm));
   // a line whose later sessions have no price (only a special exists, round-2 R14) is shown but never summed or compared
   const okL = (l) => !!l && !l.incomplete;
-  const incTxt = (l) => `1회 ${won(l.total)}만 확인 · ${l.unpriced}회는 가격 없음(특가 반복 여부 미확인) — 합계에서 뺐어요`;
+  const incTxt = (l) => `1회 ${won(l.total)}만 확인 · ${l.unpriced}회는 가격 없음(1회 가격이라 반복 여부 미확인) — 합계에서 뺐어요`;
   // whole cart across branches (Pricing.compareClinics): full / partial / mix / pair / savings
   // first-visit prices: at most one per branch unless the user turns it off (st.noStack, Pricing.limitOnce)
   function cartPlan(items) {
@@ -989,17 +1005,17 @@
     const w = [];
     const ls = x.lines.filter(Boolean);
     const sp = ls.filter((l) => isSpecial(ROWS[l.rows[0]])).length;
-    if (sp) w.push(`체험가·한정가·시간 조건 가격 ${sp}개 — 1인 1회·첫 방문·요일·시간 조건을 병원에 확인하세요`);
+    if (sp) w.push(`체험가·한정가·요일·시간 조건 가격 ${sp}개 — 1인 1회·첫 방문·요일·시간 조건을 병원에 확인하세요`);
     if (ls.some((l) => l.restacked)) w.push("첫 방문가가 여러 개라 하나만 첫 방문가로, 나머지는 다음 가격으로 계산했어요");
     if (ls.some((l) => l.stackWarn)) w.push("첫 방문가만 있는 시술이 여러 개예요 — 함께 적용되는지 병원에 확인하세요");
-    if (ls.some((l) => ROWS[l.rows[0]][17] === 2)) w.push("방문 시간에 되는 가격인지 병원에 확인하세요(앱이 시간대를 알지 못해요)");
+    if (ls.some((l) => l.rows.some((i) => ROWS[i][17] === 2))) w.push("방문 시간에 되는 가격인지 병원에 확인하세요(앱이 시간대를 알지 못해요)");
     const low = ls.filter((l) => isLow(l.rows[0])).length;
     if (low) w.push(`같은 시술 중간값의 ${Math.round(LOW_SHARE * 100)}% 이하인 초저가 ${low}개 — 개당 가격·행사 조건일 수 있어요. '가격 근거'에서 원본을 확인하세요`);
     if (x.missing && x.missing.length) w.push(`이 지점에서 가격을 확인하지 못한 시술 ${x.missing.length}개 — 합계에 넣지 않았어요(0원 아님)`);
     if (fresh(x.b).stale) w.push(`가격 확인일 ${fresh(x.b).d} — 최신이 아닐 수 있어요`);
     // CART_INTELLIGENCE_REPORT.md: quantity limits, package conditions, combining promotions
-    if (ls.some((l) => l.incomplete)) w.push("특가만 있는 시술은 2회째부터 가격이 없어 합계에서 뺐어요 — 반복 가격을 병원에 확인하세요");
-    if (ls.some((l) => l.laterRegular)) w.push("특가는 첫 1회만, 2회째부터는 이 지점 일반가로 계산했어요 — 특가 반복 여부는 병원마다 달라요");
+    if (ls.some((l) => l.incomplete)) w.push("1회 가격(체험가·첫 방문가 등)만 있는 시술은 2회째부터 가격이 없어 합계에서 뺐어요 — 반복 가격을 병원에 확인하세요");
+    if (ls.some((l) => l.laterOther)) w.push("1회 가격(체험가·첫 방문가 등)은 첫 1회만, 2회째부터는 이 지점의 다른 가격으로 계산했어요 — 반복 여부는 병원마다 달라요");
     const pk = ls.filter((l) => sessOf(l.rows[0]) > 1 && sessOf(l.rows[0]) < 99).length;
     if (pk) w.push(`여러 회 묶음 가격 ${pk}개 — 한 번에 결제하는지, 사용 기간이 있는지 확인하세요`);
     if (sp >= 2) w.push(`할인 가격 ${sp}개를 한 번에 받는 계산이에요 — 같은 날 중복 할인이 되는지 병원에 확인하세요`);
@@ -1009,14 +1025,16 @@
   const enc = (o) => btoa(unescape(encodeURIComponent(JSON.stringify(o)))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   const dec = (s) => JSON.parse(decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/")))));
   function shareCart(c) {
-    const items = c.items.filter(itemOk);
+    // '전에 이 시술을 받아 봤어요' (it.done) is the sender's own history: the link and the total it carries leave it out, so the
+    // receiver (whose import drops it) compares the same prices
+    const plain = c.items.map(({ done, ...x }) => x), items = plain.filter(itemOk);
     const plan = items.length ? cartPlan(items) : null, best = plan && plan.full[0];
     const s = { from: store.get("sender", st.me.nick || ""), note: "" };
     sheet("내 견적 보내기", (close) => {
       const from = h("input", { class: "field", value: s.from, maxlength: "20", placeholder: "보내는 사람 (선택)", "aria-label": "보내는 사람" });
       const note = h("textarea", { class: "field", rows: "2", maxlength: "200", placeholder: "메모 (예: 이번 달에 같이 받자!)", "aria-label": "메모" });
       const preview = h("pre", { class: "preview" });
-      const payload = () => ({ name: c.name, items: c.items, from: from.value.trim().slice(0, 20), note: note.value.trim().slice(0, 200),
+      const payload = () => ({ name: c.name, items: plain, from: from.value.trim().slice(0, 20), note: note.value.trim().slice(0, 200),
         sent: best ? { total: best.total, b: bkey(best.b), date: today(), vat: st.vat } : null });
       const link = () => `${location.origin}${location.pathname}#import/${enc(payload())}`;
       const text = () => [`${from.value.trim() ? `${from.value.trim()}님이 보낸 ` : ""}윤실장 견적 '${c.name}'`,
@@ -1042,7 +1060,9 @@
   }
   function quoteText(x, items) {
     return [`[${bname(x.b)}] 예상 견적 (${D.meta.updated} 기준)`,
-      ...items.map((it, j) => { const l = x.lines[j]; return l ? `- ${itemLabel(it)} ×${it.q || 1}: ${l.incomplete ? incTxt(l) : won(l.total)} (${S[ROWS[l.rows[0]][2]]})` : `- ${itemLabel(it)}: 이 지점에 없음`; }),
+      ...items.map((it, j) => { const l = x.lines[j]; if (!l) return `- ${itemLabel(it)}: 이 지점에 없음`;
+        const r2 = laterRow(l);
+        return `- ${itemLabel(it)} ×${it.q || 1}: ${l.incomplete ? incTxt(l) : won(l.total)} (${S[ROWS[l.rows[0]][2]]}${r2 ? ` · 2회째부터 ${S[r2[2]]}` : ""})${l.repeat && (it.q || 1) > 1 ? ` · ${r2 ? "2회째부터 " : ""}${REPEAT_TXT}` : ""}`; }),
       `합계 ${won(x.total)} (${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가, 대부분 부가세 별도"}) · 가격 확인 ${fresh(x.b).d} · 방문 전 병원 확인`,
       ...quoteWarnings(x).map((s) => `※ ${s}`)].join("\n");
   }
@@ -2063,7 +2083,7 @@
   // sorts for every price list: neutral ones first; discount-led sorts only with flags.discountEmphasis
   const SORTS = () => [["region", "지역·이름순"], ["recent", "최근 확인순"], ["near", "가까운 순"], ["price", "낮은 가격순"], ["priceDesc", "높은 가격순"], ["unit", "단위당 가격"], ["name", "상품명순"],
     ...(FLAGS.discountEmphasis ? [["disc", "할인율 큰 순"], ["pos", "중간보다 싼 순"]] : [])];
-  const SESS_L = { "1": "1회 가격", pkg: "2회 이상 패키지", pass: "이용권·무제한" }, COND_L = { plain: "조건 없는 가격만", special: "체험가·한정가·시간 조건만" };
+  const SESS_L = { "1": "1회 가격", pkg: "2회 이상 패키지", pass: "이용권·무제한" }, COND_L = { plain: "조건 없는 가격만", special: "체험가·한정가·요일·시간 조건만" };
   const amtOf = (i) => { const u = Search.unitOf(S[ROWS[i][2]]); return u && !/\+/.test(S[ROWS[i][2]]) ? `${u.qty}${u.unit}` : ""; };
   // treatment attributes (origin · sex · area · grade) of a price, from the labels of its comparison keys (Search.attrsOf);
   // cached per key set — many prices share one
@@ -2130,14 +2150,14 @@
         h("span", {}, h("b", {}, label), help ? h("span", { class: "tiny", style: "display:block" }, help) : null));
       const paint = () => fill(box,
         h("div", { class: "sub" }, "고르고 '적용'을 누르면 가격표에 바로 반영돼요. 숫자는 지금 다른 조건을 그대로 둘 때의 가격 수예요."),
-        opts("조건부 가격(체험가·한정가·첫 방문·시간 조건)", "cond", [["", "모두", null], ["plain", "조건 없는 가격만", cnt.cond.plain || 0], ["special", "조건부만", cnt.cond.special || 0]]),
+        opts("조건부 가격(체험가·한정가·첫 방문·요일·시간 조건)", "cond", [["", "모두", null], ["plain", "조건 없는 가격만", cnt.cond.plain || 0], ["special", "조건부만", cnt.cond.special || 0]]),
         opts("가격 종류", "kind", [[-1, "전체", null], ...D.meta.kinds.map((k, i) => [i, k, cnt.kind[i] || 0])]),
         opts("첫 방문 가격", "fv", [["", "상관없음", null], ["only", "첫 방문가만", cnt.fv.only || 0], ["no", "첫 방문가 빼기", cnt.fv.no || 0]], "병원이 '첫 방문·신규'라고 적은 가격이에요. 두 번째부터는 보통 일반가예요."),
         opts("묶음 가격(A+B처럼 여러 시술을 한 값에)", "bun", [["", "포함", null], ["only", "묶음만", cnt.bun.only || 0], ["no", "묶음 빼기", cnt.bun.no || 0]], "묶음은 구성이 지점마다 달라서 시술별 비교에는 쓰지 않아요."),
         opts("회차·패키지", "sess", [["", "전체", null], ...Object.entries(SESS_L).map(([k, l]) => [k, l, cnt.sess[k] || 0])], "회차가 적혀 있지 않은 가격은 1회 가격으로 보지만, 상품명에 없다는 걸 함께 표시해요."),
         opts("부가세 표시(앱 전체)", "vat", [["incl", "부가세 포함 예상가", null], ["listed", "병원 표시가", null]], "병원이 '부가세 별도'라고 적은 가격에만 10%를 더해요. 부가세 표기를 못 찾은 가격은 더하지도 빼지도 않아요."),
         h("div", { class: "sub", style: "margin:14px 0 0" }, "확인이 필요한 가격"),
-        tog("특가 포함(앱 전체)", "special", "끄면 체험가·한정가·시간 조건 가격이 모든 화면에서 빠져요."),
+        tog("특가 포함(앱 전체)", "special", "끄면 체험가·한정가·요일·시간 조건 가격이 모든 화면에서 빠져요."),
         tog("지난 이벤트·확인 중 가격도 보기", "old", "이벤트가 끝났거나 급변해서 확인 중인 가격이에요. 가격표에서만 보이고 비교·내 견적에는 쓰지 않아요."),
         tog("부가세 표기를 못 찾은 가격 빼기", "vu", null),
         h("div", { class: "row", style: "margin-top:16px;gap:8px" },
@@ -2456,7 +2476,7 @@
         row("데이터 원본", `${liveBrands().length}개 브랜드 공식 홈페이지의 공개 가격 페이지 (${liveBrands().map((b) => b.name).join("·")})`),
         row("가격 비교 기준", "같은 시술·같은 용량(샷 수)·같은 회차·같은 원산지끼리만 비교해요. 다른 규격은 '조건 상이'로 따로 둬요."),
         row("부가세 처리", "병원이 '부가세 별도'라고 적은 가격에만 10%를 더해 '부가세 포함 예상가'로 보여줘요. 부가세 표기를 못 찾은 가격은 더하지도 빼지도 않아요. 마이 → 가격 표시에서 병원 표시가로 바꿀 수 있어요."),
-        row("이벤트 가격 처리", "체험가·한정가·첫 방문·시간 조건 가격은 '조건부'로 표시해요. 종료일이 지난 가격은 비교에서 빠지고, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격은 확인 전까지 빠져요."),
+        row("이벤트 가격 처리", "체험가·한정가·첫 방문·요일·시간 조건 가격은 '조건부'로 표시해요. 종료일이 지난 가격은 비교에서 빠지고, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격은 확인 전까지 빠져요."),
         row("가격 오류 신고", "각 가격의 'i'(가격 근거) → '원본과 달라요' 또는 '이 가격 다시 확인하기'. GitHub로 보내면 운영자에게 실제로 접수돼요.")),
       h("div", { class: "sub", style: "margin:10px 0 4px" }, "브랜드별 수집 상태"),
       h("ul", { class: "list" }, D.meta.brands.map((bb, bi) => { const brs = BR.filter((x) => x.brand === bi); if (!brs.length) return null;
@@ -2634,7 +2654,7 @@
       h("div", { class: "fact" }, h("dt", {}, "중간값"), h("dd", {}, plain.length
         ? `${won(median(plain.map((x) => x.p)))} — 조건 없는 가격 ${plain.length}곳의 지점별 최저가를 줄 세웠을 때 가운데 값이에요(위에 보이는 값). 특가까지 넣으면 ${rk.length}곳 중간값 ${won(med)}이에요.`
         : `${won(med)} — ${rkc.length}곳의 지점별 최저가(조건부 가격 포함, 추가 옵션·부가세 미확인 제외)를 줄 세웠을 때 가운데 값이에요.`, " '중간보다 N% 싸요'는 (중간값 − 가격) ÷ 중간값이에요.")),
-      h("div", { class: "fact" }, h("dt", {}, "조건 없는 최저가"), h("dd", {}, `${plain.length}곳 — 특가·첫 방문·시간 조건이 없고, 이번 주 확인된 지점의 가격만이에요.`)),
+      h("div", { class: "fact" }, h("dt", {}, "조건 없는 최저가"), h("dd", {}, `${plain.length}곳 — 특가·첫 방문·요일·시간 조건이 없고, 이번 주 확인된 지점의 가격만이에요.`)),
       h("div", { class: "fact" }, h("dt", {}, "빼는 가격"), h("dd", {}, "기간이 끝난 이벤트, 지난 수집보다 급변해 확인 중인 가격, 고른 방문일에 안 되는 가격은 모든 계산에서 빼요. 수집에 실패한 지점은 '조건 없는 최저가'에서 빼요.")),
       h("div", { class: "fact" }, h("dt", {}, "초저가 표시"), h("dd", {}, `중간값의 ${Math.round(LOW_SHARE * 100)}% 이하인 가격에 '초저가·조건 확인'을 붙여요. 조건 문구가 없어도 이런 가격을 1~2곳만 내고 있으면 원본을 확인하기 전까지 '조건 없는 최저가'로 쓰지 않고 '확인 필요'로 따로 보여줘요(여러 지점이 같은 값이면 그 체인의 보통 가격으로 봐요). ⓘ를 누르면 조건·부가세·원본을 볼 수 있어요.`)))));
   }
@@ -3911,7 +3931,7 @@
       bs.forEach((b, n) => { const got = lines[n].filter(okL), miss = its.filter((_, j) => !okL(lines[n][j])), sp = got.filter((l) => l.special).length;
         head.push(full[n] != null ? `- ${bname(b)}: ${won(full[n])}${full.filter((x) => x != null).length > 1 ? (n === full.findIndex((x) => x != null) ? " (기준)" : vsT(full[n]).replace(" (기준)", " (기준과 같음)")) : ""}${sp ? ` · 조건부 가격 ${sp}개 포함` : ""}`
           : `- ${bname(b)}: 일부만 가능 — 없음: ${miss.map(itemLabel).join(", ")} (있는 것만 ${won(got.reduce((s, l) => s + l.total, 0))}, 총액 비교에서 뺌)`); });
-      head.push(`가격 적용 조건: 특가(체험가·한정가)는 첫 1회만(일반가가 없으면 2회째부터 가격 없음으로 빼요)${st.noStack ? ", 첫 방문가는 지점마다 1개만" : ""}. 없는 시술은 0원으로 치지 않았어요.`);
+      head.push(`가격 적용 조건: 체험가·한정가·첫 방문가는 첫 1회만(다음 가격이 없으면 2회째부터 가격 없음으로 빼요), 요일·시간 조건 가격은 회마다 그 가격${st.noStack ? ", 첫 방문가는 지점마다 1개만" : ""}. 없는 시술은 0원으로 치지 않았어요.`);
     } else {
       const rows = bs.map((b) => ({ b, i: bestAt(k, b) })), ok = rows.filter((x) => x.i >= 0), bp = ok.length ? ROWS[ok[0].i][3] : 0;
       head.push(`시술: ${KEYS[k].label} ×1 (같은 사양끼리)`);
@@ -4361,7 +4381,7 @@
         const ok = itemOk(it), fam = it.t === "k" && ok ? famOf[KI[it.k]] : null, e = fam ? kbOf(fam.f) : null;
         const cat = it.t === "k" && ok ? KEYS[KI[it.k]].cat : ok ? D.meta.cats[ROWS[(byName.get(SI.get(it.n)) || [])[0]][1]] : "";
         const setQ = (v) => { it.q = v; saveCarts(); render(); };
-        const nOv = it.ov ? Object.keys(it.ov).length : 0, best = ok ? itemBest(it) : null;
+        const nOv = it.ov ? Object.keys(it.ov).length - (it.done ? BR.filter((x) => ovDropped(it, x.i)).length : 0) : 0, best = ok ? itemBest(it) : null;
         return h("div", { class: "ci" },
           h("span", { class: "cimg", "aria-hidden": "true" }, catIcon(cat)),
           h("span", { class: "cn" }, fam ? fam.f.name : itemLabel(it), e ? h("button", { class: "linkbtn", type: "button", "aria-label": `${fam.f.name} 설명 보기`, onclick: () => kbSheet(e, fam.f) }, icon("info", "xs")) : null),
@@ -4376,6 +4396,10 @@
             nOv ? h("button", { class: "linkbtn", type: "button", onclick: () => { it.ov = {}; saveCarts(); render(); } }, `지점별로 바꾼 옵션 ${nOv}곳 · 되돌리기`) : null,
             ok && st.cartAdv ? h("button", { class: "chip mini-chip", type: "button", "aria-pressed": (it.sp ?? st.special) ? "true" : "false", title: "이 시술만 체험가·한정가 포함/제외",
               onclick: () => { it.sp = !(it.sp ?? st.special); saveCarts(); render(); } }, (it.sp ?? st.special) ? "특가 포함" : "특가 빼기") : null),
+          // had it before: the once prices (체험가·한정가·첫 방문·1인 1회) are not theirs — shown where the item has one (or it is on)
+          ok && (it.done || ((it.sp ?? st.special) && itemHasOnce(it))) ? h("div", { class: "cdone" },
+            switchEl("전에 이 시술을 받아 봤어요", !!it.done, (v) => { if (v) it.done = true; else delete it.done; saveCarts(); render(); }),
+            it.done ? h("span", { class: "sub" }, "체험가·첫 방문가 같은 1회 가격은 빼고 계산해요") : null) : null,
           h("div", { class: "cf" }, qtyEl(() => it.q || 1, setQ), FLAGS.lowestHighlight ? h("span", { class: "cp num" }, best ? won(best.total) : "-",
             h("small", {}, best ? `가장 싼 곳 · ${BR[best.b].name}` : ok ? "가능한 지점 없음" : "계산에서 빠짐"))
             : h("span", { class: "cp num" }, best ? (best.total === best.hi ? won(best.total) : `${man(best.total)}~${man(best.hi)}원`) : "-",
@@ -4408,6 +4432,10 @@
         plan.savings > 0 ? (HL ? sumrow("여러 곳 섞으면", `${won(plan.mix.total)} · ${won(plan.savings)} 아낌`) : sumrow("여러 곳에 나눠 받으면", `${won(plan.mix.total)}부터`)) : null,
         sumrow("가격 기준", st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가")),
       usesCond ? h("span", { class: "k kx", style: "justify-self:start;margin-top:6px;white-space:normal" }, "첫 방문·체험가 같은 조건부 가격 포함 — 고급 설정에서 뺄 수 있어요") : null,
+      // a visit day / time price is counted on every session: with no visit date the app can't tell which of them apply
+      !st.when && [...plan.byB.values()].some((ls) => ls.some((l) => l && l.repeat)) ? h("div", { class: "whenask" },
+        h("span", { class: "sub" }, "방문일을 정하면 그 요일·시간에 되는 가격만 계산해요"),
+        h("button", { class: "linkbtn", type: "button", onclick: whenSheet }, icon("calendar", "xs"), "방문일 정하기")) : null,
       c.budget && best ? (HL ? h("span", { class: `k ${best.total > c.budget ? "kx" : "ok"}`, style: "justify-self:start;margin-top:6px" }, best.total > c.budget ? `예산보다 ${won(best.total - c.budget)} 많아요` : `예산 ${won(c.budget)} 안이에요`)
         : (() => { const n = totals.filter((t) => t <= c.budget).length; return h("span", { class: `k ${n ? "ok" : "kx"}`, style: "justify-self:start;margin-top:6px" }, n ? `예산 ${won(c.budget)} 안 지점 ${n}곳` : `예산 ${won(c.budget)} 안 지점이 없어요`); })()) : null,
       h("button", { class: "btn", type: "button", "aria-expanded": st.cartCmp ? "true" : "false", onclick: () => { st.cartCmp = !st.cartCmp; render(); } },
@@ -4423,7 +4451,7 @@
     const adv = h("details", { class: "card advset", open: !!st.cartAdv }, h("summary", {}, h("b", {}, "고급 비교 설정"), h("span", { class: "sub" }, ` · ${on.join(" · ")}`)),
       h("div", { class: "advgrid" },
         h("div", {}, h("div", { class: "flabel" }, "예산 상한"), budgetEl(c)),
-        h("div", {}, h("div", { class: "flabel" }, "특가 적용"), switchEl("특가 포함(첫 1회)", st.special, (v) => { st.special = v; store.set("special", v); render(); }),
+        h("div", {}, h("div", { class: "flabel" }, "특가 적용"), switchEl("특가 포함", st.special, (v) => { st.special = v; store.set("special", v); render(); }),
           h("div", { class: "sub" }, "담은 시술마다 '특가 포함/빼기'를 따로 정할 수도 있어요(위 목록).")),
         h("div", {}, h("div", { class: "flabel" }, "첫 방문 조건"), switchEl("첫 방문가는 지점당 1개만", st.noStack, (v) => { st.noStack = v; store.set("noStack", v); render(); })),
         h("div", {}, h("div", { class: "flabel" }, "방문일"), whenChip()),
@@ -4447,7 +4475,7 @@
     else if (st.cartTab === "pkg") box.append(pkgView(items, plan));
     else box.append(sumView(plan.full));
     box.append(h("div", { class: "note" }, "• 가격만으로 고르지 마세요. 같은 시술이어도 병원마다 용량·조건·정품 여부·시술 의료진이 다르고, 시술마다 부작용·주의사항이 있어요(담은 시술의 i 버튼).", h("br"),
-      "• 특가(체험가·한정가)는 첫 1회만, 2회째부터는 그 지점 일반가로 계산해요.", h("br"),
+      "• 체험가·한정가·첫 방문가는 첫 1회만, 2회째부터는 그 지점의 다른 가격으로 계산해요. 요일·시간 조건 가격은 조건이 맞을 때 매번 그 가격으로 계산해요.", h("br"),
       "• 지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.", h("br"),
       `• ${vatNote()} 방문 전에 병원에 꼭 확인하세요.`));
     box.append(endBar); watchSum();
@@ -4485,14 +4513,19 @@
       }
       const r = ROWS[l.rows[0]], ss = sessOf(l.rows[0]);
       const pct = r[4] ? Math.round((r[4] - r[3]) / r[4] * 100) : 0;
-      const detail = l.ov ? (ss >= 99 ? "이용권 1개" : ss > 1 ? `${ss}회 묶음 × ${l.units}` : `× ${l.units}`)
-        : l.incomplete ? incTxt(l)
-        : l.rows.length > 1 ? `첫 회 ${won(r[3])} + ${(it.q || 1) - 1}회 × ${won(ROWS[l.rows[1]][3])}` : (it.q || 1) > 1 ? `${won(r[3])} × ${it.q}` : "";
+      const r2 = laterRow(l);
+      const detail = l.incomplete ? incTxt(l)
+        : r2 ? `첫 회 ${won(r[3])} + ${(it.q || 1) - 1}회 × ${won(r2[3])}`
+        : l.ov ? (ss >= 99 ? "이용권 1개" : ss > 1 ? `${ss}회 묶음 × ${l.units}` : `× ${l.units}`)
+        : (it.q || 1) > 1 ? `${won(r[3])} × ${it.q}` : "";
       body.append(h("div", { class: "qline" },
         h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, l.incomplete ? `${won(l.total)}~?` : won(l.total))),
         h("div", { class: "m" }, h("span", {}, S[r[2]]), listS(r), pct > 0 && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
           l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, l.restacked ? h("span", { class: "k kx" }, "첫 방문가 중복 안 함") : null, l.stackWarn ? h("span", { class: "k kx" }, "첫 방문가 중복 확인") : null,
-          detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0])),
+          detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0]),
+          // the price of the later sessions when it is another row: its name and conditions, then the repeat words that are about it
+          r2 ? [h("span", { class: "later" }, `2회째부터 ${S[r2[2]]}`), ...kindBadge(r2)] : null,
+          l.repeat && (it.q || 1) > 1 ? h("span", { class: "rpt" }, REPEAT_TXT) : null),
         alts.length > 1 || l.ov ? h("div", { style: "margin-top:6px" }, sel) : null));
     });
     const warns = quoteWarnings(x);
@@ -4625,7 +4658,8 @@
         if (!p || !p.line) return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "p", style: "color:var(--pricey)" }, "가격 미확인")));
         const r = ROWS[p.line.rows[0]];
         return h("li", {}, h("button", { class: "item", type: "button", onclick: () => nav(`branch/${p.b}`) }, h("span", { class: "t" }, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "p num" }, won(p.line.total)),
-          h("span", { class: "m" }, bdot(p.b), bname(p.b), h("span", {}, S[r[2]]), kindBadge(r), p.line.ov ? h("span", { class: "k k4" }, "직접 고름") : null, dist(p.b) != null ? h("b", {}, km(dist(p.b))) : null)));
+          h("span", { class: "m" }, bdot(p.b), bname(p.b), h("span", {}, S[r[2]]), kindBadge(r), p.line.ov ? h("span", { class: "k k4" }, "직접 고름") : null,
+            (() => { const r2 = laterRow(p.line); return r2 && isSpecial(r2) ? [h("span", {}, "2회째부터"), ...kindBadge(r2)] : null; })(), dist(p.b) != null ? h("b", {}, km(dist(p.b))) : null)));
       })),
       picks.some((p) => p && p.line && p.line.special) ? h("div", { class: "note", style: "margin-top:8px" }, "체험가·한정가·첫 방문 같은 조건부 가격이 들어 있어요. 병원마다 1인 1회 등 조건을 꼭 확인하세요.") : null);
     return res;
