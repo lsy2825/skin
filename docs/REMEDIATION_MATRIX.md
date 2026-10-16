@@ -114,7 +114,10 @@
 | E5 추가 옵션 칸 | 해결(C2, lsy2825/skin#51) | 단위·빌드 비교 | `xkeys.addon_only`, data.json 16번째 칸 `addon` | labels_test | 앱은 r[15]을 실행 중 칸으로 씀 → B가 먼저 옮김 |
 | E6 부가세 미확인 | 해결(C2, lsy2825/skin#51 — 미확인 23,408 → 3,314줄) | 단위·빌드 비교 | `data2/vat_policy.json` 닥터에버스·셀린, `clean.vat_of` | labels_test | 확인 못 한 지점(닥터에버스 4·셀린 2)은 미확인 |
 | E8·E9 변동 기록(기준 바뀐 날·처음 모은 체인) | E9 해결(C3 lsy2825/skin#53), E8은 main의 `trend` since·`meta.recl`(규칙이 바꾼 키를 최근 12번까지 기억 — 그 이상은 시험 없음) | 단위·빌드 비교 | `appdata.brand_first`·`meta.brandFirst`, `datameta.changes` `new_chains` | labels_test | 앱 안내 문구는 B |
-| 수집 예절 | 해결(lsy2825/skin#45) | 단위(가짜 시계) | `scrape/common.py` Fetcher(robots)·시계, `weekly.gate` | `tests/crawl_manners_cases.py`(brand_parsers_test가 돌림) | 이름표 연락처는 앱 주소로 먼저(사용자 2026-10-16), 정해지면 `BOT_INFO_URL` |
+| 수집 예절 | 해결(lsy2825/skin#45, 3차 lsy2825/skin#63) | 단위(가짜 시계·스레드) | `scrape/common.py` Fetcher(robots)·호스트 시계·스레드 차례·429 뒤 그 호스트 멈춤, `weekly.gate`, 등록부 `rate` 글자 | `tests/crawl_manners_cases.py`(brand_parsers_test가 돌림, 체인별 속도 표 대조) | 이름표 연락처는 앱 주소로 먼저(사용자 2026-10-16), 정해지면 `BOT_INFO_URL`. 경로별 확인 밖 요청(쁨 지점 찾기·셀린 POST·톡스앤필 목록) |
+| C1 다음: 시간·요일 한정 가격, 영국산 톡신 | 해결(lsy2825/skin#55) | 단위·빌드 비교 | `clean.TAGS` '평일 낮'(해피아워·화수목·평일 한정·N시~M시), `taxonomy.ORIGIN`·`xkeys` `(?<![미외영])국산` | labels_test | 앱은 '평일 낮'을 월~금으로 읽음(요일이 묶음 제목에만 있는 501줄) — 요일 칸은 B가 원하면 C가 더함 |
+| C7 규격 낱말 한 줄 설명 | 해결(lsy2825/skin#52, 의료진 검수 전) | 단위·빌드 | `knowledge/specs.json` 177개, `knowledge.SPEC_BAN`, `appdata.spec_keys` → `meta.kb.specs[].keys` | labels_test, `build2/knowledge.py` | 화면에 붙이는 것은 B('의료진 검수 전' 표시), 검수는 사람 |
+| C8 가격 줄 번호 | 해결(lsy2825/skin#54 — 계산만, data.json에 안 실음) | 단위·두 구현 대조(Node, 142,580줄) | `build2/rowid.py` | labels_test(예시 72줄, 틀린 구현 11가지) | 같은 페이지·같은 정가 줄은 판매가가 엇갈리면 맞바뀜(642줄) — `~N`은 저장 열쇠로 쓰지 않음, 앱 구현은 B |
 
 ## 회귀 결과(2026-10-14)
 
