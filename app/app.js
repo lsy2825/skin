@@ -416,12 +416,13 @@
   // (otherwise 정가 is in the price evidence sheet, docs/OBJECTIVE_DISPLAY_POLICY.md)
   const listS = (r) => FLAGS.discountEmphasis && r[4] ? h("s", {}, won(r[4])) : null;
   const md2 = (d) => `${+d.slice(5, 7)}/${+d.slice(8, 10)}`;
+  const WEEKDAY_HINT = "평일 중 정해진 요일·시간에만 되는 가격이에요(평일 낮·해피아워·화수목 등). 정확한 요일·시간은 병원에 확인하세요";
   const kindBadge = (r) => {
     const out = [];
     if (addonOf(r)) out.push(h("span", { class: "k k4", title: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 범위·중간값 계산에서 빼요" }, "추가 옵션"));
     if (r[15] === 1) out.push(h("span", { class: "k kx" }, "기간 끝남"));
     if (r[17] === 1) out.push(h("span", { class: "k kx" }, "방문일엔 안 됨"));
-    if (r[17] === 2) out.push(h("span", { class: "k kx", title: "병원 사이트에 시간대가 적혀 있지 않아요" }, "시간 확인 필요"));
+    if (r[17] === 2) out.push(h("span", { class: "k kx", title: "이 가격이 되는 시간대를 앱이 알지 못해요. 병원에 확인하세요" }, "시간 확인 필요"));
     if (r[15] === 2) out.push(h("span", { class: "k kx", title: "지난 수집보다 90% 넘게 내리거나 10배 넘게 올라 확인 중이에요" }, "급변·확인 중"));
     const u = S[r[10]] || "";
     if (!r[15] && /^\d{4}-\d{2}-\d{2}$/.test(u) && u < "2099") out.push(h("span", { class: "k k4" }, `~${md2(u)}까지`));
@@ -432,7 +433,8 @@
     if (r[5] === 2) out.push(h("span", { class: "k k2" }, "한정가"));
     if (r[5] === 4) out.push(h("span", { class: "k k4" }, "고시가"));
     const t = S[r[6]];
-    if (t) for (const x of t.split("·")) out.push(h("span", { class: "k kt" }, x));
+    // the tag id from the data, shown in the app's words (Pricing.condLabel: '평일 낮' → '평일·시간 한정')
+    if (t) for (const x of t.split("·")) out.push(h("span", { class: "k kt", title: x === "평일 낮" ? WEEKDAY_HINT : null }, Pricing.condLabel(x)));
     return out;
   };
   const bname = (b) => `${D.meta.brands[BR[b].brand][0]} ${BR[b].name}`;
@@ -457,9 +459,9 @@
       const time = h("select", { class: "field", "aria-label": "방문 시간" }, times.map((x) => h("option", { value: x, selected: (st.when ? st.when.time : "") === x }, x || "시간 상관없음")));
       const info = h("div", { class: "sub", style: "margin-top:8px" });
       const paint = () => { const hol = Pricing.KR_HOLIDAYS[date.value]; const d = date.value ? new Date(date.value + "T12:00:00Z").getUTCDay() : null;
-        info.textContent = date.value ? `${DOW[d]}요일${hol ? ` · 공휴일(${hol}) — 평일 가격은 빠져요` : d === 0 || d === 6 ? " · 주말 — 평일 낮 가격은 빠져요" : ""}` : ""; };
+        info.textContent = date.value ? `${DOW[d]}요일${hol ? ` · 공휴일(${hol}) — 평일 가격은 빠져요` : d === 0 || d === 6 ? ` · 주말 — ${Pricing.condLabel("평일 낮")} 가격은 빠져요` : ""}` : ""; };
       date.addEventListener("input", paint); paint();
-      return h("div", {}, h("div", { class: "sub" }, "평일 낮·일요일처럼 시간 조건이 붙은 가격을 방문일에 맞춰 걸러요. 시간대가 적혀 있지 않은 가격은 '시간 확인 필요'로 남겨요."),
+      return h("div", {}, h("div", { class: "sub" }, `${Pricing.condLabel("평일 낮")}, 일요일처럼 조건이 붙은 가격을 방문일에 맞춰 걸러요. 주말·공휴일엔 평일 가격을 빼고, 앱이 시간대를 모르는 가격은 '시간 확인 필요'로 남겨요. 화수목처럼 정해진 요일은 병원에 확인하세요.`),
         h("label", { class: "flabel" }, "날짜", date), h("label", { class: "flabel" }, "시간", time), info,
         h("div", { class: "sub", style: "margin-top:6px;font-size:13px" }, "공휴일 표는 2026-10-13에 정리했어요(대체공휴일 포함). 정부 발표가 바뀌면 다를 수 있어요."),
         h("div", { class: "row", style: "margin-top:14px" },
@@ -724,10 +726,11 @@
     const r = ROWS[i], n = S[r[2]], out = new Set();
     // the add-on line: with the build's add-on field the sheet says what the badge says (addonOf), the name only in older files
     for (const [rx, t] of COND_WORDS) if ((t === ADDON_COND && ADDON_COL) ? addonOf(r) : rx.test(n)) out.add(t);
-    for (const t of (S[r[6]] || "").split("·").filter(Boolean)) out.add(t === "첫 방문" ? "첫 방문(신규) 조건" : t === "1인 1회" ? "1인 1회" : `${t} 조건`);
+    // '평일 낮' covers 해피아워·화수목·평일 한정 too: the same words as the name rule above (and no '한정', which eligOf drops)
+    for (const t of (S[r[6]] || "").split("·").filter(Boolean)) out.add(t === "첫 방문" ? "첫 방문(신규) 조건" : t === "1인 1회" ? "1인 1회" : t === "평일 낮" ? "요일·시간 조건" : `${t} 조건`);
     if (r[5] === 1) out.add("체험가(보통 1인 1회)");
     if (r[5] === 2) out.add("한정가(기간·수량·첫 방문 등 조건)");
-    if (r[17] === 2) out.add("시간대가 사이트에 적혀 있지 않아요");
+    if (r[17] === 2) out.add("되는 시간대를 앱이 알지 못해요");
     return [...out];
   }
   // a price is 'normal' (shown as the plain lowest) only with no condition, at a branch read this week, valid on the chosen visit
@@ -963,7 +966,7 @@
     if (sp) w.push(`체험가·한정가·시간 조건 가격 ${sp}개 — 1인 1회·첫 방문·시간대 조건을 병원에 확인하세요`);
     if (ls.some((l) => l.restacked)) w.push("첫 방문가가 여러 개라 하나만 첫 방문가로, 나머지는 다음 가격으로 계산했어요");
     if (ls.some((l) => l.stackWarn)) w.push("첫 방문가만 있는 시술이 여러 개예요 — 함께 적용되는지 병원에 확인하세요");
-    if (ls.some((l) => ROWS[l.rows[0]][17] === 2)) w.push("방문 시간에 되는 가격인지 확인이 필요해요(시간대 미표기)");
+    if (ls.some((l) => ROWS[l.rows[0]][17] === 2)) w.push("방문 시간에 되는 가격인지 병원에 확인하세요(앱이 시간대를 알지 못해요)");
     const low = ls.filter((l) => isLow(l.rows[0])).length;
     if (low) w.push(`같은 시술 중간값의 ${Math.round(LOW_SHARE * 100)}% 이하인 초저가 ${low}개 — 개당 가격·행사 조건일 수 있어요. '가격 근거'에서 원본을 확인하세요`);
     if (x.missing && x.missing.length) w.push(`이 지점에서 가격을 확인하지 못한 시술 ${x.missing.length}개 — 합계에 넣지 않았어요(0원 아님)`);
@@ -2528,7 +2531,7 @@
       h("dl", { class: "kv", style: "margin-top:8px" },
         h("dt", {}, h("span", { class: "k k1" }, "체험가")), h("dd", {}, "처음 한 번만 되는 가격(보통 1인 1회)"),
         h("dt", {}, h("span", { class: "k k2" }, "한정가")), h("dd", {}, "기간·수량·첫 방문 등 조건이 붙은 가격"),
-        h("dt", {}, h("span", { class: "k kt" }, "평일 낮 등")), h("dd", {}, "그 시간·요일에만 되는 가격"),
+        h("dt", {}, h("span", { class: "k kt" }, `${Pricing.condLabel("평일 낮")} 등`)), h("dd", {}, "평일 낮·해피아워·화수목처럼 그 시간·요일에만 되는 가격"),
         h("dt", {}, h("span", { class: "k k4" }, "고시가")), h("dd", {}, "리엔장 비급여 진료비 고시표(정가). 이벤트가가 아니에요"),
         h("dt", {}, h("span", { class: "k k4" }, "~10/17까지")), h("dd", {}, "병원이 적은 이벤트 종료일. 지나면 비교에서 빠지고, 다음 날 아침 다시 모아요"),
         h("dt", {}, h("span", { class: "k kx" }, "급변·확인 중")), h("dd", {}, "지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격. 확인 전까지 비교에서 빠져요")),
@@ -4892,7 +4895,7 @@
       h("ul", { class: "list", style: "margin-top:8px" }, D.meta.brands.map((b, i) => !counts[i][0] ? null : h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
         h("span", { class: "sub" }, `${counts[i][0]}곳 · ${counts[i][1].toLocaleString()}개`), h("span", { class: "m" }, b[2]))))),
       h("div", { class: "note", style: "margin-top:10px" }, "• 체험가·한정가는 보통 1인 1회예요. 최저가는 '조건 없는 가격'을 먼저 보여주고, 조건부 가격은 따로 표시해요.", h("br"),
-        "• '평일 낮', '일요일' 같은 표시는 그 시간에만 되는 가격이에요.", h("br"), `• ${vatNote()}`, h("br"),
+        `• '${Pricing.condLabel("평일 낮")}'(평일 낮·해피아워·화수목 등), '일요일' 같은 표시는 그 요일·시간에만 되는 가격이에요.`, h("br"), `• ${vatNote()}`, h("br"),
         "• 종료일이 지난 이벤트, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요. 가격마다 'i' 버튼이나 '출처'로 근거와 병원 페이지를 볼 수 있어요.", h("br"),
         "• 병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요."),
       h("div", { class: "sub", style: "margin-top:10px" }, "지도 © OpenStreetMap 기여자. 가격 출처는 각 병원 홈페이지예요.")));

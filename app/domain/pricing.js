@@ -31,7 +31,9 @@
     return hr * 60 + (m[2] ? parseInt(m[2], 10) : 0);
   }
   // tags: "평일 낮·일요일·…" ; when: {date: "YYYY-MM-DD", time: "HH:MM" | ""} or null.
-  // returns 0 ok · 1 not valid on that visit · 2 valid by day but the time window isn't stated (check with the clinic)
+  // returns 0 ok · 1 not valid on that visit · 2 valid by day but the app doesn't know the time window (check with the clinic).
+  // A name that says the hour does not matter ('[화수목 해피아워] 시간 상관 없이 …') has no time limit.
+  const ANY_TIME = /시간\s*(상관\s*(없이|없음|없는)|무관)/;
   function condState(tags, name, when, holidays = KR_HOLIDAYS) {
     if (!when || !when.date || !tags) return 0;
     const t = tags.split("·");
@@ -44,13 +46,20 @@
       const cut = parseCutoff(name);
       if (when.time) {
         const [hh, mm] = when.time.split(":").map(Number);
-        if (cut == null) state = 2;
+        if (cut == null) { if (!ANY_TIME.test(name || "")) state = 2; }
         else if (hh * 60 + mm >= cut) return 1;
       }
     }
     if (t.includes("일요일") && day !== 0) return 1;
     if (t.includes("타임세일") && when.time) state = 2;
     return state;
+  }
+  // condition tag → the words on its badge. The tag is the id shared with the data build (build2/clean.py TAGS) and
+  // condState above, so only the screen text changes here. Since 2026-10-15 (C1b) '평일 낮' also marks 해피아워·화수목·
+  // '평일 한정'·'12시~17시' prices: its badge says what is true of all of them — weekdays only, often only some days or hours.
+  const COND_LABEL = { "평일 낮": "평일·시간 한정" };
+  function condLabel(tag) {
+    return Object.prototype.hasOwnProperty.call(COND_LABEL, tag) ? COND_LABEL[tag] : tag;
   }
 
   // ---- one cart line: q sessions of one item at one branch
@@ -173,5 +182,5 @@
     return { parts, matched, extras, full: matched.length > 0 && matched.every((m) => m.state === "match") && !extras.length };
   }
 
-  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, condState, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
+  return { vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, condState, condLabel, cheapest, lineCost, compareClinics, limitOnce, matchPackage };
 });
