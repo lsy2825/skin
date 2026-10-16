@@ -19,9 +19,14 @@ data.json (compact, strings interned in `s`):
             days = the weekdays the price is valid on, written on the site (build2/clean.py visit_days): a bit mask 월 1 · 화 2 ·
             수 4 · 목 8 · 금 16 · 토 32 · 일 64 (평일 31, 주말 96, 화/수/목 14), 0 = no day written
             hours = the hours it is valid in (visit_hours): 'HH:MM-HH:MM' in 24 h ('12:00-17:00'; 'N시 이전' = '00:00-16:00',
-            'N시 이후' = '16:00-24:00'), '' = no hours written. Read from the group title and the option, the texts the '평일 낮'
-            tag reads (2026-10-16, C1 다음: the app read every '평일 낮' as 월~금). data.json files from before have 16 fields:
-            read a missing days as 0 and hours as ''
+            'N시 이후' = '16:00-24:00'), '' = no hours written. Read from the group title, the option and the site's category
+            (tab / section; for 유앤아이 only next to the item's own day / time words — build2/clean.py CAT_UNPAIRED), the
+            texts the '평일 낮' / '시간대' tags read (2026-10-16, C1 다음: the app read every '평일 낮' as 월~금). data.json
+            files from before have 16 fields: read a missing days as 0 and hours as ''
+            tags = conditions joined by '·': 평일 낮 (the site limits the days: weekdays only, often some hours) · 시간대 (a time
+            limit that is not weekdays-only: no days written, or a weekend day — since 2026-10-16; before, most were 평일 낮) ·
+            일요일 · 타임세일 · 첫 방문 · 1인 1회 (build2/clean.py TAGS / time_tags). Any tag = not a plain price. A row with hours
+            always has 평일 낮 or 시간대
   branches  [brand, name s, address s, lat, lng, region s, site s, verified date s, status s]  (status VERIFIED = read
             this run, STALE = previous data kept because this run's scrape failed or was blocked)
   groups    [label s, cat, branches, median regular price, min, max] (build2/groups.py)
