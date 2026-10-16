@@ -1,0 +1,4 @@
+# runtime files of scrape/common.py (crawl manners): per-host last request time and robots.txt answers, shared by the steps
+# of one factory run — never committed
+.host_clock.json
+.robots_cache.json
