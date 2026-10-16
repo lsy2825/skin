@@ -103,6 +103,14 @@
 | C7 규격 낱말 뜻 | 해결(#66) | 단위·브라우저 | `Spec.notesFor`·`famWords`, 비교·담기 창 3줄 | spec.test, e2e spec_notes | 3줄에서 잘리는 규격 150개 — 줄 수는 디자인 결정 |
 | C1b 조건 배지 이름 | 해결(#68) | 단위·브라우저 | `Pricing.condLabel`, `condState` '시간 상관 없이' | pricing.test, e2e cond_badge | C #71 요일·시간 칸을 condState에 쓰기(B 다음 일), 시간 범위만 있는 줄의 태그는 C |
 | 6.0 약속 6 처리방침 화면 | 해결(#77), 꺼진 동안 안 보임 | 브라우저 | `#privacy`(C6 §3-1은 집계 켜짐, §3-2는 푸시 켜짐일 때만), 집계 칸·푸시 설명 §4 | e2e privacy(C 문서를 읽어 글자 대조) | 사용자 확인 2026-10-16(#69). 집계 켜기는 따로 승인 |
+| audit40 A1 구매 제한(C #80 부탁) | 해결(lsy2825/skin#86) | 브라우저 | 회차를 읽기 전에 `LIMIT`·`LIMIT_NOTE`('최대 N회'·'1인 N회'·'N회 한정')를 뺌 | e2e audit40 | — |
+| C8 줄 번호 앱 쪽 | 해결(#89), 화면에서 아직 안 씀 | 단위 | `app/domain/rowid.js`(빌드 `rowid.py`와 같은 계산) | rowid.test | `index.html`에 안 읽음 |
+| C1 요일·시간 칸·'시간대' 태그 | 해결(#94·#98) | 단위·브라우저 | `applyData` 칸 옮기기, `Pricing.whenLimited`·`condState`·`COND_LABEL`·`COND_HINT` | pricing.test, e2e cond_badge | — |
+| 가격 이력 기준 변경 문구(C #93) | 해결(#96) | 브라우저 | 이력 카드 '비교 기준을 고쳤어요' | e2e audit40 B7 | — |
+| 평일 공휴일 주말 가격(사용자 결정) | 해결(#97) | 단위·브라우저 | `Pricing.weekdayHoliday`·`weekendOnly`, 방문일 창 안내 | pricing.test, e2e cond_badge | — |
+| A14 가격 변동 지점 단위(C #100) | 해결(#101) | 브라우저 | audit40 `reclHit`(`meta.reclBranches`) | e2e audit40 | — |
+| 새 장비·제품은 첫 방문 아님(C #99) | 해결(#102) | 단위·브라우저 | `Spec.dropNewItem`(`build2/clean.py` NEW_ITEM과 같은 식), `classify` | spec.test·classify.test, e2e new_item | — |
+| 견적 반복 가격·받아 봤어요·방문일·기간 확인(사용자 결정) | 해결(#103·#105) | 단위·브라우저 | `Pricing.condClass`·`lineCost`·`periodOver`, 견적 줄 `done`, `r[22]` | pricing.test, e2e cart_repeat | 로그인을 켜면 서버 견적 칸에 `done`(A에게 부탁) |
 
 ## C — 6.0 데이터(채팅 C, 2026-10-15)
 
