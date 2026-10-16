@@ -23,9 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        task: ["collect:vands:0/8", "collect:vands:1/8", "collect:vands:2/8", "collect:vands:3/8", "collect:vands:4/8",
-               "collect:vands:5/8", "collect:vands:6/8", "collect:vands:7/8", "collect:uandi:0/3", "collect:uandi:1/3",
-               "collect:uandi:2/3", "collect:daybeau:0/1", "collect:drevers:0/2", "collect:drevers:1/2"]
+        task: ["collect:ppeum:0/1", "collect:toxnfill:0/2", "collect:toxnfill:1/2"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -51,6 +49,7 @@ jobs:
             i="${shard%/*}"
             cp ../data2/raw/"$key".csv "$PROBE_OUT/raw/$key.$i.csv" 2>/dev/null || true
             cp ../data2/raw/"$key".log.json "$PROBE_OUT/raw/$key.$i.log.json" 2>/dev/null || true
+            python -c "import json,sys; d=json.load(open('../data2/.robots_cache.json')); json.dump({h: {'status': v.get('status'), 'text': (v.get('text') or '')[:300]} for h, v in d.items()}, open(sys.argv[1], 'w'), ensure_ascii=False, indent=0)" "$PROBE_OUT/raw/$key.$i.robots.json" || true
             python branch_rows.py "$key" "$PROBE_OUT/raw/$key.$i.branches.csv" || echo "branch addresses $key $shard failed"
           fi
       - name: Pack the output
