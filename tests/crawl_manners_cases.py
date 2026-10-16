@@ -1,6 +1,7 @@
 """2026-10-15 (C5 re-check): how the collector treats a site's robots.txt and Crawl-delay, with no network.
   - Crawl-delay is a minimum gap between ANY two requests to the host across the steps of a run (the clock file),
-  - Fetcher(robots=True) asks the shared robots.txt answer first and skips what it disallows,
+  - Fetcher(robots=True) asks the shared robots.txt answer first and skips what it disallows — 리엔장, 쁨 (branch search and
+    price pages) and 톡스앤필 (branch list, category and detail pages) read every page that way (2026-10-16),
   - the weekly gate skips only a brand that is blocked or missing from the source check, and the run goes on.
 Run: python3 tests/crawl_manners_cases.py — tests/brand_parsers_test.py runs it too, so the PR checks (.github/scripts/pr_checks.sh,
 'brand collectors') run it on every PR."""
@@ -38,8 +39,8 @@ common.time = types.SimpleNamespace(time=lambda: T[0], sleep=fake_sleep)
 
 
 class Resp:
-    def __init__(self, status, text="", enc="utf-8"):
-        self.status_code, self.text, self.encoding = status, text, enc
+    def __init__(self, status, text="", enc="utf-8", url=""):
+        self.status_code, self.text, self.encoding, self.url = status, text, enc, url
 
 
 class Net:
@@ -310,17 +311,144 @@ except SystemExit:
     raised = True
 ok("branches: an unreadable 블리비 address page stops the step (the old branches.csv stays)", raised)
 
+
+def patch(mod, net):
+    """mod.Fetcher → real Fetchers on one fake network (so its log has every request in order); → kwargs of each one made"""
+    made_ = []
+
+    def make(*a, **kw):
+        made_.append(kw)
+        fr_ = common.Fetcher(*a, **kw)
+        fr_.s = net
+        return fr_
+    mod.Fetcher = make
+    return made_
+
+
+# --- 쁨 asks the robots.txt answer before the branch search and before the price page (2026-10-16)
+import ppeum  # noqa: E402
+
+reset()
+ppeum.MAX_N, ppeum.EXTRA_SUBS = 3, ["changwon"]
+P = "https://www.ppeum{}.com"
+net = Net({P.format(1) + "/robots.txt": Resp(200, "User-agent: *\nAllow: /\n"),
+           P.format(1) + "/": Resp(200, "<title>강남점 | 쁨</title>", url="https://gangnam.ppeum.com/"),
+           P.format(2) + "/robots.txt": Resp(200, "User-agent: *\nAllow: /\n\nUser-agent: YoonSiljangBot\nDisallow: /\n"),
+           P.format(2) + "/": Resp(200, "<title>잠실점</title>", url="https://jamsil.ppeum.com/"),
+           P.format(3) + "/robots.txt": Resp(503),
+           P.format(3) + "/": Resp(200, "<title>부산점</title>", url="https://busan.ppeum.com/"),
+           "https://changwon.ppeum.com/robots.txt": Resp(404),
+           "https://changwon.ppeum.com/": Resp(200, "<title>예쁨주의쁨의원</title>", url="https://changwon.ppeum.com/")})
+fd = common.Fetcher(gap=0.5, retries=1, robots=True)
+fd.s = net
+found = {b["n"]: b for b in ppeum.discover(fd)}
+urls = [u for _, u in net.log]
+ok("쁨 지점 찾기: robots.txt first, then the home", urls[:2] == [P.format(1) + "/robots.txt", P.format(1) + "/"]
+   and found[1]["kind"] == "new" and found[1]["name"] == "강남점", (urls, found.get(1)))
+ok("쁨 지점 찾기: a home robots.txt disallows for YoonSiljangBot is not requested; the branch is skipped with the reason",
+   P.format(2) + "/" not in urls and found[2]["kind"] == "dead" and found[2]["error"] == "robots.txt disallows", (urls, found.get(2)))
+ok("쁨 지점 찾기: a home whose robots.txt answers 5xx is not requested either (unreadable = disallowed)",
+   P.format(3) + "/" not in urls and found[3]["kind"] == "dead" and "unreadable" in found[3]["error"], found.get(3))
+ok("쁨 지점 찾기: no robots.txt (404) = the home is read", found["changwon"]["kind"] == "new" and found["changwon"]["name"] == "창원점", found.get("changwon"))
+made_p = patch(ppeum, net)
+_, got, log = ppeum.scrape(found[2], 1.0)
+ok("쁨: a branch skipped by robots.txt keeps that reason in the collector log (not 'site not answering')",
+   got == [] and log["error"] == "robots.txt disallows", log)
+net.answers["https://gangnam.ppeum.com/robots.txt"] = Resp(200, "User-agent: *\nDisallow: /selectSurgery\n")
+net.answers["https://gangnam.ppeum.com/selectSurgery"] = Resp(200, "<html></html>")
+_, got, log = ppeum.scrape(found[1], 1.0)
+urls = [u for _, u in net.log]
+ok("쁨 가격 쪽: checked on its own host (where the home redirected) — disallowed there = not requested, logged",
+   got == [] and "https://gangnam.ppeum.com/robots.txt" in urls and "https://gangnam.ppeum.com/selectSurgery" not in urls
+   and log["fails"] == [{"url": "https://gangnam.ppeum.com/selectSurgery", "error": "robots.txt disallows"}]
+   and made_p and all(m.get("robots") is True for m in made_p), (log, made_p))
+
+# --- 톡스앤필 asks it before the branch list, every category page and every detail page (2026-10-16)
+import toxnfill  # noqa: E402
+
+reset()
+S = "https://www.toxnfill9.com"
+net = Net({S + "/robots.txt": Resp(200, "User-agent: *\nDisallow: /serviceInfo.php?c=7\n"),
+           S + "/serviceInfo.php?c=": Resp(200, '<a href="serviceInfo.php?c=1">보톡스</a><a href="serviceInfo.php?c=7">필러</a>'),
+           S + "/serviceInfo.php?c=1": Resp(200, '<a href="detail.php?c=1&amp;i=10"><b>사각턱 보톡스</b><span class="txt_num">50,000</span></a>'),
+           S + "/serviceInfo.php?c=7": Resp(200, '<a href="detail.php?c=7&amp;i=70"><b>코 필러</b><span class="txt_num">99,000</span></a>'),
+           S + "/detail.php?c=1&i=10": Resp(200, '<div class="name_price_container"><h2 class="name">사각턱 보톡스</h2></div>'
+                                                 '<li class="treatment_item"><p class="name">50유닛</p><div class="treatment_price_wrap">'
+                                                 '<span class="price"><strong>50,000</strong></span><del><b>90,000</b></del></div></li>')})
+made_t = patch(toxnfill, net)
+_, got, log = toxnfill.scrape_branch("홍대점", S, 0.7)
+urls = [u for _, u in net.log]
+ok("톡스앤필: robots.txt is asked once, before the first page of the site", urls[0] == S + "/robots.txt" and urls.count(S + "/robots.txt") == 1, urls)
+ok("톡스앤필: a category page robots.txt disallows is not requested; the other categories are still read",
+   S + "/serviceInfo.php?c=7" not in urls and [(r["option"], r["sale"], r["orig"]) for r in got] == [("50유닛", 50000, 90000)], (urls, got))
+ok("톡스앤필: ... and the log says which page was skipped and why (that branch counts as 'with failures')",
+   log["fails"] == [{"url": S + "/serviceInfo.php?c=7", "error": "robots.txt disallows"}] and log["ok"] is False
+   and made_t and all(m.get("robots") is True for m in made_t), log)
+reset()
+net = Net({S + "/robots.txt": Resp(503), S + "/serviceInfo.php?c=": Resp(200, '<a href="serviceInfo.php?c=1">보톡스</a>')})
+patch(toxnfill, net)
+_, got, log = toxnfill.scrape_branch("홍대점", S, 0.7)
+ok("톡스앤필: a site whose robots.txt cannot be read (5xx) is skipped after that one request (no category list)",
+   got == [] and log["error"] == "no category list" and [u for _, u in net.log] == [S + "/robots.txt"]
+   and "unreadable" in log["fails"][0]["error"], (log, net.log))
+reset()
+net = Net({"https://www.toxnfill1.com/robots.txt": Resp(200, "User-agent: *\nDisallow: /serviceInfo.php\n")})
+fb = common.Fetcher(retries=1, robots=True)
+fb.s = net
+try:
+    toxnfill.branch_sites(fb)
+    stopped = ""
+except SystemExit as e:
+    stopped = str(e)
+ok("톡스앤필: a branch list robots.txt disallows is not requested and stops the run with the reason (scrape/branches.py stops "
+   "the same way, the old branches.csv stays)", "robots.txt disallows" in stopped and [u for _, u in net.log] == ["https://www.toxnfill1.com/robots.txt"],
+   (stopped, net.log))
+
+# --- several branches on one host (쁨's old sites on event.ppeum.com) starting at once ask its robots.txt once
+reset()
+_fake = common._now, common._sleep, common.time
+common._now, common._sleep, common.time = time.time, time.sleep, time
+
+
+class SlowRobots(Net):
+    def request(self, method, url, timeout=0, **kw):
+        if url.endswith("/robots.txt"):
+            time.sleep(0.05)
+        return super().request(method, url, timeout, **kw)
+
+
+try:
+    net = SlowRobots({"https://event.example/robots.txt": Resp(200, "User-agent: *\nAllow: /\n"), "https://event.example/p": Resp(200, "ok")})
+    fs = []
+    for _ in range(4):
+        fr_ = common.Fetcher(gap=0, retries=1, robots=True)
+        fr_.s = net
+        fs.append(fr_)
+    th = [threading.Thread(target=fr_.get, args=("https://event.example/p",)) for fr_ in fs]
+    for x in th:
+        x.start()
+    for x in th:
+        x.join()
+finally:
+    common._now, common._sleep, common.time = _fake
+urls = [u for _, u in net.log]
+ok("four Fetchers in parallel threads on one host: its robots.txt is asked once, every page is still read",
+   urls.count("https://event.example/robots.txt") == 1 and urls.count("https://event.example/p") == 4, urls)
+reset()
+
 # the registry's rate text (shown on the app's 정보 screen) says what each chain really does (2026-10-16 검토: a check that only
 # looked for the numbers somewhere in the file passed '쁨 1초 간격', a gap that never applies). What each chain does:
 #   gap     the --gap of the branch Fetcher, written only where a branch Fetcher makes more than one request
 #   workers the --workers default (None = one branch after another)
 #   extra   other gaps that apply: 쁨's branch search Fetcher(gap=0.5)
 #   delay   the chain waits out the site's Crawl-delay (리엔장)
+#   robots  every Fetcher of the collector is Fetcher(..., robots=True): each request asks the robots.txt answer first
 import re  # noqa: E402
 import sources  # noqa: E402
 
-DOES = {"velyb": dict(gap=1.0), "ppeum": dict(workers=4, extra=[0.5], one_page=True), "toxnfill": dict(gap=0.7, workers=6),
-        "lienjang": dict(delay=True), "forever": dict(gap=0.8, workers=4), "vands": dict(gap=1.0, workers=6),
+DOES = {"velyb": dict(gap=1.0), "ppeum": dict(workers=4, extra=[0.5], one_page=True, robots=True),
+        "toxnfill": dict(gap=0.7, workers=6, robots=True),
+        "lienjang": dict(delay=True, robots=True), "forever": dict(gap=0.8, workers=4), "vands": dict(gap=1.0, workers=6),
         "uandi": dict(workers=6, one_page=True), "daybeau": dict(gap=1.0, workers=6), "drevers": dict(gap=1.0, workers=6),
         "cellin": dict(gap=1.0, workers=4)}
 ok("every registry chain has a line in this test", set(DOES) == set(sources.REGISTRY), set(DOES) ^ set(sources.REGISTRY))
@@ -329,11 +457,13 @@ for key, reg in sources.REGISTRY.items():
     code = open(os.path.join(ROOT, "scrape", f"{key}.py"), encoding="utf-8").read()
     d_gap = re.findall(r'"--gap",[^)]*default=([\d.]+)', code)
     d_workers = re.findall(r'"--workers",[^)]*default=(\d+)', code)
+    made_f = re.findall(r"\bFetcher\(([^()]*)\)", code)
     code_ok = ((not e.get("gap") or [float(x) for x in d_gap] == [e["gap"]])
                and ([int(x) for x in d_workers] == ([e["workers"]] if e.get("workers") else []))
-               and all(f"Fetcher(gap={x:g})" in code for x in e.get("extra", []))
-               and (not e.get("delay") or "robots=True" in code))
-    ok(f"scrape/{key}.py does what this test says ({e})", code_ok, (d_gap, d_workers))
+               and all(re.search(r"\bFetcher\(gap=" + re.escape(f"{x:g}") + r"[,)]", code) for x in e.get("extra", []))
+               and (not e.get("delay") or "robots=True" in code)
+               and (not e.get("robots") or (made_f and all("robots=True" in m for m in made_f))))
+    ok(f"scrape/{key}.py does what this test says ({e})", code_ok, (d_gap, d_workers, made_f))
     said_gap = sorted(float(x) for x in re.findall(r"최소 ([\d.]+)초", rate))
     said_workers = [int(x) for x in re.findall(r"(\d+)곳 동시", rate)]
     text_ok = (said_gap == sorted(([e["gap"]] if e.get("gap") else []) + e.get("extra", []))
