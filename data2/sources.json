@@ -1,11 +1,11 @@
 {
- "checked_at": "2026-10-13T14:54:39+09:00",
- "user_agent_rule": "*",
+ "checked_at": "2026-10-18T06:19:34+09:00",
+ "user_agent_rule": "YoonSiljangBot (그 이름의 묶음이 없으면 *)",
  "brands": {
   "velyb": {
    "brand": "블리비",
    "method": "공개 HTML (지점별 이벤트 페이지 7쪽)",
-   "rate": "1 req/s, 동시 4",
+   "rate": "요청 시작 사이 최소 1초, 하나씩",
    "terms_reviewed": null,
    "hosts": [
     {
@@ -29,18 +29,24 @@
      "text": "각 표기된 해당 기간 동안까지 방문 혹은 예약 고객 대상으로 진행됩니다. · 정부의 부가세법 개정안에 따라 부가세 10%가 별도로 부과됩니다. 1 빠른상담 신청하기 빠른상담 지점 지점선택 강남역점 건대점 경기 광주점 경주점 광명점 광주"
     }
    ],
+   "skipped_samples_for_crawl_delay": [],
    "date_samples": [
-    "2026-10-17까지",
-    "2026-10-17까지",
-    "2026-10-17까지",
-    "2026-10-17까지",
-    "2026-10-17까지"
+    "2026-10-31까지",
+    "2026-10-31까지",
+    "2026-10-31까지",
+    "2026-10-31까지",
+    "2026-10-31까지",
+    "NEW 지점안내 온라인상담 전화상담신청 강남역점 2026-10-31까지 프라임 타임 셀렉션 가장 좋은 조건의 시간, 밀도 있는 케어♥️ 울쎄라피 프라임 리프팅(고강도 집속 초음파) 300샷 39 % 1,150,000 원 1,9",
+    "초음파) 300샷 39 % 1,150,000 원 1,900,000 원 ◆프라임 타임◆울쎄라피 프라임 리프팅(고강도 집속 초음파) 300샷 + 얼굴전체 스킨보톡스 한정가 48 % 899,000 원 1,750,000 원 써마지 F",
+    "고주파) 900샷 44 % 2,700,000 원 4,900,000 원 ◆프라임 타임◆써마지 FLX 리프팅(고강도 단극성 고주파) 900샷 + LDM 물방울 리프팅 + 얼굴전체 스킨보톡스 49 % 2,750,000 원 5,490",
+    "주파) 하이 300샷 41 % 850,000 원 1,450,000 원 ◆프라임 타임◆덴서티 리프팅(고강도 듀얼 고주파) 하이 300샷 + 얼굴전체 스킨보톡스 한정가 49 % 859,000 원 1,700,000 원 프리미엄 필러",
+    "(독일 벨로테로) 1cc 30 % 279,000 원 400,000 원 ◆프라임 타임◆프리미엄 필러(독일 벨로테로) 1cc + 얼굴전체 주름보톡스 49 % 279,000 원 550,000 원 레디어스(프리미엄 CaHA 콜라겐부스"
    ]
   },
   "ppeum": {
    "brand": "쁨",
    "method": "공개 HTML (지점별 온라인 예약 페이지)",
-   "rate": "1 req/s, 동시 4",
+   "rate": "지점마다 가격 1쪽, 4곳 동시 — 옛 사이트 지점은 한 서버(event.ppeum.com)에 간격 없이 (지점 찾기는 요청 시작 사이 최소 0.5초)",
    "terms_reviewed": null,
    "hosts": [
     {
@@ -161,6 +167,14 @@
       "/selectSurgery"
      ],
      "crawl_delay": null
+    },
+    {
+     "host": "www.ppeum1.com",
+     "robots": "없음 (HTTP 404)",
+     "allowed": true,
+     "checked_paths": [
+      "/"
+     ]
     }
    ],
    "hosts_total": 13,
@@ -190,12 +204,13 @@
      "url": "https://bupyeong.ppeum.com/selectSurgery",
      "text": " 차단과 수분 관리에 신경 써주세요. 79,000원 149,000원 46% 내맘대로 온다리프팅 10만줄 (*부가세포함) 온다리프팅은 기존의 고주파, 초음파 에너지와 달리 극초단파(Micro wave)에너지를 이용한 새로운 제"
     }
-   ]
+   ],
+   "skipped_samples_for_crawl_delay": []
   },
   "toxnfill": {
    "brand": "톡스앤필",
    "method": "공개 HTML (시술안내/가격 상세)",
-   "rate": "1 req/s, 동시 4",
+   "rate": "지점마다 요청 시작 사이 최소 0.7초, 6곳 동시",
    "terms_reviewed": null,
    "hosts": [
     {
@@ -318,6 +333,206 @@
       "/detail.php?c=4274&i=27384"
      ],
      "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill2.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=2534&i=34255"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill50.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4725&i=38165"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill23.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=447&i=1121"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill49.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=3280&i=19813"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill5.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=319&i=31510"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill16.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=502&i=29887"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill28.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=695&i=1331"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill40.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=333&i=705"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill11.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=846&i=6074"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill4.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4463&i=31278"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill43.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=1157&i=4587"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill31.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=433&i=1161"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill48.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=2747&i=15766"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill36.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4713&i=37922"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill20.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=775&i=1837"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill30.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4204&i=26841"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill12.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=4030&i=26973"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill38.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=199&i=156"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill42.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=1142&i=4410"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.toxnfill46.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/detail.php?c=2383&i=17623"
+     ],
+     "crawl_delay": null
     }
    ],
    "hosts_total": 32,
@@ -337,14 +552,15 @@
     },
     {
      "url": "https://www.toxnfill1.com/",
-     "text": "진행하실 경우 진료비가 별도로 발생됩니다. (당일 시술을 진행한다면 진료비는 제외됩니다.) 확인 총 금액 (부가세 별도) *방문결제는 내원시 진행 온라인 결제 0 원 방문 결제 0 원 0 원 오늘 강남본점의 진료시간은 20:0"
+     "text": "진행하실 경우 진료비가 별도로 발생됩니다. (당일 시술을 진행한다면 진료비는 제외됩니다.) 확인 총 금액 (부가세 별도) *방문결제는 내원시 진행 온라인 결제 0 원 방문 결제 0 원 0 원 오늘 강남본점의 진료시간은 까지입니"
     }
-   ]
+   ],
+   "skipped_samples_for_crawl_delay": []
   },
   "lienjang": {
    "brand": "리엔장",
    "method": "공개 HTML (비급여 진료비 고시표)",
-   "rate": "1 req/s",
+   "rate": "같은 지점 사이트에는 사이트가 정한 요청 간격(robots.txt Crawl-delay)을 두고, 지점끼리는 간격 없이 하나씩",
    "terms_reviewed": null,
    "hosts": [
     {
@@ -355,7 +571,7 @@
      "checked_paths": [
       "/agree/info"
      ],
-     "crawl_delay": 180
+     "crawl_delay": 180.0
     },
     {
      "host": "myeongdong.lienjang.net",
@@ -365,7 +581,7 @@
      "checked_paths": [
       "/agree/info"
      ],
-     "crawl_delay": 180
+     "crawl_delay": 180.0
     },
     {
      "host": "mokdong.lienjang.net",
@@ -375,7 +591,7 @@
      "checked_paths": [
       "/agree/info"
      ],
-     "crawl_delay": 180
+     "crawl_delay": 180.0
     },
     {
      "host": "hongdae.lienjang.net",
@@ -385,7 +601,7 @@
      "checked_paths": [
       "/agree/info"
      ],
-     "crawl_delay": 180
+     "crawl_delay": 180.0
     },
     {
      "host": "hanam.lienjang.net",
@@ -395,34 +611,24 @@
      "checked_paths": [
       "/agree/info"
      ],
-     "crawl_delay": 180
+     "crawl_delay": 180.0
     }
    ],
    "hosts_total": 5,
    "allowed": true,
-   "vat_evidence": [
-    {
-     "url": "https://incheon.lienjang.net/agree/info",
-     "text": "합니다. * 수/시술방법 및 개인의 상태에 따라 상이할 수 있습니다. * 모든 피부미용 시술의 경우 10% 부가세가 별도로 부과됩니다. 중분류 소분류 항목 항목별 가격정보(단위:원) 최종변경일 코드 명칭 구분 비용 최저비용 최고"
-    },
-    {
-     "url": "https://incheon.lienjang.net/agree/info",
-     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 인천광역시 남동구 구월동 1469 맨하탄빌딩 7층/ [도로명]인천광역시 남동"
-    },
-    {
-     "url": "https://myeongdong.lienjang.net/agree/info",
-     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 서울특별시 중구 명동길 14, 5층 (명동2가, 눈스퀘어) 의료기관명칭 : "
-    },
-    {
-     "url": "https://mokdong.lienjang.net/agree/info",
-     "text": ".25 * 의료법 제45조 및 동법 시행규칙 제42조의 2에 의하여 비급여진료비용을 고지합니다. * 10% 부가세가 별도로 부과됩니다. 제휴문의 TOP 서울시 양천구 오목로 325, 2층(목동,대학빌딩) 의료기관명칭 : 리엔장의"
-    }
+   "vat_evidence": [],
+   "skipped_samples_for_crawl_delay": [
+    "hanam.lienjang.net",
+    "hongdae.lienjang.net",
+    "incheon.lienjang.net",
+    "mokdong.lienjang.net",
+    "myeongdong.lienjang.net"
    ]
   },
   "forever": {
    "brand": "포에버",
    "method": "공개 HTML (Next.js 내장 데이터) — 일시 중지",
-   "rate": "0.8 req/s, 동시 4",
+   "rate": "지점마다 요청 시작 사이 최소 0.8초, 4곳 동시",
    "terms_reviewed": null,
    "hosts": [
     {
@@ -448,7 +654,1930 @@
    ],
    "hosts_total": 2,
    "allowed": true,
-   "vat_evidence": []
+   "vat_evidence": [],
+   "skipped_samples_for_crawl_delay": []
+  },
+  "vands": {
+   "brand": "밴스",
+   "method": "공개 HTML (지점별 시술소개 카테고리)",
+   "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "gwanggyo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6031"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dangjin.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7128"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "mokdong.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7618"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "samseong.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7342"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "suncheon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6165"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yeoksamskin.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7354"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "itaewon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7615"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheonho.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6228"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gangneung.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7045"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "guwol.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5694"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dongtanderma.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5710"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "myeongji.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7591"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "songdo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7622"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "ansan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7097"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "ulsan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6275"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jeju2.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7229"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "pohang.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6995"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gangnam.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7343"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "guro.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7332"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dongdaemun.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6105"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "nampo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7547"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "sejong.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7345"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "sinchon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6483"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yongsan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7616"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jeonju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6573"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "pangyo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7523"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gwacheon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7323"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dasan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5982"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "myeongdong2.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7324"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "bucheon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5768"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "suji.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7644"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yeouido.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5755"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "uijeongbu.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7625"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheonan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7201"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "hwagok.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7330"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jeju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6243"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "mapo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6004"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "centum.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6778"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "suwon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5967"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yatap.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5723"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "wonju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6661"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jinju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5969"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "hongdae.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7617"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "geoje.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7179"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gimhae.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6812"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "myeongdong.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7331"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "haeundae.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6764"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "mangpo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6213"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yangsan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6926"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "wirye.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7526"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "changwon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7333"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gwangju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7614"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daejeon.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5255"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "migeum.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6029"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "seogwipo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7293"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "siheung.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6612"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yeongdeungpo.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product",
+      "/web/product?categoryId=6183"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "ilsan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7124"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheongdam.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7520"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gwangjujuwol.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7403"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daechi.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7518"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "busan.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7404"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "seongsu.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7623"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "sinsa.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=7525"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "wangsimni.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6714"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jamsil.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=6737"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "chungju.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/web/product?categoryId=5783"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.vandsclinics.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 68,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "치료/점제거 스킨케어 비급여항목 코스메틱 다이어트 엘라비에 리투오 안티에이징에 탁월한 스킨부스터 시술안내 (VAT : 별도) 기본상품 리투오 6cc 예약 1회체험가 600,000 원 33% 900,000원 레블라이트SI 토닝 기존"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": ",000원 레블라이트SI 토닝 기존 레이저토닝보다 에너지는 높이고 부작용은 감소시킨 최첨단레이저 시술안내 (VAT : 별도) 기본상품 레블라이트 토닝 1회 예약 1회 체험가 19,000 원 46% 35,000원 주름B 이벤트 부담"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": " 1회 체험가 19,000 원 46% 35,000원 주름B 이벤트 부담없는 가격의 주름B 이벤트 시술안내 (VAT : 별도) 주름B 주름B 1부위 예약 1회 체험가 1,000 원 44% 1,800원 독일산 주름B 1부위 예약 1회"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "체험가 39,000 원 35% 60,000원 V라인 살리는 턱B이벤트 부담없는 가격의 국산 턱B 시술안내 (VAT : 별도) 1회 체험가 국산 사각턱B 예약 1회 체험가 6,900 원 47% 13,000원 미국산 턱B 예약 1회 "
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "1회 체험가 129,000 원 44% 230,000원 모공톡신 이벤트 주름,모공,피부결 개선하기 시술안내 (VAT : 별도) 기본상품 모공톡신 1cc 예약 1부위 29,000 원 42% 50,000원 순정모공톡신 3cc (독일산)"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "00원 가녀린 목라인 만드는 주사 두꺼워보이는 목을 가늘게 ! 상체가 예뻐지는 예비신부 추천관리 시술안내 (VAT : 별도) 기본상품 가녀린 목라인 주사 예약 99,000 원 45% 180,000원 미국산 승모근 100unit+가"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "00,000원 남성 1년 무제한 제모 이벤트 젠틀맥스프로플러스 1년 무제한으로 확실한 제모효과! 시술안내 (VAT : 별도) 남성고객대상 겨드랑이 예약 49,000 원 39% 80,000원 인중+콧수염 예약 49,000 원 39%"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": " 490,000 원 39% 800,000원 배 or 옆구리 예약 490,000 원 39% 800,000원 (VAT : 별도) 수염제모 진정관리 추가 1년 무제한 크라이오 예약 남자 수염 1년 무제한 시술 대상 249,000 원 4"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": " 대상 149,000 원 35% 229,000원 여자 레이저제모특가 클라리티를 이용한 여성 제모 시술안내 (VAT : 별도) 여성고객대상 인중 or 겨드랑이 예약 1회 체험가 1,000 원 47% 1,900원 (VAT : 별도) "
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": " (VAT : 별도) 여성고객대상 인중 or 겨드랑이 예약 1회 체험가 1,000 원 47% 1,900원 (VAT : 별도) 1년 무제한 이벤트 (클라리티) 인중 or 겨드랑이 예약 19,000 원 46% 35,000원 브라질리언"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": "r 옆구리 예약 390,000 원 48% 750,000원 피코토닝 이벤트 피부를 맑고 깨끗하게! 시술안내 (VAT : 별도) 기본상품 피코토닝 1회 예약 1회 체험가 9,900 원 45% 18,000원 피코토닝+피코지우개 예약 9"
+    },
+    {
+     "url": "https://gwanggyo.vandsclinics.com/web/product?categoryId=6031",
+     "text": ",000 원 45% 180,000원 엑셀V플러스 싱글모드 레이저로 색소, 기미, 잡티 싹 지우자 시술안내 (VAT : 별도) 기본상품 엑셀V플러스 싱글모드(홍조/모공/화이트닝 택1) 예약 1회 체험가 99,000 원 45% 180"
+    }
+   ],
+   "skipped_samples_for_crawl_delay": []
+  },
+  "uandi": {
+   "brand": "유앤아이",
+   "method": "공개 HTML (지점 홈 이벤트 가격 영역)",
+   "rate": "지점마다 홈 1쪽, 6곳 동시",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "www.uni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gcuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gjuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.dsuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.dtuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.mokuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bcuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.sbuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.swuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.ayuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.wsnuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.isuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cwuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.pguni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.scuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.ggjuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gmuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gpuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.djuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.mduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bsuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bmuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.sluni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.asuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.ydpuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.chuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.msuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.kduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gguni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.gruni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.dguni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.mguni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.mpuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bpuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.smuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bguni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.yuduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.ujbuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.jsuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cauni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.ptuni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.bduni114.co.kr",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 44,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://www.uni114.co.kr/",
+     "text": "EVENT 강남점 대상 : 강남점 내원 고객 이벤트 기간 : 2026.10.01 ~ 2026.10.31 ※ VAT 별도 전체보기 [NEW] 쥬베룩 아이 입고 이달의 이벤트 리톡스 이벤트 리프팅 이벤트 첫방문 이벤트 온다 리프팅"
+    },
+    {
+     "url": "https://www.gcuni114.co.kr/",
+     "text": "EVENT 과천점 대상 : 과천점 내원 고객 이벤트 기간 : 2026.10.01 ~ 2026.10.31 ※ VAT 별도 전체보기 🎃할로윈 게릴라 이벤트 ✨ECM부스터 리투오 🎁 런칭 이벤트 💘1주년 이벤트 이달의 단독이벤트 화"
+    },
+    {
+     "url": "https://www.gjuni114.co.kr/",
+     "text": "EVENT 광주점 대상 : 광주점 내원 고객 이벤트 기간 : 2026.10.01 ~ 2026.10.31 ※ VAT 별도 전체보기 🎃 할로윈 한정! 특가 EVENT 베스트 어워즈 화/수/목(10~17시) 해피아워 이벤트 평일 제"
+    }
+   ],
+   "skipped_samples_for_crawl_delay": []
+  },
+  "daybeau": {
+   "brand": "데이뷰",
+   "method": "공개 HTML (지점별 이벤트 페이지)",
+   "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "daybeauclinic07.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=152"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic01.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=18"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic05.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=121"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic10.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=350"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic11.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=376"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic16.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=891"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic15.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=900"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic12.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=383"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic17.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=1243"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic06.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=226"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic08.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php",
+      "/branch/event.php?uid=271",
+      "/branch/index.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic09.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=1259"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic13.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=604"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "daybeauclinic14.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/branch/event.php?uid=559"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 14,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://daybeauclinic07.com/branch/event.php?uid=152",
+     "text": "러스친구 대상 적용되는 이벤트 혜택입니다. 모든 시술 항목 중 3개까지 결제 가능합니다.(사용기한 3개월) VAT 별도입니다. 첫방문 이벤트 카톡플친 적용가 [첫방문] 바디팻프리 10cc (최대 150cc 까지 가능) 49% "
+    },
+    {
+     "url": "https://daybeauclinic01.com/branch/event.php?uid=18",
+     "text": "수분충전 3개 or 진정 재생관리 2개+어성초 약초필 1개) 리프팅,스킨부스터 항목은 중복적용 어렵습니다. VAT는 별도입니다. 리프팅 카톡플친 적용가 [첫방문] 인모드 FX 또는 FORMA 5분 체험가 얼굴지방제거/탄력증진 4"
+    },
+    {
+     "url": "https://daybeauclinic05.com/branch/event.php?uid=121",
+     "text": "카오톡 플러스친구 대상 적용되는 이벤트 혜택입니다 카테고리 내 시술 항목 중 한가지 시술 1회만 결제 가능 VAT는 별도입니다. 쁘띠시술 카톡플친 적용가 [첫방문] 주름보톡스 한 부위 *눈가,미간,콧등,자갈턱 49% 5,900 "
+    },
+    {
+     "url": "https://daybeauclinic08.com/branch/event.php",
+     "text": "부관리 EVENT 10월 메인 이벤트 10월 게릴라 이벤트 보톡스/윤곽주사 EVENT 이벤트 기간 상시오픈 VAT는 별도입니다. [Only 여의도점] 미니멈 다운타임 나노톡스 BEST 원장님PICK 요즘대세시술 시그니처 [E] "
+    }
+   ],
+   "skipped_samples_for_crawl_delay": []
+  },
+  "drevers": {
+   "brand": "닥터에버스",
+   "method": "공개 HTML (지점별 이벤트 페이지의 항목 데이터)",
+   "rate": "지점마다 요청 시작 사이 최소 1초, 6곳 동시",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "konkuk-univ.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gongdeok.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gwangju-sangmu.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "nowon.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "magok.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "mokdong.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "beomgye.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "bucheon.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/",
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "bundang.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "seolleung.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "suwon-ingye.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "ansan.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "incheon.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "jamsil.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheonho.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheongna.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "hongdae.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gangnam.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "geomdan.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "gwanggyo.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "guro.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dongtan.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "myeongdong.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "misa.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "busan-seomyeon.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "bupyeong.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/week-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "seoul-natl-univ.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "songdo.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-1/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "siheung-baegot.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event-month-botox_filler/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yeonsinnae.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "ilsan.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheonan.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-2/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheongdam.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-3/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "cheongnyangni.drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/event/flash-4/"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "drevers.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 35,
+   "allowed": true,
+   "vat_evidence": [],
+   "skipped_samples_for_crawl_delay": []
+  },
+  "cellin": {
+   "brand": "셀린",
+   "method": "공개 HTML (지점별 '시술 안내/가격' 목록 + 항목을 누를 때 페이지가 보내는 상세 요청; 새 사이트 3곳은 sitemap의 시술·이벤트 페이지에 함께 실린 페이지 자료)",
+   "rate": "지점마다 요청 시작 사이 최소 1초, 4곳 동시",
+   "terms_reviewed": null,
+   "hosts": [
+    {
+     "host": "www.cellinclinic6.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic8.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic5.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic9.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic1.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic12.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic11.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic10.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "www.cellinclinic13.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/clinicPriceSide/clinicSideList.php"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "yeonsinnae.cellinclinic.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/sitemap.xml"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "dasan.cellinclinic.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/sitemap.xml"
+     ],
+     "crawl_delay": null
+    },
+    {
+     "host": "hongdae.cellinclinic.com",
+     "robots": "있음",
+     "allowed": true,
+     "blocked_paths": [],
+     "checked_paths": [
+      "/sitemap.xml"
+     ],
+     "crawl_delay": null
+    }
+   ],
+   "hosts_total": 12,
+   "allowed": true,
+   "vat_evidence": [
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "표현 글로벌 에스테틱 기업 멀츠(Merz)의 프리미엄 물광 스킨부스터 리바이브를 만나보세요 🩵 [모든 시술 VAT 10% 별도] 🍁10월 이벤트🍁-여드름/모공 🍃 반복되는 여드름은 맑고 깨끗하게 진정 🌾 넓어진 모공은 탄탄하게 리셋 "
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "지 매끈하게 개선 가을에도 자신 있는 피부를 위한 여드름·모공 맞춤 집중 케어 🌊 ✨ 최대 49% OFF (부가세 별도 10%) ✨ Elavie Re20 🧬Re2O🧬 As skin aging progresses, the bre"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "한 시술 노하우 가을 햇살 아래 더욱 세련되게 빛날 나만의 핏을 완성해 보세요 ✨ 🎁 최대 49% OFF (부가세 별도 10%) 페이스 필러 (수입) 원하는 부위에 볼륨 만들기 자연스럽고 생기있는 볼륨 라라필 벗겨내는 PEEL"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": " 완벽한 동안 라인 🌟🪞 지금이 바로 셀린에서 예뻐질 타이밍! 🎁 10월 한정 혜택: 최대 49% OFF (부가세 별도 10%) 울쎄라피 프라임 | Ultherapy PRIME 볼수록 강한 초음파 리프팅 더 정교해진 초음파 리"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "화 💆‍♀️🌿 👁️ 동안 눈빛 + 🪞 매끈한 실루엣, 지금이 바로 리프팅 타이밍! ✨ 최대 49% OFF (부가세 별도 10%) ✨ 온다 ONDA 마이크로웨이브를 이용한 지방분해와 타이트닝 ✨リフティングイベント✨ リフティングイ"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "✔ 피부 타입에 맞춘 맞춤 에너지 조절 ✔ 짧은 시술 시간 & 안정적인 쿨링 시스템 ✨ 최대 49% 할인 (VAT 별도) 🍁10月スペシャルイベント🍁 セリンクリニック明洞店だけの特別な特典で あなたの美しさをより一層引き出します ✨ 正"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": " 제모 ✔ 굵고 밀도 높은 남성 모발에 최적화 ✔ 반복 시술 시 더욱 깔끔한 유지력 ✨ 최대 49% 할인 (VAT 별도) ※ VAT 10% 별도 대표원장님 커스텀 시술 세심한 디자인부터 완벽한 시술까지 대표원장님과 함께하는 커"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "도 높은 남성 모발에 최적화 ✔ 반복 시술 시 더욱 깔끔한 유지력 ✨ 최대 49% 할인 (VAT 별도) ※ VAT 10% 별도 대표원장님 커스텀 시술 세심한 디자인부터 완벽한 시술까지 대표원장님과 함께하는 커스텀 시술! ✨ Lifti"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": " 케어로 눈부신 10월 시작 🌾 10월 한정 브라이트닝 & 색소 솔루션 패키지 ✨ 📢 최대 49% OFF (부가세 별도 10%) 🍁10월 이벤트🍁 -스킨부스터 10월의 시작, 지친 피부에 시원한 수분 한 잔 🍹 피부 속부터 차"
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": "쌀쌀해지는 날씨에도 맑게 빛나는 리셋 케어 ☀️ 10월 한정 스킨부스터 패키지 🌿 ✨ 최대 49% OFF (부가세 별도 10%) ✨ 🍁10월 이벤트🍁-메디컬 스킨케어 완연한 가을, 셀린의원 명동점 10월 스킨케어 패키지 ☀️ "
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": " ✨ 10월에도 눈부시게 빛나는 피부 변화를 경험해 보세요 💎 🎁 10월 특별 혜택: 최대 49% OFF (부가세 별도 10%) 턱 보톡스 정품 정량 소분 진행 주름 보톡스 정품정량 소분 진행 스킨보톡스 쫀쫀한 피부, 탱탱한 "
+    },
+    {
+     "url": "https://www.cellinclinic8.com/clinicPriceSide/clinicSideList.php#li_10122",
+     "text": " 탱탱한 탄력, 잔주름 개선 특수부위 보톡스 정품 정량 소분 진행 바디보톡스 매끄러운 바디라인 *모든 시술 VAT 별도* 윤곽주사 이중턱/턱라인 등 미운 얼굴살 정리 브이올렛 식약처 허가 이중턱 턱밑개선 윤곽주사 피코슈어 토닝"
+    }
+   ],
+   "skipped_samples_for_crawl_delay": []
   }
  }
 }
