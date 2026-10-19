@@ -27,20 +27,108 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
   };
   const carts = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts') || '[]'));
 
-  // Q1 home '+ 담기' → cart count
+  // Q1 home '+ 담기' → cart count. The button names the card's spec and one tap puts that spec in — no option sheet (위계 점검 1);
+  // the toast says what went in and how many (위계 점검 22); '담김' opens the sheet to change sessions, the count stays
   { const { ctx, p } = await page();
+    // the full file first (a tap before it is queued — tests/e2e/o2_home.js 3b), so the card is not redrawn while it is measured
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(200);
     const n0 = await p.locator('#cart-n').isHidden();
-    const add = async (i) => { await p.locator('#main .addbtn', { hasText: /^담기$/ }).nth(i).click(); await p.waitForTimeout(200);
-      await p.locator('.sheet button', { hasText: /회 담기$/ }).first().click(); await p.waitForTimeout(300); };
-    await add(0); const n1 = await p.locator('#cart-n').textContent();
-    const pressed = await p.locator('#main .addbtn[aria-pressed="true"]').count();
-    await add(0); const n2 = await p.locator('#cart-n').textContent();
-    ok('Q1', '홈에서 담으면 장바구니 숫자 갱신', n0 && n1 === '1' && n2 === '2', `처음 숨김=${n0} → ${n1} → ${n2}`);
-    ok('Q1', '담은 카드 버튼이 "담김"으로 바뀜', pressed >= 1, `aria-pressed=true ${pressed}개`);
+    const card = (i) => p.locator('#main .pwrap').nth(i);
+    const label0 = (await card(0).locator('.pc .l').textContent()).trim(), btn0 = (await card(0).locator('.addbtn').textContent()).trim();
+    const order = await card(0).evaluate((w) => { const y = (s) => w.querySelector(s).getBoundingClientRect().top; return y('.addbtn') > y('.pc .p') && y('.pc .p') > y('.pc .l'); });
+    await card(0).locator('.addbtn').click(); await p.waitForTimeout(300);
+    const sheet1 = await p.locator('.sheet').count(), n1 = await p.locator('#cart-n').textContent(), t1 = await p.locator('#toast').innerText(), sub1 = await p.locator('#toast .ts').innerText().catch(() => '');
+    const pressed = await p.locator('#main .addbtn[aria-pressed="true"]').count(), btn0b = (await card(0).locator('.addbtn').textContent()).trim();
+    await card(1).locator('.addbtn').click(); await p.waitForTimeout(300); const n2 = await p.locator('#cart-n').textContent(), sheet2 = await p.locator('.sheet').count();
+    ok('Q1', '홈에서 담으면 창 없이 장바구니 숫자 갱신', n0 && !sheet1 && !sheet2 && n1 === '1' && n2 === '2', `처음 숨김=${n0} → ${n1} → ${n2}, 창 ${sheet1}·${sheet2}`);
+    ok('Q1', '담기 글자에 규격, 이름 → 가격 → 담기 순서', /^담기 · \S/.test(btn0) && order, `${label0} / ${btn0} / 순서 ${order}`);
+    ok('Q1', '담은 카드 버튼이 "담김 · 규격"으로 바뀜', pressed >= 1 && btn0b === btn0.replace(/^담기/, '담김'), `aria-pressed=true ${pressed}개, ${btn0b}`);
+    ok('Q1', "알림: '내 견적에 담았어요 · 대상 (1개)', 견적 하나면 다른 견적 얘기 없음", t1.includes(`내 견적에 담았어요 · ${label0} (1개)`) && !/다른 (내 )?견적/.test(t1), t1.replace(/\n/g, ' / '));
+    ok('Q1', '알림 둘째 줄(죠미)은 첫 줄을 되풀이하지 않음', !/담았|담아|넣었|추가했|들어갔|담기 (완료|성공|끝)/.test(sub1), sub1);
     const c = await carts(p); ok('Q1', '저장된 장바구니와 숫자가 같음', c[0].items.length === 2, JSON.stringify(c[0].items.map((x) => x.k)));
+    const k0 = await p.evaluate((id) => { const k = App.state().D.keys.find((x) => x[0] === id); return k && k[2]; }, c[0].items[0].k);
+    ok('Q1', '카드에 적힌 그 규격이 담김', k0 === label0 && c[0].items[0].q === 1, `${k0} / ${label0}`);
+    await card(0).locator('.addbtn').click(); await p.waitForTimeout(300);
+    ok('Q1', "'담김'을 다시 누르면 횟수 바꾸기 창(개수 그대로)", await p.locator('.sheet button', { hasText: /회로 바꾸기$/ }).count() === 1 && (await p.locator('#cart-n').textContent()) === '2');
+    // that sheet: sessions, 빼기 and 'n회로 바꾸기' on the first screen, the family's other options folded under them (검토: 30 options first)
+    const chg = p.locator('.sheet button', { hasText: /회로 바꾸기$/ }), bb = await chg.boundingBox(), nOpt = await p.locator('.sheet .opts').count();
+    const folded = !nOpt || await p.locator('.sheet details.optfold:not([open]) .opts').count() === 1;
+    ok('Q1', "'담김' 창: 바꾸기·빼기가 첫 화면, 다른 옵션은 접힘", !!bb && bb.y + bb.height <= 844 && await p.locator('.sheet button', { hasText: /^빼기$/ }).count() === 1 && folded, `바꾸기 아래 끝 ${bb && Math.round(bb.y + bb.height)}, 옵션 ${nOpt ? '접힘 ' + folded : '없음'}`);
+    await p.locator('.sheet button[aria-label="하나 더"]').click(); await p.locator('.sheet button[aria-label="하나 더"]').click(); await p.locator('.sheet button', { hasText: /^3회로 바꾸기$/ }).click(); await p.waitForTimeout(300);
+    await card(0).locator('.addbtn').click(); await p.waitForTimeout(300);
+    ok('Q1', "다시 열면 지금 횟수(3회)에서 시작 — '1회로 바꾸기'로 되돌리지 않음", (await p.locator('.sheet .qty b').textContent()) === '3' && await p.locator('.sheet button', { hasText: /^3회로 바꾸기$/ }).count() === 1 && (await carts(p))[0].items[0].q === 3);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
     ok('Q1', '장바구니 화면에 같은 개수', /담은 시술 2개/.test(await p.locator('#main').innerText()));
     ok('Q1', '스크립트 오류 없음', !p.errs.length, p.errs.join(' ')); await ctx.close(); }
+
+  // Q1b two 내 견적: the same toast names the cart it went into and only then talks about the other carts; a price row's 담기
+  // says what and where for screen readers and sits in the right column on every row (위계 점검 21·22)
+  { const { ctx, p } = await page();
+    await p.evaluate(() => { localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: '내 견적', items: [] }, { id: 'b', name: '언니랑', items: [] }])); localStorage.setItem('pc:ci', '1'); });
+    await p.reload(); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
+    await p.waitForFunction(() => window.JomiLines && window.JomiLines.stats().variants >= 2000, null, { timeout: 15000 }).catch(() => {}); await p.waitForTimeout(200);
+    const many = (t) => p.evaluate((t) => window.JomiLines.RECORDS.filter((r) => r.intent === 'addedMany').some((r) => r.variants.some((v) => t.includes(v))), t);
+    const label0 = (await p.locator('#main .pwrap .pc .l').first().textContent()).trim();
+    await p.locator('#main .pwrap .addbtn').first().click(); await p.waitForTimeout(300);
+    const t1 = await p.locator('#toast').innerText();
+    ok('Q1b', "견적 2개: 알림이 담긴 견적 이름 + 둘째 줄에 다른 견적 안내", t1.startsWith(`'언니랑'에 담았어요 · ${label0} (1개)`) && await many(t1), t1.replace(/\n/g, ' / '));
+    await p.goto(BASE + '#search/' + encodeURIComponent('리쥬란 2cc')); await p.waitForTimeout(1200);
+    const rows = await p.$$eval('#main .card.flush .list > li > .item', (its) => its.filter((it) => it.querySelector(':scope > .addbtn')).map((it) => {
+      const a = it.querySelector(':scope > .addbtn'), pr = it.querySelector('.p'), ar = a.getBoundingClientRect(), prr = pr.getBoundingClientRect();
+      return { aria: a.getAttribute('aria-label') || '', name: it.querySelector('.t').textContent, right: Math.abs(ar.right - prr.right) <= 1 && ar.top >= prr.bottom - 1 }; }));
+    ok('Q1b', "검색 줄 담기: '상품 · 지점 내 견적에 담기' 이름표", rows.length > 0 && rows.every((r) => r.aria.startsWith(`${r.name} · `) && r.aria.endsWith(' 내 견적에 담기')), rows[0] && rows[0].aria);
+    ok('Q1b', '검색 줄 담기: 모든 줄에서 가격 바로 아래 오른쪽', rows.length > 0 && rows.every((r) => r.right), `${rows.filter((r) => !r.right).length}/${rows.length}줄 어긋남`);
+    await p.locator('#main .card.flush .list > li > .item > .addbtn').first().click(); await p.waitForTimeout(300);
+    await p.locator('.sheet button', { hasText: /회 담기$/ }).first().click(); await p.waitForTimeout(300);
+    const t2 = await p.locator('#toast').innerText(), c = await carts(p);
+    ok('Q1b', '줄에서 담아도 같은 알림(고른 견적·개수)', /^'언니랑'에 담았어요 · .+ \(2개\)/.test(t2) && await many(t2) && c[1].items.length === 2 && c[0].items.length === 0, t2.replace(/\n/g, ' / '));
+    ok('Q1b', '스크립트 오류 없음', !p.errs.length, p.errs.join(' ')); await ctx.close(); }
+
+  // Q1c the spec on the key's own 담기 button: never '담기 · 기본' (a family's only option), and on a 320px home card the + / ✓
+  // stands for 담기 / 담김 so a short spec is not cut ('+ 힐러 2cc'); quick compare keeps '담기 · <long name>' inside its card
+  for (const W of [390, 320]) { const { ctx, p } = await page({ viewport: { width: W, height: 844 } }, null, '수도권');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(200);
+    const chips = p.locator('.view > .chips', { has: p.locator('button.chip', { hasText: /^인기$/ }) }).locator('.chip'), nTab = await chips.count(), cards = [];
+    for (let i = 0; i < nTab; i++) { await chips.nth(i).click(); await p.waitForTimeout(200);
+      cards.push(...await p.$$eval('#main .pwrap > .addbtn', (as) => as.map((a) => { const s = a.querySelector(':scope > span');
+        return { all: a.textContent.trim(), vis: a.innerText.trim(), aria: a.getAttribute('aria-label'), cut: s.scrollWidth > s.clientWidth + 1, short: (s.lastChild.textContent || '').length <= 6 }; }))); }
+    ok('Q1c', `홈 카드 담기에 '기본'만 적힌 것 없음 ${W}px`, cards.length > 0 && !cards.some((x) => /· 기본$/.test(x.all)), `${cards.length}장 중 ${cards.filter((x) => /· 기본$/.test(x.all)).length}`);
+    ok('Q1c', `홈 카드: 짧은 규격(6자 이하)은 잘리지 않음 ${W}px`, cards.filter((x) => x.short).length > 0 && !cards.some((x) => x.short && x.cut), cards.filter((x) => x.short && x.cut).map((x) => x.vis).join(', '));
+    ok('Q1c', `홈 카드: 글자 ${W < 336 ? "'담기 · ' 없이 규격만" : "'담기 · 규격'"}, 이름표는 늘 '담기 · 규격 — …'`, cards.every((x) => (W < 336 ? !/^담기/.test(x.vis) : /^담기 · /.test(x.vis)) && /^담기 · .+ — /.test(x.aria)), cards[0] && `${cards[0].vis} / ${cards[0].aria}`);
+    const ids = await p.evaluate(() => { const { D, BR } = App.state(), S = D.s;
+      const short = ['강남역점', '홍대점', '강남본점'].map((n) => { const i = D.branches.findIndex((x) => S[x[1]] === n); return i >= 0 ? `${D.meta.brands[BR[i].brand][0]}|${BR[i].name}` : null; }).filter(Boolean);
+      localStorage.setItem('pc:short', JSON.stringify(short));
+      return D.keys.filter((k) => k[2].length >= 28).slice(0, 12).map((k) => k[0]); });
+    const bad = []; let seen = 0, long = 0;
+    for (const id of ids) { await p.evaluate((x) => { history.pushState(null, '', '#quick?k=' + encodeURIComponent(x)); dispatchEvent(new PopStateEvent('popstate')); }, id); await p.waitForTimeout(250);
+      const r = await p.evaluate((W) => { const a = document.querySelector('#main .qact .addbtn'); if (!a) return null; const c = a.closest('.card').getBoundingClientRect(), ar = a.getBoundingClientRect();
+        return { txt: a.textContent.trim(), ok: ar.right <= c.right + 0.5 && document.documentElement.scrollWidth <= W }; }, W);
+      if (!r) continue; seen++; if (r.txt.length >= 30) long++; if (!r.ok) bad.push(r.txt); }
+    ok('Q1c', `빠른 비교: 긴 이름의 담기도 카드 안, 가로 스크롤 없음 ${W}px`, seen > 0 && long > 0 && !bad.length, `${seen}개(긴 글자 ${long}) 중 넘침 ${bad.length} ${bad[0] || ''}`);
+    ok('Q1c', `스크립트 오류 없음 ${W}px`, !p.errs.length, p.errs.join(' ')); await ctx.close(); }
+
+  // Q1d 320px price rows: the badges right under name and price, 담기 at the right end of their last line — name → price →
+  // conditions → 담기 (위계 점검 21 검토), never over a badge
+  { const { ctx, p } = await page({ viewport: { width: 320, height: 700 } }, null, '수도권');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
+    for (const q of ['리쥬란 2cc', '보톡스']) {
+      await p.goto(BASE + '#search/' + encodeURIComponent(q)); await p.waitForTimeout(1200);
+      const rows = await p.$$eval('#main .list > li > .item.ra', (its) => its.map((it) => { const a = it.querySelector(':scope > .addbtn').getBoundingClientRect(), pr = it.querySelector(':scope > .p').getBoundingClientRect(), m = it.querySelector(':scope > .m').getBoundingClientRect();
+        const hit = [...it.querySelectorAll('.m > *')].map((x) => x.getBoundingClientRect()).some((r) => r.width && r.left < a.right - 0.5 && r.right > a.left + 0.5 && r.top < a.bottom - 0.5 && r.bottom > a.top + 0.5);
+        return Math.abs(a.right - pr.right) <= 1 && Math.abs(a.bottom - m.bottom) <= 1 && m.top >= pr.bottom - 1 && !hit; }));
+      ok('Q1d', `320px '${q}' 줄: 조건 배지 다음 줄 끝 오른쪽에 담기, 배지와 안 겹침`, rows.length > 0 && rows.every(Boolean), `${rows.filter((x) => !x).length}/${rows.length}줄 어긋남`); }
+    ok('Q1d', '스크립트 오류 없음', !p.errs.length, p.errs.join(' ')); await ctx.close(); }
+
+  // Q1e 죠미 설정 '끄기': the 담기 toast is the fixed line alone — no face, no 죠미 line under it
+  { const { ctx, p } = await page();
+    await p.evaluate(() => localStorage.setItem('pc:jomiPrefs', JSON.stringify({ freq: 'off', motion: 'auto', detail: 'short' }))); await p.reload(); await p.waitForSelector('.pc');
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(200);
+    await p.locator('#main .pwrap .addbtn').first().click(); await p.waitForTimeout(300);
+    const t = await p.locator('#toast').innerText();
+    ok('Q1e', "죠미 끄기: 담기 알림은 첫 줄만(얼굴·죠미 말 없음)", /^내 견적에 담았어요 · .+ \(1개\)/.test(t) && await p.locator('#toast .ts').count() === 0 && await p.locator('#toast img.mascot').count() === 0, t.replace(/\n/g, ' / '));
+    ok('Q1e', '스크립트 오류 없음', !p.errs.length, p.errs.join(' ')); await ctx.close(); }
 
   // Q2 same spec: every listed price belongs to the key, and amounts in the product names match the key's amount
   { const pick = ['X01', 'X12', 'X24'];

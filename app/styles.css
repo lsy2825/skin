@@ -168,6 +168,7 @@ a.src { font-size: 13px; }
 .addbtn:active { transform: scale(.94); }
 .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); border-color: transparent; }
 .addbtn.pop { animation: bump .4s var(--ease); }
+.addbtn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .favbtn { border: 0; background: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; transition: transform var(--fast), color var(--fast); }
 .favbtn svg.i { width: 22px; height: 22px; }
 .favbtn[aria-pressed="true"] { color: var(--coral); }
@@ -267,6 +268,18 @@ button.item:active { background: var(--fill); }
 /* 내 견적 브랜드·지역별 합계: a total range in won ('2,708,640~3,891,580원') breaks at '~' (rangeEl) before it squeezes the name */
 .item.sumr { grid-template-columns: minmax(6em, 1fr) auto; }
 .item.sumr .p { white-space: normal; }
+/* a price row's 담기: the right column under the price on every row, whatever the badges wrap to (위계 점검 21). The rows
+   come out no taller than with 담기 at the end of the badges (390·360·340px: branch, searches, table) */
+.item.ra { column-gap: 8px; }
+.item.ra > .m { grid-column: 1; grid-row: 2; row-gap: 6px; }   /* wrapped links keep their 24px targets apart */
+.item.ra > .addbtn { grid-column: 2; grid-row: 2; align-self: start; justify-self: end; }
+/* 320px phones: the badges take the full width under name and price, and 담기 ends their last line on the right — name → price
+   → conditions → 담기 (위계 점검 21 검토: 담기 between the price and its conditions pushed them 43px away). The .m placeholder holds
+   the button's place in that line (same size, fixed: it does not follow the font), so the button never covers a badge and a row
+   is no taller than before 21 */
+@media (max-width: 335px) { .item.ra > .m { grid-column: 1 / -1; }
+  .item.ra > .m::after { content: ""; flex: none; width: 72px; height: 34px; margin-left: auto; }
+  .item.ra > .addbtn { grid-column: 1 / -1; align-self: end; width: 72px; height: 34px; justify-content: center; } }
 .rank { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; width: 100%; text-align: left; border: 0; background: none;
   padding: 14px 12px; border-radius: 14px; transition: background var(--fast); }
 .rank:hover { background: var(--sunken); }
@@ -330,7 +343,12 @@ li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .pc .save.flat { color: var(--muted); font-weight: 600; }
 .pc .basis { font-size: 13px; color: var(--muted); line-height: 1.4; }
 .pc .w { font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 4px; }
-.pwrap > .addbtn { position: absolute; top: 12px; right: 10px; padding: 4px 10px 4px 7px; min-height: 30px; font-size: 13px; }
+/* the card's 담기 names the spec and sits under the price: name → price → 담기 (위계 점검 1) */
+.pwrap > .pc { padding-bottom: 52px; }
+.pwrap > .addbtn { position: absolute; left: 14px; bottom: 14px; max-width: calc(100% - 28px); padding: 4px 10px 4px 7px; min-height: 30px; font-size: 13px; }
+/* 320px: a card leaves the label about 70px — after '담기 · ' that is 3 letters of the spec ('담기 · 힐러 …'), so there the
+   + / ✓ says 담기 / 담김 and the spec keeps the room it has at 390px ('+ 힐러 2cc'); the name read aloud stays '담기 · 힐러 2cc — …' */
+@media (max-width: 335px) { .pwrap > .addbtn .av { display: none; } }
 .disc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; align-items: center; padding: 14px; border-radius: 14px; width: 100%; text-align: left; border: 0; background: none; color: var(--ink); }
 .disc-row:hover { background: var(--sunken); }
 .disc-row .t { font-weight: 650; min-width: 0; }
@@ -592,6 +610,7 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .qline { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .qline .m { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 3px; }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+.sheet .optfold { margin-top: 6px; border-top: 1px solid var(--line-soft); }   /* '담김' sheet: the other options, folded under its buttons */
 .opt { display: grid; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 11px 13px; transition: transform var(--fast), border-color var(--fast); }
 .opt:active { transform: scale(.98); }
 .opt b { font-size: 14px; display: flex; align-items: center; gap: 6px; }
@@ -755,6 +774,9 @@ img.mascot.portrait { border-radius: 24%; box-shadow: none; background: none; }
 .toast.jt { display: flex; align-items: center; gap: 10px; white-space: normal; padding: 8px 14px 8px 8px; max-width: min(440px, calc(100% - 32px)); width: max-content; }
 .toast.jt .mascot { width: 28px; height: 28px; box-shadow: none; flex: none; }
 .toast.jt .tt { line-height: 1.4; font-size: 13.5px; }
+.toast.jt .tt .tm, .toast.jt .tt .ts { display: block; }
+.toast.jt .tt .tm { font-weight: 700; }
+.toast.jt .tt .ts { font-weight: 500; }
 .toast.jt button { flex: none; }
 .gate .mascot { animation: sheetin .5s var(--ease) both; }
 .favbtn.pop svg { animation: bump .45s var(--ease); }
@@ -826,6 +848,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .qbar i { display: block; height: 100%; border-radius: 4px; background: var(--s1); opacity: .55; }
 .qbar i.base { opacity: .9; }
 .qact { gap: 8px; flex-wrap: wrap; padding: 10px 14px 14px; }
+.qact .addbtn { max-width: 100%; }   /* '담기 · <a package's whole name>' is cut with … inside the card, never wider than the page */
 .card.tools { display: flex; flex-wrap: wrap; gap: 8px; }
 .covwrap { overflow-x: auto; padding: 0 14px; }
 .cov { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 320px; }
@@ -996,4 +1019,7 @@ html.cmp-on { scroll-padding-top: calc(var(--top-h) + var(--cmph, 190px) + 8px);
 @media (max-height: 500px) { .cmphead { position: static; } html.cmp-on { scroll-padding-top: var(--top-h); } }
 /* 6.0 홈: two price cards in the first screen — the section head carries the 'order' ⓘ, and short phones get a smaller headline */
 .sec-h .infob { align-self: center; width: 40px; height: 40px; margin: -10px -8px -10px 0; }
-@media (max-height: 700px) { .hero-home .display { font-size: 23px; } .hero-home { gap: 8px; } .pc .pico { width: 28px; height: 28px; margin-bottom: 4px; } }
+/* short phones (375×667): the cards keep their height — the decorative category icon gives its row to 담기, so two price
+   cards stay inside the first screen (tests/e2e/first_screens.js) */
+@media (max-height: 700px) { .hero-home .display { font-size: 23px; } .hero-home { gap: 8px; } .pc .pico { display: none; }
+  .pwrap > .pc { padding-bottom: 46px; } .pwrap > .addbtn { bottom: 12px; min-height: 28px; } }
