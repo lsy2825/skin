@@ -12,11 +12,11 @@ const RULE_PAIR = "d.k = j.value->>'$.key' AND d.r = coalesce(j.value->>'$.regio
 const RULES_DROPPED = (old, nu) => `EXISTS (SELECT 1 FROM json_each(${old}) o WHERE o.value NOT IN (SELECT value FROM json_each(${nu})))`;
 
 // ---- the factory's key set (table keyset, ONE row): the compare keys of the data.json the factory last read, a JSON array
-// (rules.js keySetJson). notify.mjs sends it on every run after a deploy (POST /v1/internal/keys, src/worker.js storeKeys;
-// a run that is not the daily schedule's sends only this). The factory computes those keys only, so a pair whose key is not
-// in it would never be computed: it is left out of WATCHED. Subscribe and PUT still STORE such a rule, and answer exactly
-// as for any other rule (약속 1 unchanged — 7th review: no extra answer field); the pair starts being ranked as soon as a
-// later key set holds the key, and is computed from the next daily (schedule) run on. No set stored yet: every key is ranked.
+// (rules.js keySetJson). notify.mjs sends it at the start of every computation (POST /v1/internal/keys, src/worker.js
+// storeKeys — after start answered 'compute'). The factory computes those keys only, so a pair whose key is not in it would
+// never be computed: it is left out of WATCHED. Subscribe and PUT still STORE such a rule, and answer exactly as for any
+// other rule (약속 1 unchanged — 7th review: no extra answer field); the pair starts being ranked as soon as a later key set
+// holds the key, and is computed from the next computation on. No set stored yet: every key is ranked.
 // ?1 the set's JSON. Written only when it differs (an unchanged set writes 0 rows; a change 1 row — INTEGER PRIMARY KEY,
 // no index entry): a few rows a week.
 export const SET_KEYS = "INSERT INTO keyset (id, keys) VALUES (1, ?1) ON CONFLICT(id) DO UPDATE SET keys = excluded.keys WHERE keys <> excluded.keys";
@@ -76,7 +76,7 @@ export const HEALTH = `SELECT (SELECT n FROM stat WHERE k = 'subs') AS subs, (SE
 // rules of one phone on the same pair are one). Paged by rank (LIMIT/OFFSET): every page groups the table again. Digesting a
 // page only moves that page's own new pairs up (3 → 2), so the later pages stay the same; a subscription made while the
 // factory pages can shift a pair by one page (read twice or missed once — a missed pair's baseline is pruned and taken again
-// silently the next day).
+// silently at the next computation; with src/worker.js PAGE ≥ PAIR_CAP there is one page anyway).
 export const WATCHED = `SELECT w.k AS k, w.r AS r FROM (
     SELECT j.value->>'$.key' AS k, coalesce(j.value->>'$.region', '') AS r,
       count(DISTINCT CASE WHEN subs.last_w IS NOT NULL OR subs.last_x IS NOT NULL THEN subs.id END) AS got,
@@ -94,9 +94,21 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // array of checked entries (rules.js cleanEntry). First sight of a pair = baseline, no news. Afterwards the numbers go to
 // pm/pn/pmed with p = 1 when they differ from the baseline (p = 0 when they are the baseline again), pu = this run's
 // collection date when it is not the baseline's (bu).
-// Within ONE collection (bu = this run's updated, SAME) the numbers only move the good way: lowest = min, branches = max,
-// median only when there are more branches. A rebuild without a scrape drops ended rows from data.json (build2/clean.py),
-// and the next scrape brings the same events back: neither is news. A brand added mid-week (more branches) still is.
+// A digest is computed against what the last FINISH would have left (V), never against an older state: V = the pending
+// numbers when there are some (p = 1), else the baseline, and V's collection is coalesce(pu, bu) — exactly what PROMOTE /
+// ROLL_BU make of the row. So a digest whose finish never ran (a failed finish or later chunk, a run that died) and the
+// next digest give the same snap and the same news as if that finish had run in between, whatever the two collections
+// are (9th review: same → same, same → new and new → repeat → new compared the next numbers with the OLD baseline and lost
+// the news of the step in between; tests 'a failed finish = a finish that ran' check all of them). The baseline m/n/med
+// stays the numbers the phones were last marked against: when V differs from it (p = 1) and this digest moves the numbers
+// again, V becomes q (qm/qn/qmed) and the next finish marks both steps — baseline → q and q → pending (MARK_WEEKLY).
+// Within ONE collection (this run's collection = V's, SAME) the numbers only move the good way: lowest = min, branches =
+// max, median only when there are more branches. A rebuild without a scrape drops ended rows from data.json
+// (build2/clean.py), and the next scrape brings the same events back: neither is news. A brand added mid-week (more
+// branches) still is. The same collection digested twice (a chunk notify.mjs retried after D1 had committed it, a 500
+// after the commit, the next run of the same data after a failed finish) is SAME against V: nothing moves, and cb, cu and
+// q stay as the first digest left them — digesting a collection twice = once (7th review: comparing it again as a NEW
+// collection read its own cu as "not confirmed yet" and flipped a confirmed bad move back to held).
 // From a NEW collection a good move (a lower lowest price, more branches, a median that is not higher) is taken at once; a
 // BAD move (higher lowest price or none, fewer branches, a higher median — or any median move while branches shrank) is
 // HELD until the collection after it shows it too (cb = which numbers were held, cu = that collection). A brand whose
@@ -110,50 +122,35 @@ export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CON
 // regroup days, so an old entry drops off, or '' when no entry holds the key any more) re-bases nothing and never lowers the
 // stored g: the real price change of that collection is news. Left: a second regroup on the same collection day keeps the
 // same g and reads as a price change.
-// The baseline itself is never touched here — only FINISH promotes — so a digest without a finish (failed finish, failed
-// later chunk) loses nothing. The same NEW collection digested AGAIN before a finish consumed it (REPEAT: pu already names
-// it — a chunk notify.mjs retried after D1 had committed it, a 500 after the commit, or the next day's run of the same
-// collection after a failed finish) keeps the pending numbers, cb and cu the first digest of that collection left: compared
-// again, CONFIRM would read that collection's own cu as "not confirmed yet" and flip a confirmed bad move back to held, and
-// the news it makes possible later would be lost (7th review). So digesting a collection twice = once; only run, e, s, u
-// (and g through REBASE) are this run's. A good move a later build of that same collection shows is taken by the first
-// digest after the finish (SAME) — a day later, never lost.
-// ANOTHER new collection while the last one's numbers were never finished (PREV: pu names an earlier collection and p = 1 —
-// its finish failed, and no finish ran before this collection came): the digest goes on as if that finish had run (8th
-// review: the next collection used to be compared with the old baseline, so a confirmed rise was held again and the target
-// and newmatch news after it was lost). Those numbers become q (qm/qn/qmed) and are what this collection is compared with,
-// exactly as a finish would have promoted them; the baseline m/n/med stays the numbers the phones were last marked
-// against. The next finish marks both steps — baseline → q and q → this collection (MARK_WEEKLY) — and promotes. Left: a
-// third collection before any finish keeps only the latest unfinished numbers in q (baseline → the last unfinished
-// collection → this one: a crossing in the middle collection alone is not news).
+// Left (both need a finish to fail first): (1) a THIRD set of numbers before any finish keeps only one step in between —
+// baseline → the latest unfinished numbers → this digest: a crossing seen only in an earlier unfinished digest is not news;
+// (2) a regroup (REBASE) re-bases a pair whose unfinished pending numbers were never marked: that step's news is dropped
+// with the old mix. The baseline itself is never touched here — only FINISH promotes.
 // ?3 PAIR_CAP: a NEW pair is added only while snap holds fewer than PAIR_CAP rows (counted once per statement, so one chunk
-// of ≤ DIGEST_MAX 500 can pass it: snap ≤ PAIR_CAP + 500). The rows a finish prunes are free again only the next day, so
-// a day can never both add a whole list and delete one: per factory run the snap side writes ≤ 2 × (PAIR_CAP + 500) rows
-// (src/worker.js has the arithmetic). A pair left out waits for a free row (src/worker.js digest: 'capped').
+// of ≤ DIGEST_MAX 500 can pass it: snap ≤ PAIR_CAP + 500). The rows a finish prunes are free again only for the next
+// computation, so one computation can never both add a whole list and delete one: per computation the snap side writes
+// ≤ 2 × (PAIR_CAP + 500) rows (src/worker.js has the arithmetic: ≤ COMPUTES_PER_DAY a D1 day). A pair left out waits for a
+// free row (src/worker.js digest: 'capped').
 // ?4 today (the Worker's clock): a new pair's `added` (WATCHED keeps it in the list for PAIR_KEEP_DAYS); never updated.
-const SAME = "snap.bu = excluded.bu";
 const REBASE = "excluded.g > snap.g";
-const REPEAT = `(NOT ${SAME} AND snap.pu = excluded.bu)`;
-// an earlier new collection's numbers no finish consumed (only read on the NEW path: not SAME, not REPEAT, so pu ≠ this one)
-const PREV = "(snap.pu IS NOT NULL AND snap.p = 1)";
-// what a NEW collection is compared with: those numbers when there are some (as their finish would have promoted them),
-// else the baseline
-const B_M = `(CASE WHEN ${PREV} THEN snap.pm ELSE snap.m END)`;
-const B_N = `(CASE WHEN ${PREV} THEN snap.pn ELSE snap.n END)`;
-const B_MED = `(CASE WHEN ${PREV} THEN snap.pmed ELSE snap.med END)`;
-const BAD_M = `((excluded.m IS NULL AND ${B_M} IS NOT NULL) OR (excluded.m IS NOT NULL AND ${B_M} IS NOT NULL AND excluded.m > ${B_M}))`;
-const BAD_N = `(excluded.n < ${B_N})`;
-const BAD_MED = `(${BAD_N} OR (excluded.med IS NULL AND ${B_MED} IS NOT NULL) OR (excluded.med IS NOT NULL AND ${B_MED} IS NOT NULL AND excluded.med > ${B_MED}))`;
+// V: what the last finish would have left — the pending numbers (p = 1) or the baseline, with collection coalesce(pu, bu)
+const V = (c) => `(CASE WHEN snap.p = 1 THEN snap.p${c} ELSE snap.${c} END)`;
+const SAME = "excluded.bu = coalesce(snap.pu, snap.bu)";
+const BAD_M = `((excluded.m IS NULL AND ${V("m")} IS NOT NULL) OR (excluded.m IS NOT NULL AND ${V("m")} IS NOT NULL AND excluded.m > ${V("m")}))`;
+const BAD_N = `(excluded.n < ${V("n")})`;
+const BAD_MED = `(${BAD_N} OR (excluded.med IS NULL AND ${V("med")} IS NOT NULL) OR (excluded.med IS NOT NULL AND ${V("med")} IS NOT NULL AND excluded.med > ${V("med")}))`;
 // a held move is taken when the collection before this one (another date) held the same number
 const CONFIRM = "(snap.cu IS NOT NULL AND snap.cu <> excluded.bu)";
 const TAKE_M = `(NOT ${BAD_M} OR (${CONFIRM} AND (snap.cb & 1) <> 0))`;
 const TAKE_N = `(NOT ${BAD_N} OR (${CONFIRM} AND (snap.cb & 2) <> 0))`;
 const TAKE_MED = `(NOT ${BAD_MED} OR (${CONFIRM} AND (snap.cb & 4) <> 0))`;
-const NEW_M = `CASE WHEN ${SAME} THEN (CASE WHEN snap.m IS NULL THEN excluded.m WHEN excluded.m IS NULL THEN snap.m ELSE min(snap.m, excluded.m) END) WHEN ${TAKE_M} THEN excluded.m ELSE ${B_M} END`;
-const NEW_N = `CASE WHEN ${SAME} THEN max(snap.n, excluded.n) WHEN ${TAKE_N} THEN excluded.n ELSE ${B_N} END`;
-const NEW_MED = `CASE WHEN ${SAME} THEN (CASE WHEN excluded.n <= snap.n THEN snap.med ELSE excluded.med END) WHEN ${TAKE_MED} THEN excluded.med ELSE ${B_MED} END`;
-// q: PREV's numbers on the NEW path; kept by a REPEAT; gone with SAME (the baseline's own collection again) and REBASE
-const NEW_Q = (c) => `CASE WHEN ${REBASE} OR ${SAME} THEN NULL WHEN ${REPEAT} THEN snap.q${c} WHEN ${PREV} THEN snap.p${c} ELSE NULL END`;
+const NEW_M = `(CASE WHEN ${SAME} THEN (CASE WHEN ${V("m")} IS NULL THEN excluded.m WHEN excluded.m IS NULL THEN ${V("m")} ELSE min(${V("m")}, excluded.m) END) WHEN ${TAKE_M} THEN excluded.m ELSE ${V("m")} END)`;
+const NEW_N = `(CASE WHEN ${SAME} THEN max(${V("n")}, excluded.n) WHEN ${TAKE_N} THEN excluded.n ELSE ${V("n")} END)`;
+const NEW_MED = `(CASE WHEN ${SAME} THEN (CASE WHEN excluded.n <= ${V("n")} THEN ${V("med")} ELSE excluded.med END) WHEN ${TAKE_MED} THEN excluded.med ELSE ${V("med")} END)`;
+// this digest moved the numbers away from V
+const MOVED = `(${NEW_M} IS NOT ${V("m")} OR ${NEW_N} IS NOT ${V("n")} OR ${NEW_MED} IS NOT ${V("med")})`;
+// q: V when it holds unfinished numbers (p = 1) and this digest moves on from them; the q already there when it does not
+const NEW_Q = (c) => `CASE WHEN ${REBASE} OR snap.p = 0 THEN NULL WHEN ${MOVED} THEN snap.p${c} ELSE snap.q${c} END`;
 const NEW_CB = `(CASE WHEN ${BAD_M} AND NOT ${TAKE_M} THEN 1 ELSE 0 END) + (CASE WHEN ${BAD_N} AND NOT ${TAKE_N} THEN 2 ELSE 0 END) + (CASE WHEN ${BAD_MED} AND NOT ${TAKE_MED} THEN 4 ELSE 0 END)`;
 export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, s, u)
   SELECT j.value->>'$.k', j.value->>'$.r', j.value->>'$.m', j.value->>'$.n', j.value->>'$.med', substr(?1, 1, 10),
@@ -166,22 +163,22 @@ export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, 
     n = CASE WHEN ${REBASE} THEN excluded.n ELSE snap.n END,
     med = CASE WHEN ${REBASE} THEN excluded.med ELSE snap.med END,
     bu = CASE WHEN ${REBASE} THEN excluded.bu ELSE snap.bu END,
-    p = CASE WHEN ${REBASE} THEN 0 WHEN ${REPEAT} THEN snap.p ELSE ((${NEW_M}) IS NOT snap.m OR (${NEW_N}) IS NOT snap.n OR (${NEW_MED}) IS NOT snap.med OR (NOT ${SAME} AND ${PREV})) END,
+    p = CASE WHEN ${REBASE} THEN 0 ELSE (${NEW_M} IS NOT snap.m OR ${NEW_N} IS NOT snap.n OR ${NEW_MED} IS NOT snap.med OR (${NEW_Q("n")}) IS NOT NULL) END,
     qm = ${NEW_Q("m")}, qn = ${NEW_Q("n")}, qmed = ${NEW_Q("med")},
-    pm = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pm ELSE ${NEW_M} END,
-    pn = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pn ELSE ${NEW_N} END,
-    pmed = CASE WHEN ${REBASE} THEN NULL WHEN ${REPEAT} THEN snap.pmed ELSE ${NEW_MED} END,
-    pu = CASE WHEN ${REBASE} OR ${SAME} THEN NULL ELSE excluded.bu END,
-    cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} OR ${REPEAT} THEN snap.cb ELSE ${NEW_CB} END,
-    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} OR ${REPEAT} THEN snap.cu ELSE excluded.bu END`;
+    pm = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_M} END,
+    pn = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_N} END,
+    pmed = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_MED} END,
+    pu = CASE WHEN ${REBASE} OR excluded.bu = snap.bu THEN NULL ELSE excluded.bu END,
+    cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} THEN snap.cb ELSE ${NEW_CB} END,
+    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} THEN snap.cu ELSE excluded.bu END`;
 
 // finish (one batch, in this order). Weekly news = a pending pair against its baseline (from → to):
 //   watch    median moved ≥ 5% (|to.med − from.med| × 20 ≥ from.med, exact in integers) or a new lowest price — push.js
 //            watchMoved()
 //   newmatch more branches (to.n > from.n)
 //   target   the lowest price crossed max: now ≤ max, before > max or no price (already below max shows on screen only)
-// A pair with q (an earlier collection no finish consumed, DIGEST PREV) has two steps, baseline → q and q → pending: news
-// in either is news, as if each had had its finish. The same joined row — no extra row read.
+// A pair with q (unfinished numbers a later digest moved on from — DIGEST V) has two steps, baseline → q and q → pending:
+// news in either is news, as if each had had its finish. The same joined row — no extra row read.
 const NEWS = (f, t) => `((j.value->>'$.kind' = 'watch' AND d.${f}med > 0 AND d.${t}med IS NOT NULL
             AND (abs(d.${t}med - d.${f}med) * 20 >= d.${f}med OR (d.${f}m IS NOT NULL AND d.${t}m IS NOT NULL AND d.${t}m < d.${f}m)))
        OR (j.value->>'$.kind' = 'newmatch' AND d.${t}n > d.${f}n)
@@ -235,16 +232,33 @@ export const ROLL_BU = "UPDATE snap SET bu = pu, pu = NULL WHERE pu IS NOT NULL"
 // ?1 today as yyyymmdd: the last finish, shown by GET /health ("finished") so a monitor sees the factory → Worker link stop.
 // Written only when the day changes (a second finish the same day writes no row)
 export const STAT_FINISH = "INSERT INTO stat (k, n) VALUES ('finish', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
-// ?1 the data.json the finish was computed from: the first 52 bits of its sha256 (src/worker.js dataTag). With 'finish' it
-// says "this data.json was finished today" (SAME_DATA). Written only when it changes; a finish that does not name its data
+// ?1 the data the finish was computed from: the first 52 bits of its fingerprint (notify.mjs fingerprint: every number a
+// digest can be computed from, never the file's bytes or its timestamps — src/worker.js dataTag). With 'finish' it says
+// "these prices were finished today" (START_STATE). Written only when it changes; a finish that does not name its data
 // removes the row (CLEAR_DATA), so nothing can be taken for done
 export const STAT_DATA = "INSERT INTO stat (k, n) VALUES ('data', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 export const CLEAR_DATA = "DELETE FROM stat WHERE k = 'data'";
-// ?1 today as yyyymmdd ?2 the data tag: the last finish was today and from this same data.json → 1. A factory run
-// of the same data on the same KST day then stops at its first watched page (src/worker.js watched: done) — no digest, no
-// finish: it would write every pair again and change nothing (6th review: weekly.yml runs many times a day). Two stat
-// rows read by primary key.
-export const SAME_DATA = "SELECT coalesce((SELECT n FROM stat WHERE k = 'finish') = ?1 AND (SELECT n FROM stat WHERE k = 'data') = ?2, 0) AS same";
+// ---- the start of a factory computation (POST /v1/internal/start, src/worker.js start — 9th review: every run that
+// deployed data, and the hourly catch-up, asks first; only an answer 'compute' goes on to keys, watched, digest, finish).
+// ?1 today (KST yyyymmdd) ?2 the fingerprint's tag ?3 now (epoch ms) ?4 the lease (ms) ?5 the UTC day (yyyymmdd: D1's day).
+// today = the last finish was today; same = from these same prices; busy = a computation started less than the lease ago
+// and has not finished (stat 'lease' = its start, epoch ms; FINISH deletes its own); computes = how many computations
+// started this UTC day (stat 'fc' = UTC day × 100 + count). Four stat rows read by primary key, nothing written.
+export const START_STATE = `SELECT coalesce((SELECT n FROM stat WHERE k = 'finish') = ?1, 0) AS today,
+  coalesce((SELECT n FROM stat WHERE k = 'data') = ?2, 0) AS same,
+  coalesce((SELECT n FROM stat WHERE k = 'lease') > ?3 - ?4, 0) AS busy,
+  coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?5), 0) AS computes`;
+// one batch (D1 runs a batch as one transaction): take the lease ?1 (now, epoch ms — the token FINISH gives back) only while
+// none is live (?2 the lease in ms) and fewer than ?4 (COMPUTES_PER_DAY) computations started this UTC day ?3; then count
+// it — only when the lease row now holds this token. No row back from TAKE_LEASE = another run took it in between (busy).
+// 1–2 rows written each (the row; a new row also its primary-key entry).
+export const TAKE_LEASE = `INSERT INTO stat (k, n) SELECT 'lease', ?1 WHERE coalesce((SELECT n FROM stat WHERE k = 'lease'), 0) <= ?1 - ?2
+    AND coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?3), 0) < ?4
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n RETURNING n`;
+export const COUNT_COMPUTE = `INSERT INTO stat (k, n) SELECT 'fc', ?2 * 100 + 1 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
+  ON CONFLICT(k) DO UPDATE SET n = CASE WHEN n / 100 = excluded.n / 100 THEN n + 1 ELSE excluded.n END`;
+// ?1 the lease token the start gave this computation: FINISH frees it (a lease another run took after it expired stays)
+export const FREE_LEASE = "DELETE FROM stat WHERE k = 'lease' AND n = ?1";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
 // PAIR_CAP (src/worker.js watched; sql.js WATCHED says which pairs make way)
 export const PRUNE_SNAP = "DELETE FROM snap WHERE run <> ?1";
@@ -351,7 +365,8 @@ export const CLAIM_F = `UPDATE subs SET claim = ?1 WHERE id IN (
 // double-counted failure. The deletes are the same twice anyway.
 // SENT: ?1 id ?2 weekly sent (0/1) ?3 expiring sent (0/1) ?4 today ?5 the claimed pend_x ?6 the claimed pend_xl (its entries
 // are now announced: merged into exp_sent, sorted, entries that ended before today dropped — PRUNE_XSENT relies on the order;
-// these are the json_each rows a push with an expiring notice reads, ≤ 3 days × 20 + 20) ?7 the claim. last_x = today
+// these are the json_each rows a push with an expiring notice reads: ≤ 80 + 20, ≤ 100 + 20 after rule changes — rules.js
+// END_DAYS) ?7 the claim. last_x = today
 // whenever the push carried an expiring notice,
 // stand-alone OR riding along with the weekly bundle: so a phone gets at most one push with an expiring notice a day
 // (rules.js dueKinds), never a stand-alone one later on the day the weekly bundle carried one

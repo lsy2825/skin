@@ -77,9 +77,9 @@ CREATE TABLE snap (
   pu TEXT,                           -- collection date of the pending numbers when it is not bu
   cb INTEGER NOT NULL DEFAULT 0,     -- which numbers the last NEW collection moved the bad way and were held back: 1 = m, 2 = n, 4 = med
   cu TEXT,                           -- that collection's date (a held-back move is taken when the NEXT collection shows it too)
-  qm INTEGER,                        -- q = the numbers an earlier collection's digest took that no finish consumed before the
-  qn INTEGER,                        -- next collection came (its finish failed): that collection is compared with q, and the
-  qmed INTEGER,                      -- next finish marks baseline → q and q → pending (src/sql.js DIGEST PREV, MARK_WEEKLY)
+  qm INTEGER,                        -- q = unfinished pending numbers (their finish failed) that a later digest moved on
+  qn INTEGER,                        -- from: that digest was computed against them, and the next finish marks baseline → q
+  qmed INTEGER,                      -- and q → pending (src/sql.js DIGEST V, MARK_WEEKLY)
   g TEXT NOT NULL DEFAULT '',        -- regroup day of the key (meta.recl) the baseline belongs to
   run TEXT NOT NULL,                 -- 'updated|day' of the factory run that last wrote the row (unwatched pairs are pruned)
   added TEXT NOT NULL DEFAULT '',    -- KST day the pair was first computed (never updated)
@@ -106,8 +106,11 @@ CREATE TABLE vapid (aud TEXT PRIMARY KEY, jwt TEXT NOT NULL, exp INTEGER NOT NUL
 --   'day'             the Worker's own KST day (yyyymmdd) of the last subscribe call: the Worker writes it in the same D1
 --                     batch right before the INSERT, and the subs_ins trigger names today's counter from it (no row holds a date)
 --   'finish'          KST day (yyyymmdd, the Worker's clock) of the last factory finish (GET /health "finished")
---   'data'            the data.json that finish was computed from: the first 52 bits of its sha256 (no row = not told).
---                     With 'finish' it lets a factory run of the same data on the same day stop at once (src/sql.js SAME_DATA)
+--   'data'            the prices that finish was computed from: the first 52 bits of their fingerprint (notify.mjs
+--                     fingerprint; no row = not told). With 'finish' a start of the same prices the same day is 'done'
+--   'lease'           epoch ms a computation started (one at a time; its finish deletes it, else it runs out after 15
+--                     minutes); 'fc' the UTC day × 100 + computations started that D1 day (COMPUTES_PER_DAY) — src/sql.js
+--                     START_STATE, TAKE_LEASE, COUNT_COMPUTE
 --   'refusing'        KST day (yyyymmdd) of the last send run in which phones that took our pushes refused our VAPID
 --                     token at a push service that took nothing else (GET /health "refusing" that day and the next)
 --   'capped'          KST day (yyyymmdd) the factory's watched list was last cut at PAIR_CAP (GET /health "pairs")

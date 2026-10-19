@@ -39,12 +39,19 @@ export const EXPIRING_DAYS = 3;
 // an expiring entry's end date u (digest), checked against the Worker's own day: from today − FINISH_SLACK_DAYS to today +
 // END_DAYS. The factory sends u ≤ its own day + EXPIRING_DAYS, and its day is the Worker's or the day before (a run that
 // crosses midnight) — never ahead (8th review: the upper bound was + 4, one day more than any honest factory sends, which
-// let exp_sent hold a fourth day of entries and a push read 201 rows in SENT instead of 161; a factory clock ahead of the
-// Worker's across midnight gets 400 BAD_DIGEST and the next daily run computes). So an announced entry still running on
-// day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further — and when a push is sent on day T, the entries
-// announced before (on an earlier day: at most one finish a KST day, and one push with an expiring notice a day after it)
-// end by T + END_DAYS − 1: ≤ END_DAYS days × MAX_RULES = 60 live entries, plus the ≤ 20 it announces (src/sql.js SENT:
-// ≤ 2 × 80 + 1 = 161 rows read), whatever the factory sends (src/worker.js digest refuses anything else)
+// let exp_sent hold one more date of entries than below; a factory clock ahead of the
+// Worker's across midnight gets 400 BAD_DIGEST and the next computation takes it). So an announced entry still running on
+// day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further. A phone's exp_sent list (one entry per (pair, end
+// date)) is rewritten only by SENT on day d (it drops the entries that ended before d and adds the ones it announces: their
+// end dates ≥ d, since an expiring is due only while pend_x ≥ d) and by PRUNE_XSENT at a finish (drops the ended ones), so
+// after its last rewrite on day d every end date lies within d … d + END_DAYS: at most END_DAYS + 1 = 4 dates. When a push
+// is sent on day T the list therefore holds ≤ 4 × MAX_RULES = 80 entries (e.g. T − 1 … T + 2 before the day's first rewrite
+// — an ended date stays until one — or T … T + 3 after it), plus the ≤ 20 it announces: src/sql.js SENT reads ≤ 2 × 100 + 1
+// = 201 rows, for any push of the day (9th review: the 161 quoted before held only after a finish of the push's own day had
+// pruned the list). A phone that changes its rules (PUT keeps exp_sent) can hold entries of more pairs, bounded by its pushes:
+// an entry ending ≥ d was announced on d − 3 … d, by ≤ 4 pushes with an expiring notice (one a day) + 1 weekly bundle,
+// ≤ 20 entries each → ≤ 100 entries, SENT ≤ 2 × 120 + 1 = 241 — whatever the factory sends (src/worker.js digest refuses
+// anything else)
 export const END_DAYS = EXPIRING_DAYS;
 export const validEnd = (u, today) => validDay(u) && u >= addDays(today, -FINISH_SLACK_DAYS) && u <= addDays(today, END_DAYS);
 export const LAST_SEND_MARGIN_MIN = 15;                    // never send a push closer than this to 21:00 KST
