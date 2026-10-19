@@ -13,9 +13,12 @@
 //      PROBE_CLAIM_PER_ORIGIN rows per push origin that holds rows, PROBE_ORIGINS origins at most — and the release after a
 //      2xx (RELEASE_HELD) frees SEND_LIMIT rows, reading ≤ RELEASE_PER_ROW per freed row, never the other held rows (it read
 //      and sorted every held row of every origin: ~4 rows per held row in each of 77 runs, unbounded below MAX_SUBS).
-//   5. (9th/10th review) start: every answer reads ≤ 30 rows (START_STATE: stat rows by primary key); 'compute' writes ≤ 12
-//      (the lease, nonce, fingerprint tag, count — a retry and a dead computation's notes), the D1 day's first deferral 2 (stat
-//      'fd'), 'done', a resent start (the same nonce: the same lease), 'busy', a later deferral and 'edge' write none.
+//   5. (9th/10th/11th review) start: every answer reads ≤ 30 rows (START_STATE: stat rows by primary key); 'compute' writes
+//      ≤ 12 (the lease, nonce, fingerprint tag, count — a retry and a dead computation's notes), the first deferral ever ≤ 4
+//      (stat 'fd' and 'fn'), 'reserve' → 'cap' ≤ 2; 'done', a resent start (the same nonce: the same lease — and the same
+//      first: true when deferred), 'busy', a later deferral, a catch-up deferred before 08:00 KST and 'edge' write none.
+//   6. (11th review) rows WRITTEN by a computation: ≤ 5 a phone (PRUNE_XSENT 1 + MARK_WEEKLY 2 + MARK_EXPIRING 2) also for
+//      phones that failed before; a digest chunk sent again writes 0; DROP_ENDED ≤ 1 a row; CLAIM_F reads each failed row once.
 // Exit 1 with the numbers when one fails. Nothing leaves this machine; the D1 is a throw-away folder.
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -154,11 +157,11 @@ try {
   }
 
   // 5. start (9th/10th review): what a factory run or a catch-up costs before it computes anything
-  const startAt = async (fp, when, nonce, utc) => {
+  const startAt = async (fp, when, nonce, utc, catchup) => {
     log = [];
-    const res = await worker.fetch(new Request("https://alerts.local/v1/internal/start", { method: "POST", headers: { authorization: "Bearer " + H.SECRET_VALUE, "content-type": "application/json" }, body: JSON.stringify(nonce ? { fp, nonce } : { fp }) }), env, { waitUntil() {} }, utc ? Date.parse(when + "Z") : H.kst(when));
+    const res = await worker.fetch(new Request("https://alerts.local/v1/internal/start", { method: "POST", headers: { authorization: "Bearer " + H.SECRET_VALUE, "content-type": "application/json" }, body: JSON.stringify({ fp, ...(nonce ? { nonce } : {}), ...(catchup ? { catchup: true } : {}) }) }), env, { waitUntil() {} }, utc ? Date.parse(when + "Z") : H.kst(when));
     const body = await res.json();
-    return { go: body.go, why: body.why, lease: body.lease, read: log.reduce((a, [, n]) => a + n, 0), written: log.reduce((a, [, , w]) => a + w, 0) };
+    return { go: body.go, why: body.why, lease: body.lease, first: body.first, read: log.reduce((a, [, n]) => a + n, 0), written: log.reduce((a, [, , w]) => a + w, 0) };
   };
   const fin = async (fp, lease, when) => { at = when; await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp, lease }); };
   const fpA = "a".repeat(64), fpB = "b".repeat(64), fpC = "c".repeat(64);
@@ -171,19 +174,69 @@ try {
   rows.steady = await startAt(fpB, "2026-10-23T13:00:00", "000000000000d");
   await fin(fpB, rows.steady.lease, "2026-10-23T13:01:00");
   rows.deferredFirst = await startAt(fpC, "2026-10-23T14:00:00", "000000000000e");          // before 21:00 UTC: the 06:00 share
+  rows.deferredResent = await startAt(fpC, "2026-10-23T14:00:20", "000000000000e");         // its answer lost: the same, first again
   rows.deferredAgain = await startAt(fpC, "2026-10-23T15:00:00", "000000000000f");
+  rows.catchupDeferred = await startAt(fpC, "2026-10-24T06:07:00", "0000000000011", false, true);   // 11th review: not before 08:00
+  rows.share = await startAt(fpC, "2026-10-24T06:30:00", "0000000000012");                  // the 06:00 run takes the share
+  if (rows.share.go === "compute") await fin(fpC, rows.share.lease, "2026-10-24T06:31:00");
+  rows.capAfterReserve = await startAt("d".repeat(64), "2026-10-24T07:10:00", "0000000000013");     // one more line
   rows.edge = await startAt(fpC, "2026-10-23T23:50:00", "0000000000010", true);
-  console.log("d1 reads: start — " + Object.entries(rows).map(([k, x]) => `${k} ${x.go}${x.why ? "/" + x.why : ""} ${x.read} read / ${x.written} written`).join(", "));
-  const want = { compute: "compute", resent: "compute", busy: "busy", done: "done", steady: "compute", deferredFirst: "deferred", deferredAgain: "deferred", edge: "deferred" };
+  console.log("d1 reads: start — " + Object.entries(rows).map(([k, x]) => `${k} ${x.go}${x.why ? "/" + x.why : ""}${x.first ? " first" : ""} ${x.read} read / ${x.written} written`).join(", "));
+  const want = { compute: "compute", resent: "compute", busy: "busy", done: "done", steady: "compute", deferredFirst: "deferred", deferredResent: "deferred", deferredAgain: "deferred",
+    catchupDeferred: "deferred", share: "compute", capAfterReserve: "deferred", edge: "deferred" };
   for (const [k, g] of Object.entries(want)) if (rows[k].go !== g) fails.push(`start ${k} answered ${rows[k].go}, not ${g}`);
   if (rows.resent.lease !== rows.compute.lease) fails.push("a start sent again with its nonce did not get the same lease");
+  for (const [k, f] of [["deferredFirst", true], ["deferredResent", true], ["deferredAgain", false], ["catchupDeferred", false], ["capAfterReserve", true]])
+    if (rows[k].first !== f) fails.push(`start ${k} said first ${rows[k].first}, not ${f}`);
+  if (rows.catchupDeferred.why !== "reserve" || rows.capAfterReserve.why !== "cap") fails.push("the 06:07 catch-up is 'reserve', the 07:10 run after the share 'cap'");
+  // rows written: a computation's start ≤ 12; the first deferral ever ≤ 4 (stat 'fd' and 'fn', each a new row + its key),
+  // 'reserve' → 'cap' ≤ 2 (both updated); nothing else writes (a deferral D1 day ≤ 6 rows in all — src/worker.js arithmetic)
   for (const [k, x] of Object.entries(rows)) {
-    const maxW = k === "compute" || k === "steady" ? 12 : k === "deferredFirst" ? 2 : 0;
+    const maxW = k === "compute" || k === "steady" || k === "share" ? 12 : k === "deferredFirst" ? 4 : k === "capAfterReserve" ? 2 : 0;
     if (x.read > 30 || x.written > maxW) fails.push(`start ${k} read ${x.read} > 30 or wrote ${x.written} > ${maxW}`);
   }
+
+  // 6. (11th review) rows WRITTEN per phone by a computation — the 10th review's ceiling was 5 a phone, but a phone that had
+  //    failed once wrote 7 (subs_fail's WHERE named pend_w and pend_x): every phone marked weekly AND expiring and its
+  //    exp_sent pruned, half of them with fails = 1 → PRUNE_XSENT 1 + MARK_WEEKLY 2 + MARK_EXPIRING 2 = 5 a phone, each;
+  //    a digest chunk sent again writes 0; DROP_ENDED writes 1 a row; CLAIM_F reads each failed row once however many have
+  //    nothing pending (the index holds every row with fails > 0)
+  await raw.prepare(`UPDATE subs SET rules = '[{"kind":"expiring","key":"T0000001"},{"kind":"watch","key":"T0000001"}]', pend_w = 0, last_w = '2026-10-10',
+    pend_x = '2026-10-24', pend_xl = '["2026-10-24|T0000777|"]', exp_sent = '["2026-10-23|T0000999|","2026-10-26|T0000998|"]', last_x = NULL, claim = NULL,
+    fails = CASE WHEN rowid % 2 = 0 THEN 1 ELSE 0 END`).run();
+  const failed = (await raw.prepare("SELECT count(*) AS c FROM subs WHERE fails > 0").first()).c;
+  at = "2026-10-24T10:00:00";
+  // a baseline (collection 10-23), then the next collection's lower price and an ending price (news for both rule kinds)
+  await call("/v1/internal/digest", { run: "2026-10-23|2026-10-24", entries: [{ k: key(1), r: "", m: 1000, n: 3, med: 1000 }] });
+  const chunk = { run: "2026-10-24|2026-10-24", entries: [{ k: key(1), r: "", m: 500, n: 3, med: 1000, e: 500, s: null, u: "2026-10-25" }] };
+  log = [];
+  await call("/v1/internal/digest", chunk);
+  const firstW = log.reduce((a, [, , w]) => a + w, 0);
+  log = [];
+  const again = await call("/v1/internal/digest", chunk);
+  const againW = log.reduce((a, [, , w]) => a + w, 0);
+  log = [];
+  const marks = await call("/v1/internal/finish", { run: chunk.run, today: "2026-10-24" });
+  const wOf = (q) => log.filter(([sql]) => sql === q).reduce((a, [, , w]) => a + w, 0);
+  const perPhone = { PRUNE_XSENT: wOf(Q.PRUNE_XSENT), MARK_WEEKLY: wOf(Q.MARK_WEEKLY), MARK_EXPIRING: wOf(Q.MARK_EXPIRING) };
+  console.log(`d1 written: a computation marking ${N} phones (${failed} with fails = 1) weekly and expiring: ${JSON.stringify(perPhone)} (weekly ${marks.weekly}, expiring ${marks.expiring}); a digest chunk ${firstW} rows, the same chunk again ${againW} (${JSON.stringify(again)})`);
+  if (marks.weekly !== N || marks.expiring !== N) fails.push(`the finish marked ${marks.weekly} weekly / ${marks.expiring} expiring, not ${N} each`);
+  if (perPhone.PRUNE_XSENT > N || perPhone.MARK_WEEKLY > 2 * N || perPhone.MARK_EXPIRING > 2 * N) fails.push(`rows written per phone past 1 + 2 + 2: ${JSON.stringify(perPhone)} for ${N} phones`);
+  if (againW !== 0 || again.saved !== 1 || again.skipped !== 0) fails.push(`a digest chunk sent again wrote ${againW} rows / answered ${JSON.stringify(again)} (must write 0, the same answer)`);
+  // a send run before the day's finish: every row holds an ended pend_x (DROP_ENDED 1 a row) and every row failed before
+  // with nothing else pending (CLAIM_F walks each once)
+  await raw.prepare("UPDATE subs SET pend_w = 0, pend_x = '2026-10-24', pend_xl = '[\"2026-10-24|T0000777|\"]', fails = 1, claim = NULL").run();
+  await raw.prepare("UPDATE stat SET n = 20261024 WHERE k = 'finish'").run();
+  log = [];
+  await send(env, H.kst("2026-10-25T12:00:00"), { fetch: async () => new Response(null, { status: 201 }), waits: [0, 0] });
+  const dropW = log.filter(([sql]) => sql === Q.DROP_ENDED).reduce((a, [, , w]) => a + w, 0);
+  const claimF = log.filter(([sql]) => sql === Q.CLAIM_F).reduce((a, [, r]) => a + r, 0);
+  console.log(`d1 written: DROP_ENDED ${dropW} rows for ${N} ended end dates; CLAIM_F read ${claimF} rows with ${N} failed rows, nothing due`);
+  if (dropW > N) fails.push(`DROP_ENDED wrote ${dropW} > ${N} (1 a row)`);
+  if (claimF > N + 10) fails.push(`CLAIM_F read ${claimF} > ${N} + 10 with ${N} failed rows and nothing due`);
 } finally {
   await mf.dispose();
   rmSync(persist, { recursive: true, force: true });
 }
 if (fails.length) { for (const f of fails) console.error("FAIL d1 reads: " + f); process.exit(1); }
-console.log("ok   d1 reads: the finish does not read more with long exp_sent lists; per-phone reads within the documented ceiling; held rows cost the same however many are held");
+console.log("ok   d1 reads: the finish does not read more with long exp_sent lists; per-phone reads within the documented ceiling; held rows cost the same however many are held; ≤ 5 rows written a phone a computation (failed phones too), a chunk sent again writes nothing");

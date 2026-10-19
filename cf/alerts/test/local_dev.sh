@@ -3,7 +3,8 @@
 #   bash cf/alerts/test/local_dev.sh
 # migrate a throw-away local D1 → wrangler dev on a free port (8795-8799) → subscribe / rules / delete / factory export
 # with curl → notify.mjs on app/data.json against it (computed, the same prices again = done, a start sent again with its
-# nonce = the same lease, busy, deferred — the free profile, PLAN "free", so the D1-day cap is 3) → D1 rows read of a
+# nonce = the same lease, busy, deferred — the free profile, PLAN "free", so the D1-day cap is 3 —, a wrong secret =
+# startfail) → D1 rows read (and written per phone, 11th review) of a
 # finish and a send run on the same runtime (test/d1_reads.mjs) → stop wrangler by its process group. Needs node + npx (no
 # account, no network to Cloudflare). The factory secret is made up for this run only. The Worker uses the real clock: the
 # cap section expects 'reserve' before 21:00 UTC (06:00 KST) and 'cap' after it, and the script waits out 23:30–24:00 UTC
@@ -135,6 +136,13 @@ FC=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --js
 case "$FC" in *'"c": '$WANT_FC*'"l": 0'*|*'"c":'$WANT_FC*'"l":0'*) ;; *) fail "$WANT_FC computations counted, no lease left: $FC";; esac
 H3=$(req GET /health); case "$H3" in *'"compute":"deferred"'*) ;; *) fail "health should say compute deferred: $H3";; esac
 echo "ok   start: the same lease for a resent start, busy while a computation holds the lease, deferred past the D1 day's share (deferred=true + until once a D1 day), /health compute deferred"
+# a start no retry can cure (11th review): another ALERTS_SECRET than the Worker's → 401 → startfail=true for the workflow's
+# Telegram line, and the ::warning does not promise a catch-up
+: >"$STATE/gh-output"
+GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=not-the-workers-secret node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify5.log"
+grep -q '^::warning title=price alerts::price alert check failed (/v1/internal/start answered 401) — trying again will not help' "$STATE/notify5.log" || fail "a 401 at start must say that trying again will not help"
+[ "$(cat "$STATE/gh-output")" = "startfail=true" ] || fail "a 401 at start must write startfail=true: $(cat "$STATE/gh-output")"
+echo "ok   start answered 401 (another secret): startfail=true, no promise of a catch-up"
 # notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
 # does not have is still stored (6th review) and answered exactly as 약속 1 says (7th review); a malformed key set is 400
 KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"

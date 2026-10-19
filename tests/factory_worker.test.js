@@ -932,7 +932,10 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   // a different machine: the factory job (scrapers, pip packages, build) cannot write files, $GITHUB_ENV or NODE_OPTIONS
   // that the alerts step would use, and never holds either token
   assert.equal(/ALERTS_|TELEGRAM_|notify/.test(update), false, "the factory job never sees ALERTS_*, TELEGRAM_* or runs notify");
-  for (const [name, text] of Object.entries(jobs)) if (name !== "price_alerts") assert.equal(/ALERTS_|notify\.mjs|cf\/alerts/.test(text), false, `${name} never sees ALERTS_* or runs the alerts code`);
+  // (the Telegram job's message may NAME a setting for the owner to check — 11th review's startfail line names ALERTS_SECRET —
+  // but no job other than price_alerts reads one: no ALERTS_* in an expression or an env key, no alerts code)
+  const unquoted = (text) => text.replace(/telegram\.py "[^"\n]*"/g, 'telegram.py "…"');
+  for (const [name, text] of Object.entries(jobs)) if (name !== "price_alerts") assert.equal(/ALERTS_|notify\.mjs|cf\/alerts/.test(unquoted(text)), false, `${name} never sees ALERTS_* or runs the alerts code`);
   // the Telegram job: its own secrets only; it waits for price_alerts and reports one that did not reach its end
   assert.match(alert, /TELEGRAM_BOT_TOKEN: \$\{\{ secrets\.TELEGRAM_BOT_TOKEN \}\}/);
   assert.equal(/secrets\.(?!TELEGRAM_)/.test(alert), false, "only TELEGRAM_* secrets in the Telegram job");
@@ -953,21 +956,33 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   assert.match(pa, /\n {4}permissions:\n {6}contents: read\n/, "read-only token");
   assert.match(pa, /\n {4}timeout-minutes: \d+ *(#[^\n]*)?\n/);
   assert.match(pa, /\n {4}continue-on-error: true\n/, "never fails the run");
-  assert.match(pa, /\n {4}outputs:\n {6}done: \$\{\{ steps\.end\.outputs\.done \}\}[^\n]*\n {6}deferred: \$\{\{ steps\.notify\.outputs\.deferred \}\}[^\n]*\n {6}until: \$\{\{ steps\.notify\.outputs\.until \}\}[^\n]*\n {6}failed: \$\{\{ steps\.notify\.outputs\.failed \}\}/);
+  assert.match(pa, /\n {4}outputs:\n {6}done: \$\{\{ steps\.end\.outputs\.done \}\}[^\n]*\n {6}deferred: \$\{\{ steps\.notify\.outputs\.deferred \}\}[^\n]*\n {6}until: \$\{\{ steps\.notify\.outputs\.until \}\}[^\n]*\n {6}failed: \$\{\{ steps\.notify\.outputs\.failed \}\}[^\n]*\n {6}startfail: \$\{\{ steps\.notify\.outputs\.startfail \|\| steps\.pin\.outputs\.startfail \}\}/);
   // the alert job: one Telegram line when the Worker deferred the computation (COMPUTES_PER_DAY — the first deferred factory
   // run of a D1 day only, notify.mjs writes deferred=true then), its own secrets only; when (until) comes from the output
   const deferredStep = alert.split(/\n {6}- /).find((st) => /deferred/.test(st.split("\n")[0]));
   assert.ok(deferredStep, "a Telegram step for a deferred computation");
   assert.match(deferredStep, /\n {8}if: needs\.price_alerts\.outputs\.deferred == 'true'\n/);
   assert.match(deferredStep, /\n {10}UNTIL: \$\{\{ needs\.price_alerts\.outputs\.until \}\}\n/);
-  assert.match(deferredStep, /python3 \.github\/scripts\/telegram\.py "[^"]*\$U 뒤 첫 따라잡기[^"]*D1 하루에 한 번만[^"]*\$RUN_URL"/);
+  assert.match(deferredStep, /python3 \.github\/scripts\/telegram\.py "[^"]*\$U [^"]*D1 하루에 한 번[^"]*\$RUN_URL"/);
+  // 11th review: the 06:00 share is the 06:00 run's (a catch-up takes it from 08:00 only) — the line says so, not "the first
+  // catch-up after 06:00"; 'cap' waits for 09:00
+  assert.match(deferredStep, /06:00\) U="06:00 KST 정기 실행이 계산해요[^"]*08:00 KST 뒤 첫 따라잡기[^"]*";;/);
+  assert.match(deferredStep, /\*\) U="09:00 KST\(새 D1 하루\) 뒤 첫 따라잡기[^"]*";;/);
+  assert.equal(/정기 실행 몫으로 남긴 마지막 1번\) 뒤 첫 따라잡기/.test(deferredStep), false, "the old wording (a catch-up took the share) is gone");
   assert.equal(/지금 3번/.test(alert), false, "no fixed count in the line (the plan profile decides it)");
   // a computation that failed after it started (10th review): notify.mjs exits 0, so the end mark is set — its own line
   const failedStep = alert.split(/\n {6}- /).find((st) => /failed after it started/.test(st.split("\n")[0]));
   assert.ok(failedStep, "a Telegram step for a computation that failed after it started");
   assert.match(failedStep, /\n {8}if: needs\.price_alerts\.outputs\.failed == 'true'\n/);
   assert.match(failedStep, /python3 \.github\/scripts\/telegram\.py "[^"]*시작한 뒤 실패[^"]*\$RUN_URL"/);
-  for (const st of [deferredStep, failedStep]) assert.equal(/secrets\.(?!TELEGRAM_)/.test(st), false, "its own secrets only");
+  // a start no retry can cure (11th review): startfail=true from notify.mjs (a 4xx, an unknown answer, the shape guard) or
+  // from the pin step (no pin while public hosting is on and ALERTS_SECRET is set) — one line naming what to check
+  const startfailStep = alert.split(/\n {6}- /).find((st) => /setup problem/.test(st.split("\n")[0]));
+  assert.ok(startfailStep, "a Telegram step for a start no retry can cure");
+  assert.match(startfailStep, /\n {8}if: needs\.price_alerts\.outputs\.startfail == 'true'\n/);
+  assert.match(startfailStep, /python3 \.github\/scripts\/telegram\.py "[^"]*ALERTS_SECRET·Worker 설정 확인[^"]*\$RUN_URL"/);
+  assert.equal(/따라잡기[^"]*다시 계산/.test(startfailStep), false, "it does not promise that the catch-up computes (it gets the same answer)");
+  for (const st of [deferredStep, failedStep, startfailStep]) assert.equal(/secrets\.(?!TELEGRAM_)/.test(st), false, "its own secrets only");
   assert.equal(/\n {4}environment:/.test(pa), false, "not the Cloudflare environment: the deploy token can never reach this job");
   assert.equal(/pip |requirements\.txt|npm (ci|install)|setup-python|tools\/factory\.sh|\$GITHUB_ENV|wrangler/.test(pa), false, "installs nothing, runs no factory code");
   const steps = pa.split(/\n {6}- /).slice(1);
@@ -981,6 +996,24 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   assert.match(pin, /PIN: \$\{\{ vars\.ALERTS_CODE_SHA \}\}/, "the variable arrives through env, not spliced into the script");
   assert.match(pin, /grep -Eq '\^\[0-9a-f\]\{40\}\$'/, "only a full 40-hex commit id is accepted (an empty ref would fall back to the default branch)");
   assert.match(pin, /echo "ok=false" >> "\$GITHUB_OUTPUT"/);
+  // no pin while public hosting is on and alerts are set up (ALERTS_SECRET exists): startfail=true. The step learns only
+  // WHETHER the secret is set — a comparison, never its value
+  assert.match(pin, /\n {10}PUBLIC: \$\{\{ vars\.PUBLIC_DEPLOY \}\}\n {10}SET_UP: \$\{\{ secrets\.ALERTS_SECRET != '' \}\}\n/);
+  assert.match(pin, /elif \[ "\$PUBLIC" = on \] && \[ "\$SET_UP" = true \]; then\n[^\n]*::warning[^\n]*\n[^\n]*echo "ok=false" >> "\$GITHUB_OUTPUT"\n[^\n]*echo "startfail=true" >> "\$GITHUB_OUTPUT"\n/);
+  {
+    const script = pin.slice(pin.indexOf("run: |") + 6).split("\n").map((l) => l.replace(/^ {10}/, "")).join("\n");
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "alerts-pin-"));
+    try {
+      for (const [PIN, PUBLIC, SET_UP, want] of [["a".repeat(40), "on", "true", `sha=${"a".repeat(40)}\nok=true\n`], ["", "on", "true", "ok=false\nstartfail=true\n"],
+        ["", "on", "false", "ok=false\n"], ["", "", "true", "ok=false\n"], ["abc", "on", "true", "ok=false\nstartfail=true\n"]]) {
+        const out = path.join(dir, "out");
+        fs.writeFileSync(out, "");
+        const r = spawnSync("bash", ["-e", "-c", script], { cwd: dir, encoding: "utf8", env: { PATH: process.env.PATH, GITHUB_OUTPUT: out, PIN, PUBLIC, SET_UP } });
+        assert.equal(r.status, 0, r.stderr);
+        assert.equal(fs.readFileSync(out, "utf8"), want, JSON.stringify([PIN, PUBLIC, SET_UP]));
+      }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
   const checkouts = steps.filter((st) => /^uses: actions\/checkout@/.test(st));
   assert.equal(checkouts.length, 3, "the pinned code, main's alerts code (hint), the data commit's two files");
   for (const c of checkouts) {
@@ -1019,7 +1052,7 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   assert.match(take, /\[ "\$code" = 200 \]/, "HTTP 200 only (a redirect answer is not followed and not taken)");
   assert.ok(take.indexOf('cp data/app/data.json "$RUNNER_TEMP/data.json"') > take.indexOf('if [ "$served" = "$want" ]'), "the file is handed on only after the public app's data-meta.json named it");
   assert.equal(/code\/|published\/|node /.test(take), false, "nothing from the code or hint checkout is read or run in the data step");
-  assert.equal(/ALERTS_(URL|SECRET|MODE)|secrets\./.test(pin + hint + which + take), false, "the pin, hint, which and data steps have no secret");
+  assert.equal(/ALERTS_(URL|SECRET|MODE)|secrets\./.test(pin.replace("SET_UP: ${{ secrets.ALERTS_SECRET != '' }}", "") + hint + which + take), false, "the pin, hint, which and data steps have no secret (the pin step: only whether ALERTS_SECRET is set)");
   // the notify step: only with a valid pin AND the data taken; the pinned code on the data file; two env values — no mode:
   // every run is the same and the Worker's start decides (9th review: the fingerprint — done, busy, deferred or compute;
   // a Re-run is the same prices: done). No continue-on-error of its own (7th review): a failure or timeout must end the job
