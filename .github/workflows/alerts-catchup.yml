@@ -18,8 +18,9 @@ name: alerts-catchup
 # computation if no run did. For the same reason it never takes the D1 day's last computation before 08:00 KST (it is the
 # 06:00 run's; the Worker answers 'deferred' with until 08:00 — 11th review: the 06:07 catch-up took it for the prices
 # deferred the afternoon before, and the 06:00 collection then waited for 09:00).
-# A start no retry can cure (a 4xx, an unknown answer, a data.json shape the Worker refuses, no pin while public hosting
-# is on and ALERTS_SECRET is set) writes startfail=true here too; this job has no Telegram, so weekly.yml's price_alerts
+# A start no retry can cure (a 3xx or 4xx, a 2xx that is not JSON, an ALERTS_URL that is not https — 12th review —, an
+# unknown answer, a data.json shape the Worker refuses, no pin while public hosting is on and ALERTS_SECRET is set) writes
+# startfail=true here too; this job has no Telegram, so weekly.yml's price_alerts
 # job (the same steps) is what tells the owner — at the next factory run that deploys, the daily 06:00 schedule at the
 # latest.
 # The same guards as weekly.yml's price_alerts job, step for step (tests/factory_worker.test.js compares them): the CODE is

@@ -226,7 +226,10 @@ def worker_warnings(host, data, app_key=""):
             out.append(f"알림 Worker가 공장에서 숫자를 한 번도 못 받았어요. 첫 구독 뒤 2일 넘게 지났어요 ({host}): "
                        "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계, 30분마다 도는 따라잡기(alerts-catchup)를 확인하세요")
         else:
-            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 30분마다 도는 따라잡기(alerts-catchup) 실행 기록을 확인하세요")
+            # an ALERTS_URL naming a host that does not resolve shows here only (this check reads the right address, so the
+            # Worker is not down) — 12th review
+            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 30분마다 도는 따라잡기(alerts-catchup) 실행 기록을 확인하세요"
+                       " — Worker는 이렇게 답하므로 실행 기록이 '연결 안 됨'(fetch failed)이면 ALERTS_URL이 다른 주소를 가리키는지 보세요")
     if data.get("sending") is False:
         out.append(f"알림 Worker가 푸시를 보낼 수 없어요 ({host}): VAPID_PRIVATE_JWK 비밀값이 없거나 쓸 수 없는 키예요 "
                    "(VAPID_PUBLIC_KEY를 넣었다면 그 키와 맞지 않아요)")
