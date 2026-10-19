@@ -926,12 +926,21 @@ test("price alerts: their own weekly.yml job after the deploy job deployed (or a
   assert.match(pa, /\n {4}permissions:\n {6}contents: read\n/, "read-only token");
   assert.match(pa, /\n {4}timeout-minutes: \d+ *(#[^\n]*)?\n/);
   assert.match(pa, /\n {4}continue-on-error: true\n/, "never fails the run");
-  assert.match(pa, /\n {4}outputs:\n {6}done: \$\{\{ steps\.end\.outputs\.done \}\}[^\n]*\n {6}deferred: \$\{\{ steps\.notify\.outputs\.deferred \}\}/);
-  // the alert job: one Telegram line when the Worker deferred the computation (COMPUTES_PER_DAY), its own secrets only
+  assert.match(pa, /\n {4}outputs:\n {6}done: \$\{\{ steps\.end\.outputs\.done \}\}[^\n]*\n {6}deferred: \$\{\{ steps\.notify\.outputs\.deferred \}\}[^\n]*\n {6}until: \$\{\{ steps\.notify\.outputs\.until \}\}[^\n]*\n {6}failed: \$\{\{ steps\.notify\.outputs\.failed \}\}/);
+  // the alert job: one Telegram line when the Worker deferred the computation (COMPUTES_PER_DAY — the first deferred factory
+  // run of a D1 day only, notify.mjs writes deferred=true then), its own secrets only; when (until) comes from the output
   const deferredStep = alert.split(/\n {6}- /).find((st) => /deferred/.test(st.split("\n")[0]));
   assert.ok(deferredStep, "a Telegram step for a deferred computation");
   assert.match(deferredStep, /\n {8}if: needs\.price_alerts\.outputs\.deferred == 'true'\n/);
-  assert.match(deferredStep, /python3 \.github\/scripts\/telegram\.py "[^"$]*09시 뒤 첫 따라잡기[^"]*\$RUN_URL"/);
+  assert.match(deferredStep, /\n {10}UNTIL: \$\{\{ needs\.price_alerts\.outputs\.until \}\}\n/);
+  assert.match(deferredStep, /python3 \.github\/scripts\/telegram\.py "[^"]*\$U 뒤 첫 따라잡기[^"]*D1 하루에 한 번만[^"]*\$RUN_URL"/);
+  assert.equal(/지금 3번/.test(alert), false, "no fixed count in the line (the plan profile decides it)");
+  // a computation that failed after it started (10th review): notify.mjs exits 0, so the end mark is set — its own line
+  const failedStep = alert.split(/\n {6}- /).find((st) => /failed after it started/.test(st.split("\n")[0]));
+  assert.ok(failedStep, "a Telegram step for a computation that failed after it started");
+  assert.match(failedStep, /\n {8}if: needs\.price_alerts\.outputs\.failed == 'true'\n/);
+  assert.match(failedStep, /python3 \.github\/scripts\/telegram\.py "[^"]*시작한 뒤 실패[^"]*\$RUN_URL"/);
+  for (const st of [deferredStep, failedStep]) assert.equal(/secrets\.(?!TELEGRAM_)/.test(st), false, "its own secrets only");
   assert.equal(/\n {4}environment:/.test(pa), false, "not the Cloudflare environment: the deploy token can never reach this job");
   assert.equal(/pip |requirements\.txt|npm (ci|install)|setup-python|tools\/factory\.sh|\$GITHUB_ENV|wrangler/.test(pa), false, "installs nothing, runs no factory code");
   const steps = pa.split(/\n {6}- /).slice(1);
@@ -1101,7 +1110,7 @@ test("price alerts which/data steps (run as written, a real git checkout, fake c
     r = run();
     assert.equal(r.output, "ok=false\n");
     assert.equal(r.taken, null);
-    assert.match(r.out, /^::warning title=price alerts::the public app does not serve this data\.json \(a deploy that did not reach it, or a newer one\) — nothing sent \(the hourly alerts-catchup run checks again\)$/m);
+    assert.match(r.out, /^::warning title=price alerts::the public app does not serve this data\.json \(a deploy that did not reach it, or a newer one\) — nothing sent \(the alerts-catchup run, every 30 minutes, checks again\)$/m);
     assert.deepEqual([r.curl.length, r.sleeps], [3, 2]);
     // ... and serves it from the second try on (a deploy that just finished)
     const later = path.join(dir, "later");
@@ -1146,11 +1155,11 @@ test("price alerts which/data steps (run as written, a real git checkout, fake c
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test("alerts-catchup.yml (9th review: alerts within 2 hours of new prices): every hour, main only, read-only, the ALERTS_* secrets only; the same pin, data and notify steps as weekly.yml's price_alerts job (notify says it is the catch-up) — main's copy, checked against the public app, nothing while public hosting is paused", () => {
+test("alerts-catchup.yml (9th review: alerts within 2 hours of new prices; 10th: every 30 minutes): main only, read-only, the ALERTS_* secrets only; the same pin, data and notify steps as weekly.yml's price_alerts job (notify says it is the catch-up) — main's copy, checked against the public app, nothing while public hosting is paused", () => {
   const yml = fs.readFileSync(path.join(__dirname, "../.github/workflows/alerts-catchup.yml"), "utf8");
   const weekly = fs.readFileSync(path.join(__dirname, "../.github/workflows/weekly.yml"), "utf8");
   const code = yml.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
-  assert.match(code, /\non:\n  schedule:\n    - cron: "37 \* \* \* \*"[^\n]*\n  workflow_dispatch:[^\n]*\n\n/, "every hour at :37 (the 2-hour promise: ≤ 1 hour + GitHub's delay); no push trigger");
+  assert.match(code, /\non:\n  schedule:\n    - cron: "7,37 \* \* \* \*"[^\n]*\n  workflow_dispatch:[^\n]*\n\n/, "every 30 minutes at :07 and :37 (the 2-hour promise: ≤ 30 minutes + GitHub's delay); no push trigger");
   assert.match(code, /\npermissions: \{\}/);
   assert.match(code, /\nconcurrency:\n  group: alerts-catchup\n  cancel-in-progress: false\n/, "its own group: never the factory's weekly-prices queue");
   const jobs = code.slice(code.indexOf("\njobs:\n") + 7).split(/\n(?=  [a-z][\w-]*:\n)/).filter((x) => /^\s*[a-z]/.test(x));
@@ -1168,7 +1177,7 @@ test("alerts-catchup.yml (9th review: alerts within 2 hours of new prices): ever
   const strip = (st) => st.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n").replace(/\s+$/, "");
   for (const id of ["pin", "data"]) assert.equal(strip(byId(id)), strip(wById(id)), `step ${id} as in weekly.yml`);
   // notify: weekly.yml's step plus one env line — ALERTS_CATCHUP "1" (the Worker leaves the day's computation of unchanged
-  // prices to the 06:00 factory run until 07:00 KST, src/worker.js CATCHUP_ROLL_HOUR); weekly.yml's has no such line
+  // prices to the 06:00 factory run until 08:00 KST, src/worker.js CATCHUP_ROLL_HOUR); weekly.yml's has no such line
   const CATCHUP = '\n          ALERTS_CATCHUP: "1"';
   assert.ok(strip(byId("notify")).endsWith(CATCHUP), "the catch-up's notify step names itself (last env line)");
   assert.equal(strip(byId("notify")).slice(0, -CATCHUP.length), strip(wById("notify")), "otherwise the notify step as in weekly.yml");

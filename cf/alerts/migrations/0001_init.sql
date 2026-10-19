@@ -109,8 +109,13 @@ CREATE TABLE vapid (aud TEXT PRIMARY KEY, jwt TEXT NOT NULL, exp INTEGER NOT NUL
 --   'data'            the prices that finish was computed from: the first 52 bits of their fingerprint (notify.mjs
 --                     fingerprint; no row = not told). With 'finish' a start of the same prices the same day is 'done'
 --   'lease'           epoch ms a computation started (one at a time; its finish deletes it, else it runs out after 15
---                     minutes); 'fc' the UTC day × 100 + computations started that D1 day (COMPUTES_PER_DAY) — src/sql.js
---                     START_STATE, TAKE_LEASE, COUNT_COMPUTE
+--                     minutes); 'fc' the UTC day × 100 + computations counted that D1 day (COMPUTES_PER_DAY) — src/sql.js
+--                     START_STATE, TAKE_LEASE, COUNT_COMPUTE. 'ln' / 'lf' the nonce (52 random bits) and the fingerprint's
+--                     tag the lease was taken with (a lost start answer sent again gets the same lease; a retry of the same
+--                     prices); 'fr' the UTC day of that day's one uncounted retry; 'cfail' the UTC day a computation was
+--                     found dead (its lease ran out — GET /health "compute": "failed"); 'fd' the UTC day × 10 + 1 once a
+--                     factory run was told it was deferred that day (× 10 + 0: only a catch-up) — GET /health "compute":
+--                     "deferred", one Telegram line a D1 day (src/sql.js LEASE_OF, MARK_RETRY, STAT_CFAIL, STAT_DEFERRED)
 --   'refusing'        KST day (yyyymmdd) of the last send run in which phones that took our pushes refused our VAPID
 --                     token at a push service that took nothing else (GET /health "refusing" that day and the next)
 --   'capped'          KST day (yyyymmdd) the factory's watched list was last cut at PAIR_CAP (GET /health "pairs")

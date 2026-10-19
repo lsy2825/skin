@@ -13,7 +13,9 @@
 //      PROBE_CLAIM_PER_ORIGIN rows per push origin that holds rows, PROBE_ORIGINS origins at most — and the release after a
 //      2xx (RELEASE_HELD) frees SEND_LIMIT rows, reading ≤ RELEASE_PER_ROW per freed row, never the other held rows (it read
 //      and sorted every held row of every origin: ~4 rows per held row in each of 77 runs, unbounded below MAX_SUBS).
-//   5. (9th review) start: 'done' and 'deferred' read ≤ 4 rows and write none; 'compute' ≤ 10 rows read, ≤ 4 written.
+//   5. (9th/10th review) start: every answer reads ≤ 30 rows (START_STATE: stat rows by primary key); 'compute' writes ≤ 12
+//      (the lease, nonce, fingerprint tag, count — a retry and a dead computation's notes), the D1 day's first deferral 2 (stat
+//      'fd'), 'done', a resent start (the same nonce: the same lease), 'busy', a later deferral and 'edge' write none.
 // Exit 1 with the numbers when one fails. Nothing leaves this machine; the D1 is a throw-away folder.
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -151,28 +153,34 @@ try {
     if (x.release > RELEASE_PER_ROW * SEND_LIMIT + 20) fails.push(`${label}: RELEASE_HELD read ${x.release} > ${RELEASE_PER_ROW} × ${SEND_LIMIT} + 20`);
   }
 
-  // 5. start (9th review): what a factory run or a catch-up costs before it computes anything
-  const startAt = async (fp, when) => {
+  // 5. start (9th/10th review): what a factory run or a catch-up costs before it computes anything
+  const startAt = async (fp, when, nonce, utc) => {
     log = [];
-    const res = await worker.fetch(new Request("https://alerts.local/v1/internal/start", { method: "POST", headers: { authorization: "Bearer " + H.SECRET_VALUE, "content-type": "application/json" }, body: JSON.stringify({ fp }) }), env, { waitUntil() {} }, H.kst(when));
+    const res = await worker.fetch(new Request("https://alerts.local/v1/internal/start", { method: "POST", headers: { authorization: "Bearer " + H.SECRET_VALUE, "content-type": "application/json" }, body: JSON.stringify(nonce ? { fp, nonce } : { fp }) }), env, { waitUntil() {} }, utc ? Date.parse(when + "Z") : H.kst(when));
     const body = await res.json();
-    return { go: body.go, lease: body.lease, read: log.reduce((a, [, n]) => a + n, 0), written: log.reduce((a, [, , w]) => a + w, 0) };
+    return { go: body.go, why: body.why, lease: body.lease, read: log.reduce((a, [, n]) => a + n, 0), written: log.reduce((a, [, , w]) => a + w, 0) };
   };
-  const fpA = "a".repeat(64);
-  const first = await startAt(fpA, "2026-10-23T10:00:00");
-  at = "2026-10-23T10:01:00";
-  await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp: fpA, lease: first.lease });
-  const done = await startAt(fpA, "2026-10-23T12:00:00");
-  for (const [i, c] of ["b", "c"].entries()) {
-    const g = await startAt(c.repeat(64), `2026-10-23T1${3 + i}:00:00`);
-    at = `2026-10-23T1${3 + i}:01:00`;
-    await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp: c.repeat(64), lease: g.lease });
+  const fin = async (fp, lease, when) => { at = when; await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp, lease }); };
+  const fpA = "a".repeat(64), fpB = "b".repeat(64), fpC = "c".repeat(64);
+  const rows = {};
+  rows.compute = await startAt(fpA, "2026-10-23T10:00:00", "000000000000a");
+  rows.resent = await startAt(fpA, "2026-10-23T10:00:05", "000000000000a");
+  rows.busy = await startAt(fpB, "2026-10-23T10:00:10", "000000000000b");
+  await fin(fpA, rows.compute.lease, "2026-10-23T10:01:00");
+  rows.done = await startAt(fpA, "2026-10-23T12:00:00", "000000000000c");
+  rows.steady = await startAt(fpB, "2026-10-23T13:00:00", "000000000000d");
+  await fin(fpB, rows.steady.lease, "2026-10-23T13:01:00");
+  rows.deferredFirst = await startAt(fpC, "2026-10-23T14:00:00", "000000000000e");          // before 21:00 UTC: the 06:00 share
+  rows.deferredAgain = await startAt(fpC, "2026-10-23T15:00:00", "000000000000f");
+  rows.edge = await startAt(fpC, "2026-10-23T23:50:00", "0000000000010", true);
+  console.log("d1 reads: start — " + Object.entries(rows).map(([k, x]) => `${k} ${x.go}${x.why ? "/" + x.why : ""} ${x.read} read / ${x.written} written`).join(", "));
+  const want = { compute: "compute", resent: "compute", busy: "busy", done: "done", steady: "compute", deferredFirst: "deferred", deferredAgain: "deferred", edge: "deferred" };
+  for (const [k, g] of Object.entries(want)) if (rows[k].go !== g) fails.push(`start ${k} answered ${rows[k].go}, not ${g}`);
+  if (rows.resent.lease !== rows.compute.lease) fails.push("a start sent again with its nonce did not get the same lease");
+  for (const [k, x] of Object.entries(rows)) {
+    const maxW = k === "compute" || k === "steady" ? 12 : k === "deferredFirst" ? 2 : 0;
+    if (x.read > 30 || x.written > maxW) fails.push(`start ${k} read ${x.read} > 30 or wrote ${x.written} > ${maxW}`);
   }
-  const deferred = await startAt("d".repeat(64), "2026-10-23T16:00:00");
-  console.log(`d1 reads: start — compute ${first.read} read / ${first.written} written, done ${done.read} / ${done.written}, deferred ${deferred.read} / ${deferred.written}`);
-  if (first.go !== "compute" || done.go !== "done" || deferred.go !== "deferred") fails.push(`start answered ${first.go}, ${done.go}, ${deferred.go} — not compute, done, deferred`);
-  for (const [label, x] of [["done", done], ["deferred", deferred]]) if (x.read > 4 || x.written > 0) fails.push(`start ${label} read ${x.read} > 4 or wrote ${x.written} > 0`);
-  if (first.read > 10 || first.written > 4) fails.push(`start compute read ${first.read} > 10 or wrote ${first.written} > 4`);
 } finally {
   await mf.dispose();
   rmSync(persist, { recursive: true, force: true });

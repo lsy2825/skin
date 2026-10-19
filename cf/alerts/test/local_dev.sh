@@ -2,9 +2,12 @@
 # Local check of the alerts Worker in the real runtime (workerd via wrangler dev) with a local D1:
 #   bash cf/alerts/test/local_dev.sh
 # migrate a throw-away local D1 → wrangler dev on a free port (8795-8799) → subscribe / rules / delete / factory export
-# with curl → notify.mjs on app/data.json against it (computed, the same prices again = done, busy, deferred) → D1 rows read
-# of a finish and a send run on the same runtime (test/d1_reads.mjs) → stop wrangler by its process group. Needs node +
-# npx (no account, no network to Cloudflare). The factory secret is made up for this run only.
+# with curl → notify.mjs on app/data.json against it (computed, the same prices again = done, a start sent again with its
+# nonce = the same lease, busy, deferred — the free profile, PLAN "free", so the D1-day cap is 3) → D1 rows read of a
+# finish and a send run on the same runtime (test/d1_reads.mjs) → stop wrangler by its process group. Needs node + npx (no
+# account, no network to Cloudflare). The factory secret is made up for this run only. The Worker uses the real clock: the
+# cap section expects 'reserve' before 21:00 UTC (06:00 KST) and 'cap' after it, and the script waits out 23:30–24:00 UTC
+# (no computation starts in the last 15 minutes of a D1 day — 10th review).
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 WRANGLER=${WRANGLER:-npx --yes wrangler@4.145.0}
@@ -35,12 +38,14 @@ fail() { echo "FAIL: $*" >&2; echo "--- wrangler log ---" >&2; tail -30 "$LOG" >
 # without looking. Patterns always go after -e.
 grep_none() { local what=$1 rc=0; shift; grep "$@" >/dev/null || rc=$?; [ "$rc" = 1 ] || fail "$what (grep exit $rc)"; }
 
+# the D1 day's edge (23:45–24:00 UTC): wait until the new D1 day so the starts below are not 'deferred (edge)'
+while [ "$(date -u +%H%M)" -ge 2330 ]; do echo "waiting for 00:00 UTC (the D1 day's edge)"; sleep 30; done
 echo "== migrate local D1"
 $WRANGLER d1 migrations apply DB --local --config "$CONF" --persist-to "$STATE" >"$STATE/migrate.log" 2>&1 || { cat "$STATE/migrate.log"; exit 1; }
 
 echo "== wrangler dev on :$PORT"
 setsid $WRANGLER dev --local --config "$CONF" --port "$PORT" --ip 127.0.0.1 --persist-to "$STATE" \
-  --compatibility-date 2026-10-07 --test-scheduled --var "ALERTS_SECRET:$SECRET" --var "DEV_ORIGINS:http://localhost:8766" \
+  --compatibility-date 2026-10-07 --test-scheduled --var "ALERTS_SECRET:$SECRET" --var "DEV_ORIGINS:http://localhost:8766" --var "PLAN:free" \
   --var "VAPID_PRIVATE_JWK:$VJWK" >"$LOG" 2>&1 &
 PID=$!
 for _ in $(seq 1 90); do curl -fsS "$BASE/health" >/dev/null 2>&1 && break; sleep 1; done
@@ -58,6 +63,7 @@ case "$H" in *'{"ok":true,'*'"sending":true'*) ;; *) fail "health should be {\"o
 case "$H" in *'"key":"'"$VPUB"'"'*) ;; *) fail "health should show the public key derived from VAPID_PRIVATE_JWK: $H";; esac
 case "$H" in *'"refusing":false'*) ;; *) fail "health should carry refusing false: $H";; esac
 case "$H" in *'"capacity":"ok"'*'"stale":false'*|*'"stale":false'*'"capacity":"ok"'*) ;; *) fail "health should carry capacity ok and stale false: $H";; esac
+case "$H" in *'"compute":"ok"'*'"plan":"free"'*) ;; *) fail "health should carry compute ok and plan free (--var PLAN:free): $H";; esac
 
 SUB='{"subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/local-dev-1","keys":{"p256dh":"'$(printf 'B%.0s' $(seq 87))'","auth":"aaaaaaaaaaaaaaaaaaaaaa"}},"rules":[{"kind":"watch","key":"X24"},{"kind":"target","key":"X24","max":150000,"region":"서울"},{"kind":"expiring","key":"X01"}]}'
 R=$(req POST /v1/push/subscribe "$SUB" -H "origin: $APP"); expect 201 "$R" "subscribe"
@@ -93,29 +99,42 @@ DS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --js
 WANT=$(node --input-type=module -e 'import { fingerprint } from "./cf/alerts/notify.mjs"; import { readFileSync } from "node:fs"; console.log(parseInt(fingerprint(JSON.parse(readFileSync("app/data.json", "utf8"))).slice(0, 13), 16))')
 case "$DS" in *'"n": '"$WANT"*|*'"n":'"$WANT"*) ;; *) fail "stat 'data' should hold the tag of app/data.json's fingerprint ($WANT): $DS";; esac
 echo "ok   same prices again the same day: done at start (stat data = the fingerprint's tag)"
-# another computation holding the lease → a run with other prices is busy; once it finishes, a third computation of the
-# UTC day; a fourth new set of prices is deferred (COMPUTES_PER_DAY 3) with deferred=true for the workflow's alert job
+# another computation holding the lease → a start sent again with its nonce gets the same lease (counted once, 10th review);
+# a run with other prices is busy; once it finishes: before 21:00 UTC the D1 day's last computation is kept for 06:00 KST
+# (deferred 'reserve', until=06:00), after it a third computation runs and a fourth is deferred ('cap', until=09:00) — the
+# first deferred factory run of the D1 day gets deferred=true + until for the workflow's one Telegram line
 # other prices: the first row's listed price (column 3) 1,000 won up
 node -e 'const fs=require("fs");const d=JSON.parse(fs.readFileSync("app/data.json","utf8"));if(d.cols)d.cols[3][0]+=1000;else d.rows[0][3]+=1000;fs.writeFileSync(process.argv[1],JSON.stringify(d))' "$STATE/data2.json"
-FPB=$(printf 'b%.0s' $(seq 64)); FPC=$(printf 'c%.0s' $(seq 64))
-G=$(req POST /v1/internal/start '{"fp":"'$FPB'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "start of a second computation (takes the lease)"
+FPB=$(printf 'b%.0s' $(seq 64)); FPC=$(printf 'c%.0s' $(seq 64)); NB=0123456789abc
+G=$(req POST /v1/internal/start '{"fp":"'$FPB'","nonce":"'$NB'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "start of a second computation (takes the lease)"
 LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "start should answer compute: $G"
+G2=$(req POST /v1/internal/start '{"fp":"'$FPB'","nonce":"'$NB'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G2" "the same start again (its answer was lost)"
+[ "$(node -e 'const g=JSON.parse(process.argv[1]);console.log(g.go+" "+g.lease)' "${G2#* }")" = "compute $LEASE" ] || fail "a start sent again with its nonce must get the same lease: $G2"
 : >"$STATE/gh-output"
 GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs "$STATE/data2.json" | tee "$STATE/notify3.log"
-grep -q '^::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again$' "$STATE/notify3.log" || fail "other prices while a computation holds the lease must be busy"
+grep -q '^::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run (every 30 minutes) checks these prices again$' "$STATE/notify3.log" || fail "other prices while a computation holds the lease must be busy"
 TODAY=$(TZ=Asia/Seoul date +%F)
 # (the run notify.mjs computed: app/data.json's collection date | today — a finish prunes the pairs of any other run)
 RUN="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("app/data.json","utf8")).meta.updated)')|$TODAY"
 expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPB'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish frees the lease"
-G=$(req POST /v1/internal/start '{"fp":"'$FPC'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "a third computation this UTC day"
-LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "the third start should answer compute: $G"
-expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPC'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish"
+if [ "$(date -u +%H)" -ge 21 ]; then
+  G=$(req POST /v1/internal/start '{"fp":"'$FPC'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "a third computation this UTC day (after 21:00 UTC)"
+  LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "the third start should answer compute: $G"
+  expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPC'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish"
+  WANT_MSG="^::warning title=price alerts::this D1 day's computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up"; WANT_OUT=$'deferred=true\nuntil=09:00'; WANT_FC=3
+else
+  WANT_MSG="^::warning title=price alerts::the D1 day's last computation (the Worker's COMPUTES_PER_DAY) is kept for the 06:00 KST run"; WANT_OUT=$'deferred=true\nuntil=06:00'; WANT_FC=2
+fi
 GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs "$STATE/data2.json" | tee "$STATE/notify4.log"
-grep -q "^::warning title=price alerts::today's full computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up" "$STATE/notify4.log" || fail "a fourth new set of prices this UTC day must be deferred"
-[ "$(cat "$STATE/gh-output")" = "deferred=true" ] || fail "deferred must reach \$GITHUB_OUTPUT: $(cat "$STATE/gh-output")"
+grep -q "$WANT_MSG" "$STATE/notify4.log" || fail "new prices past the D1 day's share must be deferred"
+[ "$(cat "$STATE/gh-output")" = "$WANT_OUT" ] || fail "deferred and until must reach \$GITHUB_OUTPUT: $(cat "$STATE/gh-output")"
+: >"$STATE/gh-output"
+GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs "$STATE/data2.json" >/dev/null
+[ ! -s "$STATE/gh-output" ] || fail "a second deferred run the same D1 day must not ask for another Telegram line: $(cat "$STATE/gh-output")"
 FC=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT n % 100 AS c, (SELECT count(*) FROM stat WHERE k = 'lease') AS l FROM stat WHERE k = 'fc'" 2>/dev/null) || fail "could not read the local D1 computation count"
-case "$FC" in *'"c": 3'*'"l": 0'*|*'"c":3'*'"l":0'*) ;; *) fail "three computations counted, no lease left: $FC";; esac
-echo "ok   start: busy while a computation holds the lease, deferred past COMPUTES_PER_DAY (deferred=true for the alert job)"
+case "$FC" in *'"c": '$WANT_FC*'"l": 0'*|*'"c":'$WANT_FC*'"l":0'*) ;; *) fail "$WANT_FC computations counted, no lease left: $FC";; esac
+H3=$(req GET /health); case "$H3" in *'"compute":"deferred"'*) ;; *) fail "health should say compute deferred: $H3";; esac
+echo "ok   start: the same lease for a resent start, busy while a computation holds the lease, deferred past the D1 day's share (deferred=true + until once a D1 day), /health compute deferred"
 # notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
 # does not have is still stored (6th review) and answered exactly as 약속 1 says (7th review); a malformed key set is 400
 KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"

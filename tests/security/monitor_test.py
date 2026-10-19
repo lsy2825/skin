@@ -303,6 +303,19 @@ probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"refusing":
 check("workers: pairs ok → no warning", probs == [], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"full","sending":false,"refusing":true,"finished":null,"stale":true}')
 check("workers: several problems in one body → one line each", len(probs) == 4, str(probs))
+# compute (10th review): what the 30-minute catch-up cannot report itself — a computation that failed after it started, or
+# a deferred one (COMPUTES_PER_DAY), in this D1 day or the one before
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"compute":"failed","plan":"paid"}')
+check("workers: compute failed → one warning line naming both runs", len(probs) == 1 and "끝나지 못했어요" in probs[0] and "price_alerts" in probs[0]
+      and "alerts-catchup" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"compute":"deferred","plan":"free"}')
+check("workers: compute deferred → one warning line (cap, PLAN)", len(probs) == 1 and "미뤘어요" in probs[0] and "COMPUTES_PER_DAY" in probs[0] and "PLAN" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"compute":"ok","plan":"paid"}')
+check("workers: compute ok → no warning", probs == [], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true,"compute":"<b>x</b>"}')
+check("workers: an unknown compute word → one line, cut short", len(probs) == 1 and "compute=" in probs[0], str(probs))
+probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":true}')
+check("workers: no compute field (an older Worker) → no warning", probs == [], str(probs))
 
 # the Worker's VAPID public key ("key", derived from its secret) against app/config.js pushPublicKey (the key phones use)
 KA, KB = "B" + "a" * 86, "B" + "b" * 86

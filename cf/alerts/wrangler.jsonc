@@ -1,4 +1,5 @@
-// 가격 알림 (price alerts) Worker — Cloudflare FREE plan. Deployed by .github/workflows/cf-alerts.yml:
+// 가격 알림 (price alerts) Worker — Cloudflare Workers Paid (vars.PLAN "paid"; "free" fits a Free account). Deployed by
+// .github/workflows/cf-alerts.yml:
 //   wrangler@4.145.0 (installed in a step without the token) d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc
 //   wrangler@4.145.0 deploy --config cf/alerts/wrangler.jsonc
 // Secrets (set once in the dashboard or with `wrangler secret put`, never in this file):
@@ -18,8 +19,9 @@
   // PUT/DELETE URLs hold the subscription id (the phone's only key). CPU time stays visible under Metrics.
   "observability": { "enabled": true, "logs": { "invocation_logs": false } },
   // UTC: 23:00–11:50 = 08:00–20:50 KST, every 10 minutes = 78 runs a day; src/rules.js inWindow refuses 20:50 and is checked
-  // again before every push → 77 sending runs × SEND_LIMIT 40 = 3,080 pushes a day (src/worker.js has the full arithmetic).
-  // One cron trigger of the account's 5 on the free plan.
+  // again before every push → 77 sending runs × SEND_LIMIT (free 40, paid 200) = 3,080 / 15,400 pushes a day (src/worker.js
+  // has the full arithmetic). The same cron for both profiles (a cron cannot follow PLAN): one trigger of the account's 5
+  // (Free) / 250 (Paid).
   "triggers": { "crons": ["*/10 23,0-11 * * *"] },
   "d1_databases": [
     {
@@ -43,20 +45,19 @@
     // app/config.js pushPublicKey when both are set. Keeping it empty means a new key pair needs only the new secret.
     "VAPID_PUBLIC_KEY": "",
     "VAPID_SUBJECT": "https://yoonsiljang.lsy2825.workers.dev",
-    // what the D1 Free day of 100,000 rows written holds with COMPUTES_PER_DAY full computations (src/worker.js arithmetic —
-    // 9th review: alerts within 2 hours of new prices, a user decision of 2026-10-16, cost the ceiling 8,000 → 2,000; the cron
-    // could serve ~10,000). Nothing evicts: at the cap new phones get 503 FULL and GET /health says capacity "full" (80% =
-    // "nearly_full"; the monitor warns)
-    "MAX_SUBS": "2000",
-    // new subscriptions per KST day (one new subscription ≈ 5 rows written; a D1 day spans two KST days)
-    "NEW_PER_DAY": "500",
-    // full computations that may start in one D1 day (00:00–24:00 UTC = 09:00–09:00 KST): the 06:00 run's and two more (a
-    // manual collection, a price re-check, a reclassification). One more is answered 'deferred' and computed by the first
-    // alerts-catchup run after 09:00 KST. Raising it needs MAX_SUBS lowered (src/worker.js arithmetic); at most 99
-    "COMPUTES_PER_DAY": "3",
+    // the plan profile (src/worker.js PLANS, limits — 10th review, a user decision of 2026-10-19: the app launches on
+    // Cloudflare Workers PAID; switch the account to Workers Paid BEFORE PUBLIC_DEPLOY goes on). "paid": 200 pushes a run,
+    // 15,000 subscriptions, 1,500 new a KST day, 12 computations a D1 day — the worst month stays inside the $5 plan's 50M
+    // rows written / 25B read (src/worker.js arithmetic). "free": the 9th review's 40 / 2,000 / 500 / 3 (D1 Free: 100,000
+    // rows written a day). On a Free account set "free" (more than 50 pushes a run would fail there). Each limit can still
+    // be set here on its own — "SEND_LIMIT", "MAX_SUBS", "NEW_PER_DAY", "COMPUTES_PER_DAY" (a var beats the profile; pushes
+    // ≤ 45 a run on free, ≤ 500 on paid; ≤ 99 computations) — re-check the arithmetic first. No "limits" block: a Free
+    // account refuses one at deploy, so every limit is kept in code
+    "PLAN": "paid",
     // (key, region) pairs the factory digests per run, and the most rows its snap table holds (+ one digest chunk of 500):
-    // ≤ 2 × (PAIR_CAP + 500) = 7,000 D1 rows written per full computation (≤ COMPUTES_PER_DAY a D1 day). The 100,000-row daily write limit is for the whole
-    // account, and over it every D1 query fails until 09:00 KST — so the list is cut here (pairs of phones that took a push
+    // ≤ 2 × (PAIR_CAP + 500) = 7,000 D1 rows written per full computation (≤ COMPUTES_PER_DAY a D1 day). The D1 write budget
+    // (Free: 100,000 a day, over it every D1 query fails until 09:00 KST; Paid: 50M a month in the $5) is for the whole
+    // account — so the list is cut here (pairs of phones that took a push
     // first, then the pairs already computed, then the most-watched), a new pair waits for a free row, and GET /health says
     // "pairs": "capped" (the monitor warns). A user decision (src/worker.js PAIR_CAP has the arithmetic)
     "PAIR_CAP": "3000"
