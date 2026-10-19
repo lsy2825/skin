@@ -5,6 +5,8 @@
 // 1) app/styles.css and app.js: where coral and butter may be used, the grey steps. 2) In a browser (390 px, light and dark):
 // what is coral or butter on each screen, the look of every chosen control, the tab count, '제품 표기 없음', the compare header's
 // 담기 (an outline), the small switch '전에 이 시술을 받아 봤어요' (36×22 to see, 44 to press, a 13/400 grey label), search's ×.
+// A list in a butter box (ul.warns) is a price's conditions only — 가격 근거 '조건', the quote's '확인할 조건'; the treatment
+// sheet's side effects · cautions · sources and 고민 '시술 말고 할 수 있는 관리' are grey (ul.notes) — and 빠른 비교's date chip is grey.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/color_roles.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const fs = require('fs');
@@ -47,25 +49,28 @@ const inl = js.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /style:\s
 ok('app.js에 직접 적은 코랄·버터 글자색 없음(클래스로)', !inl.length, inl.join(', '));
 
 // ---- 2) the screens
-const scan = (W) => {
+const scan = (sel) => {
   const vis = (el) => { const r = el.getBoundingClientRect(); const cs = getComputedStyle(el); return r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none' && cs.opacity !== '0'; };
   const root = getComputedStyle(document.documentElement);
   const rgb = (n) => { const h = root.getPropertyValue(n).trim().replace('#', ''), v = parseInt(h, 16); return `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`; };
   const C = { coral: rgb('--coral'), coralS: rgb('--coral-soft'), butter: rgb('--butter'), butterS: rgb('--butter-soft'), butterI: rgb('--butter-ink'), ink: rgb('--ink'), surface: rgb('--surface') };
   const lab = (el) => `${el.tagName.toLowerCase()}${typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).join('.') : ''}«${(el.textContent || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ').slice(0, 16)}»`;
   const coralOk = (el) => !!el.closest('.kx, .unav, .ferr, .favbtn, .cov-x, .calert, .cwarn, .gmsg.err');
-  const butterOk = (el) => !!el.closest('.k1, .k2, .kt, .kc, ul.warns, .mascot, .jomi-say, .e-concern, .el-limit');
+  // a butter list box: only a price's conditions (가격 근거 '조건' · the quote's '확인할 조건'), never an explanation
+  const condList = (u) => { const f = u.closest('.fact'); return f ? ((f.querySelector('dt') || {}).textContent || '').trim() === '조건' : !!u.closest('li.qrow, .t3card'); };
+  const butterOk = (el) => { const u = el.closest('ul.warns'); return u ? condList(u) : !!el.closest('.k1, .k2, .kt, .kc, .mascot, .jomi-say, .e-concern, .el-limit'); };
   const out = { coral: [], coralBad: [], butter: [], butterBad: [], chosen: [], chosenBad: [], badge: [], prodk: [], kw: [], kwBad: [] };
-  for (const el of document.querySelectorAll('#main *, nav.tabs *, header.top *')) {
+  for (const el of document.querySelectorAll(sel || '#main *, nav.tabs *, header.top *')) {
     if (!vis(el)) continue;
     const cs = getComputedStyle(el), own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if ((own && cs.color === C.coral) || cs.backgroundColor === C.coral || cs.backgroundColor === C.coralS) { out.coral.push(lab(el)); if (!coralOk(el)) out.coralBad.push(lab(el)); }
     if ((own && cs.color === C.butterI) || cs.backgroundColor === C.butter || cs.backgroundColor === C.butterS) { out.butter.push(lab(el)); if (!butterOk(el)) out.butterBad.push(lab(el)); }
   }
-  // a chosen control: the charcoal fill (the tab bar's pill too). Not here: 담김 (light green, 사용자 결정), the heart, the brand
-  // filter (all on by default: on is an ordinary chip, off is dashed), and where you are (the path's step, 비교's tab row)
+  // a chosen control: the charcoal fill (the tab bar's pill too). Not here: 담김 (light green, 사용자 결정), 비교함에 있음 (a list the
+  // branch is in, like 담김: its icon and words change), the heart, the brand filter (all on by default: on is an ordinary chip,
+  // off is dashed), and where you are (the path's step, 비교's tab row)
   for (const el of document.querySelectorAll('[aria-pressed="true"], [aria-checked="true"], [aria-selected="true"], nav.tabs [aria-current="page"]')) {
-    if (!vis(el) || el.matches('input, .favbtn, .addbtn, .bchip, .subnav button, .crumb button')) continue;
+    if (!vis(el) || el.matches('input, .favbtn, .addbtn, .shortbtn, .bchip, .subnav button, .crumb button')) continue;
     const t = el.matches('nav.tabs button') ? el.querySelector('.ti') : el, bg = getComputedStyle(t).backgroundColor;
     out.chosen.push(lab(el)); if (bg !== C.ink) out.chosenBad.push(`${lab(el)} ${bg}`);
   }
@@ -90,14 +95,17 @@ const scan = (W) => {
     for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`); await p.waitForSelector('.pc');
     await p.waitForFunction(() => window.App && window.App.data() && !window.App.data().meta.partial, null, { timeout: 90000 });
     const bi = await p.evaluate(() => { const { D } = App.state(); const i = D.branches.findIndex((x) => D.s[x[1]] === '강남역점'); return i >= 0 ? i : 0; });
+    // 비교함: three 강남 branches, for 빠른 비교 (#quick)
+    await p.evaluate(() => { const { D } = App.state(), keys = []; for (const x of D.branches) if (/강남/.test(D.s[x[1]]) && keys.length < 3) keys.push(`${D.meta.brands[x[0]][0]}|${D.s[x[1]]}`);
+      localStorage.setItem('pc:short', JSON.stringify(keys)); });
     const screens = [['홈', '#home'], ['검색', '#search?q=' + encodeURIComponent('리쥬란')], ['비교', '#compare?k=X01'], ['비교(제품 섞임)', '#compare?k=X35'], ['지점', `#branch/${bi}`],
-      ['내 견적', '#cart'], ['내 견적 병원별', '#cart', 'quote'], ['가격 변동', '#change'], ['마이', '#me'], ['전체 가격표', '#table']];
+      ['내 견적', '#cart'], ['내 견적 병원별', '#cart', 'quote'], ['가격 변동', '#change'], ['마이', '#me'], ['전체 가격표', '#table'], ['빠른 비교', '#quick?k=X01'], ['고민', '#concern?c=pigment']];
     const seen = { coral: new Set(), kc: 0, kw: 0, prodk: 0, chosen: 0 };
     for (const [label, hash, step] of screens) {
       await p.goto(BASE + hash); await p.waitForTimeout(900);
       if (step) { const ex = p.locator('.cartsum button[aria-expanded="false"]'); if (await ex.count()) { await ex.first().click(); await p.waitForTimeout(500); } }
       // the whole page, not only the first screen: lines drawn later (비교 '모두 보기' is not opened) are in the DOM already
-      const r = await p.evaluate(scan, W);
+      const r = await p.evaluate(scan, null);
       r.coral.forEach((x) => seen.coral.add(x.replace(/«.*/, ''))); seen.kw += r.kw.length; seen.prodk += r.prodk.length; seen.chosen += r.chosen.length;
       ok(`${W} ${label}: 코랄은 쓸 수 없는 가격·입력 오류·하트에만`, !r.coralBad.length, r.coralBad.slice(0, 4).join(', ') || `${r.coral.length}곳`);
       ok(`${W} ${label}: 버터는 조건과 죠미에만`, !r.butterBad.length, r.butterBad.slice(0, 4).join(', ') || `${r.butter.length}곳`);
@@ -107,8 +115,24 @@ const scan = (W) => {
       if (r.prodk.length) ok(`${W} ${label}: '제품 표기 없음'·제품 알약은 테두리(채움 없음)`, r.prodk.every(Boolean), `${r.prodk.length}개`);
       if (step === 'quote') { const q = await p.$$eval('#main li.qrow .rank .k', (ks) => ks.filter((k) => /^확인할 조건 \d+개$/.test(k.textContent.trim())).map((k) => k.className));
         seen.kc += q.length; ok(`${W} 견적 병원별: '확인할 조건 N개'는 버터(조건), 코랄 아님`, q.length > 0 && q.every((c) => /\bkc\b/.test(c)), `${q.length}줄`); }
+      if (hash.startsWith('#quick')) { const d = await p.$$eval('#main li.qrow2 .m .k', (ks) => ks.filter((k) => /까지$/.test(k.textContent.trim())).map((k) => `${k.className} ${k.textContent.trim()}`));
+        ok(`${W} 빠른 비교: 기간 칩은 회색 날짜 배지('~M/D까지', 다른 가격 줄과 같은 모양)`, d.length > 0 && d.every((x) => /^k k4 ~\d{1,2}\/\d{1,2}까지$/.test(x)), d.slice(0, 3).join(', ') || '없음'); }
+      if (hash.startsWith('#concern')) { const l = await p.$$eval('#main .card.concern ul', (us) => us.map((u) => u.className));
+        ok(`${W} 고민: '시술 말고 할 수 있는 관리'는 회색 목록(ul.notes)`, l.includes('notes') && !l.includes('warns'), l.join(', ') || '고민 카드 없음'); }
     }
     ok(`${W} 시험이 볼 것이 있었음(데이터 상태 배지·제품 알약·고른 것)`, seen.kw > 0 && seen.prodk > 0 && seen.chosen > 10, `kw ${seen.kw} · prodk ${seen.prodk} · chosen ${seen.chosen}`);
+    // the sheets: the treatment sheet (비교 '부작용·주의사항·근거 자세히') has no butter list; 가격 근거's butter is its '조건' list
+    await p.goto(BASE + '#compare?k=X01'); await p.waitForTimeout(900);
+    { const kb = p.locator('#main button', { hasText: '부작용·주의사항·근거 자세히' }).first();
+      if (await kb.count()) { await kb.click(); await p.waitForTimeout(600);
+        const r = await p.evaluate(scan, '.sheet *'), l = await p.$$eval('.sheet ul.warns, .sheet ul.notes', (us) => us.map((u) => u.className));
+        ok(`${W} 시술 설명 창: 부작용·주의사항·근거 목록은 회색(ul.notes), 버터 없음`, l.length > 0 && l.every((c) => c === 'notes') && !r.butterBad.length, `${l.join(',')} ${r.butterBad.slice(0, 3).join(', ')}`);
+        await p.keyboard.press('Escape'); await p.waitForTimeout(400); }
+      else ok(`${W} 시술 설명 창 단추가 있음`, false); }
+    { const ib = p.locator('#main li.rk > .infob').first(); await ib.click(); await p.waitForTimeout(600);
+      const r = await p.evaluate(scan, '.sheet *');
+      ok(`${W} 가격 근거 창: 버터는 '조건' 목록과 조건 배지에만`, !r.butterBad.length, r.butterBad.slice(0, 3).join(', ') || `${r.butter.length}곳`);
+      await p.keyboard.press('Escape'); await p.waitForTimeout(400); }
     // 비교 머리글 '담기': an outline — surface inside, a charcoal line; never the screen's brightest fill in the dark (사용자 결정 4)
     await p.goto(BASE + '#compare?k=X24'); await p.waitForTimeout(900);
     const add = await p.evaluate(() => { const e = document.querySelector('.cmphead .addbtn'); if (!e) return null; const cs = getComputedStyle(e), root = getComputedStyle(document.documentElement);

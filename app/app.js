@@ -1366,10 +1366,20 @@
     return d;
   }
   const niceStep = (span, n = 3) => { const raw = span / n || 1, mag = 10 ** Math.floor(Math.log10(raw)); return [1, 2, 2.5, 5, 10].map((x) => x * mag).find((x) => x >= raw); };
+  // a chart is drawn at its box's real width (1 unit = 1 CSS px), so its 13px words are 13px on every phone: with a fixed
+  // viewBox of 340 they shrank to 12.1px at 390 and 9.4px at 320 (위계 묶음 6 검토). First drawn at 340 (the box is not on the
+  // page yet), then again by a ResizeObserver before the first paint — and when a fold opens or the phone turns. It watches a
+  // zero-height ruler across the box, not the box: a new drawing changes the box's height, which would loop the observer
+  const fitChart = (box, draw) => { let w = 340; draw(w);
+    if (!window.ResizeObserver) return;
+    const ruler = h("i", { class: "lcw", "aria-hidden": "true" }); box.append(ruler);
+    new ResizeObserver((es) => { const nw = Math.round(es[0].contentRect.width); if (nw > 0 && nw !== w) { w = nw; draw(w); } }).observe(ruler); };
+  // how wide a chart word is at 13px (a Hangul syllable ≈ 13, a digit, '.', ',' or '/' ≈ 7.6): the room left for the axis and end labels
+  const chartTextW = (t) => [...String(t)].reduce((a, c) => a + (/[가-힣]/.test(c) ? 13 : c === " " ? 3.6 : 7.6), 0);
   // line chart: one axis, 2px lines broken where a week has no record, end labels, crosshair tooltip (pointer, touch,
   // arrow keys), table view. Only observed points are drawn; nothing is filled in between records.
   function lineChart(dates, series, title) {
-    const W = 340, H = 196, L = 40, R = 58, T = 16, B = 26;
+    const T = 16, B = 26;
     const all = series.flatMap((s) => s.values.filter((v) => v != null));
     const wrap = h("div", { class: "lc" });
     if (!all.length) return wrap;
@@ -1377,34 +1387,17 @@
     const pad = (hi - lo) * 0.15 || hi * 0.1 || 1; lo = Math.max(0, lo - pad); hi += pad;
     const stepv = niceStep(hi - lo);
     lo = Math.floor(lo / stepv) * stepv; hi = lo + stepv * 3; while (hi < Math.max(...all)) hi += stepv;
+    const ticks = []; for (let v = lo; v <= hi + 1e-6; v += stepv) ticks.push(v);
+    const ends = series.map((s) => s.values.map((v, i) => [i, v]).filter((p) => p[1] != null).pop()).map((li, n) => li && { s: series[n], i: li[0], v: li[1], t: `${series[n].name} ${man(li[1])}` });
+    // the side margins hold the words: the axis numbers on the left, the end labels on the right
+    const L = Math.max(32, Math.ceil(8 + Math.max(...ticks.map((v) => chartTextW(man(Math.round(v))))))), R = Math.max(40, Math.ceil(8 + Math.max(0, ...ends.filter(Boolean).map((e) => chartTextW(e.t)))));
+    let W = 340, H = 196;
     const x = (i) => dates.length < 2 ? L + (W - L - R) / 2 : L + i / (dates.length - 1) * (W - L - R);
     const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
-    const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "lcsvg", role: "img", "aria-label": title });
-    for (let v = lo; v <= hi + 1e-6; v += stepv) {
-      const yy = y(v);
-      g.append(svg("line", { x1: L, x2: W - R + 8, y1: yy, y2: yy, class: v === lo ? "base" : "grid" }));
-      const tx = svg("text", { x: L - 8, y: yy + 4, class: "ax", "text-anchor": "end" }); tx.textContent = man(Math.round(v)); g.append(tx);
-    }
-    const step = Math.max(1, Math.ceil(dates.length / 5));
-    dates.forEach((d, i) => { if (i % step && i !== dates.length - 1) return; const tx = svg("text", { x: x(i), y: H - 6, class: "ax", "text-anchor": "middle" }); tx.textContent = md(d); g.append(tx); });
-    const labels = [];
-    series.forEach((s) => {
-      // consecutive observed weeks form one segment; a missing week breaks the line
-      const segs = []; let cur = [];
-      s.values.forEach((v, i) => { if (v == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push([+x(i).toFixed(1), +y(v).toFixed(1)]); });
-      if (cur.length) segs.push(cur);
-      for (const sg of segs) if (sg.length > 1) g.append(svg("path", { d: smoothPath(sg), class: "ln draw", pathLength: "1", style: `stroke:${s.color};--len:1` }));
-      s.values.forEach((v, i) => { if (v != null) g.append(svg("circle", { cx: x(i), cy: y(v), r: dates.length > 26 ? 2.5 : 3.5, class: "mk", style: `fill:${s.color}` })); });
-      const li = s.values.map((v, i) => [i, v]).filter((p) => p[1] != null).pop();
-      if (li) labels.push({ s, x: x(li[0]) + 8, y: y(li[1]) + 4, v: li[1] });
-    });
-    // end labels: nudge apart when two series end close together
-    labels.sort((p, q) => p.y - q.y).forEach((lb, j, arr) => { if (j && lb.y - arr[j - 1].y < 13) lb.y = arr[j - 1].y + 13; });
-    for (const lb of labels) { const tx = svg("text", { x: lb.x, y: lb.y, class: "dl" }); tx.textContent = `${lb.s.name} ${man(lb.v)}`; g.append(tx); }
+    const g = svg("svg", { class: "lcsvg", role: "img", "aria-label": title });
     // crosshair + tooltip
-    const hair = svg("line", { y1: T, y2: H - B, class: "hair", visibility: "hidden" });
-    const hit = svg("rect", { x: L - 12, y: 0, width: W - L - R + 24, height: H, fill: "transparent" });
-    g.append(hair, hit);
+    const hair = svg("line", { class: "hair", visibility: "hidden" });
+    const hit = svg("rect", { y: 0, fill: "transparent" });
     // keyboard: the chart box is one slider (arrow keys move the date); the drawing inside is a picture
     const kbox = h("div", { class: "lcbox", tabindex: "0", role: "slider", "aria-label": `${title} — 좌우 방향키로 날짜 이동`, "aria-valuemin": "0", "aria-valuemax": String(dates.length - 1),
       "aria-valuenow": String(dates.length - 1) });
@@ -1419,6 +1412,34 @@
       kbox.setAttribute("aria-valuenow", String(i)); kbox.setAttribute("aria-valuetext", `${dates[i]} ${series.map((s) => `${s.name} ${s.values[i] != null ? won(s.values[i]) : "기록 없음"}`).join(", ")}`);
     };
     const hide = () => { tip.hidden = true; hair.setAttribute("visibility", "hidden"); };
+    const draw = (w) => {
+      W = w; H = Math.round(Math.min(196, Math.max(150, W * 0.58)));   // 196 at 340, a little lower on a narrow phone
+      g.setAttribute("viewBox", `0 0 ${W} ${H}`); g.replaceChildren();
+      for (const v of ticks) {
+        const yy = y(v);
+        g.append(svg("line", { x1: L, x2: W - R + 8, y1: yy, y2: yy, class: v === lo ? "base" : "grid" }));
+        const tx = svg("text", { x: L - 8, y: yy + 4, class: "ax", "text-anchor": "end" }); tx.textContent = man(Math.round(v)); g.append(tx);
+      }
+      // as many dates as fit 46px apart (a date is about 38px), the last one always
+      const last = dates.length - 1, maxN = Math.max(2, Math.min(5, Math.floor((W - L - R) / 46) + 1)), step = Math.max(1, Math.ceil(last / (maxN - 1)));
+      dates.forEach((d, i) => { if (i !== last && (i % step || x(last) - x(i) < 46)) return; const tx = svg("text", { x: x(i), y: H - 6, class: "ax", "text-anchor": "middle" }); tx.textContent = md(d); g.append(tx); });
+      series.forEach((s) => {
+        // consecutive observed weeks form one segment; a missing week breaks the line
+        const segs = []; let cur = [];
+        s.values.forEach((v, i) => { if (v == null) { if (cur.length) segs.push(cur); cur = []; } else cur.push([+x(i).toFixed(1), +y(v).toFixed(1)]); });
+        if (cur.length) segs.push(cur);
+        for (const sg of segs) if (sg.length > 1) g.append(svg("path", { d: smoothPath(sg), class: "ln draw", pathLength: "1", style: `stroke:${s.color};--len:1` }));
+        s.values.forEach((v, i) => { if (v != null) g.append(svg("circle", { cx: x(i), cy: y(v), r: dates.length > 26 ? 2.5 : 3.5, class: "mk", style: `fill:${s.color}` })); });
+      });
+      // end labels: nudge apart when two series end close together
+      const labels = ends.filter(Boolean).map((e) => ({ t: e.t, x: x(e.i) + 8, y: y(e.v) + 4 }));
+      labels.sort((p, q) => p.y - q.y).forEach((lb, j, arr) => { if (j && lb.y - arr[j - 1].y < 13) lb.y = arr[j - 1].y + 13; });
+      for (const lb of labels) { const tx = svg("text", { x: lb.x, y: lb.y, class: "dl" }); tx.textContent = lb.t; g.append(tx); }
+      hair.setAttribute("y1", T); hair.setAttribute("y2", H - B);
+      hit.setAttribute("x", L - 12); hit.setAttribute("width", W - L - R + 24); hit.setAttribute("height", H);
+      g.append(hair, hit);
+      if (!tip.hidden) show(at);
+    };
     const near = (e) => { const r = g.getBoundingClientRect(); const px = (e.clientX - r.left) / r.width * W; let bi = 0; dates.forEach((_, i) => { if (Math.abs(x(i) - px) < Math.abs(x(bi) - px)) bi = i; }); return bi; };
     hit.addEventListener("pointermove", (e) => show(near(e)));
     hit.addEventListener("pointerdown", (e) => show(near(e)));
@@ -1431,41 +1452,28 @@
       h("tbody", {}, dates.map((d, i) => h("tr", {}, h("td", {}, d), series.map((s) => h("td", { class: "num" }, s.values[i] != null ? won(s.values[i]) : "-"))))));
     const tbtn = h("button", { class: "linkbtn", type: "button", style: "min-height:28px", onclick: () => { table.hidden = !table.hidden; tbtn.lastChild.textContent = table.hidden ? "표로 보기" : "표 닫기"; } }, icon("table", "xs"), h("span", {}, "표로 보기"));
     kbox.append(g, tip);
+    fitChart(kbox, draw);
     wrap.append(legend || "", kbox, h("div", { class: "row" }, h("span", { class: "sp" }), tbtn), table);
     return wrap;
   }
   // where each clinic's lowest price sits: one dot per branch on one price axis (dots stacked where they would overlap),
   // filled = no condition, ring = a conditional price (first visit, trial …), dark = the headline lowest; dashed = median
   function distChart(list, med, bestI, title, onPick) {
-    const W = 340, R = 4.5, PL = 14, PR = 14, TOP = 24, AX = 24;
+    const R = 4.5, PL = 14, PR = 14, TOP = 24, AX = 24;
     const ps = list.map((x) => x.p);
     let lo = Math.min(...ps), hi = Math.max(...ps);
     if (med != null && med > 0) { lo = Math.min(lo, med); hi = Math.max(hi, med); }   // the middle line is always on the axis
     if (hi === lo) { lo = Math.max(0, lo * 0.9); hi = hi * 1.1 || 1; }
     const stepv = niceStep(hi - lo, 4), t0 = Math.floor(lo / stepv) * stepv, t1 = Math.ceil(hi / stepv) * stepv;
-    const x = (v) => PL + (v - t0) / (t1 - t0) * (W - PL - PR);
-    const rows = [];
-    const dots = [...list].sort((a, c) => a.p - c.p).map((it) => { const xx = x(it.p); let k = 0; while (rows[k] != null && xx - rows[k] < R * 2 + 1) k++; rows[k] = xx; return { ...it, x: xx, k }; });
-    const nr = rows.length, dy = Math.min(R * 2 + 1.5, 132 / Math.max(1, nr));
-    const H = TOP + nr * dy + 8 + AX, base = H - AX;
-    const g = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "lcsvg", role: "img",
+    const sorted = [...list].sort((a, c) => a.p - c.p);
+    const g = svg("svg", { class: "lcsvg", role: "img",
       "aria-label": `${title}: ${list.length}곳, 최저 ${won(Math.min(...ps))}, 중간값 ${won(med)}, 최고 ${won(Math.max(...ps))}` });
-    g.append(svg("line", { x1: PL - 6, x2: W - PR + 6, y1: base, y2: base, class: "base" }));
-    for (let v = t0; v <= t1 + 1e-6; v += stepv) {
-      g.append(svg("line", { x1: x(v), x2: x(v), y1: base, y2: base + 4, class: "base" }));
-      const tx = svg("text", { x: x(v), y: H - 6, class: "ax", "text-anchor": v === t0 ? "start" : v + stepv > t1 + 1e-6 ? "end" : "middle" }); tx.textContent = man(Math.round(v)); g.append(tx);
-    }
-    const mx = x(med);
-    g.append(svg("line", { x1: mx, x2: mx, y1: 14, y2: base, class: "med" }));
-    const mt = svg("text", { x: Math.min(W - PR, Math.max(PL, mx)), y: 10, class: "medt", "text-anchor": mx < 80 ? "start" : mx > W - 80 ? "end" : "middle" }); mt.textContent = `중간값 ${won(med)}`; g.append(mt);   // the header's '중간값 19,690원', never '2만
-    const els = dots.map((d, j) => { const c = svg("circle", { cx: d.x.toFixed(1), cy: (base - R - 2 - d.k * dy).toFixed(1), r: R, "data-b": d.b, class: `dot pop${d.cond ? " cond" : ""}${d.i === bestI ? " best" : ""}`,
-      style: `animation-delay:${Math.min(j * 12, 400)}ms` }); g.append(c); return c; });
-    const hit = svg("rect", { x: 0, y: 0, width: W, height: H, fill: "transparent" });
-    g.append(hit);
+    const hit = svg("rect", { x: 0, y: 0, fill: "transparent" });
     const kbox = h("div", { class: "lcbox", tabindex: "0", role: "slider", "aria-label": `${title} — 좌우 방향키로 지점 이동, Enter로 지점 보기`, "aria-valuemin": "0",
-      "aria-valuemax": String(dots.length - 1), "aria-valuenow": "0" });
+      "aria-valuemax": String(list.length - 1), "aria-valuenow": "0" });
     const tip = h("div", { class: "lctip", hidden: true });
-    let at = bestI != null ? Math.max(0, dots.findIndex((d) => d.i === bestI)) : 0;
+    let W = 340, H = 0, base = 0, dy = 0, dots = [], els = [];
+    let at = bestI != null ? Math.max(0, sorted.findIndex((d) => d.i === bestI)) : 0;
     const show = (j) => {
       at = j; const d = dots[j];
       els.forEach((e, n) => e.classList.toggle("on", n === j));
@@ -1475,6 +1483,28 @@
       kbox.setAttribute("aria-valuenow", String(j)); kbox.setAttribute("aria-valuetext", `${bname(d.b)} ${won(d.p)}${d.cond ? " 조건부" : ""}`);
     };
     const hide = () => { tip.hidden = true; els.forEach((e) => e.classList.remove("on")); };
+    const draw = (w) => {
+      W = w;
+      const x = (v) => PL + (v - t0) / (t1 - t0) * (W - PL - PR);
+      const rows = [];
+      dots = sorted.map((it) => { const xx = x(it.p); let k = 0; while (rows[k] != null && xx - rows[k] < R * 2 + 1) k++; rows[k] = xx; return { ...it, x: xx, k }; });
+      const nr = rows.length; dy = Math.min(R * 2 + 1.5, 132 / Math.max(1, nr));
+      H = TOP + nr * dy + 8 + AX; base = H - AX;
+      g.setAttribute("viewBox", `0 0 ${W} ${H}`);
+      g.replaceChildren(svg("line", { x1: PL - 6, x2: W - PR + 6, y1: base, y2: base, class: "base" }));
+      for (let v = t0; v <= t1 + 1e-6; v += stepv) {
+        g.append(svg("line", { x1: x(v), x2: x(v), y1: base, y2: base + 4, class: "base" }));
+        const tx = svg("text", { x: x(v), y: H - 6, class: "ax", "text-anchor": v === t0 ? "start" : v + stepv > t1 + 1e-6 ? "end" : "middle" }); tx.textContent = man(Math.round(v)); g.append(tx);
+      }
+      const mx = x(med), mw = chartTextW(`중간값 ${won(med)}`) / 2 + 4;   // centred over the line unless that runs past an end
+      g.append(svg("line", { x1: mx, x2: mx, y1: 14, y2: base, class: "med" }));
+      const mt = svg("text", { x: Math.min(W - PR, Math.max(PL, mx)), y: 10, class: "medt", "text-anchor": mx < PL + mw ? "start" : mx > W - PR - mw ? "end" : "middle" }); mt.textContent = `중간값 ${won(med)}`; g.append(mt);   // the header's '중간값 19,690원', never '2만
+      els = dots.map((d, j) => { const c = svg("circle", { cx: d.x.toFixed(1), cy: (base - R - 2 - d.k * dy).toFixed(1), r: R, "data-b": d.b, class: `dot pop${d.cond ? " cond" : ""}${d.i === bestI ? " best" : ""}`,
+        style: `animation-delay:${Math.min(j * 12, 400)}ms` }); g.append(c); return c; });
+      hit.setAttribute("width", W); hit.setAttribute("height", H);
+      g.append(hit);
+      if (!tip.hidden) show(at);
+    };
     const near = (e) => { const r = g.getBoundingClientRect(), px = (e.clientX - r.left) / r.width * W, py = (e.clientY - r.top) / r.height * H; let bj = 0, bd = 1e9;
       dots.forEach((d, j) => { const dd = Math.abs(d.x - px) * 1.5 + Math.abs(base - R - d.k * dy - py) * 0.5; if (dd < bd) { bd = dd; bj = j; } }); return bj; };
     hit.addEventListener("pointermove", (e) => show(near(e)));
@@ -1486,11 +1516,12 @@
       if (e.key === "ArrowLeft" || e.key === "ArrowRight") { show(Math.max(0, Math.min(dots.length - 1, at + (e.key === "ArrowLeft" ? -1 : 1)))); e.preventDefault(); }
       if (e.key === "Enter" && onPick) onPick(dots[at]);
     });
-    const hasCond = dots.some((d) => d.cond), hasPlain = dots.some((d) => !d.cond);
+    const hasCond = list.some((d) => d.cond), hasPlain = list.some((d) => !d.cond);
     const legend = h("div", { class: "row lclegend" }, hasPlain ? h("span", { class: "row" }, h("span", { class: "key solid", style: "background:var(--s1)" }), "조건 없는 가격") : null,
       hasCond ? h("span", { class: "row" }, h("span", { class: "key ring" }), "조건부 가격") : null,
       bestI != null ? h("span", { class: "row" }, h("span", { class: "key solid", style: "background:var(--ink)" }), "현재 최저가") : null);
     kbox.append(g, tip);
+    fitChart(kbox, draw);
     return h("div", { class: "lc" }, legend, kbox);
   }
   // weeks the trend snapshots cover (every date counts; a key's own gaps are checked in keyTrend)
@@ -3063,7 +3094,7 @@
   // quick view: everything the knowledge base has for one treatment
   function kbSheet(e, f) {
     f = f || FAM.find((x) => kbOf(x) === e);
-    const sec = (t, body) => body && (!Array.isArray(body) || body.length) ? h("div", { class: "fact" }, h("dt", {}, t), h("dd", {}, Array.isArray(body) ? h("ul", { class: "warns" }, body.map((x) => h("li", {}, x))) : body)) : null;
+    const sec = (t, body) => body && (!Array.isArray(body) || body.length) ? h("div", { class: "fact" }, h("dt", {}, t), h("dd", {}, Array.isArray(body) ? h("ul", { class: "notes" }, body.map((x) => h("li", {}, x))) : body)) : null;
     const issue = `${KB_REPO}/issues/new?${new URLSearchParams({ template: "knowledge-review.md", title: `[검수] ${e.id} ${e.title}`, labels: "knowledge-review", body: `항목 id: ${e.id}\n\n고칠 내용:\n\n근거:\n` })}`;
     sheet(e.title, (close) => h("div", {},
       h("div", { class: "row", style: "gap:var(--sp-1)" }, reviewBadge(e), evidenceBadge(e), e.updated ? h("span", { class: "sub" }, `수정 ${e.updated}`) : null),
@@ -3072,7 +3103,7 @@
         sec("주로 받는 이유", e.purpose), sec("사용 부위", e.areas), sec("시술 방식·비슷한 시술과 차이", e.method), sec("관련 브랜드·종류", e.kinds),
         sec("주요 부작용", e.side_effects), sec("주의사항", e.cautions),
         h("div", { class: "fact" }, h("dt", {}, "근거와 검수"), h("dd", {},
-          e.sources.length ? h("ul", { class: "warns" }, e.sources.map((x) => h("li", {}, h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.title), ` — ${x.publisher} · ${x.checked} 확인 (${x.how})`))) : null,
+          e.sources.length ? h("ul", { class: "notes" }, e.sources.map((x) => h("li", {}, h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.title), ` — ${x.publisher} · ${x.checked} 확인 (${x.how})`))) : null,
           h("p", { class: "sub", style: "margin:var(--sp-2) 0 0" }, e.evidence_note || ""),
           h("p", { class: "sub", style: "margin:var(--sp-2) 0 0" }, e.review.status === "approved" ? `검수: ${e.review.reviewer} · ${e.review.reviewed_at}` : "의료진 검수 전 초안이에요. 틀린 곳이 있으면 알려 주세요.")))),
       h("p", { class: "tiny" }, DISCLAIM),
@@ -3213,7 +3244,7 @@
       m.hits && m.hits.length ? h("div", { class: "sub" }, `적은 말에서 찾은 낱말: ${m.hits.join(", ")}`) : null,
       sec(1, "고민에 대한 일반적인 설명", h("p", {}, c.general)),
       sec(2, "관련 시술과 시술 말고 할 수 있는 관리",
-        h("div", { class: "flabel" }, "시술 말고 할 수 있는 관리"), h("ul", { class: "warns" }, c.non_procedural.map((x) => h("li", {}, x))),
+        h("div", { class: "flabel" }, "시술 말고 할 수 있는 관리"), h("ul", { class: "notes" }, c.non_procedural.map((x) => h("li", {}, x))),
         h("div", { class: "flabel", style: "margin-top:var(--sp-2)" }, "관련 시술"),
         h("div", { class: "sub" }, es.length ? es.map((e) => e.title).join(" · ") : "보여드릴 수 있는 시술 설명이 아직 없어요(검수 전)."),
         h("p", { class: "tiny" }, "순서는 분류표에 적힌 순서예요. 추천 순위나 효과 순위가 아니에요.")),
@@ -4279,8 +4310,12 @@
   const eligList = (i) => h("ul", { class: "elig" }, eligOf(i).map((x) => h("li", { class: `el-${x.state}` }, h("span", { class: "ei2" }, icon(ELIG_IC[x.state], "sm")),
     h("span", { class: "ek" }, ELIG_TERM[x.k] ? termBtn(ELIG_TERM[x.k], x.k) : x.k), h("span", { class: "ev" }, x.v), h("span", { class: "sr" }, ` (${ELIG_T[x.state]})`))));
   // short form for comparison rows: only the stated limits, plus how many things are not stated
+  // in the badge order of every price line (위계 점검 29): conditions (butter) → an event that has ended (coral: a price that
+  // cannot be had, like '기간 끝남') and 미확인 (grey + icon) → the end date, the grey date badge of every line ('~10/31까지')
   const eligChips = (i) => { const e = eligOf(i), lim = e.filter((x) => x.state === "limit"), unk = e.filter((x) => x.state === "unknown").length;
-    return [...lim.map((x) => h("span", { class: "k kc" }, x.k === "부가세" ? "VAT 별도" : x.k === "기간" ? x.v : x.k === "체험 가격" ? x.v.split(" — ")[0] : x.k)), unk ? kwBadge(`미확인 ${unk}`) : null]; };
+    const end = lim.find((x) => x.k === "기간"), u = S[ROWS[i][10]] || "", ended = !!end && u < today();
+    return [...lim.filter((x) => x !== end).map((x) => h("span", { class: "k kc" }, x.k === "부가세" ? "VAT 별도" : x.k === "체험 가격" ? x.v.split(" — ")[0] : x.k)),
+      ended ? h("span", { class: "k kx" }, end.v) : null, unk ? kwBadge(`미확인 ${unk}`) : null, end && !ended ? h("span", { class: "k k4" }, `~${md2(u)}까지`) : null]; };
 
   // ---- 비교함 (shortlist, 2~4 branches, this phone only) → 빠른 비교 (#quick)
   const SHORT_MAX = 4;
@@ -4301,7 +4336,8 @@
   // it opens elsewhere (위계 점검 35)
   const outLink = (href, ic, label) => h("a", { class: "btn sm gray out", href, target: "_blank", rel: "noopener" }, icon(ic, "sm"), label,
     icon("arrow-up-right", "xs"), h("span", { class: "sr" }, " — 새 창에서 열려요"));
-  const shortBtn = (b, cls = "btn sm gray") => { const el = h("button", { class: cls, type: "button" });
+  // 비교함에 있음 is a list the branch is in (like 담김), not one choice among others: the icon and words change, the grey stays
+  const shortBtn = (b, cls = "btn sm gray") => { const el = h("button", { class: `${cls} shortbtn`, type: "button" });
     const paint = () => { const on = inShort(b); el.setAttribute("aria-pressed", on ? "true" : "false"); fill(el, icon(on ? "check" : "circle-plus", "sm"), on ? "비교함에 있음" : "비교함"); };
     el.addEventListener("click", (e) => { e.stopPropagation(); toggleShort(b); paint(); }); paint(); return el; };
   const shortLink = () => { const n = shortKeys().length; return n ? h("button", { class: "linkbtn", type: "button", onclick: () => nav("quick") }, icon("scale", "xs"), `비교함 ${n}/${SHORT_MAX} 보기`) : null; };

@@ -67,6 +67,7 @@ button, input, select, textarea { font: inherit; color: inherit; letter-spacing:
 input, select, textarea { font-size: var(--fs-input); }   /* every field 16px or more: iOS zooms into a smaller one */
 /* bold has one weight: <b> in a 600 line would otherwise be 'bolder' = 900 (위계 점검 26: the compare screen had 12 weights) */
 b, strong, th, h1, h4 { font-weight: var(--fw-bold); }
+small { font-size: var(--fs-aux); }   /* the browser's 'smaller' would make 10.8px in a 13px table (검토: 지점별 제공 시술 표) */
 button { cursor: pointer; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--ink); outline-offset: 2px; }
@@ -255,7 +256,7 @@ a.src { font-size: var(--fs-aux); }
 /* the chosen segment: the charcoal fill of every chosen control (위계 점검 43 — it was a raised white one) */
 .seg button[aria-selected="true"], .seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-primary); }
 .seg.vsw { width: 116px; flex: none; }
-.seg.vsw button { padding: var(--sp-1); font-size: var(--fs-aux); }
+.seg.vsw button { padding: var(--sp-1); min-height: 32px; font-size: var(--fs-aux); }   /* 32 to press, as before the 4px step (검토) */
 /* compare: clinics as swipe cards (same order as the list) */
 .ccwrap { padding: 0 0 var(--sp-2); }
 .ccards { list-style: none; margin: 0; padding: var(--sp-2) 14px; display: flex; gap: var(--sp-2); overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 14px;
@@ -535,6 +536,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 /* ---------- charts (one axis, thin marks, tooltip, table view) */
 .lc { margin-top: var(--sp-2); }
 .lcbox { position: relative; }
+.lcw { position: absolute; left: 0; right: 0; top: 0; height: 0; pointer-events: none; }   /* the width a chart is drawn at (fitChart) */
 .lcsvg { width: 100%; height: auto; display: block; overflow: visible; touch-action: pan-y; }
 .lcsvg .grid { stroke: var(--line-soft); stroke-width: 1; }
 .lcsvg .base { stroke: var(--line); stroke-width: 1; }
@@ -542,6 +544,9 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .lcsvg .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .lcsvg .ln.draw { stroke-dasharray: var(--len); stroke-dashoffset: var(--len); animation: draw .8s var(--ease) forwards; }
 @keyframes draw { to { stroke-dashoffset: 0; } }
+/* no motion (system setting or 움직임 꺼짐): the line is simply there — 'animation: none' left it hidden at its dash offset */
+@media (prefers-reduced-motion: reduce) { .lcsvg .ln.draw { stroke-dashoffset: 0; } }
+html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .lcsvg .mk { stroke: var(--surface); stroke-width: 2; }
 .lcsvg .dl { fill: var(--ink-2); font-size: var(--fs-aux); font-weight: var(--fw-semi); font-family: var(--font); }
 .lcsvg .hair { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; }
@@ -618,7 +623,11 @@ dl.facts { margin: var(--sp-2) 0 0; display: grid; gap: var(--sp-3); }
 .ttable .tr { display: grid; grid-template-columns: 26% 30% minmax(0, 1fr); gap: var(--sp-2); padding: var(--sp-2) 0; border-bottom: 1px solid var(--line-soft); line-height: 1.5; }
 .ttable .th { font-weight: var(--fw-semi); color: var(--muted); font-size: var(--fs-aux); }
 .ttable .linkbtn { font-size: var(--fs-aux); text-align: left; }
-ul.warns { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); background: var(--butter-soft); color: var(--butter-ink); border-radius: 12px; font-size: var(--fs-aux); display: grid; gap: var(--sp-2); }
+/* a list in a box: butter only for the conditions of a price (가격 근거 '조건', 견적 '확인할 조건'); an explanation or its sources
+   (시술 설명 창 부작용·주의사항·근거, 고민 '시술 말고 할 수 있는 관리') is grey — butter is for conditions only (위계 점검 27 검토) */
+ul.warns, ul.notes { margin: var(--sp-2) 0 0; padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4); border-radius: 12px; font-size: var(--fs-aux); display: grid; gap: var(--sp-2); }
+ul.warns { background: var(--butter-soft); color: var(--butter-ink); }
+ul.notes { background: var(--fill); color: var(--ink-2); }
 ul.plain { margin: var(--sp-2) 0 0; padding-left: var(--sp-3); font-size: var(--fs-body); color: var(--ink-2); display: grid; gap: var(--sp-2); }
 /* 개인정보 처리방침 (#privacy): chat C's paragraphs, plain reading text */
 .policy p { margin: var(--sp-3) 0 0; font-size: var(--fs-body); line-height: 1.65; color: var(--ink-2); }
@@ -796,7 +805,13 @@ details.advset > summary b { font-weight: inherit; }
 
 /* ---------- map */
 #map { height: min(58vh, 520px); border-radius: var(--r-lg); overflow: hidden; background: var(--fill); z-index: 0; border: 1px solid var(--line-soft); }
-.leaflet-container { font-family: var(--font); }
+/* leaflet.css loads after this file (when the map opens), so the map's own words are set under #map: 13 for the credit line
+   (it was 12), the zoom buttons' + − 22/760 (they were bold 700) — 13px floor and 3 weights (검토) */
+#map.leaflet-container { font-family: var(--font); font-size: var(--fs-aux); }
+#map .leaflet-control-zoom-in, #map .leaflet-control-zoom-out { font-size: var(--fs-title); font-weight: var(--fw-bold); }
+/* the credit line in the app's colours: Leaflet's blue link on its 80% white was 3.2:1 over the dark map (axe, dark) */
+#map .leaflet-control-attribution { background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--ink-2); }
+#map .leaflet-control-attribution a { color: var(--ink-2); text-decoration: underline; }
 .pin-price { background: var(--surface); color: var(--ink); border: 2px solid var(--c, var(--ink)); border-radius: 10px; padding: 0 var(--sp-2); font-size: var(--fs-aux); font-weight: var(--fw-bold); white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transform: translate(-50%, -50%); display: inline-block; font-variant-numeric: tabular-nums; }
 .pin-price.best { background: var(--ink); color: var(--surface); border-color: var(--ink); }
@@ -811,7 +826,7 @@ details.advset > summary b { font-weight: inherit; }
 .mapbtn.again { background: var(--ink); color: var(--surface); border-color: transparent; }
 #near li.sel { background: var(--fill); border-radius: 14px; }   /* the line of the chosen pin: grey, butter is for conditions */
 .leaflet-container .me { width: 16px; height: 16px; border-radius: 50%; background: #2f6043; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47, 96, 67, .25); }
-.leaflet-popup-content { margin: var(--sp-3); font-size: var(--fs-body); }
+#map .leaflet-popup-content { font-size: var(--fs-body); }
 .leaflet-popup-content b { font-size: var(--fs-body); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
 
@@ -1011,7 +1026,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .cov th[scope="row"], .cov thead th:first-child { text-align: left; font-weight: var(--fw-semi); color: var(--ink-2); max-width: 160px; }
 .cov thead th { font-size: var(--fs-aux); color: var(--muted); font-weight: var(--fw-semi); white-space: nowrap; }
 .cov tfoot th, .cov tfoot td { border-bottom: 0; font-weight: var(--fw-bold); }
-.cov td small, .cov th small { font-weight: var(--fw-reg); color: var(--muted); }
+.cov td small, .cov th small { font-size: var(--fs-aux); font-weight: var(--fw-reg); color: var(--muted); }
 .cov .cov-x { color: var(--pricey); }
 .cov .cov-q { color: var(--muted); }
 .report { white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; font: var(--fs-aux)/1.6 var(--font, inherit); background: var(--fill); border-radius: 12px; padding: var(--sp-3); margin: 0; max-height: 50vh; overflow: auto; }
@@ -1104,7 +1119,7 @@ ol.steps { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); display: grid; ga
 .specnotes .k { margin-left: var(--sp-1); vertical-align: 1px; background: var(--surface); }
 .specnotes .tiny { margin-top: var(--sp-2); }
 .seg.modesw { width: 148px; flex: none; }
-.seg.modesw button { padding: var(--sp-1); font-size: var(--fs-aux); white-space: nowrap; }
+.seg.modesw button { padding: var(--sp-1); min-height: 32px; font-size: var(--fs-aux); white-space: nowrap; }
 .card.typed .tsec { margin-top: var(--sp-3); } .card.typed .tsec .sh { font-size: var(--fs-aux); color: var(--ink-2); } .typedsum { margin: 0 var(--sp-2); }
 /* 4.0 cart: 방문 계획 A~D */
 .scengrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }

@@ -22,8 +22,28 @@ const TOK = { '--sp-1': '4px', '--sp-2': '8px', '--sp-3': '16px', '--sp-4': '24p
 const tokBad = Object.entries(TOK).filter(([k, v]) => !new RegExp(`${k}:\\s*${v}\\s*;`).test(root)).map(([k]) => k);
 ok('간격 토큰 5개가 :root에 정한 값으로 있음', !tokBad.length, tokBad.join(', ') || Object.entries(TOK).map(([k, v]) => `${k} ${v}`).join(' · '));
 
-// small things whose inside may step by 4: badges, chips, pills, segmented controls, a badge row (.m), the path, little charts
-const CHIP = /\.(k|kw|badge|chips?|pchip|seg|vchips?|addbtn|linkbtn|regbtn|mapbtn|infotag|pin-cluster|jomi-hello|nb-act|qty|termb|sibs|chev|back|opt|shortl|crumb|subnav|sortchips|mini|m|lat|qbr|cbar|pbars|vbar|bdate|specnotes|toast|upd|row)\b|nav\.tabs|btn\.sm|cancel-button/;
+// small things whose inside may step by 4: badges, chips, pills, segmented controls, the path, little charts. Matched on the rule's
+// own element — the last compound of each selector, or for a bare element (`.seg button`, `.shortl li`) the one it sits in —
+// never on an ancestor anywhere in the selector (검토: '.row'·'.m' anywhere let any rule through). A badge row (.m, .row) may
+// use 4 only between its lines (row-gap, or gap's first value).
+const CHIP_CLS = new Set(['k', 'kw', 'badge', 'chip', 'chips', 'mini-chip', 'pchip', 'seg', 'vchip', 'vchips', 'addbtn', 'linkbtn', 'regbtn', 'mapbtn', 'infotag', 'pin-cluster',
+  'jomi-hello', 'nb-act', 'qty', 'termb', 'sibs', 'chev', 'back', 'opt', 'shortl', 'crumb', 'subnav', 'sortchips', 'mini', 'lat', 'qbr', 'cbar', 'pbars', 'vbar', 'bdate', 'specnotes',
+  'toast', 'upd']);
+const CHIP_SEL = new Set(['.cbar .side']);   // the two halves of a little bar chart's line
+const ROW_CLS = new Set(['m', 'row']);
+const own = (part) => { const cs = part.trim().split(/\s*[>+~]\s*|\s+/).filter(Boolean); let i = cs.length - 1;
+  if (!/[.#[]|cancel-button/.test(cs[i].replace(/::?[\w-]+(\([^)]*\))?/g, '')) && i > 0) i--;   // a bare element: the one it sits in
+  return cs[i]; };
+const clsOf = (c) => (c.replace(/\[[^\]]*\]|::?[\w-]+(\([^)]*\))?/g, '').match(/\.[\w-]+/g) || []).map((x) => x.slice(1));
+const chipPart = (part) => { if (CHIP_SEL.has(part.trim())) return true; const c = own(part);
+  return /^nav\.tabs\b/.test(c) || /\.btn\.sm\b/.test(c) || /cancel-button/.test(c) || clsOf(c).some((x) => CHIP_CLS.has(x)); };
+const rowPart = (part) => clsOf(own(part)).some((x) => ROW_CLS.has(x));
+const CHIP = { test: (sel) => sel.split(',').every(chipPart) };
+const isRowGap = (sel, prop, i) => sel.split(',').every(rowPart) && (prop === 'row-gap' || (prop === 'gap' && i === 0));
+// the check checks itself: these must stay outside (an ancestor named like a chip) and inside
+const chipSelf = [['.row .foo', false], ['.m .bar', false], ['.card .row', false], ['.toast .x .y', false], ['.chip', true], ['.seg button', true], ['.shortl li', true],
+  ['header.top .upd::before', true], ['.cmphead .crumb button', true], ['.pwrap > .addbtn', true], ['.cbar .side', true], ['.btn.sm', true]].filter(([sel, want]) => CHIP.test(sel) !== want);
+ok('배지·칩 판별이 선택자의 자기 요소만 봄(조상 이름으로 통과하지 않음)', !chipSelf.length, chipSelf.map(([x]) => x).join(', '));
 // the words' start line in a list line (14), a card's sides (20), a list card's sides (6) — only at the sides
 const SIDE = new Set([14, 20, 6]);
 const OPTICAL = /svg|mascot|input|\.subnav button/;   // 1–3px: an icon lined up with its words, a tab's line over the border
@@ -40,7 +60,7 @@ for (const m of css.matchAll(PROPS)) {
   const side = (i) => /-(left|right|inline)$/.test(prop) || (/^(margin|padding|scroll-padding)$/.test(prop) && (i === 1 || i === 3)) || (prop === 'gap' && i === 1) || prop === 'column-gap';
   parts.forEach((t, i) => {
     if (t === '0' || t === 'auto' || /^var\(--sp-[2-5]\)$/.test(t)) { if (t !== '0' && t !== 'auto') { nVal++; n8++; } return; }
-    if (t === 'var(--sp-1)') { nVal++; if (!CHIP.test(sel)) bad.push(`${sel} { ${prop}: ${val} } — 4는 배지·칩 안쪽만`); return; }
+    if (t === 'var(--sp-1)') { nVal++; if (!CHIP.test(sel) && !isRowGap(sel, prop, i)) bad.push(`${sel} { ${prop}: ${val} } — 4는 배지·칩 안쪽만`); return; }
     if (t.startsWith('calc(')) {   // a calc of tokens, the bars' heights, env(); or the small switch's (32 − 44) / 2
       const nums = [...t.matchAll(/(-?\d*\.?\d+)px/g)].map((x) => +x[1]);
       if (!(sel.includes('.switch.sm') && t === 'calc((32px - 44px) / 2)') && nums.some((x) => x % 8)) bad.push(`${sel} { ${prop}: ${val} }`);
@@ -48,7 +68,7 @@ for (const m of css.matchAll(PROPS)) {
     const px = /^(-?\d*\.?\d+)px$/.exec(t); if (!px) { bad.push(`${sel} { ${prop}: ${val} } — 알 수 없는 값`); return; }
     const v = +px[1], a = Math.abs(v); nVal++;
     if (a % 8 === 0) { n8++; return; }
-    if (a % 4 === 0 && CHIP.test(sel)) return;
+    if (a % 4 === 0 && (CHIP.test(sel) || (a === 4 && isRowGap(sel, prop, i)))) return;
     if (SIDE.has(a) && side(i)) return;
     if (a <= 3 && OPTICAL.test(sel)) return;
     bad.push(`${sel} { ${prop}: ${val} }`);
