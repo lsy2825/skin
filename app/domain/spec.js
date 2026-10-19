@@ -123,5 +123,26 @@
     return base ? n.slice(0, -base.length).trim() : "";
   }
 
-  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem };
+  // a family's treatment note (knowledge/treatments.json → meta.kb.entries): by the family's name, else by its base family id
+  // (fid). Some names are shared by families in different compare categories (에어녹스 ×3, 22 names on 2026-10-19 — C #114): for
+  // those the name alone does not say which family an entry means, so a name match needs the entry to list no fids or this
+  // family's fid. fams: every family the screen can show ({name, fid}). Returns {of, viaName, viaFid, shared}.
+  function kbFinder(entries, fams) {
+    const seen = new Map();
+    for (const f of fams || []) if (f && f.name) seen.set(f.name, seen.has(f.name));
+    const byName = new Map(), byFid = new Map();
+    for (const e of entries || []) {
+      for (const n of e.families || []) { if (!byName.has(n)) byName.set(n, []); byName.get(n).push(e); }
+      for (const x of e.fids || []) if (!byFid.has(x)) byFid.set(x, e);
+    }
+    const shared = (f) => !!(f && seen.get(f.name));
+    const viaName = (f) => {
+      const es = (f && byName.get(f.name)) || [];
+      return (shared(f) ? es.find((e) => !(e.fids || []).length || e.fids.includes(f.fid)) : es[0]) || null;
+    };
+    const viaFid = (f) => (f && f.fid && byFid.get(f.fid)) || null;
+    return { of: (f) => viaName(f) || viaFid(f), viaName, viaFid, shared };
+  }
+
+  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder };
 });
