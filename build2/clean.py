@@ -92,13 +92,18 @@ CATS = [  # first match wins; tested on category + group + option
 # once-per-item section: 닥터에버스 연신내점 '각 항목 별로 1회 적용가능 KakaoTalk 플러스친구 …' (78 rows, 76 of them already '평일 낮';
 # the chain's 목동점 writes the same as '*각 항목별 1인 1회 한정', 분당·구로점 as '※항목별 1회씩 적용'). '항목별 1회' needs 적용 / 한정
 # after it — '각 항목별 1회씩 진행' would say what a package holds. A '1회 한정' alone: ONE_LIMIT below.
+# '첫 방문' reads '첫경험' like '첫 시술' — a once-only price (유앤아이 인천검단점's tab '첫경험 이벤트' › '… 첫경험 체험가', 부평점's
+# '1회 첫경험 체험가', 2026-10-19). Both branches have a '첫방문' tab too (부평점 인모드 FX 얼굴전체 32,000 there, 39,000 here), so it may
+# mean the first time with that treatment, not a new patient — not known. '첫체험' is not read: 데이뷰 인천구월점 puts it under '[재진]'.
 TAGS = [("일요일", r"일요일|썬데이|선데이"),
-        ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매"),
+        ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*경험|첫\s*구매"),
         ("1인 1회", r"(?<!\d)1\s*인\s*(?:당\s*)?(?:최대\s*)?1\s*(?:회|한정)|항목\s*별\s*(?:로\s*)?1\s*회\s*(?:씩\s*)?(?:적용|한정)")]
 WEEKDAY_WORDS = re.compile(r"평일\s*(낮|오전|오후|한정|점심|런치|저녁|야간|타임)|화\s*/?\s*수\s*/?\s*목(?!요일)")
 # a time of day: '해피아워' (also 'HAPPY HOUR'), '뷰티아워' (닥터에버스: '화,수,목 11:00~17:00' next to it on 공덕·잠실·수원인계, alone
-# on 검단·인천·천호·청량리 — 44 rows were plain prices), '프라임 타임', '낮 시간', 'N시 이전', 'N시~M시' (with ':' the hours field finds it)
-TIME_WORDS = re.compile(r"해피\s*아워|happy\s*hour|뷰티\s*아워|프라임\s*타임|낮\s*시간|\d+시\s*이전|\d{1,2}\s*시\s*[~-]\s*\d{1,2}\s*시", re.I)
+# on 검단·인천·천호·청량리 — 44 rows were plain prices), '프라임 타임', '낮 시간', '데이타임' (the word alone, not '원데이 타임…'),
+# 'N시 이전', 'N시~M시' (with ':' the hours field finds it)
+TIME_WORDS = re.compile(r"해피\s*아워|happy\s*hour|뷰티\s*아워|프라임\s*타임|낮\s*시간|(?<![가-힣])데이\s*타임|\d+시\s*이전|"
+                        r"\d{1,2}\s*시\s*[~-]\s*\d{1,2}\s*시", re.I)
 # chain words for a day-limited offer, defined on the chain's own pages rather than next to the item (chat C read these pages on
 # 2026-10-16; the sentences below are not saved in the repo):
 #   블리비 '프라임 타임' — every event page: '※프라임 타임 셀렉션 항목은 평일 오후 2시(강남역점) / 5시(구로점·대전점)까지 진행됩니다'
@@ -134,8 +139,8 @@ ANY_TIME = re.compile(r"시간\s*(?:상관\s*(?:없이|없음|없는)|무관|관
 # 이벤트', '해피아워/한정이벤트', '토요일 한정 EVENT'); the menu names with look-alike words hold none ('타임 리버스 리프팅', '48시간
 # 수분관리', '※시간 상관없이 적용가능' — 블리비's '프라임 타임' and 쁨's '해피아워' (DAY_WORDS) are no menu name), and so it is for
 # 유앤아이's tabs of 2026-10-18 (CAT_UNPAIRED below; '원데이 패키지' is no day). Its 대전점 tab '데이타임 이벤트' (items '데이타임E) …',
-# 18 rows) states no days or hours and is not read — 일산점's items titled '데이타임 이벤트' sit under its tab '평일 이벤트 (10~17시)',
-# so it may be a weekday-hours offer there too, not known.
+# 18 rows, plain prices until 2026-10-19) is a daytime offer by its name: '시간대' (TIME_WORDS), no days or hours — it states none;
+# 일산점 puts its items titled '데이타임 이벤트' under the tab '평일 이벤트 (10~17시)', so 대전점's may be weekdays too, not known.
 # The TAGS words stand in condition sections ('첫방문 이벤트' 데이뷰 26 · 밴스 42 rows, whose items repeat it in their group title;
 # 닥터에버스 목동점 '*각 항목별 1인 1회 한정' over '① 아쿠아필(1,2,3단계)+LED+모델링팩' — 15 rows compared as plain prices) and in
 # new-device sections ('덴서티리프팅 알파팁 신규런칭' 쁨, 'NMN X 나드샷 신규 런칭' 데이뷰): NEW_ITEM below.
