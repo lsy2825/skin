@@ -148,25 +148,32 @@ ANY_TIME = re.compile(r"시간\s*(?:상관\s*(?:없이|없음|없는)|무관|관
 #             price list; read whole, the tabs gave a time tag to 895 prices, 869 of them another tab's products), so its tab was
 #             read for the days / hours only next to the item's own day or time words. The collector pairs a tab button with its
 #             own product box since lsy2825/skin#88 (button data-cate="<n>" ↔ swiper id "tab<n>"), and data2/accepted/uandi.csv
-#             comes from it since the collection of 2026-10-18 (44 branches, 18,511 rows). Its 33 tab names with a condition word
-#             (1,537 rows, 97 tabs on all 44 branches) all hold their own items: the items repeat the condition in their own words
-#             ('화수목 이벤트' › '화수목) 물광주사 2.5cc', or the group title '화수목 이벤트' / '화/수/목 한정', on 27 of its 28 branches; '첫방문 체험가' /
-#             '첫방문 이벤트' › '첫방문고객) … 1회 체험가'; '1인 1회 체험가', '일요일 특가 이벤트', '💫해피썬데이EVENT💫' as the group title), or they are event
-#             offers the branch lists cheaper than under a menu tab (광교점 '해피위크 (매주 월~목)' › '물광주사 2cc' 80,000 / '스킨부스터' 99,000; 광명점
-#             '평일 이벤트' › '콜라움 240 6cc 1회' 350,000 / 500,000; 명동점 '화수목 이벤트' › '스케일링 + 네오빔 + 제네시스 + 에토좀 PTT' 230,000 / '여드름·모공'
-#             670,000), and 일산점 puts its items titled '데이타임 이벤트' under the tab '평일 이벤트 (10~17시)'. The 제모 signs of a wrong pair
+#             comes from it since the collection of 2026-10-18 (44 branches, 18,511 rows). Its 28 tab names with a condition word
+#             (1,395 rows, 90 tabs on 43 branches; and 5 trial tab names, '체험가 이벤트' / '1회 체험가 이벤트' …, 142 rows on 7 tabs, read for
+#             the price kind alone) all hold their own items. 1,315 of the 1,395 state the condition or a trial offer in their own words ('화수목 이벤트' ›
+#             '화수목) 물광주사 2.5cc', or the group title '화수목 이벤트' / '화/수/목 한정', on 27 of its 28 branches; '첫방문 체험가' / '첫방문 이벤트' ›
+#             '첫방문고객) … 1회 체험가'; '1인 1회 체험가', '일요일 특가 이벤트', '💫해피썬데이EVENT💫' as the group title). The other 80 (광교점 '해피위크
+#             (매주 월~목)' 21, 광명점 '평일 이벤트' 18, 왕십리점 '⏰평일 타임 이벤트' 16, 일산점 '평일 이벤트 (10~17시)' 12, 의정부점 '화수목 타임 이벤트' 8, 명동점
+#             '화수목 이벤트' 5) state nothing themselves but are no other tab's list: no other tab of the branch has them at that price
+#             (but 광명점's showcase tab, 2 rows — SHOWCASE_SHARE), some are dearer there (광교점 '물광주사 2cc' 80,000 / '스킨부스터' 99,000; 광명점
+#             '콜라움 240 6cc 1회' 350,000 / 500,000), and 일산점 puts its items titled '데이타임 이벤트' under the tab '평일 이벤트 (10~17시)'. Read from the saved data
+#             only, not the site again: that 명동점's 5 (on no other tab; its '쥬베룩' tab sells '쥬베룩 2cc' at 149,000 against the tab's
+#             '쥬베룩 스킨 2cc' 129,000, maybe not one product) are the tab's own is a guess. The 제모 signs of a wrong pair
 #             fell from 1,900 rows (a 제모 tab over an item without '제모') / 4,413 (an item with '제모' under another tab) to 54 / 139,
 #             all of them right: a 제모 tab's '인기 패키지 (겨드랑이 + 인중)' and '女) 겨드랑이 토닝', 제모 items in event tabs ('첫방문 체험가', '화수목 이벤트',
 #             '해피아워 이벤트', '무제한 이벤트') and packages with a 제모 part ('겨드랑이토닝 + 겨드랑이 제모'). Items with their own condition words under
 #             a tab without one fell from 1,183 rows to 167: trial cards each menu tab repeats (광주점 '레이저리프팅' › '첫 시술 체험가)슈링크유니버스
 #             100샷 1회 체험가', the same price on its '첫시술 체험가' tab) and the items' own notes ('(1인 1회 가능)', '화수목) 리투오 6cc + …' in an
 #             event tab). So 유앤아이's tab is read like any chain's category. Build of 2026-10-19 (--skip-scrape) against the old
-#             rule: 103 prices change, all 유앤아이, and 78 of them leave the plain comparison (18 with a comparison key; none enter)
-#             — 41 get '평일 낮' (왕십리점 '⏰평일 타임 이벤트' 16, 일산점 '평일 이벤트 (10~17시)' 12 with 10:00-17:00, 의정부점 '화수목 타임 이벤트' 8, 명동점 '화수목 이벤트'
-#             5), 37 the days alone with no tag (광교점 '해피위크 (매주 월~목)' 21 = 월~목, 광명점 '평일 이벤트' 16 = 평일 — groups.plain rule 2; its
-#             other 2 rows are the same price on the '🏆인기 TOP 리프팅' tab, so open to anyone), and 25 under '첫방문 체험가' (천안점 23, 건대·부천점
-#             1) become 체험가 (section_kind; they were 첫 방문 already by the tab name the collector glues in front of the group
-#             title).
+#             rule (with the showcase rule, SHOWCASE_SHARE): 114 prices change — 112 유앤아이, 2 쁨 — and 83 of them leave the plain
+#             comparison (20 with a comparison key), 2 enter it (쁨 부산점, 1 with a key). 41 get '평일 낮' (왕십리점 '⏰평일 타임 이벤트' 16, 일산점
+#             '평일 이벤트 (10~17시)' 12 with 10:00-17:00, 의정부점 '화수목 타임 이벤트' 8, 명동점 '화수목 이벤트' 5); 42 the days alone with no tag
+#             (groups.plain rule 2: 광교점 '해피위크 (매주 월~목)' 21 = 월~목, 광명점 '평일 이벤트' 18 = 평일, and 3 of its '수목 이벤트' prices = 수목 —
+#             광명점's showcase tab '🏆인기 TOP 리프팅' repeats 5 of these at the same price, and took the condition away until the showcase rule;
+#             it no longer stands for their tab either, 6 rows); 25 under '첫방문 체험가' (천안점 23, 건대·부천점 1) become 체험가 (section_kind;
+#             they were 첫 방문 already by the tab name the collector glues in front of the group title). The 2 쁨 부산점 rows are the
+#             showcase rule alone: '[가을 한정 컬렉션] 울트라인 100샷' 249,000 and '… 풀페이스 셀르디엠 1vial' 490,000 were 한정가 by the '한정' of the
+#             copy on its '이벤트' page (a showcase) and are 일반 as the category pages list them, also without the label ('울트라인 100샷' 249,000).
 CAT_UNPAIRED = set()
 # '신규 런칭' / '신규입고' / '신규 도입': a new device or product, not a first visit — taken out of the category, the group title and
 # the option before the TAGS read them. The first-visit words stay: '신규 고객', '신규 회원', '신규가입', '신규 방문', '첫방문 신규'
@@ -258,7 +265,8 @@ def once_only(text, heading=False):
 #     session and '전에 이 시술을 받아 봤어요' leaves it out — the wrong way round for these 8 prices; the user decides (PR, ask to B).
 # The option's own words come first (its 체험 / 한정 / 재방문), then the section's. A kind read from the section alone holds only when
 # every page with that price says it (clean.main, like the tags): the same price on a page without the section is open to anyone —
-# also under a slightly different name in the branch's plain price list (loose_name: 밴스 동탄 '피부스케일링' / '스케일링 1회' 39,000).
+# also under a slightly different name in the branch's plain price list (loose_name: 밴스 동탄 '피부스케일링' / '스케일링 1회' 39,000) — but
+# a showcase page's copy is no such page (SHOWCASE_SHARE).
 # Which section texts (section_texts): the group title always; the site's category too, except
 #   a chain in CAT_UNPAIRED (none now; 유앤아이 until 2026-10-19, when its tabs held other tabs' products): the tab name a collector
 #            glues in front of the group title ('첫방문 체험가 · 리쥬란 힐러' — scrape/uandi.py adds it to every '첫방문' tab's group) is
@@ -541,6 +549,41 @@ def visit_merge(a, b):
     return (0 if days == ALL_DAYS else days), ("" if hours == ALL_HOURS else hours)
 
 
+# A showcase page repeats cards of the branch's other pages: at least SHOWCASE_SHARE of its items (and SHOWCASE_MIN or more) the
+# branch also lists on another page at the same price under the same name (the option as written, spaces aside), taken from
+# SHOWCASE_SOURCES or more other pages. The copy often loses the card's own group title: 유앤아이 광명점's tab '🏆인기 TOP 리프팅'
+# (18 of its 19 items from 5 other tabs, collection of 2026-10-18) shows '울쎄라피프라임 600샷' twice under one title, at 1,680,000
+# (the '수목 이벤트' price, group title '수목 이벤트') and 1,900,000 (the '레이저리프팅' menu price), and '볼뉴머 600샷 + 울쎄라피프라임
+# 600샷' 2,100,000 from its '평일 이벤트' tab. So a showcase copy is no sign that a price is open to anyone: in the fold (clean.main)
+# the other pages decide the condition (tags, days / hours) and the price kind as if the copy were not there, and the copy
+# does not stand for the price list (nor for the plain twin of a section kind). The saved data of 2026-10-18 has 24 such pages: 쁨's '이벤트' page on 11 branches, 8 of
+# 데이뷰 ('TOP 10', option lists that repeat each other), 블리비 부산 경성대점's '기획전', and 유앤아이 광명점's TOP tab, 광주점 '첫시술 체험가',
+# 수원점 '입고 연장 이벤트', 시흥배곧점 '첫방문 이벤트' (whose items the menu tabs repeat, '첫방문E) …' in their own words). Only 광명점's 9 rows
+# and 2 of 쁨 부산점 change (build of 2026-10-19; CAT_UNPAIRED above). A page whose items are all its own is never one.
+SHOWCASE_SHARE, SHOWCASE_MIN, SHOWCASE_SOURCES = 0.8, 4, 3
+
+
+def showcase_pages(raw):
+    """{(brand, branch, category)} of the showcase pages in the raw rows (see SHOWCASE_SHARE)"""
+    pages = defaultdict(lambda: defaultdict(set))       # (brand, branch) -> (name, sale) -> its categories
+    for r in raw:
+        name, sale = comp_name(strip_event_prefix(norm_text(r["option"]))).casefold(), price(r["sale"])
+        if name and sale:
+            pages[(r["brand"], r["branch"])][(name, sale)].add(r["category"] or "")
+    out = set()
+    for (brand, branch), items in pages.items():
+        held = defaultdict(list)                         # category -> the category sets of its items
+        for cats in items.values():
+            for c in cats:
+                held[c].append(cats)
+        for c, lists in held.items():
+            shared = [cats for cats in lists if len(cats) > 1]
+            if len(lists) >= SHOWCASE_MIN and len(shared) >= SHOWCASE_SHARE * len(lists) \
+                    and len(set().union(*shared) - {c}) >= SHOWCASE_SOURCES:
+                out.add((brand, branch, c))
+    return out
+
+
 EMOJI = re.compile(r"[♥️❤♡]+")
 
 
@@ -713,7 +756,8 @@ def main():
     # build writes its own at the end) — a row of it that this build keeps is marked back
     dropped_before = prev_dropped(os.path.join(ROOT, "data2", "issues.csv"))
     vdef = vat_policy()
-    issues, out, seen, seen_old, sex_of, sect_of = [], [], {}, {}, {}, {}
+    issues, out, seen, seen_old, sex_of, sect_of, weak_of = [], [], {}, {}, {}, {}, {}
+    showcase = showcase_pages(raw)
     for r in raw:
         opt, grp = norm_text(r["option"]), norm_text(r["group"])
         # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
@@ -820,6 +864,7 @@ def main():
         sex = SEX.get(m.group(), m.group()) if m else ""
         # a pass (구독권) never folds with a per-session row at the same price: both keys carry it
         is_pass = kind == "구독권"
+        weak = (r["brand"], r["branch"], r["category"] or "") in showcase      # a showcase page's copy (SHOWCASE_SHARE)
         k_old = (r["brand"], r["branch"], strip_event_prefix(opt, hair), sale, orig, is_pass)
         k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname, hair)).casefold().replace("남자", "남성").replace("여자", "여성"), sale, is_pass)
         prev = seen.get(k)
@@ -833,22 +878,30 @@ def main():
                 other_orig = str(prev["orig"]) != str(orig or "")
                 issues.append({**r, "action": "합침", "reason": "같은 상품·판매가가 두 페이지에(정가 다름)" if other_orig else
                                "띄어쓰기·대소문자만 다른 같은 상품"})
-            # a condition stays only when every page says it: the same price on a page without it is open to anyone (a union
-            # turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
-            prev["tags"] = merge_tags(prev["tags"], row["tags"])
-            # a kind read from the section alone (section_kind) stays only when every page says it, like the tags
-            if sect_of.get(id(prev)) and kind == "일반":
-                prev["kind"], sect_of[id(prev)] = "일반", False
-            elif sect_of.get(id(prev)) and not by_sect and kind == prev["kind"]:
-                sect_of[id(prev)] = False
-            prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
+            if weak and not weak_of[id(prev)]:
+                pass     # a showcase page's copy: the other page's condition and kind stand (SHOWCASE_SHARE)
+            elif weak_of[id(prev)] and not weak:
+                # the card a showcase page showed first: this page's condition and kind decide
+                prev.update({"tags": row["tags"], "days": row["days"], "hours": row["hours"], "kind": kind})
+                sect_of[id(prev)], weak_of[id(prev)] = by_sect, False
+            else:
+                # a condition stays only when every page says it: the same price on a page without it is open to anyone (a
+                # union turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
+                prev["tags"] = merge_tags(prev["tags"], row["tags"])
+                # a kind read from the section alone (section_kind) stays only when every page says it, like the tags
+                if sect_of.get(id(prev)) and kind == "일반":
+                    prev["kind"], sect_of[id(prev)] = "일반", False
+                elif sect_of.get(id(prev)) and not by_sect and kind == prev["kind"]:
+                    sect_of[id(prev)] = False
+                prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
             if row["addon"] == "1":
                 prev["addon"] = "1"
             if row["back"] != "1":
                 prev["back"] = ""        # one of its pages was kept by the previous build too: the price was there
-            if event_page(prev) and not event_page(row):
-                # the price list row wins: its category, link, list price and end date (an event's end date expired the row); the
-                # category stays when the first row's own words already gave one (a '필러/실리프팅' page read as 리프팅)
+            if event_page(prev) and not event_page(row) and not weak:
+                # the price list row wins (a showcase page is none): its category, link, list price and end date (an event's end
+                # date expired the row); the category stays when the first row's own words already gave one (a '필러/실리프팅' page
+                # read as 리프팅)
                 prev.update({"src_cat": r["category"], "cat": cat if prev["cat"] == "기타" else prev["cat"], "url": r["url"],
                              "orig": orig or "", "until": r["until"]})
             elif not prev["orig"] and orig:
@@ -863,6 +916,7 @@ def main():
         seen_old.setdefault(k_old, []).append(row)
         sex_of[id(row)] = sex
         sect_of[id(row)] = by_sect
+        weak_of[id(row)] = weak
         out.append(row)
     # a pass the branch lists again without the pass words: 밴스 창원 '얼굴전체' 690,000 / 정가 1,200,000원 next to '젠틀맥스프로플러스
     # 얼굴전체 1년이용권' at the same two prices — one-session prices do not match a year's pass to the won (2026-10-15)
@@ -882,11 +936,13 @@ def main():
     # 이태원's '★1회체험가★' card its price list ('미희주사 눈밑 1회' / 'THE 미희주사 눈밑 1회' 290,000, '편평사마귀 제거 1개당' /
     # '편평사마귀제거' 2,900; 밴스 천안 '[1회 체험가 초특가]' › '얼굴 점제거(2mm이하/개당, 개수 무제한)' / '점제거 (2mm이하)' 100 a mole).
     # Same branch, sale and visits (sessions; one for a visit with no limit on the count, one_visit), one sex (or none named), a plain
-    # row (kind 일반 not from a section, no tag, no days / hours), one loose name inside the other (loose_name)
+    # row (kind 일반 not from a section, no tag, no days / hours, not only on a showcase page — SHOWCASE_SHARE), one loose name
+    # inside the other (loose_name)
     plain_names = defaultdict(list)
     visits = lambda row: 1 if row["sess"] == 99 and one_visit(row["mname"]) else row["sess"]
     for row in out:
-        if row["kind"] == "일반" and not sect_of.get(id(row)) and not row["tags"] and not row["days"] and not row["hours"]:
+        if row["kind"] == "일반" and not sect_of.get(id(row)) and not row["tags"] and not row["days"] and not row["hours"] \
+                and not weak_of[id(row)]:
             plain_names[(row["brand"], row["branch"], row["sale"], visits(row))].append((sex_of[id(row)], loose_name(row["option"])))
     for row in out:
         if sect_of.get(id(row)):
