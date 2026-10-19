@@ -10,8 +10,15 @@ data.json (compact, strings interned in `s`):
             keys = comparison ids, space separated; sess = sessions in the price, 1 = single, 99 = 이용권/무제한;
             group = auto group index or -1; until = event end YYYY-MM-DD ('' none, 'posted:…' = 고시표 date);
             url = source page; vat 0 unknown / 1 포함 / 2 별도; review 1 = price moved ≥90% (or ×10) since last week
-            and nobody approved it yet (data2/review.csv, approvals in data2/review_ok.csv) — the app keeps it out of
-            comparisons
+            (down: every plain row of that id or group there at a tenth or less) and nobody approved it yet, or it waited in
+            the previous build at the same price (data2/review.csv, approvals in data2/review_ok.csv; review_queue) — the app
+            keeps it out of comparisons. Until approved, what such a row moves is held (held / held_back, 2026-10-19: 블리비
+            대구 동성로점·제주점 '얼굴 점빼기(2mm 이하) 개당' 1,000·5,000 → 100 stood in the 가격 변동 list while the rows were
+            hidden): where it is the lowest of an id or group at that branch, this collection's snapshots count the price before
+            it there (not where the rules moved that place's rows since), or a shown row's below that (held_price; neither: left
+            out) — so the held price is no `changes` / achg entry, trend point or baseline, and no data-meta.json changes entry
+            (meta.about.review 'was': the prices the name listed before). Approved, a change once; back, nothing. While it
+            waits, a shown row of that id there that rose is not seen in changes (data-meta lists it)
             parts = for names with '+': comparison keys matched by each part, 'X12,X24;;X01' (package mode C)
             addon = 1 when the price is only sold on top of another procedure ('옵션5) 에어녹스 추가', '[…옵션] …', '… 추가당',
             '… 추가 시', or the site marks it so): not a procedure price — keep it out of ranges, medians and 'lowest'
@@ -33,7 +40,8 @@ data.json (compact, strings interned in `s`):
   bstat     per branch [regular level, level incl. specials, groups used, cheapest count, sole cheapest, {cat: level}]
             (level = geometric mean of price / median, 0.81 = 19% cheaper than the middle branch)
   achg      auto-group changes since the previous snapshot {prev, chg [g, b, before, after], new [g, b, p], gone [label s, b, before]}
-            — not where the rules moved a row of that price into or out of the group's regular price (group_moved, meta.reclGroups)
+            — not where the rules moved a row of that price into or out of the group's regular price (group_moved, meta.reclGroups);
+            where a row waiting for review is the group's regular lowest at that branch, counted with the held price (review)
   meta.fam  procedure families (build2/taxonomy.py) for the compare picker and option switch: [name, regex for related rows
             at a branch (tested on the name without spaces), [[key id, variant label]...], compare category, base family id,
             [the clinics' own short explanations from the names]]
@@ -41,7 +49,8 @@ data.json (compact, strings interned in `s`):
             purpose, areas, method, kinds, side effects, cautions, sources, review status; matched to families by name or base id
   keys      [id, cat, label] — hand-made X01..X36 (xkeys.py) first, then variant keys T… (taxonomy.py, data2/variants.json)
   changes   [key, branch, before, after] for comparison prices that moved since the previous snapshot — not where a rule moved the
-            key's rows at that branch (meta.reclBranches; the key's other branches keep their changes)
+            key's rows at that branch (meta.reclBranches; the key's other branches keep their changes); where a row waiting for
+            review is the key's plain lowest at that branch, counted with the held price (review)
   meta.plainRules  [[rule version, first collection (YYYY-MM-DD) built with it], …] — the rule for a plain (regular) price: the
             weekly snapshot, trend and changes, the groups' median regular price and bstat (build2/groups.py plain). 2 = kind
             일반/고시가, no tag, days 0 and hours '' (2026-10-16: a price limited to some weekdays or hours is conditional even
@@ -68,7 +77,7 @@ data.json (compact, strings interned in `s`):
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
 Snapshots: data2/history/<date>.json = {"<key>|<branch index name>": lowest plain price (groups.plain)}; the newest older one is
-the 'before'.
+the 'before'. Where a row waiting for review is that price, the snapshot has the held price (review: held_price).
 """
 import argparse, csv, datetime, glob, json, os, re, sys, unicodedata
 from collections import Counter, defaultdict
@@ -300,41 +309,145 @@ def about():
     rp = os.path.join(ROOT, "data2", "report.md")
     report = open(rp, encoding="utf-8").read() if os.path.exists(rp) else ""
     rv = os.path.join(ROOT, "data2", "review.csv")
-    review = list(csv.DictReader(open(rv, encoding="utf-8-sig")))[:200] if os.path.exists(rv) else []
+    review = list(csv.DictReader(open(rv, encoding="utf-8-sig")))[:REVIEW_KEEP] if os.path.exists(rv) else []
     return {"issues": dict(issues), "vat": vat, "sources": src, "report": report, "review": review}
 
 
-def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, allk):
+REVIEW_KEEP = 200       # the rows of data2/review.csv data.json keeps (meta.about.review, the 운영 screen's 검토 큐)
+
+
+def review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, allk, was=None, waited=(), snaps=({}, {}, [])):
     """prices that moved ≥90% down or ×10 up since the previous snapshot are held back (row[13] = 1) until someone
-    lists them in data2/review_ok.csv (brand,branch,name,price). Writes data2/review.csv. Returns pending count."""
+    lists them in data2/review_ok.csv (brand,branch,name,price). Writes data2/review.csv. Returns pending count.
+    The move is of an id's or group's plain lowest at a branch (changes, achg): up, the row of the new lowest waits; down,
+    every plain row there at a tenth of the price before or less — not only the lowest, or the next one would be the new
+    lowest unseen (검수 2026-10-19: '정품' 320,000 → 30,000 beside a held 300,000 → 29,000). A row the previous data.json held at the
+    same price waits again (waited = prev_held) whatever its place's price did since: an approved row or a real cut beside it
+    moves the snapshot it is compared with, and the held price would pass without anyone approving it (검수 2026-10-19:
+    300,000 → 250,000 beside a held 29,000 let it through as -88% the next week).
+    before = the price of the id or group at that branch in the previous snapshots (snaps = (ids {'id|brand|branch': price},
+    groups {group key: {'brand|branch': price}}, group keys)): the one it moved from, or for a row only waiting since an earlier
+    build its group's there, else its first id's (none: its own price). was (검토 대기 rows) = the prices the name (and price kind)
+    listed before (name_was, space separated, '' none, '?' not known) — what data-meta.json counts the row from once it is approved
+    or back (datameta.waiting). The next build reads it from meta.about.review only (REVIEW_KEEP rows): further down the file
+    has '?' too, so a rebuild of the collection writes the same file (검수 2026-10-19: past 200 a guess came back as the name's
+    prices). What the held rows move in changes, achg and the snapshots is counted after this (held)."""
     okp = os.path.join(ROOT, "data2", "review_ok.csv")
     ok = {(x["brand"], x["branch"], x["name"], int(x["price"])) for x in csv.DictReader(open(okp, encoding="utf-8-sig"))} if os.path.exists(okp) else set()
     big = lambda before, after: after <= before * 0.1 or after >= before * 10
     hits = {}
     for g, b, before, after in achg:
         if big(before, after):
-            hits[("g", g, b, after)] = before
+            hits[("g", g, b)] = (before, after)
     for k, b, before, after in changes:
         if big(before, after):
-            hits[("k", allk[k][0], b, after)] = before
+            hits[("k", allk[k][0], b)] = (before, after)
     out = []
     for i, (r, row) in enumerate(zip(rows, out_rows)):
         b, sale = row[0], row[3]
-        before = hits.get(("g", gid[i], b, sale))
-        if before is None:
-            before = next((hits[("k", k, b, sale)] for k in r["keys"].split() if ("k", k, b, sale) in hits), None)
-        if before is None:
+        hit = lambda x: x in hits and (sale == hits[x][1] or (sale <= hits[x][0] * 0.1 and G.regular(r)))
+        at = next((x for x in [("g", gid[i], b)] + [("k", k, b) for k in r["keys"].split()] if hit(x)), None)
+        key = (r["brand"], r["branch"], r["name"], sale)
+        if at is not None:
+            before = hits[at][0]
+        elif key in waited:
+            ids, grs, gk = snaps
+            before = next((p for p in [grs.get(gk[gid[i]], {}).get(bkeys[b]) if gid[i] >= 0 else None]
+                           + [ids.get(f"{k}|{r['brand']}|{r['branch']}") for k in r["keys"].split()] if p), sale)
+        else:
             continue
-        approved = (r["brand"], r["branch"], r["name"], sale) in ok
+        approved = key in ok
         if not approved:
             row[13] = 1
+        w = (was or {}).get((r["brand"], r["branch"], r["name"], r["kind"]), [])
         out.append({"status": "승인됨" if approved else "검토 대기", "brand": r["brand"], "branch": r["branch"], "name": r["name"],
-                    "before": before, "price": sale, "change": f"{(sale / before - 1) * 100:+.0f}%", "url": r["url"]})
+                    "before": before, "price": sale, "change": f"{(sale / before - 1) * 100:+.0f}%", "url": r["url"],
+                    "was": "" if approved else "?" if w is None else " ".join(map(str, w))})
+    for x in out[REVIEW_KEEP:]:
+        if x["status"] == "검토 대기":
+            x["was"] = "?"
     with open(os.path.join(ROOT, "data2", "review.csv"), "w", newline="", encoding="utf-8-sig") as f:
-        w = csv.DictWriter(f, fieldnames=["status", "brand", "branch", "name", "before", "price", "change", "url"])
+        w = csv.DictWriter(f, fieldnames=["status", "brand", "branch", "name", "before", "price", "change", "url", "was"])
         w.writeheader()
         w.writerows(out)
     return sum(1 for x in out if x["status"] == "검토 대기")
+
+
+def prev_held(prev):
+    """review_queue's waited: {(brand, branch, name, price)} of the rows the previous data.json held for review (row[13] = 1)"""
+    return {k[:3] + (p,) for k, (_, ps) in datameta.waiting(prev).items() for p in ps} if prev else set()
+
+
+def name_was(prev):
+    """review.csv 'was' for this build's rows: {(brand, branch, name, kind): [prices]} the previous data.json lists for that name
+    and price kind — where it held the name for review, the prices the name stood for there (datameta.waiting: that file's own
+    'was', so a rebuild of the collection and a week still waiting carry the prices from before the move; None where it cannot
+    say). Not the id's or group's lowest ('before'): a name next to a cheaper one of the same id moved from its own price
+    (검수 2026-10-19: '울쎄라 100샷 정품 1회' 320,000 → 29,000 beside a 300,000 row read as 300,000 → 320,000 when it came back)"""
+    if not prev:
+        return {}
+    kinds = prev["meta"].get("kinds") or KINDS
+    out = dict(datameta.resolved(prev))
+    out.update({k: was for k, (was, _) in datameta.waiting(prev).items()})
+    return {(k[0], k[1], k[2], kinds[k[3]] if 0 <= k[3] < len(kinds) else ""): v for k, v in out.items()}
+
+
+def held(rows, out_rows, gid, best, low_reg):
+    """what the rows waiting for review (row[13] = 1, review_queue) move: {'id|brand|branch': the plain lowest of the other rows
+    there, None when there is none} where such a row is the plain lowest (best) and no shown row has that price, and
+    {(group index, branch index): the same} for the groups' regular lowest (low_reg) — the moves review_queue found and the other
+    ids of those rows. A row that waits is out of the app's comparisons: until someone approves it, these places are counted
+    with the price before it (hold_back, groups.held_back)"""
+    shown_k, shown_g = {}, defaultdict(dict)
+    for r, row, g in zip(rows, out_rows, gid):
+        if row[13] or not G.regular(r):
+            continue
+        p = row[3]
+        for k in r["keys"].split():
+            kk = f"{k}|{r['brand']}|{r['branch']}"
+            shown_k[kk] = min(shown_k.get(kk, p), p)
+        if g >= 0:
+            shown_g[g][row[0]] = min(shown_g[g].get(row[0], p), p)
+    return ({kk: shown_k.get(kk) for kk, p in best.items() if shown_k.get(kk) != p},
+            {(g, b): shown_g[g].get(b) for g, m in low_reg.items() for b, p in m.items() if shown_g[g].get(b) != p})
+
+
+def held_price(shown, before):
+    """a held place's price (held): the lower of the snapshot's one before it and the lowest shown row there — the waiting row
+    counts at the price before it, and a shown row below that is what the app shows (검수 2026-10-19: a row a rule brought back,
+    a real cut next to a new waiting row); None where neither is. before is None too where the rules moved that place's rows
+    since that snapshot: its price there is another mix of rows (검수 2026-10-19: kept, it came back as a change the next week)"""
+    ps = [p for p in (shown, before) if p is not None]
+    return min(ps) if ps else None
+
+
+def hold_back(best, hk, before, moved=(set(), set())):
+    """this collection's snapshot of the comparison ids, and what `changes` counts: best, but each held 'id|brand|branch' (held) at
+    held_price with the snapshot it is compared with (before) — not where the rules moved its rows since (moved = regrouped:
+    (ids at every branch, {(id, 'brand|branch')})) — left out where that is None. In best's order: the file's bytes do
+    not depend on the hash seed (검수 2026-10-19). groups.held_back does the same for the automatic groups"""
+    ids, pairs = moved
+    out = {}
+    for kk, p in best.items():
+        if kk in hk:
+            k, place = kk.split("|", 1)
+            p = held_price(hk[kk], None if k in ids or (k, place) in pairs else before.get(kk))
+            if p is None:
+                continue
+        out[kk] = p
+    return out
+
+
+def held_achg(chg, new, hg, snap, moved, gkeys, bkeys):
+    """achg chg / new at the held (group, branch) places (held) counted with this collection's snapshot (groups.held_back): none
+    where that is the 'before' price; where a shown row below it is the price now, that one — unless a rule moved a row of that
+    price (achg_keep). The other entries stay as they are"""
+    now = lambda g, b: snap.get(gkeys[g], ["", {}])[1].get(bkeys[b])
+    at = lambda g, b, p: (bkeys[b], gkeys[g], p) in moved
+    chg = [c if (c[0], c[1]) not in hg else [c[0], c[1], c[2], now(c[0], c[1])] for c in chg]
+    new = [c if (c[0], c[1]) not in hg else [c[0], c[1], now(c[0], c[1])] for c in new]
+    return ([c for c in chg if c[3] is not None and c[3] != c[2] and not at(c[0], c[1], c[3])],
+            [c for c in new if c[2] is not None and not at(*c)])
 
 
 # words a clinic page puts after the address (a popup's buttons, a footer link) that the scraper read with it — and, from
@@ -903,32 +1016,43 @@ def main():
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     # … and at which branches (meta.reclBranches): only those branches' price changes are the rules'
     reclb = recl_branches(prev_data, collected, recl, pairs_now, whole_now, bkeys)
-    # weekly snapshot + changes against the previous one — dated by the collection, not the build: a rebuild without scraping
-    # on a later day rewrites that collection's snapshot instead of adding an observation that never happened
-    save_snapshot(hist, collected, best)
-    changes, prev_date = [], ""
+    # changes against the previous snapshot (for the review queue; counted again with the held prices after it, hold_back)
+    changes, prev_date, skip, kid = [], "", (set(), set()), {k[0]: i for i, k in enumerate(ALLK)}
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
         # every id regrouped after that snapshot (this build or an earlier build of a later day / the same day): at the
         # branches where its rows moved, its 'change' since the snapshot is a new mix of rows, not a price change
-        skip_ids, skip_pairs = regrouped(recl, reclb, prev_date, bkeys)
-        changes = price_changes(prev, best, skip_ids, skip_pairs, {k[0]: i for i, k in enumerate(ALLK)}, bi)
+        skip = regrouped(recl, reclb, prev_date, bkeys)
+        changes = price_changes(prev, best, *skip, kid, bi)
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     vp = os.path.join(ROOT, "data2", "variants.json")
     vj = json.load(open(vp, encoding="utf-8")) if os.path.exists(vp) else {"keys": [], "families": []}
     KB["specs"] = spec_keys(KB["specs"], vj["keys"], {k[0] for k in ALLK}, vj.get("families", []), {k[0]: k[2] for k in ALLK})
-    achg, anew, agone, aprev, asnap = G.snapshot_and_changes(hist, collected, gkeys, groups, low_reg, bkeys,
-                                                             glob.glob(os.path.join(hist, "*.auto.json.gz")))
+    auto = G.snapshot(gkeys, groups, low_reg, bkeys)
+    achg, anew, agone, aprev, asnap = G.changes_since(auto, collected, gkeys, bkeys, glob.glob(os.path.join(hist, "*.auto.json.gz")))
     # a chain the previous snapshot did not have is new as a whole: its prices are not '새로 생김' one by one (2026-10-15, 개선 보고서
-    # E9 — 밴스·유앤아이·데이뷰·닥터에버스·셀린 filled the list on 10-14; a chain back after a gap too, C3 검토)
+    # E9 — 밴스·유앤아이·데이뷰·닥터에버스·셀린 filled the list on 10-14; a chain back after a gap too, C3 검토). Read before this
+    # collection's snapshots are written: only older dates count here, and for meta.brandFirst a chain first seen now gets this date
     days = brand_days(hist, collected)
     anew = [c for c in anew if chain_was_there(days, aprev, bkeys[c[1]].split("|")[0])]
     moved = achg_moved(prev_data, prev_rows, rows, gid, gkeys, bkeys, collected, aprev, asnap, anew)
     reclg = recl_groups(moved, collected, aprev, asnap, bkeys)
     achg, anew, agone = achg_keep(achg, anew, agone, moved, bkeys, gkeys)
     agone = agone[:G.GONE_MAX]
-    review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK)
+    review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK, name_was(prev_data), prev_held(prev_data),
+                          (prev, asnap, gkeys))
+    # what the rows waiting for review move is held until approved: those places count with the price before it (or a shown row
+    # below it) — in this collection's snapshots and so in changes and achg: the held price is no change, '새로 생김', trend point
+    # or next week's baseline. Dated by the collection, not the build: a rebuild without scraping on a later day rewrites that
+    # collection's snapshot instead of adding an observation that never happened — and, counted from the same older snapshot,
+    # holds the same prices (a second build of the collection gives the same files)
+    hk, hg = held(rows, out_rows, gid, best, low_reg)
+    snap, auto = hold_back(best, hk, prev, skip), G.held_back(auto, hg, asnap, gkeys, bkeys, moved)
+    changes = price_changes(prev, snap, *skip, kid, bi)
+    achg, anew = held_achg(achg, anew, hg, auto, moved, gkeys, bkeys)
+    save_snapshot(hist, collected, snap)
+    G.write_snapshot(hist, collected, auto)
     keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
         # updated = the collection (the day most branches were read; what the app calls '수집'); built = the build date (expired events and the weekly
@@ -941,7 +1065,7 @@ def main():
                  "plainRules": G.rule_marks((prev_data or {}).get("meta", {}).get("plainRules"), collected),
                  "brandFirst": first_seen(days, [b for b, *_ in BRANDS], {r["brand"] for r in rows}, collected)},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
-        "trend": trend(hist, collected, rows, {k: d for d, ks in recl for k in ks}),
+        "trend": trend(hist, collected, [r for r, o in zip(rows, out_rows) if not o[13]], {k: d for d, ks in recl for k in ks}),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }
