@@ -37,7 +37,7 @@
   // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
   // (theme, region, VAT mode, Jomi preferences …) stay shared. The space changes only through setScope (app.js onAccount).
   const PERSONAL = new Set(["me", "recs", "carts", "cart", "ci", "alerts", "notes", "favs", "snaps", "places", "locPlace", "recent", "recentQ", "short",
-    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets"]);
+    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets", "visited"]);
   let SCOPE = (() => { try { const u = JSON.parse(localStorage.getItem("pc:lastUid") || "null"); return u && window.APP_CONFIG && window.APP_CONFIG.supabaseUrl ? `u:${u}:` : ""; } catch (e) { return ""; } })();
   const keyOf = (k) => "pc:" + (PERSONAL.has(k) ? SCOPE : "") + k;
   const store = {
