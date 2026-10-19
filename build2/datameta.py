@@ -20,7 +20,8 @@ data-meta.json:
              — lists capped at CAP each. A brand the previous data.json did not have at all is a new chain: its rows are counted in
              new_chains, not listed as added (개선 보고서 E9; the alert Worker and the 가격 변동 screen read 'added'). A row a rule
              took back (build2/appdata.py came_back: the previous build dropped it for its words — 2026-10-16, 391 닥터에버스 prices
-             under a '※…' heading) is not listed as added either: no clinic added it
+             under a '※…' heading) is not listed as added either: no clinic added it; nor is a row a rule only renamed (the same
+             last part after ' · ' at the same price at the branch on the other side: build2/clean.py shared_titles)
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
 import argparse, datetime, hashlib, json, os, re, sys
@@ -99,15 +100,18 @@ def changes(prev, cur, prev_version, back=None):
     after = {same(k[0], k[1], k[2], p) for k, ps in b.items() for p in ps}
     added = [r for r in added if same(*r) not in before]
     removed = [r for r in removed if same(*r) not in after]
-    # an option split off or folded in by a rule (2026-10-15: the old fold put '여성 … · 가슴 전체' 490,000원 under the 남성 row; an
-    # add-on listed on two product pages kept one page's title): the same option words at the same price stay at the branch under
-    # another heading. A row counts as new / gone only when no row of that branch with the same last part and price is on the
-    # other side as well.
+    # an option split off, folded in or renamed by a rule (2026-10-15: the old fold put '여성 … · 가슴 전체' 490,000원 under the 남성 row; an
+    # add-on listed on two product pages kept one page's title; 2026-10-19: clean.shared_titles puts the group title in front of an
+    # option line several products share — '제모데이 12회 이벤트 …' → '男) 인중 12회 · 제모데이 12회 이벤트 …' — and takes it off again when
+    # their prices stop meeting): the same option words at the same price stay at the branch under another heading. A row counts
+    # as new / gone only when no row of that branch with the same last part and price is on the other side — one row renamed
+    # (1 → 1) as well as one split in several or several folded in one (the rule needed two rows on one side before 2026-10-19,
+    # and listed each rename as gone and new)
     tail = lambda b, br, name, p: same(b, br, name.split(" · ")[-1], p)
     tb, ta = Counter(tail(*([k[0], k[1], k[2], p])) for k, ps in a.items() for p in ps), \
         Counter(tail(*([k[0], k[1], k[2], p])) for k, ps in b.items() for p in ps)
-    added = [r for r in added if not (tb[tail(*r)] and ta[tail(*r)] >= 2)]
-    removed = [r for r in removed if not (ta[tail(*r)] and tb[tail(*r)] >= 2)]
+    added = [r for r in added if not tb[tail(*r)]]
+    removed = [r for r in removed if not ta[tail(*r)]]
     # a branch collected on the same date in both builds has the same prices: what differs there comes from the rules
     da, db = fetched(prev), fetched(cur)
     fresh = lambda r: not (da.get((r[0], r[1])) and da.get((r[0], r[1])) == db.get((r[0], r[1])))

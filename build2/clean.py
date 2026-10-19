@@ -8,7 +8,9 @@ Rules (each dropped or changed row is listed in issues.csv with the reason):
   fix    list price below the sale price, or 10x+ the sale price -> list price removed (typo on the site)
   dedupe the same (brand, branch, matching name, sale) shown on several pages of one branch -> kept once
          (a category page wins over the 기획전 page, so the row keeps its real category and list price; the matching name is
-         compared without word breaks or letter case; folds the old rule didn't make are listed as '합침')
+         compared without word breaks or letter case; folds the old rule didn't make are listed as '합침'). One option line
+         that a branch writes under several product titles at several prices is no item of its own: when two of its products
+         meet at one price, they take their group title in front of the name and fold only with the same title (shared_titles)
 Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가 — from the option's words, else the section's: section_kind),
 cat (common category), name (display name), mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 ·
 시간대 · 일요일 · 첫 방문), days / hours (the weekdays and hours written for the price: visit_days / visit_hours), keys (matched
@@ -22,7 +24,7 @@ from collections import Counter, defaultdict
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
-from xkeys import X, match, ONCE, COURSE, sessions, addon_only  # noqa: E402
+from xkeys import X, match, ONCE, COURSE, sessions, addon_only, comp  # noqa: E402
 import taxonomy  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
@@ -755,6 +757,183 @@ def load():
     return rows
 
 
+def prepare(r):
+    """a raw row read as far as its names: {opt, grp, sale, orig, why, fix, hair, name} — why = the reason it is dropped (else
+    None; the rest is then not read), fix = the list-price note for issues.csv (else None). Read twice: by shared_titles
+    (before the fold) and by main, so both read every item the same way"""
+    opt, grp = norm_text(r["option"]), norm_text(r["group"])
+    # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
+    # the heading stays the section (category, read for VAT and the conditions), the product is what follows — read whole, the
+    # mark made the products a notice and they were dropped (NOTE_SECTION)
+    sec = norm_text(r.get("category", ""))
+    if NOTE_SECTION.match(sec):
+        opt = unglue(opt, sec)
+    sale, orig = price(r["sale"]), price(r["orig"])
+    it = {"opt": opt, "grp": grp, "sale": sale, "orig": orig, "why": None, "fix": None, "hair": False, "name": ""}
+    if not opt:
+        it["why"] = "옵션 이름 없음"
+    elif not sale:
+        it["why"] = "가격 없음(0원)"
+    elif NOTE.search(opt):
+        it["why"] = "안내 문구(가격 아님)"
+    elif PAPER.search(opt) or PAPER.search(grp):
+        it["why"] = "서류 발급비(시술 아님)"
+    elif sale > 50_000_000:
+        it["why"] = "가격 비정상(5천만원 초과)"
+    elif ISO.match(r.get("until") or "") and r["until"] < TODAY:
+        it["why"] = f"이벤트 기간 지남({r['until']} 종료)"
+    if it["why"]:
+        return it
+    if orig and orig < sale:
+        it["fix"], orig = "정가가 판매가보다 낮음(사이트 표기 오류)", 0
+    elif orig and orig >= sale * 10 and sale >= 1000:
+        it["fix"], orig = "정가가 판매가의 10배 이상(사이트 오기 의심)", 0
+    elif orig == sale:
+        orig = 0
+    if r["brand"] == "닥터에버스":
+        # the item name often leaves the product to its section ('◆볼뉴머' › '페이스 300샷'): put back only a section
+        # that names a product (older raw files have every section glued in front by the collector — taken off first)
+        sec = re.sub(r"\s+", " ", re.sub(r"[◆◇■□●○★☆♥]", " ", r["category"] or "")).strip()
+        if sec and opt.startswith(sec + " "):
+            opt = opt[len(sec) + 1:]
+        head = section_head(sec, grp)
+        if head and comp_name(head) not in comp_name(opt):
+            opt = f"{head} {opt}"
+    hair = bool(re.search(r"제모", f"{r['category']} {grp}"))
+    name = strip_event_prefix(opt, hair)
+    if name == "(대표가)" or not PROC.search(name):
+        head = title_words(grp)
+        name = (f"{head} · {name}" if head else name) if name != "(대표가)" else f"{grp} (최저가부터)"
+    it.update({"opt": opt, "orig": orig, "hair": hair, "name": name})
+    return it
+
+
+def match_name(r, grp, opt, name):
+    """the name used for matching (mname): the display name without ' · ', with the page's sex in front when the name has none"""
+    mname = name.replace(" · ", " ")
+    g = re.search(r"(남성|남자|여성|여자)", grp)
+    if not g and (re.search(r"제모", f"{grp} {opt}") or taxonomy.hair_area(opt)):
+        # a 제모 item whose sex is only in the page name (쁨 범계 '여성제모' / '남성제모' › '이마(헤어+삼자) 제모 1회'): the same option at
+        # the same price on both pages is two products, and one key held both (2026-10-15). Only for 제모 items — 유앤아이's '여성제모'
+        # tabs hold '女) 겨드랑이 토닝 1회' too (산본·안산점), and held every procedure while its collector paired the tabs wrong
+        # (before lsy2825/skin#88).
+        g = re.search(r"(남성|남자|여성|여자)", r["category"] or "")
+    # the option's own sex mark wins ('女&男) 겨드랑이', '男) 인중'): the page's sex is not added on top (검증 6차: '여성 남성 브라질리언')
+    if g and not re.search(r"남성|남자|여성|여자|男|女|\((?:남|여)\)|(?<![가-힣])(?:남|여)\)", unicodedata.normalize("NFKC", mname)):
+        mname = f"[{g.group(1)}] {mname}"
+    return mname
+
+
+def pass_item(grp, opt):
+    """a 1-year / unlimited pass (구독권): pass words, or a pass group title over an option that states no sessions"""
+    return bool(SUBS.search(f"{grp} {opt}") or (pass_group(grp, opt) and not re.search(r"\d+\s*회", opt)))
+
+
+def fold_name(mname, hair):
+    """the matching name as the fold compares it: no word breaks or letter case, 남자 = 남성, 여자 = 여성"""
+    return comp_name(strip_event_prefix(mname, hair)).casefold().replace("남자", "남성").replace("여자", "여성")
+
+
+def title_own(title, name):
+    """the words of a group title (title_words) that the item name does not hold already: what the title adds to the name"""
+    n = comp_name(unicodedata.normalize("NFKC", name)).casefold()
+    return frozenset(w for w in re.split(r"[\W_]+", unicodedata.normalize("NFKC", title).casefold()) if w and w not in n)
+
+
+ADD_WORD = re.compile(r"추가")
+MIN_SOLD = 3          # branches selling a name for the automatic groups to compare it (build2/groups.py MIN_BRANCHES)
+
+
+def shared_titles(raw, items):
+    """{row index: group title} for items whose product is their group title, not the option (2026-10-19). A branch writes one
+    option line under several product titles: 유앤아이 광주점's tab '평일 제모데이 12회 (젠틀맥스 프로 플러스)' gives each product
+    ('男) 팔전체 12회', '男) 다리전체 12회', '女) 팔전체 12회' …) the same line '제모데이 12회 이벤트 (평일 내원 고객 대상 / 젠틀맥스 프로
+    플러스)'; 블리비 포항점 sells '바디 착색토닝(겨드랑이/팔꿈치/무릎) 1부위 1회' on its 레이저토닝 / 클라리티Ⅱ / 헐리우드 스펙트라 토닝 /
+    스타워커 포토나 토닝 … pages; 톡스앤필 세종점 '[EVENT] 국산 필러 1cc' on its 턱 / 마리오네트 / 이마·관자 … 필러 pages. The line
+    names a procedure, so the title stayed out of the name (prepare: only for a name without one), and the fold took products of
+    one price for one item shown twice: 5 of 광주점's 579,000 products became one row, and 4 were gone.
+    Such a line is one option of several products when (a) the branch sells it under two or more titles at two or more prices
+    (one product shown on two pages has one price), and (b) two of its titles at one price — that the fold would join: no two
+    different list prices — each add words the line lacks (title_own) and neither title's words hold the other's: a body area,
+    sex, device or amount of its own ('男) 팔전체' / '男) 다리전체', '클라리티Ⅱ' / '헐리우드 스펙트라'), and (c) the two pages are no
+    copies: pages that list other lines too, each of them at one price on every page of the branch, are one price list shown on
+    several pages (셀린 다산점 lists its '메디컬 스킨케어 스페셜 4주 · 8주 · 12주' program on 8 skin-care pages — 4주 and 12주 at one
+    price everywhere, 8주 at 390,000 on 7 pages (one of them with another list price) and at 350,000 on 1: one program, not 8
+    products); a line whose price depends on the page (블리비 포항점's 착색토닝 5회 · 10회 on its device pages) is no sign of
+    copies. Then its rows take their title in
+    front of the shown name (title_words; main keeps it out of mname): all of them when fewer than MIN_SOLD branches (this one
+    counted) sell the line under that name (광주점's tab text names no product anywhere), else only the products that met an
+    earlier row of their price: the rows the fold kept keep the line. A line other branches sell ('바디 착색토닝(…) 1부위 1회' at
+    60 블리비 branches, on their device pages too, at prices that never met) is a name the automatic groups compare
+    (build2/groups.py, by name): the branch's rows under it stay what they were, and the group still reads the branch's lowest
+    price there (measured 2026-10-19 — every row titled: 포항·천안점 left 6 착색토닝 groups, achg listed 14 '없어짐' and 88
+    branches' price levels moved; every row at a meeting price titled: 밴스 수원망포's '얼굴전체 스킨보톡스' went 139,000 → 159,000
+    in its group, a rise no clinic made). A row at the price of an earlier row of the same product — title words that agree (a
+    title that is a part of the other, or names only the line's own product: 유앤아이 광명 '울쎄라피 프라임' › '울쎄라피프라임 600샷'
+    also on '🏆인기TOP리프팅') or a copy page — takes that row's title, and still folds. Neither counts: an add-on, sold the same
+    on top of each product ('옵션5) 덴서티 하이 300샷 추가', '[추가] 포텐자 …' — the older rule folds it), nor a row of an event page
+    (EVENT_PAGE: the same product at an event price beside the price list's — no sign of two products).
+    Known: the titles follow the prices — when the clinic's prices change so that no two products meet any more, the line's rows
+    go back to the line's name (data-meta.json's changes do not list such a rename as gone and new — build2/datameta.py, the
+    same last part at the same price — but the app finds no item it saved under the old name). Titling every line of (a) and (b)
+    whether or not two products meet would hold the names, but renames 462 rows where nothing folded (데이뷰 수원점 300;
+    measured 2026-10-19), against 42 rows now."""
+    sets, sold = defaultdict(list), defaultdict(set)
+    for i, (r, it) in enumerate(zip(raw, items)):
+        if it["why"]:
+            continue
+        opt, grp, name = it["opt"], it["grp"], it["name"]
+        mname = match_name(r, grp, opt, name)
+        sold[comp(name)].add((r["brand"], r["branch"]))
+        if OPTION_LABEL.match(opt) or addon_name(mname) or r.get("addon") == "1" or ADD_WORD.search(opt) \
+                or EVENT_PAGE.search(f"{r['category']} {grp}"):
+            continue
+        is_pass = r["brand"] != "리엔장" and pass_item(grp, opt)
+        sets[(r["brand"], r["branch"], fold_name(mname, it["hair"]), is_pass)].append(i)
+    # the lines each product page (group title) lists, and the prices a line has on all pages of the branch
+    page = lambda i: (raw[i]["brand"], raw[i]["branch"], comp_name(items[i]["grp"]).casefold())
+    lines, sales = defaultdict(set), {}
+    for key, idx in sets.items():
+        sales[key] = {items[i]["sale"] for i in idx}
+        for i in idx:
+            lines[page(i)].add(key)
+
+    def copies(key, i, j):
+        """two pages that list other lines too, each at one price on every page of the branch: one price list on two pages"""
+        both = (lines[page(i)] & lines[page(j)]) - {key}
+        return bool(both) and all(len(sales[m]) == 1 for m in both)
+
+    out = {}
+    for key, idx in sets.items():
+        gkey = lambda i: comp_name(items[i]["grp"]).casefold()
+        if len({gkey(i) for i in idx}) < 2 or len({items[i]["sale"] for i in idx}) < 2:
+            continue
+        own = {i: title_own(title_words(items[i]["grp"]), items[i]["name"]) for i in idx}
+        # the fold would join them: one sale, and not two different list prices (main keeps those apart already)
+        joins = lambda i, j: items[i]["sale"] == items[j]["sale"] \
+            and not (items[i]["orig"] and items[j]["orig"] and items[i]["orig"] != items[j]["orig"])
+        apart = lambda i, j: own[i] and own[j] and not (own[i] <= own[j] or own[j] <= own[i])
+        # one product on two pages: the titles' own words agree, or the pages are one price list (copies)
+        same = lambda i, j: not apart(i, j) or copies(key, i, j)
+        if not any(joins(i, j) and gkey(i) != gkey(j) and not same(i, j) for n, i in enumerate(idx) for j in idx[n + 1:]):
+            continue
+        # a line MIN_SOLD or more branches sell under that name (the name as the automatic groups key it, xkeys.comp) is a name
+        # the comparisons read there too (build2/groups.py): it stays on the rows the fold kept
+        shared = any(len(sold[comp(items[i]["name"])]) >= MIN_SOLD for i in idx)
+        title = {}
+        for n, i in enumerate(idx):
+            j = next((j for j in idx[:n] if joins(i, j) and same(i, j)), None)
+            if j is not None:
+                title[i] = title[j]                     # one product on two pages: one row, as before
+            elif not shared or any(joins(i, x) for x in idx[:n]):
+                title[i] = title_words(items[i]["grp"])
+            else:
+                title[i] = ""                           # a row the fold kept, of a line other branches sell
+            if title[i] and comp_name(title[i]).casefold() not in comp_name(items[i]["name"]).casefold():
+                out[i] = title[i]
+    return out
+
+
 def main():
     raw = load()
     # what the previous build dropped by its words alone, from its data2/issues.csv (the factory saves it with every build; this
@@ -763,69 +942,30 @@ def main():
     vdef = vat_policy()
     issues, out, seen, seen_old, sex_of, sect_of, weak_of = [], [], {}, {}, {}, {}, {}
     showcase = showcase_pages(raw)
-    for r in raw:
-        opt, grp = norm_text(r["option"]), norm_text(r["group"])
-        # the page's section heading written in front of each product ('▼ 부가세 포함 10만원 19.6만 ▼ 1. 라라토닝 : …', 닥터에버스 동탄):
-        # the heading stays the section (category, read for VAT and the conditions), the product is what follows — read whole, the
-        # mark made the products a notice and they were dropped (NOTE_SECTION)
-        sec = norm_text(r.get("category", ""))
-        if NOTE_SECTION.match(sec):
-            opt = unglue(opt, sec)
-        sale, orig = price(r["sale"]), price(r["orig"])
-        why = None
-        if not opt:
-            why = "옵션 이름 없음"
-        elif not sale:
-            why = "가격 없음(0원)"
-        elif NOTE.search(opt):
-            why = "안내 문구(가격 아님)"
-        elif PAPER.search(opt) or PAPER.search(grp):
-            why = "서류 발급비(시술 아님)"
-        elif sale > 50_000_000:
-            why = "가격 비정상(5천만원 초과)"
-        elif ISO.match(r.get("until") or "") and r["until"] < TODAY:
-            why = f"이벤트 기간 지남({r['until']} 종료)"
-        if why:
-            issues.append({**r, "action": "제외", "reason": why})
+    items = [prepare(r) for r in raw]
+    titled = shared_titles(raw, items)
+    for i, r in enumerate(raw):
+        it = items[i]
+        if it["why"]:
+            issues.append({**r, "action": "제외", "reason": it["why"]})
             continue
-        if orig and orig < sale:
-            issues.append({**r, "action": "정가 삭제", "reason": "정가가 판매가보다 낮음(사이트 표기 오류)"})
-            orig = 0
-        elif orig and orig >= sale * 10 and sale >= 1000:
-            issues.append({**r, "action": "정가 삭제", "reason": "정가가 판매가의 10배 이상(사이트 오기 의심)"})
-            orig = 0
-        elif orig == sale:
-            orig = 0
-        if r["brand"] == "닥터에버스":
-            # the item name often leaves the product to its section ('◆볼뉴머' › '페이스 300샷'): put back only a section
-            # that names a product (older raw files have every section glued in front by the collector — taken off first)
-            sec = re.sub(r"\s+", " ", re.sub(r"[◆◇■□●○★☆♥]", " ", r["category"] or "")).strip()
-            if sec and opt.startswith(sec + " "):
-                opt = opt[len(sec) + 1:]
-            head = section_head(sec, grp)
-            if head and comp_name(head) not in comp_name(opt):
-                opt = f"{head} {opt}"
-        hair = bool(re.search(r"제모", f"{r['category']} {grp}"))
-        name = strip_event_prefix(opt, hair)
-        if name == "(대표가)" or not PROC.search(name):
-            head = title_words(grp)
-            name = (f"{head} · {name}" if head else name) if name != "(대표가)" else f"{grp} (최저가부터)"
-        mname = name.replace(" · ", " ")
-        g = re.search(r"(남성|남자|여성|여자)", grp)
-        if not g and (re.search(r"제모", f"{grp} {opt}") or taxonomy.hair_area(opt)):
-            # a 제모 item whose sex is only in the page name (쁨 범계 '여성제모' / '남성제모' › '이마(헤어+삼자) 제모 1회'): the same option at
-            # the same price on both pages is two products, and one key held both (2026-10-15). Only for 제모 items — 유앤아이's '여성제모'
-            # tabs hold '女) 겨드랑이 토닝 1회' too (산본·안산점), and held every procedure while its collector paired the tabs wrong
-            # (before lsy2825/skin#88).
-            g = re.search(r"(남성|남자|여성|여자)", r["category"] or "")
-        # the option's own sex mark wins ('女&男) 겨드랑이', '男) 인중'): the page's sex is not added on top (검증 6차: '여성 남성 브라질리언')
-        if g and not re.search(r"남성|남자|여성|여자|男|女|\((?:남|여)\)|(?<![가-힣])(?:남|여)\)", unicodedata.normalize("NFKC", mname)):
-            mname = f"[{g.group(1)}] {mname}"
+        if it["fix"]:
+            issues.append({**r, "action": "정가 삭제", "reason": it["fix"]})
+        opt, grp, sale, orig, hair, name = it["opt"], it["grp"], it["sale"], it["orig"], it["hair"], it["name"]
+        mname = match_name(r, grp, opt, name)
+        # one option line of several products: the product is its group title (shared_titles) — in the shown name and in both fold
+        # keys below, not in mname: the comparison reads the line as before, as it reads it on the branches where its pages gave
+        # other prices and nothing met (블리비 강남역 '바디 착색토닝 …' on its 레블라이트 / 레이저토닝 pages, 59,000 / 29,000 — no
+        # title). Read with the title, the rows of only the branches where two prices met left their specs (6 착색토닝 keys at
+        # 포항·천안점, 2 스킨보톡스 keys at 밴스 수원망포, measured 2026-10-19) and tagline titles became spec words
+        title = titled.get(i, "")
+        if title:
+            name = f"{title} · {name}"
         text = f"{r['category']} {grp} {opt}"
         by_sect = False
         if r["brand"] == "리엔장":
             kind = "고시가"
-        elif SUBS.search(f"{grp} {opt}") or (pass_group(grp, opt) and not re.search(r"\d+\s*회", opt)):
+        elif pass_item(grp, opt):
             # a 1-year / unlimited pass named only in the group title ('남성 1년 무제한제모 이벤트' › '남자얼굴제모' 690,000원) is not a
             # one-session price; an option that states its sessions ('발등+발가락 5회') is (2026-10-15)
             kind = "구독권"
@@ -865,13 +1005,15 @@ def main():
         # different products whose name lacks the device or colour ('젠틀맥스 › 팔 하완 5회' / '아포지 › 팔 하완 5회'): not folded.
         # The older rule still folds too: same option, sale and list price (an add-on listed on several product pages, '온다 리프팅 ›
         # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), within one sex (남자 = 남성) or with a row that names no sex.
+        # One option line of several products took its group title (shared_titles, 2026-10-19): both keys carry the title (mname
+        # does not), so neither rule folds '男) 팔전체 12회 · 제모데이 …' with '男) 다리전체 12회 · 제모데이 …' by their shared line.
         m = re.search(r"남성|남자|여성|여자|男|女", unicodedata.normalize("NFKC", mname))   # '女)' (유앤아이) is a sex too
         sex = SEX.get(m.group(), m.group()) if m else ""
         # a pass (구독권) never folds with a per-session row at the same price: both keys carry it
         is_pass = kind == "구독권"
         weak = (r["brand"], r["branch"], r["category"] or "") in showcase      # a showcase page's copy (SHOWCASE_SHARE)
-        k_old = (r["brand"], r["branch"], strip_event_prefix(opt, hair), sale, orig, is_pass)
-        k = (r["brand"], r["branch"], comp_name(strip_event_prefix(mname, hair)).casefold().replace("남자", "남성").replace("여자", "여성"), sale, is_pass)
+        k_old = (r["brand"], r["branch"], strip_event_prefix(opt, hair), sale, orig, is_pass, title)
+        k = (r["brand"], r["branch"], fold_name(mname, hair), sale, is_pass, title)
         prev = seen.get(k)
         if prev is not None and prev["orig"] and orig and prev["orig"] != orig and prev["group"] != grp and not event_page(prev) \
                 and not event_page(row):
@@ -981,6 +1123,8 @@ def main():
         w.writeheader()
         w.writerows(issues)
     print(f"raw {len(raw)} -> clean {len(out)} (duplicates folded {len(raw) - len(out) - sum(1 for i in issues if i['action'] == '제외')})")
+    print(f"one option line of several products: {len(titled)} rows took their group title (shared_titles)",
+          dict(Counter(raw[i]["brand"] for i in titled)))
     print("issues:", dict(Counter(f"{i['action']}: {i['reason']}" for i in issues)))
     print("by brand:", dict(Counter(r["brand"] for r in out)))
     print("by cat:", dict(Counter(r["cat"] for r in out)))
