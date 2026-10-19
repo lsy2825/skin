@@ -556,6 +556,14 @@ details.fold > summary::after, details.advset > summary::after { content: ""; wi
   transform: rotate(45deg) translateY(-2px); transition: transform var(--mid) var(--ease); flex: none; }
 details.fold[open] > summary::after, details.advset[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
 details.fold.small > summary { padding: 12px 2px 8px; font-size: 13.5px; color: var(--ink-2); }
+/* a small fold inside a block (견적 줄 '자세히', 합계 계산 방법, 마이 데이터 안내): a 13px link-coloured summary with a chevron */
+details.minifold > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--accent); }
+details.minifold > summary::-webkit-details-marker { display: none; }
+details.minifold > summary svg.i { transition: transform var(--mid) var(--ease); }
+details.minifold[open] > summary svg.i { transform: rotate(180deg); }
+.note ul.dots { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.note .minifold > ul.dots { margin-top: 8px; }
+.note.cmpwarn { margin: 0; }   /* 견적 병원별 비교: the caution between the tabs and the list (the view's own gap around it) */
 details.advset > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 28px; }
 .advgrid { display: grid; gap: 18px; margin-top: 14px; }
 .advgrid .flabel { margin-top: 0; margin-bottom: 6px; }
@@ -611,7 +619,13 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .qty button:hover { background: var(--fill); }
 .qty button:active { background: var(--fill-2); }
 .qty b { min-width: 24px; text-align: center; font-size: 14.5px; }
-.cartsum { display: grid; gap: 4px; }
+.cartsum { display: grid; gap: 4px; scroll-margin-top: calc(var(--top-h) + 8px); }
+.totline { display: block; width: 100%; min-height: 44px; margin-top: 8px; padding: 8px; border: 0; border-radius: 12px;
+  background: var(--sunken); color: var(--ink); font: inherit; font-size: 15px; line-height: 1.6; text-align: left; cursor: pointer; }
+.totline .tl, .totline .tn { font-size: 13px; font-weight: 650; color: var(--muted); }
+.totline .tn { white-space: nowrap; }   /* '· 117곳 ↓' stays together: a narrow phone wraps before the '·' */
+.totline b { font-weight: 700; }
+.totline .ta { color: var(--accent); font-weight: 700; }
 .cartsum .hl { font-size: 13px; font-weight: 650; color: var(--muted); }
 .cartsum .hp { font-size: 34px; font-weight: 780; letter-spacing: -0.045em; line-height: 1.15; }
 .cartsum .hp.tick { animation: tick .32s var(--ease); }
@@ -624,6 +638,17 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .qbody { background: var(--sunken); border-radius: 0 0 14px 14px; padding: 4px 14px 16px; }
 .qline { padding: 12px 0; border-bottom: 1px solid var(--line-soft); }
 .qline .m { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 3px; }
+.qline .m .lat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }   /* '2회째부터' and its badges wrap as one */
+.qline .m .lat > b { font-weight: 650; color: var(--ink-2); }
+/* the line's '자세히' sits at the right end, at least 24px (gap + padding) from '출처' or the later sessions' badges — it is
+   about the whole line, not the link or badge before it; when that does not fit it takes the next line, still on the right */
+.qline details.qmore { flex: 0 0 auto; min-width: 0; max-width: 100%; margin-left: auto; padding-left: 16px; }
+.qline details.qmore > summary { min-height: 32px; }
+.qline details.qmore[open] { flex-basis: 100%; padding-left: 0; }
+.qline details.qmore[open] > summary { display: flex; width: max-content; margin-left: auto; }
+.qmd { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding-top: 8px; }
+.qmd select { width: 100%; min-width: 0; }   /* a long product name in the picker never widens the page */
+.qmd > span { color: var(--ink-2); }
 .opts { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .sheet .optfold { margin-top: 6px; border-top: 1px solid var(--line-soft); }   /* '담김' sheet: the other options, folded under its buttons */
 .opt { display: grid; gap: 2px; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 14px; padding: 11px 13px; transition: transform var(--fast), border-color var(--fast); }
@@ -686,9 +711,18 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 
 /* ---------- my page */
 .avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--butter-soft); color: var(--butter-ink); display: grid; place-items: center; font-size: 22px; font-weight: 760; flex: none; }
-.settings .setrow { margin-top: 18px; display: grid; gap: 8px; }
-.settings .setrow > .linkbtn { justify-self: start; }   /* a text link in a grid row: as wide as its words, not the row */
-.settings .flabel { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0; }
+/* 내 설정: each setting is one line '이름 · 지금: 값' that opens to its controls (hierarchy audit 49) */
+.settings .setrow { margin-top: 8px; border-top: 1px solid var(--line-soft); }
+.settings .setrow > summary { cursor: pointer; list-style: none; min-height: 48px; padding: 8px 0; }
+.settings .setrow > summary::-webkit-details-marker { display: none; }
+.settings .setrow > summary::after { content: ""; width: 8px; height: 8px; flex: none; align-self: center; border-right: 1.75px solid var(--muted); border-bottom: 1.75px solid var(--muted);
+  transform: rotate(45deg) translateY(-2px); transition: transform var(--mid) var(--ease); }
+.settings .setrow[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
+.settings .setbody { display: grid; gap: 8px; padding-bottom: 16px; }
+.settings .setbody > .linkbtn { justify-self: start; }   /* a text link in a grid row: as wide as its words, not the row */
+.settings .flabel { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0 8px; margin: 0; }
+.settings .flabel > span { font-size: 15px; color: var(--ink); }
+.settings .flabel .now { flex: 1; text-align: right; }
 .settings .now { font-size: 13px; color: var(--muted); font-weight: 600; }
 .menu .item .t { display: flex; align-items: center; gap: 12px; }
 .menu .mi { width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); flex: none; }
@@ -805,10 +839,10 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 .hero .hp.range .to { color: var(--muted); font-weight: 600; }
 .sortchips .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .card.flush .sortchips { margin: 0 -14px; padding: 2px 14px; }
-.checks .chks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; margin-top: 14px; }
-.chk { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 12px; align-items: start; }
-.chk-ic { width: 32px; height: 32px; border-radius: 10px; background: var(--fill); color: var(--ink-2); display: grid; place-items: center; }
-.chk-b b { display: block; font-size: 14px; margin-bottom: 2px; }
+/* the five rows use the card's full width: the icon sits in the title line, no 32px column (hierarchy audit 17) */
+.checks .chks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 8px; }
+.chk-b b { display: flex; align-items: center; gap: 8px; font-size: 14px; margin-bottom: 2px; }
+.chk-b b svg.i { color: var(--ink-2); }
 .chk-b .sub { line-height: 1.55; color: var(--ink-2); }
 .chk-b ul.plain { margin: 2px 0 0; font-size: 13px; gap: 3px; }
 .pc .pk { font-size: 13px; font-weight: 650; color: var(--muted); margin-top: 6px; }

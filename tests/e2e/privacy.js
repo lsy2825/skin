@@ -157,9 +157,12 @@ const overflow = (p) => p.evaluate(() => { const w = document.documentElement.cl
     const row = menuRow(p);
     ok('집계만: 마이 메뉴에 개인정보 처리방침 줄(설명은 §3-1 제목)', (await row.count()) === 1 && await row.isVisible() && (await row.locator('.sub').innerText()).trim() === P1.title, (await row.count()) ? await row.innerText() : 'no row');
     const mr = metricsRow(p);
+    ok('§4 집계 칸: 내 설정 한 줄(\'익명 이용 집계 · 지금: 보냄\')을 누르면 펼쳐짐', /^익명 이용 집계\s*지금: 보냄$/.test((await mr.locator(':scope > summary').innerText()).trim()) && !(await mr.evaluate((d) => d.open)),
+      (await mr.locator(':scope > summary').innerText()).replace(/\n/g, ' '));
+    await mr.locator(':scope > summary').click(); await p.waitForTimeout(200);
     const sw = (await mr.locator('label.switch').innerText()).trim();
     ok('§4 집계 칸: 스위치 이름 그대로', !!SWITCH && sw === SWITCH, SWITCH ? sw : unread('스위치 이름'));
-    const sub = (await mr.locator(':scope > .sub').allInnerTexts()).map((x) => x.trim());
+    const sub = (await mr.locator(':scope > .setbody > .sub').allInnerTexts()).map((x) => x.trim());
     ok('§4 집계 칸: 스위치 아래 문장 그대로', sub.length === 1 && sub[0] === S4.metrics, sub.join(' / '));
     ok('집계만: 집계 줄의 문장 아래 처리방침 보기 링크', (await link(mr).count()) === 1 && await link(mr).isVisible());
     await mr.locator('label.switch').click(); await p.waitForTimeout(250);

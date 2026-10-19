@@ -85,6 +85,7 @@
     cmpMode: store.get("cmpMode", "easy") === "detail" ? "detail" : "easy",   // compare: options as steps (쉬운 보기) or all (자세히)
     prod: null, prodK: null,                       // compare: product / device filter of the clinic list (key it belongs to)
     cmpN: null, qN: null, pN: null,                // rows a '더 보기' has opened (compare's clinics, 내 견적's clinic lists) — kept over a redraw
+    folds: new Set(),                              // ids of the small folds the user opened (keptFold): they stay open through render()
   };
   let CHK = new Map();
   let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, pendingChat = "", concernPick = null;   // pendingChat: a message from the home box for 죠미와 대화 (memory only)
@@ -515,6 +516,11 @@
     return out;
   };
   const bname = (b) => `${D.meta.brands[BR[b].brand][0]} ${BR[b].name}`;
+  // a small fold that stays the way the user left it when the screen is drawn again (render() after a setting or a quantity
+  // changes): its id is kept in st.folds by the toggle event — no render() of its own (hierarchy audit 3-2: 견적 줄 '자세히',
+  // 합계 계산 방법, 마이 데이터 안내·내 설정)
+  const keptFold = (id, cls, summary, ...body) => h("details", { class: cls, open: st.folds.has(id),
+    ontoggle: (e) => { if (e.currentTarget.open) st.folds.add(id); else st.folds.delete(id); } }, summary, ...body);
   // source page of a price + when it was last read
   const srcLink = (i, label = "출처") => S[ROWS[i][11]] ? h("a", { class: "linkbtn src", href: S[ROWS[i][11]], target: "_blank", rel: "noopener noreferrer", onclick: (e) => e.stopPropagation() }, label) : null;
   const verified = (b) => S[D.branches[b][7]] || "";
@@ -2880,7 +2886,9 @@
   function checkCard(k, fam, rk) {
     const e = fam ? kbOf(fam.f) : null;
     const genuine = rk.filter((x) => /정품/.test(S[ROWS[x.i][2]])).length;
-    const row = (ic, t, ...v) => h("div", { class: "chk" }, h("span", { class: "chk-ic", "aria-hidden": "true" }, icon(ic, "sm")), h("div", { class: "chk-b" }, h("b", {}, t), h("div", { class: "sub" }, ...v)));
+    // the icon sits in the title line instead of its own 32px column, so the sentences get the card's full width (hierarchy
+    // audit 17, L5: every word stays — folding any of it waits for chat C's answer on '함께 명시')
+    const row = (ic, t, ...v) => h("div", { class: "chk" }, h("div", { class: "chk-b" }, h("b", {}, icon(ic, "xs"), t), h("div", { class: "sub" }, ...v)));
     return h("section", { class: "card checks", "aria-label": "가격과 함께 확인할 것" },
       h("div", { class: "row" }, h("h3", {}, "가격과 함께 꼭 확인하세요"), h("span", { class: "sp" }), e ? reviewBadge(e) : null),
       h("div", { class: "chks" },
@@ -4630,7 +4638,21 @@
     // the items: name, spec, quantity, the line's lowest price, remove
     const items = c.items.filter(itemOk);
     const lost = c.items.length - items.length;
+    // estimated total, the cheapest branch, and the button to the per-clinic comparison (worked out before the items so the
+    // first screen can carry the total too)
+    const plan = items.length ? cartPlan(items) : null, best = plan && plan.full[0];
+    const HL = FLAGS.lowestHighlight, totals = plan ? plan.full.map((x) => x.total) : [], tmin = totals.length ? Math.min(...totals) : null, tmax = totals.length ? Math.max(...totals) : null;
+    // the total in the first screen (hierarchy audit 10, T8·L8): one line under '담은 시술 N개', the summary card's numbers in
+    // the summary card's unit (won, like the bottom bar); a tap takes you — and the focus — to that card. Nothing when no clinic
+    // has all of it (the card then says so itself), and nothing with one item: its own line below already shows the same range
+    // and clinic count. The bottom bar keeps its own rule (shown once the card has scrolled away).
+    // '· N곳 ↓' never breaks apart (a narrow phone wraps the line before the '·', not after it)
+    const totLine = best && items.length > 1 ? h("button", { class: "totline", type: "button", "aria-label": `예상 총액 ${HL ? won(best.total) : Pricing.rangeText(tmin, tmax, WON)} · ${plan.full.length}곳, 요약 카드로 이동`,
+      onclick: () => { const sc = $("#main .cartsum"); if (!sc) return; sc.scrollIntoView({ block: "start", behavior: smooth() }); sc.focus({ preventScroll: true }); } },
+      h("span", { class: "tl" }, "예상 총액"), " ", h("b", { class: "num" }, HL ? won(best.total) : rangeEl(tmin, tmax, WON)), " ",
+      h("span", { class: "tn" }, `· ${plan.full.length}곳 `, h("span", { class: "ta", "aria-hidden": "true" }, "↓"))) : null;
     box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, `담은 시술 ${c.items.length}개`), h("span", { class: "sp" }), h("span", { class: "sub" }, c.name)),
+      totLine,
       h("div", { class: "cart-items" }, c.items.map((it) => {
         const ok = itemOk(it), fam = it.t === "k" && ok ? famOf[KI[it.k]] : null, e = fam ? kbOf(fam.f) : null;
         const cat = it.t === "k" && ok ? KEYS[KI[it.k]].cat : ok ? D.meta.cats[ROWS[(byName.get(SI.get(it.n)) || [])[0]][1]] : "";
@@ -4661,10 +4683,7 @@
       })),
       lost ? h("div", { class: "note", style: "margin-top:8px" }, `${lost}개는 이번 주 가격표에서 찾지 못해 계산에서 빠졌어요.`) : null, manage));
     if (!items.length) return box;
-    // estimated total, the cheapest branch, and the button to the per-clinic comparison
-    const plan = cartPlan(items), best = plan.full[0];
     const usesCond = best && best.lines.some((l) => l && l.special);
-    const HL = FLAGS.lowestHighlight, totals = plan.full.map((x) => x.total), tmin = totals.length ? Math.min(...totals) : null, tmax = totals.length ? Math.max(...totals) : null;
     const totalNow = HL ? (best ? best.total : null) : `${tmin}-${tmax}`, tick = lastTotal && lastTotal.id === c.id && lastTotal.t !== totalNow;
     lastTotal = { id: c.id, t: totalNow };
     const sumrow = (l, v) => h("div", { class: "sumrow" }, h("span", {}, l), h("b", { class: "num" }, v));
@@ -4674,7 +4693,7 @@
         h("b", { class: "num" }, best ? (HL || tmin === tmax ? won(HL ? best.total : tmin) : `${won(tmin)} ~ ${won(tmax)}`) : plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`)),
       h("button", { class: "btn", type: "button", onclick: () => { if (!st.cartCmp) { st.cartCmp = true; render(); } setTimeout(() => { const t = $("#main .seg[role=tablist]") || $("#main .cartsum"); if (t) t.scrollIntoView({ block: "start", behavior: "smooth" }); }, 50); } },
         st.cartCmp ? "병원별 비교로" : "병원별 비교 보기"));
-    box.append(h("div", { class: "card cartsum lift", "aria-live": "polite" },
+    box.append(h("div", { class: "card cartsum lift", "aria-live": "polite", tabindex: "-1" },
       h("span", { class: "hl" }, best ? (HL ? "한 곳에서 다 받을 때 예상 총액" : `한 곳에서 다 받을 때 예상 총액 · ${plan.full.length}곳`) : "한 곳에서 모두 받는 지점이 없어요"),
       best ? h("span", { class: `hp num${tick ? " tick" : ""}${HL ? "" : " range"}` }, HL ? won(best.total) : tmin === tmax ? won(tmin) : [h("span", { class: "nw" }, won(tmin)), h("span", { class: "to" }, " ~ "), h("span", { class: "nw" }, won(tmax))])
         : h("span", { class: "hp num" }, plan.mix.missing ? "일부 가격 미확인" : `섞으면 ${won(plan.mix.total)}`),
@@ -4724,14 +4743,19 @@
     if (!st.cartCmp) { box.append(endBar); watchSum(); return box; }
     const tabs = [["one", "한 곳에서"], ["mix", FLAGS.lowestHighlight ? "여러 곳 섞기" : "나눠 받기"], ["pkg", "병원 패키지"], ["sum", "브랜드·지역"]];
     box.append(h("div", { class: "seg", role: "tablist" }, tabs.map(([v, l]) => h("button", { type: "button", role: "tab", "aria-selected": st.cartTab === v ? "true" : "false", onclick: () => { st.cartTab = v; render(); } }, l))));
+    // the caution above the clinics, not after 40 of them (hierarchy audit 18, L9): the same sentence as before
+    box.append(h("p", { class: "note cmpwarn" }, "가격만으로 고르지 마세요. 같은 시술이어도 병원마다 용량·조건·정품 여부·시술 의료진이 다르고, 시술마다 부작용·주의사항이 있어요(담은 시술의 i 버튼)."));
     if (st.cartTab === "one") box.append(oneView(items, plan.full, plan.partial));
     else if (st.cartTab === "mix") box.append(mixView(items, plan));
     else if (st.cartTab === "pkg") box.append(pkgView(items, plan));
     else box.append(sumView(plan.full));
-    box.append(h("div", { class: "note" }, "• 가격만으로 고르지 마세요. 같은 시술이어도 병원마다 용량·조건·정품 여부·시술 의료진이 다르고, 시술마다 부작용·주의사항이 있어요(담은 시술의 i 버튼).", h("br"),
-      "• 체험가·한정가·첫 방문가는 첫 1회만, 2회째부터는 그 지점의 다른 가격으로 계산해요. 요일·시간 조건 가격은 조건이 맞을 때 매번 그 가격으로 계산해요.", h("br"),
-      "• 지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.", h("br"),
-      `• ${vatNote()} 방문 전에 병원에 꼭 확인하세요.`));
+    // under the list: the price basis in view, how the totals are made folded (same sentences, one per line)
+    box.append(h("div", { class: "note cartnotes" },
+      h("ul", { class: "dots" }, h("li", {}, `${vatNote()} 방문 전에 병원에 꼭 확인하세요.`)),
+      keptFold("cartCalc", "minifold", h("summary", {}, "합계 계산 방법", icon("chevron-down", "xs")),
+        h("ul", { class: "dots" },
+          h("li", {}, "체험가·한정가·첫 방문가는 첫 1회만, 2회째부터는 그 지점의 다른 가격으로 계산해요. 요일·시간 조건 가격은 조건이 맞을 때 매번 그 가격으로 계산해요."),
+          h("li", {}, "지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.")))));
     box.append(endBar); watchSum();
     return box;
   };
@@ -4772,15 +4796,22 @@
         : r2 ? `첫 회 ${won(r[3])} + ${(it.q || 1) - 1}회 × ${won(r2[3])}`
         : l.ov ? (ss >= 99 ? "이용권 1개" : ss > 1 ? `${ss}회 묶음 × ${l.units}` : `× ${l.units}`)
         : (it.q || 1) > 1 ? `${won(r[3])} × ${it.q}` : "";
+      // in view on every line (hierarchy audit 48, L13): the conditions (조건 배지, '기간 확인 필요'), how the total was made, the
+      // clinic's own price + VAT and the source. The clinic's product name, the later sessions' product and the option picker
+      // fold into the line's '자세히' (kept open through render(), so changing the option there leaves it open)
+      const b2 = r2 ? kindBadge(r2) : [], rpt = l.repeat && (it.q || 1) > 1;
       body.append(h("div", { class: "qline" },
         h("div", { class: "row" }, h("b", {}, `${itemLabel(it)} ×${it.q || 1}`), h("span", { class: "sp" }), h("b", { class: "num" }, l.incomplete ? `${won(l.total)}~?` : won(l.total))),
-        h("div", { class: "m" }, h("span", {}, S[r[2]]), listS(r), pct > 0 && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
+        h("div", { class: "m" }, listS(r), pct > 0 && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${pct}%↓`) : null, kindBadge(r),
           l.ov ? h("span", { class: "k k4" }, "직접 고름") : null, l.restacked ? h("span", { class: "k kx" }, "첫 방문가 중복 안 함") : null, l.stackWarn ? h("span", { class: "k kx" }, "첫 방문가 중복 확인") : null,
           detail ? h("span", {}, detail) : null, listedTxt(r) ? h("span", {}, listedTxt(r)) : null, srcLink(l.rows[0]),
-          // the price of the later sessions when it is another row: its name and conditions, then the repeat words that are about it
-          r2 ? [h("span", { class: "later" }, `2회째부터 ${S[r2[2]]}`), ...kindBadge(r2)] : null,
-          l.repeat && (it.q || 1) > 1 ? h("span", { class: "rpt" }, REPEAT_TXT) : null),
-        alts.length > 1 || l.ov ? h("div", { style: "margin-top:6px" }, sel) : null));
+          // the later sessions' conditions stay in view after '2회째부터', then the repeat words that are about them
+          r2 && (b2.length || rpt) ? h("span", { class: "lat" }, h("b", {}, "2회째부터"), b2) : null,
+          rpt ? h("span", { class: "rpt" }, REPEAT_TXT) : null,
+          keptFold(`q:${bkey(x.b)}:${it.t === "k" ? it.k : `${it.n}|${it.br}`}`, "minifold qmore",
+            h("summary", { "aria-label": `${itemLabel(it)} 상품명·옵션 자세히` }, "자세히", icon("chevron-down", "xs")),
+            h("div", { class: "qmd" }, h("span", { class: "qname" }, S[r[2]]), r2 ? h("span", { class: "later" }, `2회째부터 ${S[r2[2]]}`) : null,
+              alts.length > 1 || l.ov ? sel : null)))));
     });
     const warns = quoteWarnings(x);
     body.append(h("div", { class: "row", style: "margin-top:10px" }, h("b", {}, x.missing && x.missing.length ? "확인된 시술만 예상 합계" : "예상 합계(비교용)"), h("span", { class: "sp" }), h("b", { class: "num", style: "font-size:20px" }, won(x.total))),
@@ -5224,23 +5255,26 @@
     const theme = store.get("theme", "auto");
     const radios = (label, opts, curV, set) => h("div", { class: "seg setseg", role: "radiogroup", "aria-label": label }, opts.map(([v, l]) =>
       h("button", { type: "button", role: "radio", "aria-checked": curV === v ? "true" : "false", onclick: () => set(v) }, l)));
+    // one line per setting — '이름 · 지금: 값' — that opens to its controls (hierarchy audit 49, L15); a row stays open after a
+    // change redraws the screen (keptFold), so the new value shows where it was picked
+    const setRow = (id, name, now, ...body) => keptFold(`set:${id}`, "setrow", h("summary", { class: "flabel" }, h("span", {}, name), h("b", { class: "now" }, now)), h("div", { class: "setbody" }, ...body));
     box.append(h("div", { class: "card settings" }, h("h2", {}, "내 설정"), h("div", { class: "sub" }, "이 휴대폰에서 보이는 방식을 바꿔요. 데이터 자체는 바뀌지 않아요."),
-      h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "가격 표시"), h("b", { class: "now" }, st.vat === "incl" ? "지금: 부가세 포함 예상가" : "지금: 병원 표시가")),
+      setRow("vat", "가격 표시", st.vat === "incl" ? "지금: 부가세 포함 예상가" : "지금: 병원 표시가",
         radios("가격 표시", [["incl", "부가세 포함 예상가"], ["listed", "병원 표시가"]], st.vat, (v) => { st.vat = v; store.set("vat", v); applyVat(); render(); toast(v === "incl" ? "부가세 포함 예상가로 보여요" : "병원이 적은 가격 그대로 보여요"); }),
         h("div", { class: "sub" }, st.vat === "incl" ? `병원이 '부가세 별도'라고 적은 가격에 10%를 더해 보여줘요. ${vatBrandsNote()}` : "병원 사이트에 적힌 숫자 그대로예요. 실제 결제는 부가세 10%가 더해질 수 있어요.")),
-      h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "화면 테마"), h("b", { class: "now" }, `지금: ${{ auto: "기기 설정 따름", light: "밝게", dark: "어둡게" }[theme]}`)),
+      setRow("theme", "화면 테마", `지금: ${{ auto: "기기 설정 따름", light: "밝게", dark: "어둡게" }[theme]}`,
         radios("화면 테마", [["auto", "기기 설정"], ["light", "밝게"], ["dark", "어둡게"]], theme, (t) => { store.set("theme", t); applyTheme(); render(); })),
-      h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "지역"), h("b", { class: "now" }, `지금: ${regionName()} ${regionCount()}곳`)),
+      setRow("region", "지역", `지금: ${regionName()} ${regionCount()}곳`,
         regionSelect(), h("div", { class: "sub" }, "고르면 비교·내 견적·검색·순위가 이 지역 지점만 보여줘요(데이터는 전국을 모두 모아요).")),
       (() => { const P = jprefs(), set = (k, v) => { store.set("jomiPrefs", { ...P, [k]: v }); applyMotion(); render(); };
-        return h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "죠미 설정"), h("b", { class: "now" }, `지금: 안내 ${{ often: "자주", some: "가끔", off: "끄기" }[P.freq]} · 움직임 ${{ auto: "기기 설정", on: "켜기", off: "끄기" }[P.motion]} · 설명 ${{ short: "간략", long: "상세" }[P.detail]}`)),
+        return setRow("jomi", "죠미 설정", `지금: 안내 ${{ often: "자주", some: "가끔", off: "끄기" }[P.freq]} · 움직임 ${{ auto: "기기 설정", on: "켜기", off: "끄기" }[P.motion]} · 설명 ${{ short: "간략", long: "상세" }[P.detail]}`,
           h("div", { class: "sub", style: "margin:6px 0 4px" }, "안내 빈도 — '가끔'은 홈 인사·사전 한마디를 줄이고, '끄기'는 죠미 얼굴 없이 글로만 알려줘요."),
           radios("죠미 안내 빈도", [["often", "자주"], ["some", "가끔"], ["off", "끄기"]], P.freq, (v) => set("freq", v)),
           h("div", { class: "sub", style: "margin:10px 0 4px" }, "움직임 — '기기 설정'은 휴대폰의 '동작 줄이기'를 따라요."),
           radios("움직임", [["auto", "기기 설정"], ["on", "켜기"], ["off", "끄기"]], P.motion, (v) => set("motion", v)),
           h("div", { class: "sub", style: "margin:10px 0 4px" }, "용어·규격 설명"),
           radios("설명 길이", [["short", "간략"], ["long", "상세"]], P.detail, (v) => set("detail", v))); })(),
-      h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "보기 기록"), h("b", { class: "now" }, histOn() ? "지금: 남김" : "지금: 남기지 않음")),
+      setRow("hist", "보기 기록", histOn() ? "지금: 남김" : "지금: 남기지 않음",
         switchEl("최근 본 것·최근 검색·이어서 보기 기록 남기기", histOn(), (v) => { store.set("histOff", !v); render(); toast(v ? "다시 기록해요" : "이제 기록하지 않아요(이미 있는 기록은 그대로)"); }),
         switchEl("사용 통계 남기기 (이 기기에만 · 시연 기록)", anOn(), (v) => { store.set("analytics", v ? "on" : "off"); render(); toast(v ? "이 기기에만 사용 통계를 남겨요(서버로 보내지 않아요)" : "사용 통계를 남기지 않아요(이미 있는 기록은 '보기'에서 지울 수 있어요)"); }),
         h("button", { class: "linkbtn", type: "button", onclick: () => eventsSheet() }, "사용 통계 보기·지우기", icon("chevron-right", "xs")),
@@ -5253,7 +5287,7 @@
       // 단계별 익명 집계(B5, user decision 2026-10-15: a switch, on by default). Its own row: unlike the one above it does go to
       // a server. Shown only when it is set up (config.js). Off = nothing new stored or sent from this phone; the day's one
       // record stays, so switching back on the same day does not count the phone twice.
-      metrics.available ? h("div", { class: "setrow" }, h("div", { class: "flabel" }, h("span", {}, "익명 이용 집계"), h("b", { class: "now" }, metricsOff() ? "지금: 보내지 않음" : "지금: 보냄")),
+      metrics.available ? setRow("metrics", "익명 이용 집계", metricsOff() ? "지금: 보내지 않음" : "지금: 보냄",
         // the switch's name, the 'off' toast and the line under it: §4 '집계 칸' (docs/legal/PRIVACY_POLICY_DRAFT.md, chat C, 2026-10-16)
         switchEl("익명 이용 집계 보내기 (단계 이름만 · 단계마다 하루 한 번)", !metricsOff(), (v) => {
           store.set("metricsOff", !v);
@@ -5271,10 +5305,13 @@
         h("dt", {}, "지점"), h("dd", {}, branchCountText()), h("dt", {}, "가격 수"), h("dd", {}, `${D.meta.rows.toLocaleString()}개 (전국)`)),
       h("ul", { class: "list", style: "margin-top:8px" }, D.meta.brands.map((b, i) => !counts[i][0] ? null : h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
         h("span", { class: "sub" }, `${counts[i][0]}곳 · ${counts[i][1].toLocaleString()}개`), h("span", { class: "m" }, b[2]))))),
-      h("div", { class: "note", style: "margin-top:10px" }, "• 체험가·한정가는 보통 1인 1회예요. 최저가는 '조건 없는 가격'을 먼저 보여주고, 조건부 가격은 따로 표시해요.", h("br"),
-        `• '${Pricing.condLabel("평일 낮")}'(평일 낮·화수목·평일 해피아워 등), '${Pricing.condLabel("시간대")}'(점심·해피아워 등), '일요일'${WHEN_COL ? `·'${Pricing.whenBadge(32, 0)}'` : ""} 같은 표시는 그 요일·시간에만 되는 가격이에요.`, h("br"), `• ${vatNote()}`, h("br"),
-        "• 종료일이 지난 이벤트, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요. 가격마다 'i' 버튼이나 '출처'로 근거와 병원 페이지를 볼 수 있어요.", h("br"),
-        "• 병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요."),
+      // how to read the prices: the same sentences, one per line — the first two in view, the rest under '자세히' (hierarchy audit 49)
+      (() => { const pts = ["체험가·한정가는 보통 1인 1회예요. 최저가는 '조건 없는 가격'을 먼저 보여주고, 조건부 가격은 따로 표시해요.",
+        `'${Pricing.condLabel("평일 낮")}'(평일 낮·화수목·평일 해피아워 등), '${Pricing.condLabel("시간대")}'(점심·해피아워 등), '일요일'${WHEN_COL ? `·'${Pricing.whenBadge(32, 0)}'` : ""} 같은 표시는 그 요일·시간에만 되는 가격이에요.`, vatNote(),
+        "종료일이 지난 이벤트, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요. 가격마다 'i' 버튼이나 '출처'로 근거와 병원 페이지를 볼 수 있어요.",
+        "병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요."];
+        return h("div", { class: "note datanote", style: "margin-top:10px" }, h("ul", { class: "dots" }, pts.slice(0, 2).map((x) => h("li", {}, x))),
+          keptFold("meData", "minifold", h("summary", {}, `자세히 · ${pts.length - 2}개 더`, icon("chevron-down", "xs")), h("ul", { class: "dots" }, pts.slice(2).map((x) => h("li", {}, x))))); })(),
       h("div", { class: "sub", style: "margin-top:10px" }, "지도 © OpenStreetMap 기여자. 가격 출처는 각 병원 홈페이지예요.")));
     const shown = BR.filter((b) => regionOk(b.i));
     box.append(h("details", { class: "card flush fold" }, h("summary", {}, `지점 전체 목록 · ${regionName()} ${shown.length}곳`),

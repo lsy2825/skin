@@ -50,10 +50,13 @@ async function walk(p) {
   return p.evaluate(() => ({ cart: (JSON.parse(localStorage.getItem('pc:carts') || '[]')[0] || { items: [] }).items.length, favs: (JSON.parse(localStorage.getItem('pc:favs') || '{"k":[]}').k || []).length,
     alerts: JSON.parse(localStorage.getItem('pc:alerts') || '[]').length, hash: location.hash }));
 }
-// 마이 → 내 설정's switch, or null when it is not there
+// 마이 → 내 설정's switch, or null when it is not there (each setting is one line that opens to its controls: open its row)
 const optSwitch = async (p) => { await p.evaluate(() => { location.hash = '#me'; }); await p.waitForTimeout(500);
   const sw = p.locator('#main label.switch', { hasText: '익명 이용 집계 보내기' });
-  return (await sw.count()) ? sw.first() : null; };
+  if (!(await sw.count())) return null;
+  const row = p.locator('#main .settings details.setrow', { has: p.locator('label.switch', { hasText: '익명 이용 집계 보내기' }) });
+  if (!(await row.evaluate((d) => d.open))) { await row.locator(':scope > summary').click(); await p.waitForTimeout(150); }
+  return sw.first(); };
 const steps = (hits) => hits.map((x) => { try { return JSON.parse(x.body).s; } catch (e) { return `?${x.body}`; } });
 
 (async () => { const b = await chromium.launch();

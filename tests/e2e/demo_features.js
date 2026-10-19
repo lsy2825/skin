@@ -157,6 +157,7 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     ok('쉬운 용어: 목록·검색', n0 >= 15 && await p.locator('.termi').count() >= 1 && await p.locator('.termi').count() < n0, `${n0}개`);
     // 죠미 preferences
     await p.goto(BASE + '#me'); await p.waitForTimeout(500);
+    { const s = p.locator('#main .settings details.setrow > summary', { hasText: '죠미 설정' }); if (!(await s.evaluate((x) => x.parentElement.open))) { await s.click(); await p.waitForTimeout(150); } }   // 내 설정: one line per setting, opened
     await p.locator('[role=radiogroup][aria-label="죠미 안내 빈도"] button', { hasText: '끄기' }).click(); await p.waitForTimeout(300);
     await p.locator('[role=radiogroup][aria-label="움직임"] button', { hasText: '끄기' }).click(); await p.waitForTimeout(300);
     await p.locator('[role=radiogroup][aria-label="설명 길이"] button', { hasText: '상세' }).click(); await p.waitForTimeout(300);
