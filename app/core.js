@@ -37,7 +37,7 @@
   // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
   // (theme, region, VAT mode, Jomi preferences …) stay shared. The space changes only through setScope (app.js onAccount).
   const PERSONAL = new Set(["me", "recs", "carts", "cart", "ci", "alerts", "notes", "favs", "snaps", "places", "locPlace", "recent", "recentQ", "short",
-    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets"]);
+    "checks", "rechecks", "events", "reports", "sender", "lastRoute", "presets", "visited"]);
   let SCOPE = (() => { try { const u = JSON.parse(localStorage.getItem("pc:lastUid") || "null"); return u && window.APP_CONFIG && window.APP_CONFIG.supabaseUrl ? `u:${u}:` : ""; } catch (e) { return ""; } })();
   const keyOf = (k) => "pc:" + (PERSONAL.has(k) ? SCOPE : "") + k;
   const store = {
@@ -63,11 +63,12 @@
     el.replaceChildren(document.createTextNode(text + " "), btn);
     el.classList.remove("jt"); el.classList.add("on", "act"); toastTimer(6000, ["on", "act"]);
   }
-  // a plain toast with one action button (5 s)
-  function actToast(text, act) {
+  // a plain toast with action buttons: actToast(text, [label, fn]) — one button for 5 s; with more ([label, fn], [label, fn]: a
+  // question such as '켜기' / '아니요') 8 s, so there is time to read it. Any button closes the toast first, then does its part
+  function actToast(text, ...acts) {
     const el = $("#toast");
-    el.replaceChildren(h("span", { class: "tt" }, text), h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); toastStop(); act[1](); } }, act[0]));
-    el.classList.remove("jt"); el.classList.add("on", "act"); toastTimer(5000, ["on", "act"]);
+    el.replaceChildren(h("span", { class: "tt" }, text), ...acts.map((act) => h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); toastStop(); act[1](); } }, act[0])));
+    el.classList.remove("jt"); el.classList.add("on", "act"); toastTimer(acts.length > 1 ? 8000 : 5000, ["on", "act"]);
   }
   async function copyText(text, done = (App.jline && App.jline("copied")) || "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
 

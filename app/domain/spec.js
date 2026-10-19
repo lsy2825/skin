@@ -62,7 +62,8 @@
   }
 
   // o: { name, kind (0 일반 · 1 체험가 · 2 한정가 · 3 구독권 · 4 고시가), tags ['첫 방문', '평일' …], vat (0 unknown · 1 included ·
-  // 2 excluded), until ('YYYY-MM-DD' | 'posted:…' | ''), today ('YYYY-MM-DD'), conds [other condition texts] }
+  // 2 excluded), until ('YYYY-MM-DD' | 'posted:…' | ''), today ('YYYY-MM-DD'), conds [other condition texts], revisit (a price
+  // for people coming back, Pricing.isRevisit — C #111: its first line says so instead of '첫 방문') }
   // → [{ k, v, state }] with state 'limit' (a stated restriction) | 'none' (stated: no restriction) | 'unknown' (not stated)
   // a new device or product ('덴서티리프팅 알파팁 신규런칭', 'NMN X 나드샷 신규 런칭') is not a first-visit price: the same words as
   // build2/clean.py NEW_ITEM (C #99), taken out of a name before any '신규' rule reads it
@@ -72,7 +73,8 @@
   function eligibility(o) {
     const n = dropNewItem(o.name), tags = o.tags || [], out = [];
     const first = tags.includes("첫 방문") || /첫\s*방문|신규/.test(n);
-    out.push(first ? { k: "첫 방문", v: "첫 방문(신규)만", state: "limit" } : { k: "첫 방문", v: "표기 없음 — 재방문도 되는지 확인", state: "unknown" });
+    out.push(o.revisit ? { k: "재방문", v: "다시 오는 손님만 — 처음 가면 못 받을 수 있어요", state: "limit" }
+      : first ? { k: "첫 방문", v: "첫 방문(신규)만", state: "limit" } : { k: "첫 방문", v: "표기 없음 — 재방문도 되는지 확인", state: "unknown" });
     out.push(o.kind === 1 ? { k: "체험 가격", v: "체험가 — 보통 1인 1회", state: "limit" }
       : o.kind === 2 ? { k: "체험 가격", v: "한정가 — 기간·수량·조건이 붙어요", state: "limit" }
         : o.kind === 3 ? { k: "체험 가격", v: "구독권", state: "limit" }

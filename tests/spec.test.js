@@ -57,6 +57,15 @@ test("eligibility: stated limits, stated none, and unknown kept apart", () => {
   assert.equal(get(Spec.eligibility({ name: "x", until: "posted:2026-09-01" }), "기간").state, "none");
 });
 
+test("eligibility: a revisit price (C #111) says '재방문' where others say '첫 방문'", () => {
+  const e = Spec.eligibility({ name: "★재방문 이벤트★ 물톡스 1회", kind: 2, tags: [], vat: 2, until: "9999-12-31", today: "2026-10-19", conds: [], revisit: true });
+  assert.equal(get(e, "재방문").state, "limit");
+  assert.equal(get(e, "재방문").v.split(" — ")[0], "다시 오는 손님만");
+  assert.equal(get(e, "첫 방문"), undefined, "no '첫 방문: 표기 없음 — 재방문도 되는지 확인' on a revisit price");
+  assert.equal(get(e, "체험 가격").v, "한정가 — 기간·수량·조건이 붙어요");
+  assert.equal(get(Spec.eligibility({ name: "★재방문 이벤트★ 물톡스 1회", kind: 2 }), "첫 방문").state, "unknown", "without the flag: as before");
+});
+
 // spec-word notes (data.json meta.kb.specs, C7): (family id, word) → one line; drafts only when allowed, and marked
 const draft = { status: "draft", reviewer: "", reviewed_at: "" }, okd = { status: "approved", reviewer: "의사 A", reviewed_at: "2026-10-20" };
 const NOTES = [

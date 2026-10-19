@@ -610,6 +610,11 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .ci .cf { grid-column: 2 / -1; display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .ci .cdone { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 6px; }
 .ci .cdone .sub { font-size: 13px; }
+/* '이 병원에 다녀왔어요' (a clinic's quote in 내 견적, the branch page's head): the switch, what it does under it */
+.visit { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; margin-top: 10px; }
+.visit .sub { font-size: 13px; }
+.visit .switch { min-height: 44px; }   /* a new switch: the 44px touch target (the older ones keep .switch's 32px) */
+.qbody > .visit { margin: 8px 0 0; padding-bottom: 8px; border-bottom: 1px solid var(--line-soft); }
 .cartsum .whenask { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; }
 .ci .cp { margin-left: auto; text-align: right; font-weight: 720; letter-spacing: -0.02em; white-space: nowrap; }
 .ci .cp small { display: block; font-size: 13px; color: var(--muted); font-weight: 600; letter-spacing: 0; }
@@ -681,6 +686,9 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
   white-space: nowrap; max-width: calc(100% - 32px); overflow: hidden; text-overflow: ellipsis; box-shadow: var(--shadow-2); }
 .toast.on { opacity: 1; transform: translate(-50%, 0); }
 .toast.act { pointer-events: auto; display: flex; align-items: center; gap: 12px; }
+/* a toast with a button wraps its words instead of cutting them — and the button — off ('되돌리기' after a long clinic or item name) */
+.toast.act { white-space: normal; line-height: 1.4; width: max-content; }
+.toast.act button { flex: none; }
 .toast button { border: 0; background: none; color: var(--butter); font-weight: 750; padding: 4px 2px; font-size: 14px; }
 :root[data-theme="dark"] .toast button { color: #64500f; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast button { color: #64500f; } }
