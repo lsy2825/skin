@@ -1022,9 +1022,14 @@ def build(rows, min_branches=3):
     #   the cheaper one, and only it, says it is an event (event_and_regular). One product the branch offers at both prices → they
     #   stay, the cheaper is the branch's price as anywhere. Two tiers in square brackets ('[BASIC]' / '[PREMIUM] 필링몰 10회', 쁨)
     #   are no event and stay out
+    # Rows go together by their spec (the loose signature), not their name: names that differ only in what the spec leaves out are
+    # the same twins — 밴스 천안 '콜라스터 오리지널 4cc' 99,000 (list 189,000) and '… 4cc 1회' 49,000 (90,000), the two menus as
+    # above with a count word, 포항 '브라이톤 레이저' / '… 1회'; and 유앤아이 구로 '스케일링 5회' 250,000 / '스케일링 + 크라이오 5회'
+    # 350,000, two products the spec reads as one (it leaves out a '+' part, §6). The name alone left 23 rows of 11 keys (검수 2026-10-19)
     twin_idx = defaultdict(list)
-    for i, r in enumerate(rows):
-        twin_idx[page(r) + (loose_text(r["name"]), r.get("kind", ""))].append(i)
+    for i, (r, v) in enumerate(zip(rows, vs)):
+        if v and v["fam"] == "generic":
+            twin_idx[page(r) + (loose_sig(v["sig"], []), r.get("kind", ""))].append(i)
     won = lambda x: int(x) if str(x or "").isdigit() else 0
     marked = lambda r: bool(EVENT_MARK.search(" ".join(re.findall(r"\[([^\]]*)\]", r.get("option") or "")) + " " + (r.get("src_cat") or "")))
 
@@ -1042,7 +1047,7 @@ def build(rows, min_branches=3):
             if vs[i] and vs[i]["fam"] == "generic":
                 vs[i] = None
                 twin_rows += 1
-                why["같은 페이지에 같은 이름·다른 가격(구분할 낱말 없음)"] += 1
+                why["같은 페이지에 같은 규격·다른 가격(구분할 낱말 없음)"] += 1
     # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families
     # (2026-10-15, 개선 보고서 E10). The spelling most rows use wins ('뒷목' 1,166 rows over one '뒷 목'), then the one with more
     # word breaks. Labels follow; signatures don't change. The glued-word check (labels.py) is given every name of the
