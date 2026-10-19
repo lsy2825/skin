@@ -70,7 +70,11 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
   // the clinic comparison, then the quote of branch b opened: its line texts [{head, total, m}]
   const quote = async (b) => {
     if ((await p.locator('.cartsum button[aria-expanded="false"]').count())) { await p.locator('.cartsum button[aria-expanded="false"]').click(); await p.waitForTimeout(400); }
-    const n = await p.$$eval('li.qrow', (lis, nm) => lis.findIndex((li) => { const s = li.querySelector('.rank .b span:last-child'); return s && s.textContent === nm; }), bname(b));
+    // the clinic list shows 40 and then '20곳 더 보기' (2026-10-16 hierarchy audit 8): tap it until the branch is listed
+    const find = () => p.$$eval('li.qrow', (lis, nm) => lis.findIndex((li) => { const s = li.querySelector('.rank .b span:last-child'); return s && s.textContent === nm; }), bname(b));
+    let n = await find();
+    for (let k = 0; n < 0 && k < 30 && await p.locator('#main .card.flush .morelist', { hasText: '곳 더 보기' }).count(); k++) {
+      await p.locator('#main .card.flush .morelist', { hasText: '곳 더 보기' }).first().click(); await p.waitForTimeout(300); n = await find(); }
     if (n < 0) return null;
     const li = p.locator('li.qrow').nth(n);
     if (!(await li.locator('.qbody').count())) { await li.locator('button.rank').click(); await p.waitForTimeout(300); }

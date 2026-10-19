@@ -1,5 +1,6 @@
 // Comparison statistics and list orders: per-branch lowest price of one option, where a price stands among branches,
-// branch price levels, and the orders a branch list can take (docs/OBJECTIVE_DISPLAY_POLICY.md). Pure functions, no DOM.
+// branch price levels, the orders a branch list can take (docs/OBJECTIVE_DISPLAY_POLICY.md) and how long a list is (the
+// shared '더 보기', groups, one end date for a whole list). Pure functions, no DOM.
 // window.Stats in the app, require()d by tests/stats.test.js.
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
@@ -81,5 +82,64 @@
   const HISTORY_MIN_WEEKS = 8;
   const historyReady = (o) => !!o && o.weeks >= HISTORY_MIN_WEEKS;
 
-  return { median, observations, obsLabel, historyReady, HISTORY_MIN_WEEKS, isoWeek, medianSorted, groupStat, position, byLevel, order, SORTS };
+  // ---- list order and length (2026-10-16 hierarchy audit 5·6·7·11, 6.0 규칙 4 '모든 더 보기는 같은 모양'·규칙 6 길이 예산)
+
+  // 시·도 order inside the neutral '지역·이름순' (audit 7 · L3, user decision 2026-10-19): 수도권's own order 서울 → 경기 →
+  // 인천 first, every other 시·도 after them in 가나다 order. Only the order of the 시·도 changes — the sort's name, its
+  // words and everything after the 시·도 (branch name, brand) stay as they were; nothing about price
+  const SIDO_FIRST = ["서울", "경기", "인천"];
+  function sidoCmp(a, b) {
+    const x = String(a || ""), y = String(b || "");
+    if (x === y) return 0;
+    const i = SIDO_FIRST.indexOf(x), j = SIDO_FIRST.indexOf(y);
+    if (i >= 0 || j >= 0) return (i < 0 ? SIDO_FIRST.length : i) - (j < 0 ? SIDO_FIRST.length : j);
+    return x.localeCompare(y, "ko");
+  }
+
+  // one '더 보기' for every list: a list shows its first rows, then this many more per tap (audit 11 · L7 · MORE-1)
+  const MORE_STEP = 20;
+  const commas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  // shown of total rows on screen → what the next tap shows: { next: rows on screen after it, add, left: rows not shown
+  // yet, label: '20곳 더 보기 (165곳 남음)' }; null when every row is shown. unit is the list's own word: 곳 (clinics) or 개
+  function more(shown, total, unit = "개", step = MORE_STEP) {
+    const s = Math.max(0, Math.floor(+shown || 0)), t = Math.max(0, Math.floor(+total || 0)), k = Math.max(1, Math.floor(+step || MORE_STEP));
+    if (t <= s) return null;
+    const left = t - s, add = Math.min(k, left);
+    return { next: s + add, add, left, label: `${commas(add)}${unit} 더 보기 (${commas(left)}${unit} 남음)` };
+  }
+
+  // rows in groups of one key, in the order the groups first appear (a branch's price list by 분야, audit 6 2단계): each
+  // group's key, its row count and its first n rows
+  function groups(items, keyOf, n = 5) {
+    const m = new Map();
+    for (const x of items) { const k = keyOf(x); let g = m.get(k); if (!g) m.set(k, (g = { key: k, total: 0, first: [] })); g.total++; if (g.first.length < n) g.first.push(x); }
+    return [...m.values()];
+  }
+
+  // the end date nearly every row of a list carries (블리비's '~10/31까지' on 849 of 851 lines, audit 6 · BR-1): said once
+  // above the list instead of on each line. dates: one per row ('' or null = no date). The date at least `share` of ALL the
+  // rows carry (rows with no date count against it), on at least `min` rows → { date, n, total }; otherwise null
+  function commonDate(dates, share = 0.8, min = 10) {
+    const c = new Map(); let total = 0;
+    for (const d of dates || []) { total++; if (d) c.set(d, (c.get(d) || 0) + 1); }
+    let best = null;
+    for (const [date, n] of c) if (!best || n > best.n) best = { date, n };
+    return best && best.n >= min && best.n >= share * total ? { date: best.date, n: best.n, total } : null;
+  }
+
+  // do these price rows compare as one spec? keyLists: per row the comparison keys (ids) it belongs to. The first key every
+  // row shares, or null — a row with no key, or two rows with no key in common, make the list a mix of specs (audit 5 ③:
+  // one range over 2cc 1회, 3회 packages and '+ 크라이오셀' bundles is not a price anyone pays)
+  function sharedKey(keyLists) {
+    let common = null;
+    for (const ks of keyLists || []) {
+      const set = new Set((ks || []).filter(Boolean));
+      common = common ? new Set([...common].filter((k) => set.has(k))) : set;
+      if (!common.size) return null;
+    }
+    return common && common.size ? [...common][0] : null;
+  }
+
+  return { median, observations, obsLabel, historyReady, HISTORY_MIN_WEEKS, isoWeek, medianSorted, groupStat, position, byLevel, order, SORTS,
+    SIDO_FIRST, sidoCmp, MORE_STEP, more, groups, commonDate, sharedKey };
 });

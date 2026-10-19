@@ -206,7 +206,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     const { ctx, p } = await page({}, [{ t: 'k', k: 'X12', q: 1 }, { t: 'k', k: rare, q: 1 }], '');
     await p.goto(BASE + '#cart'); await p.waitForTimeout(500);
     await p.locator('.cartsum .btn').click(); await p.waitForTimeout(300);
-    await p.locator('.more-link', { hasText: '일부만 되는 곳' }).click(); await p.waitForTimeout(300);
+    await p.locator('.morelist', { hasText: '일부만 되는 곳' }).click(); await p.waitForTimeout(300);
     const part = p.locator('.qrow').filter({ hasText: '개 중' }).first();
     const m = await part.locator('.rank .m').innerText(), shownTotal = num(await part.locator('.rank .p').textContent());
     await part.locator('.rank').click(); await p.waitForTimeout(300);

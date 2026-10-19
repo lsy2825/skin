@@ -90,7 +90,7 @@
 | U6·U10·E5·E6 부가세 미확인·추가 옵션 | 해결(B1·B9) | 단위·브라우저 | `cmpOk`·`cmpRk`, `addonOf`(빌드의 추가 옵션 칸 r[15]→r[19], C2; 그 칸이 없는 예전 파일만 `Classify.isAddon` 이름 규칙) | classify.test, e2e addon_col | 닥터에버스·셀린 부가세 조사는 데이터(C2) |
 | E4·E10·U18·E12 중복 줄·빈 검색 요약 | 해결(B1) | 단위·브라우저 | `Search.uniqueRows` | search.test | 규격 이름 대소문자·부위 이름(E2·E3)은 데이터(C1) |
 | 크레딧 화면 제거 | 해결(B2, lsy2825/skin#8) | 단위·브라우저 | `commerce.js` 삭제, 마이 메뉴·문구 | e2e devices51·a11y 갱신 | domain 5개 파일은 A3 뒤, demowallet·economics는 A6 뒤 삭제 |
-| U1·U3·U17·E7 비교 화면 한 기준·길이·아래 막대 | 해결(B3) | 브라우저 | `cmpHead`·`rangeBar`·`cmpMoreSheet`, 목록 10곳+모두 보기, 접기 | e2e objective·compare_cards·pricenow·demo_features | '가격과 함께 꼭 확인하세요' 접기는 정책 문서 결정 필요, 13px 미만 글자(배지) 정리 |
+| U1·U3·U17·E7 비교 화면 한 기준·길이·아래 막대 | 해결(B3) | 브라우저 | `cmpHead`·`rangeBar`·`cmpMoreSheet`, 목록 10곳+'20곳 더 보기 (N곳 남음)'(위계 3-1 `moreBtn`, 전에는 '모두 보기' 한 번에 전부), 접기 | e2e objective·compare_cards·pricenow·demo_features | '가격과 함께 꼭 확인하세요' 접기는 정책 문서 결정 필요, 13px 미만 글자(배지) 정리 |
 | U11·6.0 이탈 대책 '내 견적'·한 번에 담기·첫 화면 가격 | 해결(B4, lsy2825/skin#12) | 브라우저 | `quickAdd`, 홈 `coverageLine`·ⓘ, 이름 '장바구니' → '내 견적'(사용자 결정) | e2e first_screens(새), jomi | `tests/run_regression.sh`에 first_screens 넣기(A) |
 | 13px 미만 글자 | 해결(B3.5, lsy2825/skin#13) | 브라우저 | `styles.css` 61곳·인라인 2곳 → 13px(배지 등 4곳은 그대로) | 320px 넘침 36/292(main 41/292) | — |
 | 6.0 약속 2 단계별 익명 집계 | 만듦·꺼짐(B5) | 단위·브라우저 | `domain/metrics.js`, `config.js` `metrics`·`metricsApi`, `check_csp.js` | metrics.test, e2e metrics(꺼짐 0건·켜짐 단계별 1번) | 켜기: A4 주소 + C 처리방침 + 사용자 승인. `run_regression.sh`에 metrics 넣기(A) |
