@@ -15,11 +15,18 @@ import functools, re
 #   unit: (regex for the unit the key requires, regex for any unit of that kind) → a row that names another
 #         unit of the same kind (e.g. 100U for a 50U key) is rejected; a row naming no unit is accepted
 #   sess: required number of sessions (default 1)
+#   bad_raw: like bad, read on the name without spaces only — not comp(), which drops a '(…제외)' bracket whole: 데이뷰 안양점
+#       '점제거(2mm이하/5개까지/얼굴전체/바디제외)' 1,000원 is up to five moles (2026-10-19)
+#   mm: the largest mole the price may cover, in mm (X33 '2mm 이하') — a row naming a bigger size or only a lower bound
+#       ('2mm 이상', '0.2cm 이상', '3mm 이하', '2~3mm') is rejected, and so is a size word above the small one (中 / 大 / 중 / 대 /
+#       특대) when it names no mm (mole_size)
+# The amounts in need / unit are read without a note that names another amount: '(*최대 300샷 가능)', '(1만줄당 43,000원)'
+# (AMOUNT_NOTE, 2026-10-19)
 X = [
     # 톡신
     ("X01", "톡신", "국산 사각턱 보톡스 50U", [r"(사각턱|^턱|[^자갈이중]턱)톡신|턱톡신"], [r"프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|침샘|측두|이중턱|자갈턱|턱라인|\+|1\+1|패키지|PKG|pkg|두배|용량업|파워|슬림핏|V핏|리프팅"],
      {"bench": ["P02"], "need_any": [r"(?<![미외영])국산"], "unit": (r"50U", r"\d+U")}),
-    ("X02", "톡신", "국산 주름 보톡스 1부위", [r"주름톡신|한부위톡신|1부위톡신|부위당|택1", r"톡신|톡스"], [r"침샘|귀밑|턱밑|두피|발모|탈모|MTS|연어|프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|[2-9]부위|10부위|\+|1\+1|패키지|PKG|목주름|이마전체|이마주름|이마톡신|이마\(|미간전체|눈가전체|얼굴위쪽|위쪽|아래쪽|얼굴전체|턱라인|텐션|특수|모공|스킨|세로|[2-9]회|다한증|[1-9]\d{2}U|풀페이스"],
+    ("X02", "톡신", "국산 주름 보톡스 1부위", [r"주름톡신|한부위톡신|1부위톡신|부위당|택1", r"톡신|톡스"], [r"침샘|귀밑|턱밑|두피|발모|탈모|MTS|연어|프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|[2-9]부위|10부위|\+|1\+1|패키지|PKG|목주름|이마전체|이마주름|이마톡신|이마\(|미간전체|눈가전체|얼굴위쪽|위쪽|아래쪽|얼굴전체|턱라인|텐션|특수|모공|스킨|세로|[2-9]회|다한증|[1-9]\d{2}U|풀페이스|목가로|(?<!\d)[2-9]대"],
      {"bench": ["P01"], "need_any": [r"(?<![미외영])국산"]}),
     ("X03", "톡신", "국산 얼굴전체 스킨보톡스", [r"(얼굴전체|풀페이스|얼굴전체의)", r"(스킨톡신|더모톡신|더마톡신|쁨킨톡신)"], [r"프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|\+|패키지|PKG|목"],
      {"bench": ["P03"], "need_any": [r"(?<![미외영])국산"]}),
@@ -32,7 +39,8 @@ X = [
     ("X07", "톡신", "국산 겨드랑이 다한증 보톡스 50U", [r"다한증"], [r"프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|\+|수면|두피|헤어|얼굴|이마|두피|손|발|전두부|두부"],
      {"bench": ["P05"], "need_any": [r"(?<![미외영])국산"], "unit": (r"50U", r"\d+U")}),
     # 윤곽·필러
-    ("X08", "윤곽·필러", "윤곽주사 1회 (3cc 기준)", [r"윤곽주사"], [r"\+|프리미엄|파워|대용량|무제한|이용권|조각|VPL|울트라|패키지|PKG|제로|스테로이드|레드|V윤곽|바디|9cc|6cc|10cc|15cc|30cc|(?<!\d)(?!3ml)\d+ml"],
+    # X08: not a whole face ('풀페이스윤곽주사' 60,000 — 검수 3차, like X34)
+    ("X08", "윤곽·필러", "윤곽주사 1회 (3cc 기준)", [r"윤곽주사"], [r"\+|프리미엄|파워|대용량|무제한|이용권|조각|VPL|울트라|패키지|PKG|제로|스테로이드|레드|V윤곽|바디|9cc|6cc|10cc|15cc|30cc|(?<!\d)(?!3ml)\d+ml|(?<!\d)(?:[2-9]|\d{2,})부위|\d+주(?![가-힣])|풀페이스|얼굴전체"],
      {"unit": (r"3cc", r"\d+cc")}),
     ("X09", "윤곽·필러", "국산 필러 1cc", [r"필러"], [r"입술|입꼬리|귀|목주름|애교|눈밑|눈두덩|코|턱끝|이마|주름|흉터|프리미엄|리쥬비엘|채움|\+|패키지|PKG|무제한|4\+1|3\+1|녹이|히알라제|엘프|어깨|골반|힙|손등|수입|쥬비덤|벨로테로|레스틸렌|볼륨|동안|바디|풀페이스"],
      {"bench": ["P10", "P11"], "need_any": [r"국산|아띠에르|뉴라미스|레나필|엘라비에"], "unit": (r"1cc", r"\d+cc")}),
@@ -57,7 +65,8 @@ X = [
      {"bench": ["L03"]}),
     ("X19", "리프팅", "인모드 1부위", [r"인모드", r"1부위|한부위"], [r"바디|\+|[2-9]회|얼굴전체"],
      {"bench": ["L01"]}),
-    ("X20", "리프팅", "온다 리프팅 얼굴 10KJ", [r"온다", r"10KJ"], [r"바디|\+|[2-9]회|무제한|이용권|100KJ"],
+    # X20: the face, not the neck (블리비 '온다 리프팅(고강도 극초단파) - 목주름 10,000J' 150,000 — 검수 3차; '화,수,목' is a weekday)
+    ("X20", "리프팅", "온다 리프팅 얼굴 10KJ", [r"온다", r"10KJ"], [r"바디|\+|[2-9]회|무제한|이용권|100KJ|목주름"],
      {"bench": ["L15"]}),
     ("X21", "리프팅", "올리지오 100샷", [r"올리지오", r"100샷"], [r"아이|\+|바디|1000샷"],
      {"bench": ["L18"]}),
@@ -81,9 +90,25 @@ X = [
     ("X31", "피부", "아쿠아필 1회", [r"아쿠아필"], [r"\+|패키지|PKG|바디|코코|LDM|MTS|피코|모공프락셀|Triple|트리플"], {}),
     ("X32", "피부", "포텐자 1회", [r"포텐자"], [r"\+|패키지|PKG|바디|펌핑|팁$|팁\)|팁값별도|팁별도|팁미포함|일회용팁|팁추가|팁\(|미백|모공소멸|엑소|쥬베룩|여드름패키지|아그네스|다이아|개당|부분|아크네|\d+개|프로그램|\d+주(?![가-힣])|\d{3,}샷"],
      {"bench": ["K07"]}),
-    ("X33", "피부", "점 빼기 1개 (2mm 이하)", [r"점제거|점빼기|점,|점/|(?<![가-힣])점1개"], [r"얼굴전체|목전체|무제한|\+|대|中|中|5mm|바디|40개|10개|패키지|문신|흑자|검버섯|올클리어|제거쥐젖|제거비립종|제거사마귀|\d{2,}개|개미만|한관종|돌출"],
-     {"bench": ["K01"]}),
-    ("X34", "피부", "염증주사 1개", [r"염증주사"], [r"얼굴전체|\+|압출|10회|패키지|PKG|바디|\d+~\d+개|\d+주(?![가-힣])|솔루션|프로그램|사춘기|여드름관리|포함\)"],
+    # X33: one plain mole of 2 mm or less. Not a bigger size ('2mm 이상' was 86 rows on 2026-10-19 — 블리비 '얼굴 점빼기(2mm 이상) 개당'
+    # 58 — and '3mm 이하', '0.2cm 이상', 中 / 大: opt mm), not another lesion priced alone or with moles (사마귀 · 비립종 · 쥐젖 ·
+    # 피지샘 · 혈관점 · 혈관종 — taxonomy's mole family files them under '돌출점·사마귀·비립종·쥐젖'), not a whole face or neck
+    # ('전체 점 제거', '풀페이스'), not a price for N moles or up to N ('5개까지', '최대 5개', '30개' — unless 개당: opt bad_raw).
+    # A purchase limit next to 개당 is still the price of one, and so is a note on the body (2026-10-19 검수: main left out 밴스
+    # '점제거(2mm이하 개당/10개까지)' 500 and '얼굴 점제거 개당 (2mm 이하/10개한정)' 100 for '10개', 유앤아이 '… 2mm 이하 (1개당 / 최대
+    # 10개까지)' 200 for the '대' of 최대, 셀린 분당정자점 '점제거 (소) 1개 (※ 바디 제거 불가 ※ 소 점제거 1mm이하)' 15,000 for '바디'): a
+    # bare '대' is no size word any more (mole_size reads 大 / 대 / 대형 as words of their own). '점(2mm미만)', '점(小)' and '작은 점 1개'
+    # (셀린, 톡스앤필) name a mole too. A count right before 한정 is a purchase limit with no 개당 as well (검수 3차: 밴스 명동2호 '얼굴
+    # 점제거 (2mm 이하/10개한정)' 100 was out, 강남 '… 개당 (2mm 이하/10개한정)' 100 in); '한정가' / '(1회 한정)' say nothing of the count
+    ("X33", "피부", "점 빼기 1개 (2mm 이하)", [r"점제거|점빼기|점,|점/|(?<![가-힣])점1개|(?<![가-힣])점\(|작은점"],
+     [r"전체|풀페이스|무제한|\+|中|바디(?!점?(?:제거)?(?:불가|제외))|패키지|문신|흑자|검버섯|올클리어|사마귀|비립종|쥐젖|피지샘|혈관|개미만|한관종|돌출"],
+     {"bench": ["K01"], "mm": 2, "bad_raw": [r"^(?!.*(?:개당|\d+개한정(?!가))).*(?:\d+개(?:까지|이하|미만|이내)|최대\d+개|(?<![\d.])(?:[2-9]|[1-9]\d+)개(?!당|월))"]}),
+    # X34: one spot. A price for N spots or areas, or up to N, is not one ('5개까지', '10개 미만', '1-5개', '(3개 이하)', '[1~3부위]', '5부위
+    # 이하' — 24 rows on 2026-10-19; then 쁨 '염증주사 10개' 30,000, 톡스앤필 '(3개)' 15,000 · '(4개)' · '(5개)' · '(~10개)'), nor a whole
+    # face ('풀페이스', 밴스 · 데이뷰 29,000~50,000); '개당 - 최대 10개' and '(10개 한정)' are still a price for one — nor a mole removal
+    # listed under a '점제거ㅣ염증주사' section
+    ("X34", "피부", "염증주사 1개", [r"염증주사"], [r"얼굴전체|풀페이스|\+|압출|10회|패키지|PKG|바디|\d+[~\-]\d+(?:개|부위)|^(?!.*개당).*\d+(?:개|부위)(?:까지|미만|이하|이내)|"
+                                                r"^(?!.*(?:개당|최대|한정)).*(?<![\d.])(?:[2-9]|[1-9]\d+)(?:개|부위)(?!당|월)|점제거|\d+주(?![가-힣])|솔루션|프로그램|사춘기|여드름관리|포함\)"],
      {"bench": ["K10"]}),
     # 제모·바디
     ("X35", "제모·바디", "(여) 겨드랑이 제모 1회", [r"겨드랑이"], [r"남성|남자|\[남|\+(?!인중)|토닝|착색|다한증|[2-9]회|10회|무제한|1년|\(남\)"],
@@ -213,6 +238,57 @@ def sessions(name):
     return s
 
 
+# a note that names another amount than the option's own: a limit ('슈링크유니버스 100샷 (첫방문) (*최대 300샷 가능)' 29,000 sat in X12
+# 300샷 too) or a rate in brackets ('<온다리프팅 초 !> 3만줄(1만줄당 43,000원)' 129,000 and its 5만 / 6만 / 8만줄 rows sat in X20 10KJ,
+# 2026-10-19). Only need and unit read the name without it; a rate that is the option itself ('슈링크 100샷당 9,900원') stays
+AMOUNT_NOTE = re.compile(r"최대\d+(?:샷|KJ|cc|U|부위)(?:까지)?|\(\d+(?:샷|KJ|cc|U|부위)당\d+원?\)")
+# a mole's size: 'Nmm 이하 / 미만 / 이내 / 기준', 'N~Mmm', '0.2cm' (X33 opt mm). Read on comp() — spaces are gone ('2mm 이상' → '2mm이상')
+MM_RANGE = re.compile(r"(\d+(?:\.\d+)?)(mm|cm|㎜|㎝)?[~\-–](\d+(?:\.\d+)?)(mm|cm|㎜|㎝)", re.I)
+# 'N mm 이상' is a lower bound — not in a note on what costs more ('(50개 이하/2mm 이상 추가금 발생)', '2mm 이상 시 추가')
+MM_ONE = re.compile(r"(\d+(?:\.\d+)?)(mm|cm|㎜|㎝)((?:이상|초과|부터|넘는|넘게)(?!시?(?:추가|별도)|시(?![가-힣])|은|는))?", re.I)
+# a note on what a bigger mole costs is no size of the price: '(2mm 이상 시 추가)', '(3mm 이상 추가 5,000원)', '2mm 이상 별도', '2mm 초과 시
+# 5,000원 추가' — comp() glues them ('2mm이상시추가'), so MM_ONE's look-ahead alone missed '시추가' and a bound with no '이상' read 3mm as the
+# size (2026-10-19 검수; none in that day's rows but '얼굴전체 점제거(50개 이하/2mm 이상 추가금 발생)'). mole_size and mole_lower read c without it
+MM_EXTRA = re.compile(r"(?:\d+(?:\.\d+)?)(?:mm|cm|㎜|㎝)(?:이상|초과|부터|넘는|넘게|넘으면)?(?:시|은|는|부터|일때|일경우)?(?:\d+원)?(?:추가|별도)", re.I)
+# a mole's size words, as words of their own ('점 1개 (중)', '점 1개 중', '점제거 大', '(특대)' — not '소부위', '대표원장님'): read on the
+# name with its spaces. build2/taxonomy.py reads the same words for its mole family (2026-10-19)
+MOLE_WORDS = [("특대", re.compile(r"特大|(?<![가-힣])특대(?![가-힣])")), ("중대", re.compile(r"(?<![가-힣])중대(?![가-힣])")),
+              ("小", re.compile(r"小|(?<![가-힣])소(?![가-힣])")), ("中", re.compile(r"中|(?<![가-힣])(?:중|중형)(?![가-힣])")),
+              ("大", re.compile(r"(?<!特)大|(?<![가-힣])(?:대|대형)(?![가-힣])"))]
+MOLE_BIG = {"中", "大", "특대", "중대"}
+
+
+def mole_words(name):
+    """the size words a mole name uses: {'中'} for '점 1개 (중)', {'小', '中', '大'} for '(소 2만원/중 4만원/대 6만원)'"""
+    return {lab for lab, rx in MOLE_WORDS if rx.search(name or "")}
+
+
+def _mm(v, u):
+    return float(v) * (10 if u.lower() in ("cm", "㎝") else 1)
+
+
+def mole_lower(c):
+    """the mm of a size that is only a lower bound ('2mm이상' 2, '0.2cm이상' 2, '1mm이상의일반점' 1), or None; c = comp(name)"""
+    c = MM_EXTRA.sub(" ", c)
+    for m in MM_ONE.finditer(MM_RANGE.sub(" ", c)):
+        if m.group(3):
+            return _mm(m.group(1), m.group(2))
+    return None
+
+
+def mole_size(name, c):
+    """the largest mole size (mm) a name's price covers: '2mm이하' 2, '1~2mm' 2, '0.2cm이하' 2, '2mm기준' 2, '2mm이상' / '1mm 이상의
+    일반점' inf (only a lower bound); with no mm, a size word above the small one (中 / 大 / 중 / 대 / 특대 / 중대) is inf too, and none
+    is None. A note on what a bigger mole costs ('2mm 이상 시 추가', '3mm 이상 추가 5,000원') is not read (MM_EXTRA)"""
+    c = MM_EXTRA.sub(" ", c)
+    sizes = [_mm(m.group(3), m.group(4)) for m in MM_RANGE.finditer(c)]
+    for m in MM_ONE.finditer(MM_RANGE.sub(" ", c)):
+        sizes.append(float("inf") if m.group(3) else _mm(m.group(1), m.group(2)))
+    if sizes:
+        return max(sizes)
+    return float("inf") if mole_words(name) & MOLE_BIG else None
+
+
 @functools.lru_cache(maxsize=1 << 19)
 def _single(name):
     """the compared text of a name that can stand for some key's unit, or None — the checks every key shares, done once per name"""
@@ -232,7 +308,8 @@ def match(key, name):
     c = _single(name)
     if c is None:
         return False
-    if any(not re.search(p, c) for p in need):
+    a = AMOUNT_NOTE.sub("", c)
+    if any(not re.search(p, a) for p in need):
         return False
     if any(re.search(p, c) for p in bad):
         return False
@@ -242,9 +319,15 @@ def match(key, name):
     u = opt.get("unit")
     if u:
         want, kind = u
-        found = re.findall(kind, c)
+        found = re.findall(kind, a)
         if found and not any(re.fullmatch(want, f) for f in found):
             return False
+    br = opt.get("bad_raw")
+    if br and any(re.search(p, re.sub(r"\s+", "", name or "")) for p in br):
+        return False
+    mx = opt.get("mm")
+    if mx is not None and (mole_size(name, c) or 0) > mx:
+        return False
     if sessions(name) != opt.get("sess", 1):
         return False
     return True
@@ -312,7 +395,54 @@ if __name__ == "__main__":
         ("X32", "포텐자 1800샷 (샷수 나눠서 시술)", False), ("X07", "전두부 다한증 보톡스 (국산)", False), ("X05", "주름보톡스(독일 고순도) 10부위", False),
         ("X33", "점 제거 1개(돌출점)", False), ("X33", "얼굴 점빼기(2mm 이하) 개당", True),
         ("X30", "[브랜드 10주년 기념, 무한 페스타] 제네시스 레이저 + 촉촉팩 1회 한정가", True), ("X34", "[브랜드 10주년 기념, 무한 페스타] 염증주사 1개 1회 한정가", True),
+        # 2026-10-19 검수: X33 '2mm 이하' held 86 '2mm 이상' rows (블리비 '얼굴 점빼기(2mm 이상) 개당' 58), bigger sizes, other lesions, a whole face
+        ("X33", "얼굴 점빼기(2mm 이상) 개당", False), ("X33", "점제거 (2mm이상, 크기에 따라 상이)", False), ("X33", "점제거 (1mm 이상의 일반점)", False),
+        ("X33", "점 제거 1개 (0.2cm 이상)", False), ("X33", "점 제거 1개 (3mm이하)", False), ("X33", "co2 점제거 (2~3mm)", False),
+        ("X33", "점 1개 (4mm기준)", False), ("X33", "점제거 [얼굴] 3mm기준 (3mm기준 개당)", False), ("X33", "점 1개 (중)", False), ("X33", "점 1개 중", False),
+        ("X33", "점제거 大", False), ("X33", "점 제거(大)", False), ("X33", "점제거(대) 1개", False),
+        ("X33", "점/비립종/사마귀/쥐젖 비립종 1개", False), ("X33", "얼굴 점빼기 편평사마귀 개당", False), ("X33", "점 제거 혈관점 개당", False),
+        ("X33", "잡티 / 점 제거 체리혈관종 (어븀 or co2) 1개", False), ("X33", "얼굴or목) 전체 점 제거 (리터치 있음)", False), ("X33", "아이스점빼기 풀페이스", False),
+        ("X33", "점, 편평사마귀, 쥐젖, 비립종제거 1개", False), ("X33", "점제거(2mm이하/5개까지/얼굴전체/바디제외) (카톡플친 적용가)", False),
+        ("X33", "얼굴점제거 개당 (2mm 이하/5개한정)", True), ("X33", "점제거 1mm 기준 1~5개까지 개당", True),
+        ("X33", "얼굴 점빼기(2mm 이하) 개당", True), ("X33", "점 제거 1개 (0.2cm 이하)", True), ("X33", "어븀 점제거 1~2mm", True), ("X33", "점제거(중, 1-2mm) 1개", True),
+        ("X33", "점 1개 (2mm기준)", True), ("X33", "점제거(소, 1mm미만) 1개", True), ("X33", "점 1개 (소)", True), ("X33", "점제거 小", True),
+        ("X33", "점제거 1개당", True), ("X33", "점제거 직경2mm이하 (카톡플친 적용가)", True), ("X33", "얼굴 점 제거 (1mm 미만 1개 당 / 1회체험가)", True),
+        # … X34 '염증주사 1개' held prices for up to N spots or areas
+        ("X34", "염증주사 5개까지", False), ("X34", "염증주사 10개 미만", False), ("X34", "얼굴 염증주사 1-5개 미만", False), ("X34", "염증주사 (1회체험가/3개 이하)", False),
+        ("X34", "염증주사 [1~3부위]", False), ("X34", "염증주사 5부위 이하", False), ("X34", "염증주사(얼굴,목 중 1부위 전체/최대 10개 까지)", False),
+        ("X34", "점제거ㅣ염증주사 점제거(2mm 이하, 최대 5개까지)", False), ("X34", "염증주사(여드름 진정주사) 개당 - 최대 10개", True), ("X34", "염증주사 1부위", True),
+        # … a note naming another amount is not the option's amount (X12 · X20)
+        ("X12", "슈링크유니버스 100샷 (첫방문) (*최대 300샷 가능)", False), ("X11", "슈링크유니버스 100샷 (첫방문) (*최대 300샷 가능)", True),
+        ("X20", "<온다리프팅 초 !> 3만줄(1만줄당 43,000원)", False), ("X20", "온다 10KJ (최대30KJ) (카톡플친 적용가)", True), ("X20", "온다리프팅 1만줄", True),
+        ("X11", "슈링크 100샷당 9,900원", True), ("X19", "인모드 FX 1부위 1회 (최대 2부위까지 가능 *부가세 10% 별도)", True),
+        # 2026-10-19 검수 2차: X34 still held exact counts and a whole face; X33 a note on a bigger mole read as the size, and left out a
+        # 2 mm price for '최대' · '10개' next to 개당 · '바디 제거 불가'; X02 neck lines, X08 two areas
+        ("X34", "염증주사 10개", False), ("X34", "염증주사 (3개)", False), ("X34", "염증 주사 (~10개)", False), ("X34", "염증주사(풀페이스)", False),
+        ("X34", "풀페이스 염증주사 (카톡플친 적용가)", False), ("X34", "염증주사 2부위", False), ("X34", "염증주사 (10개 한정)", True), ("X34", "염증주사 1대", True),
+        ("X33", "얼굴 점빼기(2mm 이하) 개당 (2mm 이상 시 추가)", True), ("X33", "점제거 1개당 (2mm 이상 시 추가요금 발생)", True),
+        ("X33", "점제거 2mm 이하 개당 (3mm 이상 추가 5,000원)", True), ("X33", "점제거 1개 (2mm 이하, 2mm 이상 별도)", True),
+        ("X33", "점제거 1개 (2mm 이하, 2mm 초과 시 5,000원 추가)", True), ("X33", "점 제거 2mm 이하 개당 (최대 5개 한정)", True),
+        ("X33", "점제거(2mm이하 개당/10개까지)", True), ("X33", "얼굴 점제거 개당 (2mm 이하/10개한정)", True),
+        ("X33", "1주년 이벤트) 얼굴 점 제거 2mm 이하 (1개당 / 최대 10개까지)", True), ("X33", "점제거 (소) 1개 (※ 바디 제거 불가 ※ 소 점제거 1mm이하)", True),
+        ("X33", "점 제거 (1mm 미만 작은점 / 개당) ※바디점 제외 (1회 체험가)", True), ("X33", "점(2mm미만)", True), ("X33", "점(小)", True), ("X33", "작은 점 1개", True),
+        ("X33", "점제거 [최대 5개 가능 2mm이하] (카톡플친 적용가)", False), ("X33", "얼굴점제거 30개", False), ("X33", "점제거 5개", False),
+        ("X33", "바디 점제거 개당", False), ("X33", "점(大)", False), ("X33", "점(2mm이상) (*크기별 비용상이)", False), ("X33", "점 제거 대형 1개", False),
+        ("X02", "목 가로 주름 톡신 (국산) 2대", False), ("X02", "목 가로 주름 톡신 (국산) 3대", False),
+        ("X08", "윤곽주사 2부위 1회", False), ("X08", "윤곽주사 아쎄라 4주", False), ("X08", "윤곽주사 1부위 1회", True),
+        # 2026-10-19 검수 3차: a count before 한정 is a purchase limit with no 개당 too; a whole face for X08, the neck for X20
+        ("X33", "얼굴 점제거 (2mm 이하/10개한정)", True), ("X33", "점제거 2mm 이하 (최대 5개 한정)", True), ("X33", "점제거 5개 (1회 한정)", False),
+        ("X33", "점제거 5개 한정가", False), ("X08", "풀페이스윤곽주사", False), ("X08", "(대표x/이벤트)풀페이스윤곽주사", False),
+        ("X08", "얼굴전체 윤곽주사", False), ("X20", "온다 리프팅(고강도 극초단파) - 목주름 10,000J", False), ("X20", "화,수,목 온다리프팅 1만줄", True),
     ]
+    # mole sizes (X33 opt mm): the largest size a price covers
+    for name, want in [("얼굴 점빼기(2mm 이하) 개당", 2), ("얼굴 점빼기(2mm 이상) 개당", float("inf")), ("점 제거 1개 (0.2cm 이하)", 2),
+                       ("어븀 점제거 1~2mm", 2), ("co2 점제거 (2~3mm)", 3), ("점 1개 (4mm기준)", 4), ("점제거 1mm 기준 1~5개까지 개당", 1),
+                       ("점제거(중, 1-2mm) 1개", 2), ("점 1개 (중)", float("inf")), ("점 1개 (소)", None), ("점제거 1개당", None),
+                       ("얼굴 점빼기(2mm 이하) 개당 (2mm 이상 시 추가)", 2), ("점제거 2mm 이하 개당 (3mm 이상 추가 5,000원)", 2),
+                       ("점제거 1개당 (2mm 이상 시 추가요금 발생)", None), ("점 1개 (최대 5개)", None)]:
+        if mole_size(name, comp(name)) != want:
+            tests.append(("X01", name, None))
+            print("FAIL mole_size", name, mole_size(name, comp(name)), "want", want)
     # sessions: 'N회 한정가/체험가' is N sessions; a program of weeks is a course (99)
     for name, want in [("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", 10), ("에버클V(PLLA 콜라겐부스터) 4cc 3회 체험가", 3),
                        ("셀르디엠(동종진피 ECM 부스터) 6cc 1회 체험가", 1), ("여성 겨드랑이 제모 1회 (1인1회/선결제 불가)", 1), ("1회한정 슈링크 100샷", 1),

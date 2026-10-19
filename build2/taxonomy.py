@@ -22,7 +22,7 @@ usage: python build2/taxonomy.py            # self-test
 import hashlib, re, sys, unicodedata
 from collections import Counter, defaultdict
 
-from xkeys import ADDON, COND, addon_only, comp, sessions
+from xkeys import ADDON, COND, addon_only, comp, mole_lower, mole_words, sessions
 import groups
 import labels
 
@@ -167,7 +167,7 @@ FAMILIES = [
          T("펌핑 모드", r"펌핑", "post", scope="full"), T("팁 별도", r"팁(값)?\s*(별도|미포함)", "post", scope="full")]),
     dict(id="secret", cat="피부", name="시크릿 레이저", rx=r"^시크릿", stop=r"시크릿|레이저", tags=[]),
     dict(id="sylfirm", cat="피부", name="실펌X", rx=r"실펌", stop=r"실펌X?|레이저", tags=[]),
-    dict(id="mole", cat="피부", name="점 빼기", rx=r"점빼기|점제거|^점(?![가-힣])|얼굴점|돌출점", stop=r"점빼기|점제거|점|개당|얼굴",
+    dict(id="mole", cat="피부", name="점 빼기", rx=r"점빼기|점제거|^점(?![가-힣])|얼굴점(?:빼기|제거)?|돌출점", stop=r"점빼기|점제거|점|개당|얼굴|일반",
          tags=[T("小", r"小|2mm", "post"), T("中", r"中", "post"), T("大", r"大", "post"), T("얼굴전체", r"얼굴전체", "post"), T("목전체", r"목전체", "post"),
                T("돌출점·사마귀·비립종·쥐젖", r"돌출점|사마귀|비립종|쥐젖", "post")]),
     dict(id="acneinj", cat="피부", name="염증주사", rx=r"염증주사", stop=r"주사|개당", tags=[T("얼굴전체", r"얼굴전체", "post"), T("무제한", r"무제한|개수무제한", "post")]),
@@ -745,6 +745,8 @@ def _spaced(word, text):
 
 
 def _family_variant(raw, fam, sess, display=None):
+    if fam["id"] == "mole":
+        raw = _mole_raw(raw)
     full = comp(raw)
     st = model_apart(_strip(raw))
     by_unit = defaultdict(set)
@@ -788,6 +790,9 @@ def _family_variant(raw, fam, sess, display=None):
     det = "·".join(x for x in (re.sub(r"등$", "", _clean(p, fam)) for p in re.split(r"[/,·]", detail)) if x)
     rest_shown = _spaced(rest, main_text)
     det_shown = "·".join(_spaced(x, detail_text) for x in det.split("·")) if det else ""
+    if fam["id"] == "mole":
+        tags, rest, rest_shown, amount = _mole_size(raw, tags, rest, rest_shown, amount, fam)
+        lab = [t["label"] for t in tags]
     if fam.get("paren"):
         par = "·".join(x for p in re.findall(r"\(([^()]+)\)", raw) for x in (_clean(comp(y), fam) for y in re.split(r"[/,·]", p)) if x)
         det = "·".join(x for x in (det, par) if x)
@@ -808,6 +813,68 @@ def _family_variant(raw, fam, sess, display=None):
     return dict(fam=fam["id"], famname=famname, cat=cat, tags=lab, area=area, residual=rest, detail=det, amount=amount, sess=sess, sig=sig,
                 label=" ".join(pre + [famname] + post + tail), sub=" ".join(pre + post + tail) or "기본",
                 rx=fam["rx"] + ("|보톡스|보툴" if fam["id"] == "toxin" else "")), ""
+
+
+# 점 빼기: the size the price is for (2026-10-19 검수, with build2/xkeys.py X33). The family's tags read 小 / 中 / 大 only outside brackets,
+# and an amount drops '이상': '점 1개 (소)' / '(중)' / '(대)' / '(특대)' were one spec '점 빼기 1개', '얼굴 점빼기(2mm 이상) 개당' and
+# '(2mm 이하) 개당' one '점 빼기 2mm' — X33 held most of their rows, so they made no key of their own; with X33 holding only 2 mm or
+# less they became auto keys that mixed sizes (점 빼기 1개 5,000~50,000). A size word of its own (xkeys.mole_words, brackets too) is
+# the spec's size tag, and a lower bound ('2mm 이상', '0.2cm 이상', '1mm 이상의 일반점') goes into the amount ('2mm 이상'; also next to
+# a size word: 쁨 '점제거 中 (2mm이상)' is '점 빼기 中 2mm 이상' — read as '中 2mm' it met 톡스앤필 '점제거(중, 1-2mm)'). A body area named
+# only in brackets ('· 사마귀 1개 (바디부위)', 50,000 next to the face's 10,000) is the spec's too. And 블리비 '얼굴 점빼기 …' left '빼기'
+# over as a word of the spec, '얼굴 점제거 (중) 1개' '제거' (the family pattern took '얼굴점' first): '점 빼기 빼기 2mm 이상', '점 빼기 中 제거
+# 1개' — the pattern takes '얼굴점빼기' / '얼굴점제거' whole now. A mole's price is for one: '1개', '1개당' and '개당' (a stop word) are
+# one amount, none — '점제거 大 (5mm이상)' and '… 1개' (쁨, both 50,000) were two specs, '점 빼기 中' and '中 1개' too (2026-10-19 검수 2차).
+# A session is not one: '1회' with no count of 개 and no area tag keeps '1회' in the amount — 닥터에버스 노원점 '점,편평사마귀,비립종,
+# 쥐젖제거 1회' 250,000 (해피아워, 크기·개수 없이) would otherwise meet 검단점 '점, 편평사마귀, 쥐젖, 비립종제거 1개' 10,000. Other counts
+# stay: next to 개당 a count can be the package ('돌출점/사마귀/비립종/쥐젖 개당(얼굴전체) - 100개 미만' 350,000 / '- 50개 이하' 390,000)
+MOLE_SIZE_ORDER = ["小", "中", "大", "특대", "중대"]
+MOLE_HANGUL = {"小": "소", "中": "중", "大": "대", "특대": "특대", "중대": "중대"}
+
+
+def _mole_size(raw, tags, rest, rest_shown, amount, fam):
+    """(tags, rest, rest_shown, amount) of a 점 빼기 row with its size read (see above)"""
+    have = {t["label"] for t in tags}
+    words = mole_words(raw)
+    if len(words) == 1 and not (words & have):
+        w = next(iter(words))
+        t = next((t for t in fam["tags"] if t["label"] == w), None) or T(w, re.escape(w), "post")
+        size = lambda t: MOLE_SIZE_ORDER.index(t["label"]) if t["label"] in MOLE_SIZE_ORDER else len(MOLE_SIZE_ORDER)
+        tags = sorted(tags + [t], key=size)      # stable: the size first, the other tags as the family lists them
+        h = MOLE_HANGUL[w]
+        rest = re.sub(rf"^{h}|{h}$", "", rest)
+        rest_shown = re.sub(rf"^{h}\s*|\s*{h}$", "", rest_shown)
+        have.add(w)
+    low = mole_lower(comp(raw))
+    if low is not None:
+        if "小" in have and "小" not in words:
+            tags = [t for t in tags if t["label"] != "小"]      # the family's 小 rule reads a bare '2mm' ('어븀 점제거 2mm 이상')
+        mm = f"{int(low) if float(low).is_integer() else low}mm"
+        bound = f"{mm} 이상"
+        amount = re.sub(rf"(?<![\d.]){re.escape(mm)}", bound, amount, count=1) if re.search(rf"(?<![\d.]){re.escape(mm)}", amount) \
+            else " ".join(x for x in (bound, amount) if x)
+        rest, rest_shown = rest.replace("이상", ""), re.sub(r"\s*이상\s*", " ", rest_shown).strip()
+    if re.search(r"\(\s*바디\s*(?:부위)?\s*\)", raw or "") and "바디" not in rest:
+        rest, rest_shown = rest + "바디", (rest_shown + " 바디").strip()
+    amount = " ".join(x for x in amount.split() if x != "1개")
+    if not re.search(r"개", raw or "") and re.search(r"(?<!\d)1\s*회", raw or "") and not {"얼굴전체", "목전체"} & have:
+        amount = " ".join(x for x in (amount, "1회") if x)
+    return tags, rest, rest_shown, amount
+
+
+# … and read before the family rules (2026-10-19 검수 3차): '1개당' is '개당' — the stop word took '개당' and left the '1' in the spec
+# ('점제거 1개당' was '점 빼기 1' next to '점제거 개당' '점 빼기'; 밴스 '… 시술 쥐젖제거 1개당' 17 rows and '… 시술 쥐젖제거' 3 were two keys),
+# and a size in cm is one in mm (톡스앤필 '점 제거 대 1개 (0.3cm)' was '점 빼기 大' with 쁨 '점제거 大' — 5mm 이상 there — not '大 3mm'
+# like '점제거(대, 2-3mm) 1개'; '(0.2cm 이하)' was no size, '(2mm 이하)' '2mm'). The family's stop words take '일반' (a plain mole, not 돌출):
+# 밴스 '점제거 1개 일반(2mm 이상 일반점)' was '점 빼기 일반 2mm 이상', alone, next to '점제거 1개 (2mm 이상 일반점)' '점 빼기 2mm 이상'
+MOLE_CM = re.compile(r"(?:(\d+(?:\.\d+)?)\s*([~\-–])\s*)?(\d+(?:\.\d+)?)\s*(?:cm|㎝)(?![A-Za-z])", re.I)
+
+
+def _mole_raw(raw):
+    """a 점 빼기 name with '1개당' as '개당' and its cm sizes in mm ('(0.3cm)' → '(3mm)', '0.2~0.3cm' → '2~3mm')"""
+    mm = lambda v: f"{round(float(v) * 10, 2):g}"
+    raw = MOLE_CM.sub(lambda m: (f"{mm(m.group(1))}{m.group(2)}" if m.group(1) else "") + f"{mm(m.group(3))}mm", raw or "")
+    return re.sub(r"(?<![\d.])1\s*개\s*당", "개당", raw)
 
 
 ORDER_UNIT = r"\d+(?:\.\d+)?(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)(?![A-Za-z가-힣])"
@@ -1455,6 +1522,17 @@ if __name__ == "__main__":
         ("레이저토닝 10회", "toning", "레이저토닝 10회"),
         ("듀얼토닝 체험가", "toning", "듀얼 레이저토닝"),
         ("아크네 포텐자(피지선 파괴술) 개당", "potenza", "아크네 포텐자 개당"),
+        # 점 빼기 sizes (2026-10-19): a size word in brackets is the size tag; a lower bound stays in the amount ('얼굴 점빼기' is the
+        # family's name, no '빼기' left over)
+        ("점 1개 (중)", "mole", "점 빼기 中"), ("점 1개 중", "mole", "점 빼기 中"), ("점제거(특대, 3-5mm) 1개", "mole", "점 빼기 특대 5mm"),
+        ("점제거 (2mm이상)", "mole", "점 빼기 2mm 이상"), ("점 제거 1개 (0.2cm 이상)", "mole", "점 빼기 2mm 이상"),
+        ("얼굴 점제거 (중) 1개", "mole", "점 빼기 中"), ("얼굴 점제거 (1개당) 2mm 이상", "mole", "점 빼기 2mm 이상"),
+        ("어븀 점제거 2mm 이상", "mole", "점 빼기 어븀 2mm 이상"), ("점제거 中 (2mm이상)", "mole", "점 빼기 中 2mm 이상"),
+        ("점제거 大 (5mm이상)", "mole", "점 빼기 大 5mm 이상"), ("얼굴 점빼기(2mm 이상) 개당", "mole", "점 빼기 2mm 이상"),
+        ("얼굴전체 점제거(50개 이하/2mm 이상 추가금 발생)", "mole", "점 빼기 얼굴전체 2mm 50개"),
+        # 검수 3차: a size in cm is one in mm, '1개당' leaves no '1', '일반' (a plain mole) is no word of the spec
+        ("점 제거 대 1개 (0.3cm)", "mole", "점 빼기 大 3mm"), ("점 제거 1개 (0.2cm 이하)", "mole", "점 빼기 2mm"), ("점제거 1개당", "mole", "점 빼기"),
+        ("점제거 1개 일반(2mm 이상 일반점)", "mole", "점 빼기 2mm 이상"),
     ]
     rejects = [("옵션2) 큐어스템 엑소좀 1회 추가", "추가 옵션"), ("울쎄라 프라임 100샷 *300샷 이상 시", "조건부 가격(○○ 이상 시)"),
                ("겨드랑이/인중 제모 1년 구독권", "이용권·무제한")]
@@ -1496,7 +1574,13 @@ if __name__ == "__main__":
                       ("나비존 프락셀 레이저(CO2 프락셔널) 1회", "나비존 프락셀 레이저(어븀글라스 프락셔널) 1회", "CO2 vs 어븀"),
                       ("LDM 물방울 리프팅 1회 #6분 시술", "LDM 물방울 리프팅(고밀도 저자극 초음파) 1회 #24분 시술", "minutes"),
                       ("프리미엄 영양 수액주사(감초/마늘)", "프리미엄 영양 수액주사(NAD+)", "ingredients"),
-                      ("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", "(남자) 종아리 + 무릎 제모(아포지 플러스) 1회", "sessions")]:
+                      ("(남자) 종아리 + 무릎 제모(아포지 플러스) 10회 한정가", "(남자) 종아리 + 무릎 제모(아포지 플러스) 1회", "sessions"),
+                      # 2026-10-19 검수 (X33): a mole's size and a body area in brackets (_mole_size)
+                      ("얼굴 점빼기(2mm 이하) 개당", "얼굴 점빼기(2mm 이상) 개당", "2mm 이하 vs 이상"), ("점 1개 (소)", "점 1개 (중)", "소 vs 중"),
+                      ("점 1개 (중)", "점 1개 (대)", "중 vs 대"), ("점 제거(小)", "점 제거(大)", "小 vs 大"), ("점제거 1개", "점 제거 1개 (0.2cm 이상)", "0.2cm 이상"),
+                      ("점/비립종/사마귀/쥐젖 · 사마귀 1개", "점/비립종/사마귀/쥐젖 · 사마귀 1개 (바디부위)", "body in brackets"),
+                      ("점,편평사마귀,비립종,쥐젖제거 1회", "점, 편평사마귀, 쥐젖, 비립종제거 1개", "a session vs one (검수 2차)"),
+                      ("점 제거 대 1개 (0.3cm)", "점제거 大", "3mm vs no size (검수 3차)")]:
         va, vb = variant(x)[0], variant(y)[0]
         if va and vb and va["sig"] == vb["sig"]:
             bad += 1
@@ -1523,7 +1607,21 @@ if __name__ == "__main__":
     if a["sig"] != b["sig"]:
         bad += 1
         print("FAIL area order")
-    print("tests", len(tests) + len(rejects) + len(exact) + 15, "fail", bad)
+    # 2026-10-19 검수 2차: a mole's price is for one ('1개', '1개당', '개당' or nothing: one spec), and '얼굴 점제거' leaves no '제거' over
+    same_mole = [("점제거 大 (5mm이상)", "점제거 大 (5mm이상) 1개"), ("얼굴 점제거 (중) 1개", "점제거(중) 1개"), ("점제거 中", "점 1개 (중)"),
+                 ("점제거 (2mm이상)", "점제거 1개 (2mm 이상 일반점)"), ("얼굴 점빼기 비립종 개당", "점/비립종/사마귀/쥐젖 · 비립종 1개"),
+                 ("얼굴 점제거 (1개당) 2mm 이상", "얼굴 점빼기(2mm 이상) 개당"),
+                 # 검수 3차: '1개당' outside brackets too, a size in cm, '일반' next to '(… 일반점)'
+                 ("점제거 1개당", "점제거 개당"), ("돌출점 1개당", "돌출점 개당"),
+                 ("점/비립종/사마귀/쥐젖 시술 · 쥐젖제거 1개당", "점/비립종/사마귀/쥐젖 시술 · 쥐젖제거"),
+                 ("점 제거 대 1개 (0.3cm)", "점제거(대, 2-3mm) 1개"), ("점 제거 1개 (0.2cm 이하)", "점 제거 1개 (2mm 이하)"),
+                 ("점제거 1개 일반(2mm 이상 일반점)", "점제거 1개 (2mm 이상 일반점)"), ("점제거1개 일반(2mm이상 일반점)", "점제거(2mm이상 일반점)")]
+    for x, y in same_mole:
+        va, vb = variant(x)[0], variant(y)[0]
+        if not va or not vb or va["sig"] != vb["sig"]:
+            bad += 1
+            print("FAIL one mole's price split", x, "|", y, "→", va and va["label"], "|", vb and vb["label"])
+    print("tests", len(tests) + len(rejects) + len(exact) + len(same_mole) + 15, "fail", bad)
     if bad and "--report" not in sys.argv:
         sys.exit(1)
     if "--report" in sys.argv:
