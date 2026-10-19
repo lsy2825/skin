@@ -93,7 +93,8 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   const about = await p.locator('#main').textContent();
   const dts = await p.$$eval('#main dl.kv dt .k.kt', (ks) => ks.map((k) => k.textContent));
   // one colour for a condition (2026-10-16 hierarchy audit T1): the condition tags (.kt) are butter like 체험가·한정가, not the
-  // grey of the end-date badge (.k4); '급변·확인 중' (.kx) keeps its own tone; the butter text stays >= 4.5:1, light and dark
+  // grey of the end-date badge (.k4); '급변·확인 중' is a state of the data — grey with an icon (.kw, 2026-10-19 위계 점검 27), not
+  // butter and not coral; the butter text stays >= 4.5:1, light and dark
   for (const scheme of ['light', 'dark']) {
     await p.emulateMedia({ colorScheme: scheme }); await p.waitForTimeout(150);
     const col = await p.$$eval('#main dl.kv dt .k', (ks) => {
@@ -104,7 +105,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
     const of = (c) => col.filter((x) => x.cls.split(' ').includes(c));
     const butter = of('k1')[0] && of('k1')[0].bg;
     ok(`조건 배지 한 색(${scheme}): 평일·시간 한정·정해진 시간만 = 체험가·한정가 버터, '~10/17까지'·고시가는 회색`,
-      !!butter && of('kt').length >= 2 && of('kt').every((x) => x.bg === butter) && of('k2').every((x) => x.bg === butter) && of('k4').length >= 2 && of('k4').every((x) => x.bg !== butter) && of('kx').every((x) => x.bg !== butter),
+      !!butter && of('kt').length >= 2 && of('kt').every((x) => x.bg === butter) && of('k2').every((x) => x.bg === butter) && of('k4').length >= 2 && of('k4').every((x) => x.bg !== butter) && of('kx').every((x) => x.bg !== butter) && of('kw').length >= 1 && of('kw').every((x) => x.bg === of('k4')[0].bg),
       col.map((x) => `${x.t}:${x.bg}`).join(' / '));
     ok(`조건 배지 글자 대비 4.5:1 이상(${scheme})`, col.length > 0 && col.every((x) => x.cr >= 4.5), col.map((x) => `${x.t} ${x.cr}`).join(' / '));
   }

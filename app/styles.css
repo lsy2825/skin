@@ -21,7 +21,11 @@
   --nav-h: 64px; --top-h: 60px;
   /* type steps (2026-10-19 사용자 결정, docs/DESIGN_SYSTEM.md §2): screen title 22 · section 17 · body and prices 15 · aux 13; one
      number per screen at 28 (비교 가격 범위, 견적 합계); form fields 16 (iOS zooms into a field under 16px). Nothing under 13.
-     Three weights: body 400 · labels, chips, buttons, names 600 · titles, prices, emphasis 760 */
+     Three weights: body 400 · labels, chips, buttons, names 600 · titles, prices, emphasis 760
+     Colour roles (2026-10-19 사용자 결정, docs/DESIGN_SYSTEM.md §2): words = ink / ink-2 / muted; one accent = charcoal (ink) — a
+     chosen control is filled with it, the tab bar's pill too; butter = a condition on a price, nothing else (and 죠미's own face
+     and bubble); coral = a price that cannot be had (기간 끝남, 방문일엔 안 됨, 가격표에 없음) and an input error, nothing else;
+     a data state (지난 자료, 급변·확인 중, 미확인 …) = grey with an icon (.kw); counts on the tabs = charcoal */
   --fs-title: 22px; --fs-sec: 17px; --fs-body: 15px; --fs-aux: 13px; --fs-num: 28px; --fs-input: 16px;
   --fw-reg: 400; --fw-semi: 600; --fw-bold: 760;
   --ease: cubic-bezier(.2, .8, .2, 1); --fast: .14s; --mid: .24s;
@@ -30,7 +34,7 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #141311; --surface: #1d1b18; --sunken: #191815; --fill: #2a2723; --fill-2: #34302a;
   --line: #3a352e; --line-soft: #2b2824;
-  --ink: #f4efe6; --ink-2: #d9d2c5; --muted: #a8a092; --faint: #5b554b; --track: #8a8274;
+  --ink: #f4efe6; --ink-2: #c6beb0; --muted: #a09889; --faint: #5b554b; --track: #8a8274;   /* ink/ink-2 1.61 · ink-2/muted 1.55 · muted >= 4.59 on fill-2 (위계 점검 45) */
   --primary: #f4efe6; --on-primary: #141311;
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
   --butter: #e2c766; --butter-soft: #37301a; --butter-ink: #efd88a; --on-butter: #141311;
@@ -40,7 +44,7 @@
 :root[data-theme="dark"] {
   --bg: #141311; --surface: #1d1b18; --sunken: #191815; --fill: #2a2723; --fill-2: #34302a;
   --line: #3a352e; --line-soft: #2b2824;
-  --ink: #f4efe6; --ink-2: #d9d2c5; --muted: #a8a092; --faint: #5b554b; --track: #8a8274;
+  --ink: #f4efe6; --ink-2: #c6beb0; --muted: #a09889; --faint: #5b554b; --track: #8a8274;
   --primary: #f4efe6; --on-primary: #141311;
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
   --butter: #e2c766; --butter-soft: #37301a; --butter-ink: #efd88a; --on-butter: #141311;
@@ -105,10 +109,9 @@ header.top .upd { font-size: var(--fs-aux); color: var(--muted); white-space: no
   height: 36px; padding: 0 10px 0 14px; font-size: var(--fs-aux); font-weight: var(--fw-semi); max-width: 38vw; transition: transform var(--fast), background var(--fast); }
 .regbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .regbtn:active { transform: scale(.96); }
-.badge { position: absolute; top: 4px; right: 2px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--coral); color: #fff; font-size: var(--fs-aux); font-weight: var(--fw-bold);
+/* a count (내 견적 n, 알림 n): charcoal — coral is for a price that cannot be had and an input error only (위계 점검 27) */
+.badge { position: absolute; top: 4px; right: 2px; min-width: 20px; height: 20px; border-radius: 10px; background: var(--ink); color: var(--on-primary); font-size: var(--fs-aux); font-weight: var(--fw-bold);
   line-height: 20px; text-align: center; padding: 0 5px; box-shadow: 0 0 0 2px var(--bg); font-variant-numeric: tabular-nums; }
-:root[data-theme="dark"] .badge { color: #141311; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .badge { color: #141311; } }
 .badge.bump { animation: bump .45s var(--ease); }
 @keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.35); } 100% { transform: scale(1); } }
 
@@ -122,7 +125,7 @@ nav.tabs .ti { position: relative; display: grid; place-items: center; width: 52
 nav.tabs svg.i { width: 23px; height: 23px; stroke-width: 1.7; }
 nav.tabs button:active .ti { transform: scale(.9); }
 nav.tabs button[aria-current="page"] { color: var(--ink); }
-nav.tabs button[aria-current="page"] .ti { background: var(--butter-soft); }
+nav.tabs button[aria-current="page"] .ti { background: var(--ink); color: var(--on-primary); }   /* the one chosen look (위계 점검 43) */
 nav.tabs button[aria-current="page"] svg.i { stroke-width: 2.1; }
 nav.tabs .badge { top: -3px; right: 4px; }
 @media (min-width: 900px) {
@@ -144,7 +147,9 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 .t-num { font-size: var(--fs-num); } .t-title { font-size: var(--fs-title); } .t-sec { font-size: var(--fs-sec); } .t-body { font-size: var(--fs-body); } .t-aux { font-size: var(--fs-aux); }
 .fw-reg { font-weight: var(--fw-reg); } .fw-semi { font-weight: var(--fw-semi); } .fw-bold { font-weight: var(--fw-bold); }
 .down { color: var(--good); font-weight: var(--fw-semi); }
-.up { color: var(--pricey); font-weight: var(--fw-semi); }
+.up { color: var(--ink-2); font-weight: var(--fw-semi); }   /* went up / above the middle: ▲ and the words say it, not coral (27) */
+/* a price that cannot be had here (이번 주 가격표에 없음, 가격 미확인, 없음): coral's one job besides an input error */
+.unav { color: var(--pricey); }
 
 /* ---------- surfaces */
 .card { background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--r-lg); padding: 20px; min-width: 0; }
@@ -153,7 +158,12 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 .card.info { background: var(--sunken); }
 .card.lift { box-shadow: var(--shadow-1); }
 .note { font-size: var(--fs-aux); color: var(--ink-2); background: var(--sunken); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 12px 14px; line-height: 1.6; }
-.warnnote { background: var(--coral-soft); color: var(--coral); border-color: transparent; }
+/* a note about the data (아주 낮은 가격, 예산 안 지점 없음): grey with its icon, not coral (위계 점검 27) */
+.warnnote { background: var(--fill); color: var(--ink); border-color: transparent; display: flex; gap: 8px; align-items: flex-start; }
+.warnnote > svg.i { margin-top: 2px; color: var(--ink-2); }
+/* a caution in a form (GitHub 신고는 공개 글): ink-2 with the alert icon — not an error, so not coral */
+.warnline { display: flex; gap: 4px; align-items: flex-start; color: var(--ink-2); font-weight: var(--fw-semi); }
+.warnline > svg.i { margin-top: 2px; }
 .empty { padding: 32px 12px; text-align: center; color: var(--muted); font-size: var(--fs-body); line-height: 1.6; }
 .empty .ei { width: 56px; height: 56px; margin: 0 auto 12px; border-radius: 50%; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); }
 .empty .ei svg.i { width: 26px; height: 26px; }
@@ -221,8 +231,8 @@ a.src { font-size: var(--fs-aux); }
 .card .chip { background: var(--surface); }
 .chip:active { transform: scale(.96); }
 /* the chosen chip looks chosen whether it is a toggle (aria-pressed) or one of a radiogroup (aria-checked: the product chips) */
-.chip[aria-pressed="true"], .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
-.chip.on { background: var(--sage-soft); border-color: transparent; color: var(--sage); }
+.chip[aria-pressed="true"], .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-primary); }
+.chip.on { background: var(--ink); border-color: var(--ink); color: var(--on-primary); }   /* a filter in use ('수도권 ×'): chosen */
 .chip .dot, .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .chip.mini-chip { min-height: 28px; padding: 3px 10px; font-size: var(--fs-aux); }
 .pchip { padding: 0 4px 0 12px; }
@@ -230,7 +240,8 @@ a.src { font-size: var(--fs-aux); }
 .pchip .px { color: var(--muted); font-weight: var(--fw-bold); }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 2px; background: var(--fill); border-radius: 14px; padding: 3px; }
 .seg button { border: 0; background: none; border-radius: 11px; padding: 9px 4px; font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); transition: background var(--mid) var(--ease), color var(--fast); }
-.seg button[aria-selected="true"], .seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(31, 29, 26, .1); }
+/* the chosen segment: the charcoal fill of every chosen control (위계 점검 43 — it was a raised white one) */
+.seg button[aria-selected="true"], .seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-primary); }
 .seg.vsw { width: 116px; flex: none; }
 .seg.vsw button { padding: 6px 4px; font-size: var(--fs-aux); }
 /* compare: clinics as swipe cards (same order as the list) */
@@ -258,10 +269,21 @@ a.src { font-size: var(--fs-aux); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .switch input:checked + .tr { background: #5f9a72; } }
 .switch input:checked + .tr::after { transform: translateX(18px); }
 .switch input:focus-visible + .tr { outline: 2px solid var(--ink); outline-offset: 2px; }
+/* 내 견적 '전에 이 시술을 받아 봤어요' (위계 점검 46 · T14): kept, lighter than the line's price — 36×22 to see, a 13/400 grey label;
+   44px to press, laid over the line's own gaps (−6px above and below), so the line is no taller than with the 32px switch */
+.switch.sm { gap: 8px; font-size: var(--fs-aux); font-weight: var(--fw-reg); color: var(--muted); min-height: 44px; margin: -6px 0; }
+.switch.sm .tr { width: 36px; height: 22px; border-radius: 11px; }
+.switch.sm .tr::after { width: 16px; height: 16px; }
+.switch.sm input:checked + .tr::after { transform: translateX(14px); }
 
 /* ---------- forms */
 .search { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 4px 6px 4px 16px; transition: border-color var(--fast), box-shadow var(--fast); }
-.search:focus-within { border-color: var(--ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--butter) 45%, transparent); }
+.search:focus-within { border-color: var(--ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ink) 12%, transparent); }
+/* every search field's clear ×: the app's grey, not the browser's blue (11 fields — 위계 점검 43); 24px to press */
+input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; margin: 0 -4px 0 4px; cursor: pointer;
+  background: var(--muted); -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M17 7 7 17M7 7l10 10'/%3E%3C/svg%3E") center / 16px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.25' stroke-linecap='round'%3E%3Cpath d='M17 7 7 17M7 7l10 10'/%3E%3C/svg%3E") center / 16px no-repeat; }
+input[type="search"]::-webkit-search-cancel-button:hover { background: var(--ink); }
 .search > span > svg, .search > svg { width: 20px; height: 20px; flex: none; display: block; fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linecap: round; }
 .search input { flex: 1; min-width: 0; border: 0; background: none; padding: 12px 0; font-size: var(--fs-input); outline: none; }
 .search input::placeholder, .field::placeholder { color: var(--muted); opacity: 1; }
@@ -320,7 +342,7 @@ button.item:active { background: var(--fill); }
 .rank:hover { background: var(--sunken); }
 .rank .n { font-weight: var(--fw-bold); color: var(--muted); text-align: center; font-size: var(--fs-aux); }
 .rank.top .n { color: var(--ink); }
-.rank.top:first-child .n, li:first-child > .rank.top .n { width: 24px; height: 24px; line-height: 24px; border-radius: 50%; background: var(--butter); color: var(--on-butter); font-size: var(--fs-aux); justify-self: center; }
+.rank.top:first-child .n, li:first-child > .rank.top .n { width: 24px; height: 24px; line-height: 24px; border-radius: 50%; background: var(--fill); color: var(--ink); font-size: var(--fs-aux); justify-self: center; }
 .rank .b { font-weight: var(--fw-semi); display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rank .b span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank .p { font-weight: var(--fw-bold); font-size: var(--fs-body); text-align: right; white-space: nowrap; letter-spacing: -0.02em; }
@@ -352,13 +374,18 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .rank .chev::after { margin-left: 8px; }   /* the folds' chevron (위계 점검 30), after '견적' / '접기' */
 .bdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
-/* badges (kinds of price, states): three tones only — neutral, notice (butter), warning (coral). Butter = a condition on the
-   price: 체험가·한정가 (.k1/.k2) and every condition tag (.kt: 첫 방문, 평일·시간 한정, 정해진 시간만, 요일만 …), one colour
-   (2026-10-16 hierarchy audit T1: grey .kt read like the end-date badge). Neutral .k4 = information (end date, VAT, 고시가). */
+/* badges, one colour per role (2026-10-19 사용자 결정 · 위계 점검 27, BADGE-3):
+   - butter = a condition on the price: 체험가·한정가 (.k1/.k2), every condition tag (.kt: 첫 방문, 평일·시간 한정, 정해진 시간만 …)
+     and a condition to check (.kc: 확인할 조건 N개, 기간 확인 필요, 시간 확인 필요, VAT 별도 …) — one colour (T1)
+   - grey = information (.k4: ~10/17까지, VAT, 고시가, 추가 옵션) and, with an icon, a state of the data (.kw: 지난 자료, 급변·확인 중,
+     초저가·조건 확인, 횟수 표기 없음, 미확인)
+   - coral (.kx) = this price cannot be had: 기간 끝남, 방문일엔 안 됨, a different treatment (판정 J)
+   - sage (.k.ok) = checked (확인, 초저가·원본 확인, 예산 안) */
 .k { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-aux); font-weight: var(--fw-semi); padding: 2px 7px; border-radius: 6px; white-space: nowrap; line-height: 1.5;
   background: var(--fill); color: var(--ink-2); }
-.k1, .k2, .kt { background: var(--butter-soft); color: var(--butter-ink); }
-.k4 { background: var(--fill); color: var(--ink-2); }
+.k1, .k2, .kt, .kc { background: var(--butter-soft); color: var(--butter-ink); }
+.k4, .kw { background: var(--fill); color: var(--ink-2); }
+.kw { padding-left: 5px; }   /* its icon (14px) starts the badge */
 .kx { background: var(--coral-soft); color: var(--coral); }
 .k.ok { background: var(--sage-soft); color: var(--sage); }
 
@@ -439,8 +466,8 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .vchip { display: grid; gap: 1px; padding: 6px 12px; min-height: 48px; min-width: 72px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: left; transition: transform var(--fast), border-color var(--fast); }
 .vchip:active { transform: scale(.97); }
 .vchip b { font-size: var(--fs-aux); font-weight: var(--fw-semi); } .vchip span { font-size: var(--fs-aux); color: var(--muted); }
-.vchip[aria-pressed="true"], .vchip[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
-.vchip[aria-pressed="true"] span, .vchip[aria-checked="true"] span { color: color-mix(in srgb, var(--surface) 75%, transparent); }
+.vchip[aria-pressed="true"], .vchip[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-primary); }
+.vchip[aria-pressed="true"] span, .vchip[aria-checked="true"] span { color: color-mix(in srgb, var(--on-primary) 75%, transparent); }
 .guide { margin-top: 14px; padding: 14px 16px; border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--line-soft); }
 .guide p, .gitem p { margin: 6px 0 0; line-height: 1.6; }
 .gitem { padding: 16px 0; border-top: 1px solid var(--line-soft); }
@@ -490,7 +517,9 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .tile .w { font-size: var(--fs-aux); color: var(--muted); }
 .tile.tbtn { text-align: left; transition: transform var(--fast), border-color var(--fast); }
 .tile.tbtn:active { transform: scale(.97); }
-.tile.tbtn[aria-pressed="true"] { border-color: var(--ink); background: var(--surface); }
+.tile.tbtn[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-primary); }
+.tile.tbtn[aria-pressed="true"] b { color: inherit; }
+.tile.tbtn[aria-pressed="true"] .k, .tile.tbtn[aria-pressed="true"] .w { color: color-mix(in srgb, var(--on-primary) 75%, transparent); }
 
 /* ---------- charts (one axis, thin marks, tooltip, table view) */
 .lc { margin-top: 8px; }
@@ -538,7 +567,8 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .rank .p.down, .rank .p.up { font-size: var(--fs-body); }
 .cbars { margin: 8px -6px 0; }
 .cbar { display: grid; grid-template-columns: minmax(70px, 110px) minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 0 3px; width: 100%; border: 0; background: none; border-radius: 10px; padding: 7px 6px; text-align: left; }
-.cbar[aria-pressed="true"] { background: var(--sunken); }
+.cbar[aria-pressed="true"] { background: var(--ink); color: var(--on-primary); }
+.cbar[aria-pressed="true"] .side { color: inherit; }
 .cbar .bn { font-size: var(--fs-aux); font-weight: var(--fw-semi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cbar .side { display: flex; align-items: center; gap: 5px; font-size: var(--fs-aux); color: var(--ink-2); min-width: 0; }
 .cbar .side i { display: block; height: 8px; flex: none; }
@@ -652,6 +682,8 @@ details.advset > summary b { font-weight: inherit; }
 .concern .crisk { padding: 10px 0; border-bottom: 1px solid var(--line-soft); display: grid; gap: 3px; }
 .concern .crisk:last-child { border-bottom: 0; }
 .concern .csrc { margin-top: 14px; }
+/* 의료 안전 안내 (응급 · 진료 먼저 — knowledge/concerns.json safety): coral stays — a danger sign, outside the price screens' colour
+   roles (2026-10-19: coral = a price that cannot be had and an input error) */
 .card.calert { background: var(--coral-soft); border: 2px solid var(--coral); }
 .card.calert h3, .card.cwarn h3 { margin: 0 0 6px; color: var(--coral); display: flex; align-items: center; gap: 6px; }
 .card.calert p, .card.cwarn p { margin: 0; line-height: 1.65; }
@@ -719,7 +751,8 @@ details.advset > summary b { font-weight: inherit; }
 .opt:active { transform: scale(.98); }
 .opt b { font-size: var(--fs-body); display: flex; align-items: center; gap: 6px; }
 .opt span { font-size: var(--fs-aux); color: var(--muted); }
-.opt[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.opt[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-primary); }
+.opt[aria-pressed="true"] span { color: color-mix(in srgb, var(--on-primary) 75%, transparent); }
 .opt:disabled { opacity: .45; }
 .cout { display: grid; gap: 12px; }
 /* 죠미와 대화: one answer card per treatment — the collected price first */
@@ -747,9 +780,7 @@ details.advset > summary b { font-weight: inherit; }
 /* a toast with a button wraps its words instead of cutting them — and the button — off ('되돌리기' after a long clinic or item name) */
 .toast.act { white-space: normal; line-height: 1.4; width: max-content; }
 .toast.act button { flex: none; }
-.toast button { border: 0; background: none; color: var(--butter); font-weight: var(--fw-bold); padding: 4px 2px; font-size: var(--fs-body); }
-:root[data-theme="dark"] .toast button { color: #64500f; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .toast button { color: #64500f; } }
+.toast button { border: 0; background: none; color: inherit; font-weight: var(--fw-bold); padding: 4px 2px; font-size: var(--fs-body); text-decoration: underline; text-underline-offset: 3px; }
 .skel { border-radius: var(--r-lg); background: linear-gradient(90deg, var(--fill) 25%, var(--sunken) 50%, var(--fill) 75%); background-size: 200% 100%; animation: shimmer 1.3s infinite linear; }
 @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 
@@ -759,7 +790,7 @@ details.advset > summary b { font-weight: inherit; }
 .pin-price { background: var(--surface); color: var(--ink); border: 2px solid var(--c, var(--ink)); border-radius: 10px; padding: 1px 7px; font-size: var(--fs-aux); font-weight: var(--fw-bold); white-space: nowrap;
   box-shadow: 0 2px 6px rgba(0, 0, 0, .18); transform: translate(-50%, -50%); display: inline-block; font-variant-numeric: tabular-nums; }
 .pin-price.best { background: var(--ink); color: var(--surface); border-color: var(--ink); }
-.pin-price.sel, .pin-cluster.sel { outline: 3px solid var(--butter); outline-offset: 1px; }
+.pin-price.sel, .pin-cluster.sel { outline: 3px solid var(--ink); outline-offset: 2px; }
 .pin-cluster { background: var(--ink); color: var(--surface); border-radius: 14px; padding: 4px 10px; font-size: var(--fs-aux); font-weight: var(--fw-bold); white-space: nowrap; box-shadow: 0 2px 6px rgba(0, 0, 0, .25);
   transform: translate(-50%, -50%); display: inline-block; cursor: pointer; }
 .pin-cluster.best { background: var(--sage); color: var(--surface); }
@@ -768,14 +799,14 @@ details.advset > summary b { font-weight: inherit; }
 .mapbtn { pointer-events: auto; min-height: 38px; padding: 6px 14px; border-radius: 19px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font-weight: var(--fw-semi); font-size: var(--fs-aux);
   box-shadow: var(--shadow-2); display: inline-flex; align-items: center; gap: 6px; }
 .mapbtn.again { background: var(--ink); color: var(--surface); border-color: transparent; }
-#near li.sel { background: var(--butter-soft); border-radius: 14px; }
+#near li.sel { background: var(--fill); border-radius: 14px; }   /* the line of the chosen pin: grey, butter is for conditions */
 .leaflet-container .me { width: 16px; height: 16px; border-radius: 50%; background: #2f6043; border: 3px solid #fff; box-shadow: 0 0 0 6px rgba(47, 96, 67, .25); }
 .leaflet-popup-content { margin: 12px 14px; font-size: var(--fs-body); }
 .leaflet-popup-content b { font-size: var(--fs-body); }
 .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--surface); color: var(--ink); }
 
 /* ---------- my page */
-.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--butter-soft); color: var(--butter-ink); display: grid; place-items: center; font-size: var(--fs-title); font-weight: var(--fw-bold); flex: none; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; background: var(--fill); color: var(--ink-2); display: grid; place-items: center; font-size: var(--fs-title); font-weight: var(--fw-bold); flex: none; }
 /* 내 설정: each setting is one line '이름 · 지금: 값' that opens to its controls (hierarchy audit 49) */
 .settings .setrow { margin-top: 8px; border-top: 1px solid var(--line-soft); }
 .settings .setrow > summary { cursor: pointer; list-style: none; min-height: 48px; padding: 8px 0; }
@@ -832,8 +863,9 @@ html:not(.locked) .gate { display: none; }
 .list > li + li::before { content: ""; position: absolute; top: 0; left: 14px; right: 14px; height: 1px; background: var(--line-soft); pointer-events: none; }
 .list > li.sel::before, .list > li.sel + li::before { display: none; }
 body.has-fcart .wrap { padding-bottom: calc(var(--nav-h) + 96px + env(safe-area-inset-bottom, 0px)); }
-/* brand filter: all on by default, so 'on' stays light (outlined) and 'off' fades */
-.chip.bchip[aria-pressed="true"] { background: var(--surface); color: var(--ink); border-color: var(--ink); }
+/* brand filter: all on by default, so 'on' is an ordinary chip with dark words and 'off' is dashed and fades — the charcoal
+   fill stays the one 'chosen' look (위계 점검 43: on was a charcoal outline) */
+.chip.bchip[aria-pressed="true"] { background: var(--surface); color: var(--ink); border-color: var(--line); }
 .chip.bchip[aria-pressed="false"] { color: var(--muted); border-style: dashed; }
 .chip.bchip[aria-pressed="false"] .dot { opacity: .3; }
 .lcbox { max-width: 520px; }
@@ -902,7 +934,7 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 /* ---------- price + what to check (docs/OBJECTIVE_DISPLAY_POLICY.md) */
 .hero .hp.range { white-space: normal; letter-spacing: -0.04em; line-height: 1.2; }
 .hero .hp.range .to { color: var(--muted); font-weight: var(--fw-semi); }
-.sortchips .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+.sortchips .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-primary); }
 .card.flush .sortchips { margin: 0 -14px; padding: 2px 14px; }
 /* the five rows use the card's full width: the icon sits in the title line, no 32px column (hierarchy audit 17) */
 .checks .chks { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 8px; }
@@ -944,7 +976,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .elig li { display: grid; grid-template-columns: 22px minmax(70px, auto) minmax(0, 1fr); align-items: center; gap: 6px; font-size: var(--fs-aux); padding: 4px 0; }
 .elig .ei2 { display: grid; place-items: center; }
 .elig .ek { color: var(--ink-2); font-weight: var(--fw-semi); }
-.elig li.el-limit .ei2 { color: var(--pricey); }
+.elig li.el-limit .ei2 { color: var(--butter-ink); }   /* a condition (butter), not coral */
 .elig li.el-none .ei2 { color: var(--good); }
 .elig li.el-unknown .ei2, .elig li.el-unknown .ev { color: var(--muted); }
 .shortl { list-style: none; margin: 12px 0 8px; padding: 0; display: grid; gap: 6px; }
@@ -989,7 +1021,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .rbar b { position: absolute; top: -3px; width: 2px; height: 16px; background: var(--ink); transform: translateX(-1px); }
 .regl .rv { color: var(--muted); white-space: nowrap; font-size: var(--fs-aux); }
 .lcsvg circle.dot.hl { stroke: var(--ink); stroke-width: 2.5; }
-#clinics li.hl { background: var(--sage-soft); }
+#clinics li.hl { background: var(--fill); }   /* the line of the dot under the finger */
 .termi .m { grid-column: 1 / -1; }
 .acctprep { margin-top: 12px; padding: 12px; border: 1px dashed var(--line); border-radius: 14px; display: grid; gap: 4px; }
 .acctprep p { margin: 0; }
@@ -1013,17 +1045,18 @@ details.stips > summary { display: flex; align-items: center; gap: 6px; min-heig
 /* data state: header dot (#upd) + notice bar under the header */
 header.top .upd::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; vertical-align: 1px; background: var(--muted); }
 header.top .upd[data-state="READY"]::before { background: var(--good); }
-header.top .upd[data-state="LOADING"]::before, header.top .upd[data-state="PARTIALLY_READY"]::before { background: var(--butter); animation: nbpulse 1.2s ease-in-out infinite; }
-header.top .upd[data-state="STALE"]::before, header.top .upd[data-state="PARTIALLY_FAILED"]::before { background: var(--butter-ink); }
-header.top .upd[data-state="ERROR"]::before { background: var(--pricey); }
+/* a state of the data: greys (the words say which) — butter is for conditions, coral for a price that cannot be had */
+header.top .upd[data-state="LOADING"]::before, header.top .upd[data-state="PARTIALLY_READY"]::before { background: var(--muted); animation: nbpulse 1.2s ease-in-out infinite; }
+header.top .upd[data-state="STALE"]::before, header.top .upd[data-state="PARTIALLY_FAILED"]::before { background: var(--ink-2); }
+header.top .upd[data-state="ERROR"]::before { background: var(--ink); }
 @keyframes nbpulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { header.top .upd::before { animation: none !important; } }
 html.calm header.top .upd::before { animation: none !important; }
-.netbar { display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 9px 12px; border-radius: 12px; font-size: var(--fs-aux); line-height: 1.45; background: var(--butter-soft); color: var(--ink); }
+.netbar { display: flex; align-items: center; gap: 8px; margin: 0 12px 6px; padding: 9px 12px; border-radius: 12px; font-size: var(--fs-aux); line-height: 1.45; background: var(--fill); color: var(--ink); }
 .netbar[hidden] { display: none; }
 .netbar span { min-width: 0; }
 .netbar .nb-act { margin-left: auto; flex: none; border: 0; background: var(--ink); color: var(--surface); border-radius: 999px; padding: 6px 12px; font-weight: var(--fw-bold); font-size: var(--fs-aux); min-height: 32px; }
-.netbar .nb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--butter-ink); flex: none; animation: nbpulse 1.2s ease-in-out infinite; }
+.netbar .nb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ink-2); flex: none; animation: nbpulse 1.2s ease-in-out infinite; }
 /* alerts history, phone notifications, data status, install, cart top-3 */
 .nfp { padding: 12px 14px 14px; border-top: 1px solid var(--line-soft); display: grid; gap: 4px; justify-items: start; }
 .nfp b { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-body); }
@@ -1046,9 +1079,9 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 .note.mixnote[open] > summary { margin-bottom: 4px; }
 .prodmix { margin-top: 10px; }
 .prodmix .chips { margin-top: 4px; }
-.k.prodk { background: var(--sunken); color: var(--ink-2); }
+.k.prodk { background: transparent; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }   /* an outline: the sunken fill was 1.04:1 on the card (위계 점검 45) */
 .clsbox { border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: 10px 12px; margin: 0 0 12px; background: var(--sunken); }
-.clsbox.cls-reference, .clsbox.cls-never { border-color: var(--pricey); }
+.clsbox.cls-never { border-color: var(--pricey); }   /* 판정 J (a different treatment): this price cannot be used here */
 .k.clsb { white-space: normal; }
 .vsteps { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; }
 .vstep { min-width: 0; }
@@ -1115,9 +1148,11 @@ html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-of
    word over the number — narrow, so 담기 keeps the room for its label, and 담기 is the one that cuts (…) when it must */
 .cmphead .hmed { flex: 1 0 auto; display: grid; white-space: nowrap; font-size: var(--fs-body); font-weight: var(--fw-bold); line-height: 1.25; }
 .cmphead .hmed span { font-weight: var(--fw-semi); color: var(--muted); font-size: var(--fs-aux); }
-.cmphead .addbtn { min-height: 44px; border-radius: 14px; padding: 0 14px; font-size: var(--fs-body); background: var(--primary); color: var(--on-primary); border-color: transparent; flex: 0 1 auto; }
+/* 담기 is an outline (사용자 결정 2026-10-19 · 위계 점검 44): the price range (28) is the first screen's heaviest thing, and in the
+   dark the button is no longer the brightest surface; 담김 keeps the light green below */
+.cmphead .addbtn { min-height: 44px; border-radius: 14px; padding: 0 14px; font-size: var(--fs-body); background: var(--surface); color: var(--ink); border-color: var(--ink); flex: 0 1 auto; }
 .cmphead .addbtn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cmphead .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); }
+.cmphead .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); border-color: transparent; }
 @media (max-width: 360px) { .cmphead .addbtn { padding: 0 8px; } }   /* narrow phones: the label's room */
 .cmphead .morebtn { min-width: 44px; min-height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; flex: none; }
 /* 위계 점검 9 — folded while the list scrolls (html.cmp-fold, set by app.js heads() from the scroll handler; classes only):

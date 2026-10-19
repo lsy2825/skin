@@ -1,7 +1,7 @@
 // 위계 점검 묶음 5 '같은 역할은 같은 모양, 가까운 것끼리' (hierarchy audit REPORT 순번 29·30·31·32·33·34·35·39·47·50·52; 6.0 규칙
 // 3·4). What it holds on the screens the person reads, at 390 and 320 wide:
 //  29. a price line's badges in one order everywhere — kind & conditions (체험가·한정가·고시가, 첫 방문·평일·시간 한정 …) →
-//      warnings (kx: 기간 확인 필요, 초저가·조건 확인 …) → information (~10/31까지, VAT, 추가 옵션, 제품·장비): 비교 지점 줄,
+//      warnings (기간 끝남 kx, 기간 확인 필요 kc, 초저가·조건 확인 kw …) → information (~10/31까지, VAT, 추가 옵션, 제품·장비): 비교 지점 줄,
 //      지점 가격표, 검색 결과, 견적 펼친 줄
 //  30. every fold's summary line has the same chevron (one CSS mark, no svg / ▾ / none) at the line's right end; the compare
 //      screen's block folds are cards (no 12px extra above them: the view's 16), and opened they hold no card in a card
@@ -31,8 +31,10 @@ const CART = [{ t: 'k', k: 'X14', q: 3 }, { t: 'k', k: 'X01', q: 2 }, { t: 'k', 
 // in-page helpers
 const HELP = () => {
   window.__vis = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().width > 0;
-  // a badge's group: 0 kind & condition (butter k1 k2 kt, and 고시가), 1 warning (kx) or check (ok), 2 information (k4, prodk)
-  window.__grp = (k) => (k.matches('.k1, .k2, .kt') || k.textContent.trim() === '고시가') ? 0 : k.matches('.kx, .ok') ? 1 : 2;
+  // a badge's group: 0 kind & condition (butter k1 k2 kt, and 고시가), 1 warning — a price that cannot be had (kx), a condition to
+  // check (kc), a state of the data (kw) — or check (ok), 2 information (k4, prodk). The colour roles (위계 점검 27) gave the
+  // warnings three colours; their place in the line is the same
+  window.__grp = (k) => (k.matches('.k1, .k2, .kt') || k.textContent.trim() === '고시가') ? 0 : k.matches('.kx, .kc, .kw, .ok') ? 1 : 2;
   window.__badOrder = (box) => { let mx = 0; for (const k of [...box.querySelectorAll('.k')].filter(__vis)) { const g = __grp(k); if (g < mx) return [...box.querySelectorAll('.k')].filter(__vis).map((x) => x.textContent.trim()).join(' > '); mx = Math.max(mx, g); } return null; };
   // a fold's chevron: the ::after box (one mark for every fold) at the summary line's right end
   window.__chev = (s) => { const af = getComputedStyle(s, '::after'), cs = getComputedStyle(s), sr = s.getBoundingClientRect();

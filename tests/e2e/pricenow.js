@@ -60,7 +60,7 @@ const CAPITAL = ['서울', '경기', '인천'];
   ns = await names(p);
   ok('S7 숫자 정확 일치: 300샷만(1300샷 등 섞이지 않음)', ns.length > 0 && ns.every((n) => /(^|[^\d.,])300\s*샷/.test(n.replace(/1,300/g, '1300'))), `${ns.length}개`);
   await go(p, 'search/' + encodeURIComponent('슈링크 300샷 1회?') + '?nl=0');
-  const rows1 = await p.$$eval('#main .card.flush li .item', (it) => it.map((x) => [x.querySelector('.t').textContent, [...x.querySelectorAll('.k.kx')].map((k) => k.textContent).join(',')]));
+  const rows1 = await p.$$eval('#main .card.flush li .item', (it) => it.map((x) => [x.querySelector('.t').textContent, [...x.querySelectorAll('.k.kw')].map((k) => k.textContent).join(',')]));   // '횟수 표기 없음': a state of the data, grey with an icon (위계 점검 27)
   const badOpt = rows1.filter(([n, tags]) => (/(\d+)\s*회/.test(n) ? !/(^|[^\d])1\s*회/.test(n) : !/횟수 표기 없음/.test(tags)));
   ok('S7 1회?: 횟수가 적힌 건 1회만, 안 적힌 건 "횟수 표기 없음"(1회로 단정 안 함)', rows1.length > 0 && !badOpt.length && rows1.some(([, t]) => /횟수 표기 없음/.test(t)), badOpt.slice(0, 2).map((x) => x[0]).join(' / '));
   await go(p, 'search/' + encodeURIComponent('보톡스 - ') + '?nl=0');
