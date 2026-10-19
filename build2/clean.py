@@ -1145,9 +1145,10 @@ def main():
         first_of[id(row)] = (i, r, by_sect, weak, sex, k_old)
         out.append(row)
     # CONFLICT: a row the fold made a plain price of pages none of which gives one is folded again from its pages, in their order —
-    # a page goes into the first row it is not apart from (a showcase copy, or a page into a row of copies alone: SHOWCASE_SHARE),
-    # and the '합침' lines follow (the old rule's fold: a page of the same old-rule key came before). The fold stands when that is one
-    # row, or a row of it is a plain price: the price is open to anyone
+    # a page goes into the first row of its sex (or of none named, as above) it is not apart from (a showcase copy, or a page into a
+    # row of copies alone: SHOWCASE_SHARE), and the '합침' lines follow (the old rule's fold: a page of the same old-rule key came
+    # before). The fold stands when that is one row, or a row of it is a plain price: the price is open to anyone. An add-on stays
+    # one on every row (merge_into: one page says so — an add-on is never compared, so neither is any of its rows)
     extra, notes_gone, notes = [], set(), []
     for h in out:
         pages = pages_of.get(id(h))
@@ -1155,7 +1156,8 @@ def main():
             continue      # one page, a special row, or a page (no showcase copy) that gives the price plain: the fold stands
         rows, keys, at, new_notes = [], {}, {}, []
         for row, i, r, by_sect, weak, sex, k_old, note in pages:
-            s = next((s for s in rows if weak or weak_of[id(s)] or not apart(s, sect_of[id(s)], row, by_sect)), None)
+            s = next((s for s in rows if (not sex or sex_of[id(s)] in (sex, ""))
+                      and (weak or weak_of[id(s)] or not apart(s, sect_of[id(s)], row, by_sect))), None)
             if s is None:
                 s = dict(row)
                 rows.append(s)
@@ -1167,6 +1169,9 @@ def main():
             merge_into(s, row, by_sect, weak)
         if len(rows) < 2 or not all(special(s) for s in rows):
             continue
+        if h["addon"] == "1":
+            for s in rows:
+                s["addon"] = "1"
         h.clear()
         h.update(rows[0])
         sect_of[id(h)], weak_of[id(h)] = sect_of[id(rows[0])], weak_of[id(rows[0])]

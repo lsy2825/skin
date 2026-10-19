@@ -1540,6 +1540,39 @@ ok("apart: 두 페이지 모두 일반가가 아닌데 합치면 일반가가 �
    and not _apart(_xa("평일 낮", 14, "일반"), False, _xa("", 96, "일반"), False) and _apart(_xa("", 31, "일반"), False, _xa("타임세일", 0, "일반"), False)
    and _fc(_xa("", 0, "체험가"), True, _xa("평일 낮", 14, "체험가"), False) == ("", 0, "", "체험가", False)
    and _fc(_xa("", 0, "체험가"), True, _xa("", 0, "일반"), False) == ("", 0, "", "일반", False))
+# CONFLICT 검수 2(2026-10-19): 다시 나눌 때도 (a) main의 합치기처럼 성별이 같거나 한쪽에 성별이 없는 줄에만 넣음 — '남성' 페이지가 '[여성]'
+# 줄로 가서 칸(src_cat)이 '남성 제모'인 [여성] 줄이 생기면 안 됨. (b) 한 페이지라도 추가 옵션('[옵션] …' 또는 수집 칸 addon=1)이면 예전 한 줄처럼
+# 나눈 줄 모두 추가 옵션(규격 키 없음, 비교에 안 들어감) — 옵션 표시가 없는 페이지 줄만 시술 가격으로 비교에 들어가면 안 됨
+_raw_y = [("uandi", "유앤아이", "부평점", "첫방문 이벤트", "첫방문 이벤트", "겨드랑이 제모 5회", 50000, "0"),
+          ("uandi", "유앤아이", "부평점", "화수목 이벤트", "여성 화수목 이벤트", "겨드랑이 제모 5회", 50000, "0"),
+          ("uandi", "유앤아이", "부평점", "남성 제모", "남성 화수목", "겨드랑이 제모 5회", 50000, "0"),
+          ("uandi", "유앤아이", "부평점", "첫방문 이벤트", "첫방문 이벤트", "[옵션] 슈링크 유니버스 100샷", 30000, "0"),
+          ("uandi", "유앤아이", "부평점", "화수목 이벤트", "화수목 이벤트", "슈링크 유니버스 100샷", 30000, "0"),
+          ("uandi", "유앤아이", "부평점", "첫방문 이벤트", "첫방문 이벤트", "슈링크 유니버스 300샷", 90000, "1"),
+          ("uandi", "유앤아이", "부평점", "화수목 이벤트", "화수목 이벤트", "슈링크 유니버스 300샷", 90000, "0")]
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    with open(os.path.join(tmp, "data2", "raw", "uandi.csv"), "w", newline="", encoding="utf-8") as f:
+        wr = csv.writer(f)
+        wr.writerow(["brand", "branch", "category", "group", "option", "sale", "orig", "addon", "until", "url", "fetched_at"])
+        for _k, b, br, c, g, o, s_, ad in _raw_y:
+            wr.writerow([b, br, c, g, o, s_, "", ad, "", "https://example.invalid/", "2026-10-19T06:00:00+09:00"])
+    root, rawdir = clean.ROOT, clean.RAW
+    clean.ROOT, clean.RAW = tmp, os.path.join(tmp, "data2", "raw")
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            clean.main()
+    finally:
+        clean.ROOT, clean.RAW = root, rawdir
+    _yr = list(csv.DictReader(open(os.path.join(tmp, "data2", "clean.csv"), encoding="utf-8")))
+_yg = sorted((r["src_cat"], r["group"], r["mname"], r["tags"], r["days"]) for r in _yr if r["option"] == "겨드랑이 제모 5회")
+_want_y = sorted([("첫방문 이벤트", "첫방문 이벤트", "겨드랑이 제모 5회", "첫 방문", "0"),
+                  ("화수목 이벤트", "여성 화수목 이벤트", "[여성] 겨드랑이 제모 5회", "평일 낮", "14"),
+                  ("남성 제모", "남성 화수목", "[남성] 겨드랑이 제모 5회", "평일 낮", "14")])
+ok("CONFLICT 검수 2: 다시 나눌 때 '남성' 페이지는 '[여성]' 줄로 가지 않음(성별 없음·여성·남성 세 페이지 → 제 조건·제 칸의 세 줄)", _yg == _want_y, _yg)
+_ya = sorted((r["option"], r["tags"], r["addon"], r["keys"]) for r in _yr if "슈링크" in r["option"])
+ok("CONFLICT 검수 2: 한 페이지가 추가 옵션('[옵션] …', 수집 칸 addon=1)이면 나눈 줄 모두 추가 옵션 — 규격 키 없음(비교에 안 들어감), 조건은 제 페이지 것",
+   len(_ya) == 4 and all(a == "1" and k == "" for _o, _t, a, k in _ya) and sorted(t for _o, t, _a, _k in _ya) == ["첫 방문", "첫 방문", "평일 낮", "평일 낮"], _ya)
 # C 태그 낱말(2026-10-16). (a) '신규 런칭·입고·도입'은 묶음 제목·옵션에서도 새 장비라 첫 방문이 아님 — 저장 자료의 '신규' 64줄이 모두
 # 새 장비인데 첫 방문이었음(58줄이 일반가로 돌아옴). 첫 방문 낱말('신규 고객'·'신규 회원'·'신규가입'·'신규 방문'·'첫방문 신규'·'웰컴')은 그대로.
 # (b) 한 사람이 한 번만 받는 가격: 닥터에버스 연신내점 '각 항목 별로 1회 적용가능 …'(78줄)·톡스앤필 '1인1한정'·'1회 한정'(칸 이름·묶음
