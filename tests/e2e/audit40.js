@@ -3,7 +3,8 @@
 //         외국산 is not 국산; 제모 keys don't mix devices; a model number is not read into the amount; no page furniture
 //         in addresses; a regrouped key's trend starts again; meta.keymap / meta.recl are there
 //  app  — a saved cart item / favourite / alert on a replaced id moves to its successor; an id without one shows its old
-//         label; an alert on a regrouped key is re-based without a notice; the price history says why weeks are missing
+//         label; an alert on a regrouped key is re-based without a notice — also one whose day is the regroup's date or later
+//         (C #112: the alert keeps the mark of its build, Intel.reclMark); the price history says why weeks are missing
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/audit40.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const fs = require('fs'); const path = require('path');
@@ -58,19 +59,37 @@ ok('A14 다시 묶은 시술(그 지점)은 "가격 변동"에 안 나옴', !(D.
   const mapped = Object.entries(D.meta.keymap || {}).find(([, v]) => v[0] && KL[v[0]]);
   const gone = Object.entries(D.meta.keymap || {}).find(([, v]) => !v[0]);
   const reK = [...recl.keys()].find((k) => k.startsWith('X') && KL[k]) || [...recl.keys()][0];
+  // C #112: an id of the newest meta.recl entry, on an alert made that very day with the build before it (the entry not seen
+  // yet: its mark lacks the date) — the old date test (recl date > the alert's day) kept its baseline. And an id no entry
+  // lists, whose mark is a build before this one: it is compared as always (its stale baseline 'drops') and takes this build's
+  // mark. And one whose mark is a build after this data (a deploy rolled back): re-based without a notice ('older')
+  const [newD, newIds] = (D.meta.recl || []).slice(-1)[0] || ['', []];
+  const gapK = newIds.find((k) => k !== reK && KL[k] && rowsOfKey(k).length);
+  const listed = new Set((D.meta.recl || []).flatMap(([, ks]) => ks));
+  const ctls = D.keys.map(([id]) => id).filter((k) => !listed.has(k) && k !== reK && rowsOfKey(k).length);
+  const [ctlK, oldK] = ctls;
+  const ver = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'data-meta.json'), 'utf8')).version;
+  const datesOf = (k) => (D.meta.recl || []).filter(([, ks]) => ks.includes(k)).map(([d]) => d);
+  const stale = { low: 99999999, lowB: 'x|y', lowName: 'x', lowRow: '', count: 1, set: ['x|y'], recheck: '' };
+  const extra = [gapK && { id: 'a3', type: 'watch', k: gapK, created: newD, rb: newD, basis: 'listed', reg: '전국', sp: true, base: stale,
+      rm: { u: D.meta.prev || '', v: 'build-before', f: datesOf(gapK).filter((d) => d !== newD) } },
+    ctlK && { id: 'a4', type: 'watch', k: ctlK, created: D.meta.updated, rb: D.meta.updated, basis: 'listed', reg: '전국', sp: true, base: stale,
+      rm: { u: D.meta.prev || '2000-01-01', v: 'build-before', f: [] } },
+    oldK && { id: 'a5', type: 'watch', k: oldK, created: D.meta.updated, rb: D.meta.updated, basis: 'listed', reg: '전국', sp: true, base: stale,
+      rm: { u: '9999-12-31', v: 'build-later', f: [] } }].filter(Boolean);
   const b = await chromium.launch();
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
   await p.goto(BASE);
-  await p.evaluate(([m, g, rk]) => {
+  await p.evaluate(([m, g, rk, more]) => {
     localStorage.clear(); localStorage.setItem('pc:region', '""');
     localStorage.setItem('pc:carts', JSON.stringify([{ name: '내 장바구니', items: [m && { t: 'k', k: m[0], q: 1 }, g && { t: 'k', k: g[0], q: 1 }].filter(Boolean) }]));
     localStorage.setItem('pc:favs', JSON.stringify({ k: m ? [m[0]] : [], b: [] }));
     // an alert made two weeks ago on a key regrouped today, with a stale baseline that would 'drop' now
     localStorage.setItem('pc:alerts', JSON.stringify([{ id: 'a1', type: 'watch', k: rk, created: '2026-09-30', basis: 'listed', reg: '전국', sp: true, base: 99999999, low: 99999999, lowB: 'x|y', set: ['x|y'], obs: '2026-09-30' },
-      m && { id: 'a2', type: 'target', k: m[0], created: '2026-09-30', basis: 'listed', reg: '전국', target: 1 }].filter(Boolean)));
-  }, [mapped, gone, reK]);
+      m && { id: 'a2', type: 'target', k: m[0], created: '2026-09-30', basis: 'listed', reg: '전국', target: 1 }, ...more].filter(Boolean)));
+  }, [mapped, gone, reK, extra]);
   await p.reload(); await p.waitForTimeout(200);
   if (await p.locator('#gate-pad').isVisible()) for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`);
   await p.waitForSelector('.pc');
@@ -83,6 +102,13 @@ ok('A14 다시 묶은 시술(그 지점)은 "가격 변동"에 안 나옴', !(D.
     ok('B3 알림의 옛 ID → 새 ID(옛 ID는 from에 기록)', ls.alerts.some((a) => a.k === mapped[1][0] && a.from === mapped[0]));
   }
   ok('B4 다시 묶은 시술의 알림: 알림 없이 기준만 다시 잡음', ls.alerts.find((a) => a.id === 'a1').rb && !ls.notes.some((n) => n.k === reK && !n.past), JSON.stringify(ls.notes.slice(0, 2)));
+  const a3 = ls.alerts.find((a) => a.id === 'a3'), a4 = ls.alerts.find((a) => a.id === 'a4'), a5 = ls.alerts.find((a) => a.id === 'a5');
+  if (gapK) ok(`B4b 다시 묶은 날(${newD})에 만든 알림도 그 빌드를 못 봤으면 알림 없이 기준만 다시 잡음(C #112)`, a3 && a3.base.low !== 99999999 && a3.rm.f.includes(newD) && !ls.notes.some((n) => n.k === gapK && !n.past),
+    JSON.stringify({ k: gapK, rb: a3 && a3.rb, low: a3 && a3.base.low, rm: a3 && a3.rm, notes: ls.notes.filter((n) => n.k === gapK).length }));
+  if (ctlK) ok('B4c 다시 묶지 않은 시술의 알림은 그대로 비교(낡은 기준 → 가격 하락 알림), 전 빌드 표시를 이 빌드 표시로 바꿈', a4 && ls.notes.some((n) => n.k === ctlK && n.type === 'drop' && !n.past) && a4.rm.v === ver && a4.rm.u === D.meta.updated,
+    JSON.stringify({ k: ctlK, rm: a4 && a4.rm, ver, notes: ls.notes.filter((n) => n.k === ctlK).map((n) => n.type) }));
+  if (oldK) ok('B4d 기준보다 옛 자료(배포 되돌림)면 알림 없이 기준만 다시 잡고 이 빌드 표시를 남김', a5 && a5.base.low !== 99999999 && a5.rm.v === ver && a5.rm.u === D.meta.updated && !ls.notes.some((n) => n.k === oldK && !n.past),
+    JSON.stringify({ k: oldK, low: a5 && a5.base.low, rm: a5 && a5.rm, notes: ls.notes.filter((n) => n.k === oldK).map((n) => n.type) }));
   await p.goto(BASE + '#cart'); await p.waitForTimeout(900);
   const cartTxt = await p.locator('#main').textContent();   // textContent: the variant picker's options count too
   if (gone) ok('B5 이어지는 묶음이 없는 옛 ID: ID 대신 옛 이름 + "지금은 비교 묶음 없음"', cartTxt.includes(gone[1][1]) && cartTxt.includes('지금은 비교 묶음 없음') && !cartTxt.includes(gone[0]), gone[1][1]);

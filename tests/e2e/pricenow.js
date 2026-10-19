@@ -175,6 +175,9 @@ const CAPITAL = ['서울', '경기', '인천'];
   const x12 = []; ROWS.forEach((r) => { const keys = S[r[7]] || ''; const u = S[r[10]] || ''; if (keys.split(' ').includes('X12') && !r[13] && !(/^\d{4}-\d{2}-\d{2}$/.test(u) && u < TODAY) && CAPITAL.includes(BR[r[0]].region)) x12.push(r); });
   const low = Math.min(...x12.map((r) => r[3]));
   ok('S16 지켜보기 저장: 병원 표시가 기준·지역·기준값(data.json 최저와 같음)', al && al.type === 'watch' && al.basis === 'listed' && al.reg === '수도권' && al.base.low === low && !!al.base.lowB, al && JSON.stringify({ low: al.base.low, b: al.base.lowB, expect: low }));
+  // the mark of the build the baseline came from (C #112, Intel.reclMark): this collection and data-meta.json's version
+  const ver = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', 'data-meta.json'), 'utf8')).version;
+  ok('S16 기준을 잡은 빌드의 표시 저장(수집일·data-meta 버전)', al && al.rm && al.rm.u === D.meta.updated && al.rm.v === ver && Array.isArray(al.rm.f), al && JSON.stringify({ rm: al.rm, ver }));
 
   // 17–18) lowest-branch change detection: the stored baseline says another branch had a higher lowest last time
   const other = al.base.set.find((x) => x !== al.base.lowB);

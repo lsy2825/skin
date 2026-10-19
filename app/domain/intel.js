@@ -131,5 +131,60 @@
     return out;
   }
 
-  return { median, historyStats, daysBefore, koDay, newChains, newChainsNote, evalAlert, evalWatch, WATCH_T };
+  // ---- comparison alerts whose rows the rules moved (C #112). An alert's baseline is a value of one data build. data.json
+  // meta.recl [[collection date, [ids]], …] (12 kept) lists the ids whose rows a rule moved, dated by the collection, and a
+  // later build of the same collection adds its ids to that same entry — so a date cannot tell whether the baseline saw
+  // the move: the old test 'recl date > the alert's day' missed every move dated the alert's day or before (2026-10-14 rebuilt
+  // after alerts made on 10-15; 10-18 collected, built 10-19). The alert keeps the mark of the build its baseline came from.
+  // mark = { u: collection (meta.updated), v: build (data-meta version, '' when not read), f: [meta.recl dates listing the id,
+  //          'b' + stamp of each meta.reclBuilt entry listing it], x: 1 when the build had meta.reclBuilt }
+  // meta.reclBuilt [[stamp, [ids]], …] is a field chat C may add (not there yet): one entry per build that moved rows, a
+  // stamp no other build has.
+  function reclMark(meta, id, ver) {
+    const m = meta || {}, f = [];
+    for (const [d, ks] of Array.isArray(m.recl) ? m.recl : []) if (Array.isArray(ks) && ks.includes(id)) f.push(String(d));
+    for (const [t, ks] of Array.isArray(m.reclBuilt) ? m.reclBuilt : []) if (Array.isArray(ks) && ks.includes(id)) f.push(`b${t}`);
+    return { u: String(m.updated || ""), v: String(ver || ""), f, ...(Array.isArray(m.reclBuilt) ? { x: 1 } : {}) };
+  }
+  // why the baseline must be set again, quietly, on the build of `now` ('' = keep it). was: the alert's mark (none: saved
+  // before marks). A mark only grows by entries (12 kept: an entry that leaves meta.recl is no move).
+  //   legacy   no mark and the id is listed: whether its baseline saw the move is unknown — once, a missed notice rather
+  //            than a false one (an id never listed only gets a mark)
+  //   listed   an entry the baseline did not see lists the id (a new collection, or a rebuild that added it to its entry)
+  //   older    data older than the baseline's (a deploy rolled back)
+  //   rebuilt  another build of the baseline's collection, and that collection's entry lists the id: the build may have
+  //            moved its rows again (C #112's 33 ids). A rebuild usually has no new prices (same collection = same scrape),
+  //            so little is lost — but not always: the collection is the day most branches were read (build2/appdata.py),
+  //            so a later scrape that reached under half the branches, or a same-day manual scrape, brings new prices under
+  //            the same collection, and this re-base then misses them. Only when both builds are known (v '' = data-meta.json
+  //            was not read: taken as the same build, never as another). Not when the build has meta.reclBuilt: its stamps
+  //            tell exactly
+  function reclRebase(was, now) {
+    if (!was || !Array.isArray(was.f)) return now.f.length ? "legacy" : "";
+    if (now.f.some((t) => !was.f.includes(t))) return "listed";
+    if (now.u < was.u) return "older";
+    if (!now.x && now.v && was.v && now.v !== was.v && now.u === was.u && now.f.includes(now.u)) return "rebuilt";
+    return "";
+  }
+  // the quiet re-base of a treatment alert (target · newlow · newmatch): the baseline becomes what is listed now and nothing
+  // fires, now or at the next check of the same values — a new mix of rows is no news, as for a watch (evalWatch({}, now)).
+  // undefined = remove the field (Object.assign, then JSON drops it).
+  //   target    a value under the target now counts as told (last = it): neither that value nor the crossing the move made
+  //             fires; a lower value later does, and an old lower notice never blocks it. Over the target: nothing kept,
+  //             the next crossing fires
+  //   newlow    base = the value now; no value now (no row in the alert's region): no base, the next value is only a baseline
+  //   newmatch  base = the branch count now — 0 too, a real observation (alertNow: no row = {value: null, count: 0}), so a
+  //             first branch later is news, as for a watch's newmatch
+  function rebaseAlert(alert, now) {
+    if (!["target", "newlow", "newmatch"].includes(alert.type)) return {};
+    const p = { base: undefined, last: undefined, lastAt: undefined };
+    if (alert.type === "newmatch") { if (now && typeof now.count === "number") p.base = now.count; return p; }
+    const v = now && now.value != null ? now.value : null;
+    if (v == null) return p;
+    if (alert.type === "newlow") p.base = v;
+    else if (v <= alert.target) p.last = v;
+    return p;
+  }
+
+  return { median, historyStats, daysBefore, koDay, newChains, newChainsNote, evalAlert, evalWatch, WATCH_T, reclMark, reclRebase, rebaseAlert };
 });
