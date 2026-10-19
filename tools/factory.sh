@@ -129,6 +129,12 @@ build() {   # $1 = "" (scrape) or --skip-scrape
   log "build ${1:-with scraping}"
   python build2/weekly.py ${1:+"$1"}
   node tools/review_queue.js   # classification review queue + alias table (docs/TREATMENT_TAXONOMY.md)
+  # The same checks again, on what this build just made, before anything is saved. 2026-10-19: the 10-18 build passed
+  # checks() on the old data, was saved and deployed, and its own app/home.json then failed tests/homedata.test.js — the next
+  # morning's run stopped in checks() and every PR went red until a fix was merged. Now such a build stops here: nothing is
+  # saved or deployed, main keeps the last good build, and the run fails (alert job → Telegram).
+  log "checks on the new build (if they fail, this build is not saved or deployed — main keeps the last good build)"
+  checks
   local before; before=$(git rev-parse HEAD)
   save "$([ -n "${1:-}" ] && echo 'Rebuild app data' || echo 'Weekly prices')" "${files[@]}"
   # nothing new to save: the build is exactly what main had when the inputs were taken, so that commit holds it

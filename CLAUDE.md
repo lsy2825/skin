@@ -51,7 +51,7 @@ Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설�
   `tools/factory.sh`를 돌리고, Cloudflare 토큰을 가진 별도 deploy job(공장 job에는 토큰 없음. 토큰은 GitHub Environment `cloudflare`로 옮길 예정)이
   관리자 주소 `yoonsiljang-admin`(Cloudflare Access 로그인)을 다시 배포한다. main에 더 새 빌드가 있으면 건너뛰고(그 빌드를 저장한 실행이 배포),
   더 새 배포 코드가 있으면 건너뛴 뒤 redeploy job이 main에서 Run workflow(skip_scrape)를 새로 띄운다. 공장은 빌드 전에 main의 최신 데이터를
-  받아 오고 섞인 빌드는 push하지 않는다. 다시 돌릴 때는 Re-run 말고 Run workflow(skip_scrape, 수집 실행이 실패했으면 skip_scrape 끄고) —
+  받아 오고 섞인 빌드는 push하지 않는다. 만든 뒤 같은 검사를 새 빌드에 한 번 더 돌려, 걸리면 저장·배포하지 않는다(2026-10-19). 다시 돌릴 때는 Re-run 말고 Run workflow(skip_scrape, 수집 실행이 실패했으면 skip_scrape 끄고) —
   공장 job의 Re-run은 첫 단계에서 거절된다(deploy job만 다시 돌리기는 됨). **공개 주소 `yoonsiljang` 배포는
   2026-10-15 사용자 결정으로 멈춤** — GitHub 저장소 변수 `PUBLIC_DEPLOY`가 정확히 `on`일 때만 배포되고, 지금 공개 주소는 마지막 판을
   그대로 보여 준다. 공개 배포가 멈춘 동안 관리자 배포 실패는 공장 실행 실패(텔레그램 알림), 공개 배포를 켜면 경고만. Access 설정 전에는

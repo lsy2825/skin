@@ -798,7 +798,7 @@ test("factory save: nothing changed → no commit, no push", () => {
 // stub "builds" app/data.json from the input it finds and names the code it ran with. The factory's clone is at the start
 // commit S; meanwhile main got a code change (code v2) and another run's build (prices v2).
 // mainDeletes: the start commit S also has data2/accepted/old.csv, and main deletes it afterwards (a brand taken out).
-function runBuild({ sameAsMain = false, mainMovesDuringBuild = false, failFetch = false, noOrigin = false, mainDeletes = false, noPush = noOrigin } = {}) {
+function runBuild({ sameAsMain = false, mainMovesDuringBuild = false, failFetch = false, noOrigin = false, mainDeletes = false, noPush = noOrigin, checksFail = false } = {}) {
   const sb = sandbox("factory-build-");
   const git = (cwd, ...args) => sb.git(cwd, args);
   const dir = sb.tmp;
@@ -826,10 +826,14 @@ function runBuild({ sameAsMain = false, mainMovesDuringBuild = false, failFetch 
     command git -C "$DEV" push -q origin HEAD:main
   fi
 }
-node() { :; }`;
+node() { :; }
+checks() {   # stub tools/factory.sh checks(): records what it saw, fails when asked (a build the tests reject)
+  echo "stub: checks on: $(cat app/data.json)"
+  [ -z "\${CHECKS_FAIL:-}" ]
+}`;
   const script = `set -euo pipefail\nMODE=test\nBOT_NAME="weekly-prices bot"\nBOT_EMAIL="actions@users.noreply.github.com"\nBUILT=""\n` +
     `log() { echo "== factory[$MODE]: $*"; }\nsleep() { :; }\n${stub}\n${fnOf("save")}\n${fnOf("build")}\nbuild --skip-scrape\necho "built=$BUILT"\n`;
-  const env = { ...sb.env, DEV: dev, MOVE: mainMovesDuringBuild ? "1" : "" };
+  const env = { ...sb.env, DEV: dev, MOVE: mainMovesDuringBuild ? "1" : "", CHECKS_FAIL: checksFail ? "1" : "" };
   if (noPush) env.FACTORY_NO_PUSH = "1";   // sb.env has no FACTORY_* at all: only the cases that want it get it
   const r = spawnSync("bash", ["-c", script], { cwd: a, env, encoding: "utf8" });
   const show = (f) => git(origin, "show", `main:${f}`);
@@ -852,6 +856,23 @@ test("factory build: starts from main's latest data with the code as checked out
   assert.equal(r.mainLog[1], "t|Weekly prices (another run)", "on top of the other run's build");
   assert.ok(!r.mainLog.some((l) => /Build inputs from main/.test(l)), "the local inputs commit is dropped by the replay, never pushed");
   assert.match(r.out, new RegExp(`built=${r.mainTip}`), "deploy() names the pushed commit");
+});
+
+test("factory build: the checks run again on the new build, after it is made and before it is saved", () => {
+  const r = runBuild();
+  assert.equal(r.status, 0, r.out);
+  const ran = r.out.indexOf("stub: weekly.py ran"), checked = r.out.indexOf("stub: checks on: built from prices v2 with code v1");
+  assert.ok(ran >= 0 && checked > ran, `checks after the build, on its output: ${r.out}`);
+  assert.ok(checked < r.out.indexOf("built="), "and before save() finishes");
+});
+
+test("factory build: a build the checks reject is not saved — main keeps the last good build, the run fails (2026-10-19)", () => {
+  const r = runBuild({ checksFail: true });
+  assert.notEqual(r.status, 0, "the run fails (→ alert job → Telegram)");
+  assert.match(r.out, /checks on the new build \(if they fail, this build is not saved or deployed/);
+  assert.equal(r.mainTip, r.main, "nothing pushed to main");
+  assert.equal(r.mainData, "built from prices v2 with code v2", "main still has the last good build");
+  assert.ok(!r.out.includes("built="), "build() did not return (no commit handed to the deploy job)");
 });
 
 test("factory build: nothing new → nothing pushed, and the deploy job is handed main's commit (it holds this build)", () => {
