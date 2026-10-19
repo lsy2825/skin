@@ -97,7 +97,8 @@ Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설�
 1. 자기 파일만 고친다. 주인표에 없는 파일이면 멈추고 사용자에게 묻는다.
 2. 자기 브랜치에서만 일한다. 한 브랜치에는 한 가지 일만 한다. main에 직접 push하지 않는다.
 3. 합치는 순서: 최신 main 위로 rebase → 관련 시험 통과 → PR(바뀐 것·시험 결과) → PR 화면의 자동 검사가 초록 → **사용자가 승인해야 합침**.
-   자동 검사: 모든 PR에 `pr-checks`(약 1분, 공장의 배포 전 검사 + 회귀의 빠른 항목 + 문법 검사), `build2/`·`data2/`·`knowledge/`·`scrape/`를
+   자동 검사: 모든 PR에 `pr-checks`(약 1분, 공장의 배포 전 검사 + 회귀의 빠른 항목 + 문법 검사 — 그리고 `windows-unit` 약 3~4분, 사용자 PC처럼
+   Windows에서 단위 테스트), `build2/`·`data2/`·`knowledge/`·`scrape/`를
    바꾸면 `pr-build`(공장과 같은 빌드), DB 파일을 바꾸면 `db-security`. 빨간 PR은 승인이 와도 합치지 않고 먼저 알린다.
    초록은 PR을 올린 때의 main 기준이라, 그 사이 다른 PR이 많이 합쳐졌으면 rebase·push해서 다시 돌린다(합친 뒤에도 공장 검사가 배포를 한 번 더 막는다).
    화면(e2e)·백업 복구까지 보는 전체 회귀는 여러 PR을 합친 뒤 묶어서 돌린다.

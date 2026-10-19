@@ -115,17 +115,63 @@ test("pr-checks.yml runs on EVERY pull request (no paths filter: the secret scan
   assert.match(c, /run: bash \.github\/scripts\/pr_checks\.sh/);
 });
 
-test("every job of every workflow runs on a fixed Ubuntu image, never ubuntu-latest (it moved to Ubuntu 26 on 2026-10-19)", () => {
+test("every job of every workflow runs on a fixed image, never *-latest (ubuntu-latest moved to Ubuntu 26 on 2026-10-19)", () => {
   let jobs = 0;
   for (const f of fs.readdirSync(path.join(root, ".github/workflows")).filter((x) => /\.ya?ml$/.test(x))) {
     const c = code(read(`.github/workflows/${f}`));
-    assert.doesNotMatch(c, /ubuntu-latest/, `${f}: pin the image (ubuntu-24.04); move to a newer one on purpose, in a PR`);
+    assert.doesNotMatch(c, /(ubuntu|windows)-latest/, `${f}: pin the image (ubuntu-24.04, windows-2022); move to a newer one on purpose, in a PR`);
     for (const m of c.matchAll(/^\s*runs-on:\s*(.*)$/gm)) {
       jobs++;
-      assert.match(m[1].trim(), /^ubuntu-\d\d\.\d\d$/, `${f}: runs-on "${m[1].trim()}" is a fixed Ubuntu version`);
+      const img = m[1].trim();
+      // Windows only for pr-checks.yml's windows-unit job (2026-10-17): everything else stays on Ubuntu
+      if (f === "pr-checks.yml" && img === "windows-2022") continue;
+      assert.match(img, /^ubuntu-\d\d\.\d\d$/, `${f}: runs-on "${img}" is a fixed Ubuntu version`);
     }
   }
   assert.ok(jobs >= 10, `found the jobs (${jobs})`);
+});
+
+test("pr-checks.yml windows-unit: the unit tests on Windows the way setup.ps1 runs them, failures as annotations", () => {
+  const raw = read(".github/workflows/pr-checks.yml");
+  const at = raw.indexOf("\n  windows-unit:\n");
+  assert.ok(at > 0, "the job exists");
+  const job = raw.slice(at);
+  const quick = raw.slice(raw.indexOf("\n  quick:\n"), at);
+  assert.match(job, /runs-on: windows-2022/);
+  assert.match(job, /permissions:\n {6}contents: read\n/);
+  assert.match(job, /git config --global core\.autocrlf false\n[\s\S]*uses: actions\/checkout@/, "line ends like the owner's PC, set before the checkout");
+  for (const k of ["node-version", "python-version"]) assert.equal(job.match(new RegExp(`${k}: "([\\d.]+)"`))[1], quick.match(new RegExp(`${k}: "([\\d.]+)"`))[1], `same ${k} as the quick job (and as setup.ps1)`);
+  assert.match(job, /shell: powershell\n/, "Windows PowerShell 5.1, as on the owner's PC");
+  assert.match(job, /\(Join-Path \$gitRoot 'bin'\) \+ ';' \+ \(Join-Path \$gitRoot 'usr\\bin'\) \+ ';' \+ \$env:Path/, "Git Bash's bash and git first, like setup.ps1");
+  assert.match(job, /'--test', '--test-reporter=tap', 'tests\/\*\.test\.js'/);
+  assert.match(job, /node \.github\/scripts\/tap_annotate\.js \$out\n[\s\S]*exit \$p\.ExitCode/, "annotations, then the job fails when a test failed");
+  const ps = read("tools/windows/setup.ps1");
+  assert.ok(ps.includes("(Join-Path $gitRoot 'bin') + ';' + (Join-Path $gitRoot 'usr\\bin') + ';' + $env:Path"), "setup.ps1 sets PATH the same way");
+});
+
+test("tap_annotate.js: one annotation per failing test with its file and line, totals printed, subtest parents skipped", () => {
+  const tmp = fs.mkdtempSync(path.join(require("os").tmpdir(), "tap-"));
+  const tap = path.join(tmp, "u.tap");
+  fs.writeFileSync(tap, [
+    "TAP version 13",
+    "# Subtest: works", "ok 1 - works", "  ---", "  duration_ms: 1", "  ...",
+    "# Subtest: breaks on windows", "not ok 2 - breaks on windows", "  ---", "  duration_ms: 1",
+    "  location: 'D:\\\\a\\\\skin\\\\skin\\\\tests\\\\factory_worker.test.js:365:1'", "  failureType: 'testCodeFailure'",
+    "  error: |-", "    Expected values to be strictly equal:", "    null !== 0", "  code: 'ERR_ASSERTION'", "  ...",
+    "# Subtest: parent", "not ok 3 - parent", "  ---", "  failureType: 'subtestsFailed'", "  error: '1 subtest failed'", "  ...",
+    "# Subtest: skipped", "ok 4 - skipped # SKIP needs pwsh", "  ---", "  ...",
+    "1..4", "# tests 4", "# pass 2", "# fail 2", "# skipped 1", "",
+  ].join("\r\n"));
+  const r = require("child_process").spawnSync(process.execPath, [path.join(root, ".github/scripts/tap_annotate.js"), tap], { encoding: "utf8" });
+  fs.rmSync(tmp, { recursive: true, force: true });
+  assert.equal(r.status, 0, r.stderr);
+  const errs = r.stdout.split("\n").filter((l) => l.startsWith("::error"));
+  assert.equal(errs.length, 1, r.stdout);
+  assert.match(errs[0], /^::error file=tests\/factory_worker\.test\.js,line=365,title=Windows%3A breaks on windows::Expected values to be strictly equal: null !== 0$/);
+  for (const t of ["# tests 4", "# pass 2", "# fail 2", "# skipped 1"]) assert.ok(r.stdout.includes(t), t);
+  const none = require("child_process").spawnSync(process.execPath, [path.join(root, ".github/scripts/tap_annotate.js"), path.join(root, "no-such.tap")], { encoding: "utf8" });
+  assert.equal(none.status, 0);
+  assert.match(none.stdout, /^::error title=Windows unit tests::no TAP output/m, "a missing file is an annotation, the exit code still comes from node --test");
 });
 
 test("pr-build.yml runs the factory's build commands on build-affecting PRs", () => {

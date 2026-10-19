@@ -6,6 +6,9 @@ name: pr-checks
 # pull_request, never pull_request_target: the PR's code runs with a read-only token and without any secret.
 # Every PR, doc-only ones included: the secret scan reads every tracked file and a PIN or key pasted into a .md is the
 # likeliest leak (no paths filter on purpose). Build-affecting PRs also get .github/workflows/pr-build.yml.
+# windows-unit (owner's request 2026-10-17): the unit tests again on Windows, the way tools/windows/setup.ps1 runs them on the
+# owner's PC — Windows PowerShell 5.1, Git Bash's bash/git first on PATH, the same Node and Python. Three tests broke only
+# on Windows (#107: import of a C:\ path, CRLF workflow text, the PATH separator/name) and nobody saw it until the PC ran them.
 on:
   pull_request:
     branches: [main]
@@ -39,3 +42,33 @@ jobs:
         env:
           PYTHONUTF8: "1"
         run: bash .github/scripts/pr_checks.sh
+
+  windows-unit:
+    runs-on: windows-2022      # fixed image, like ubuntu-24.04 above; move on purpose, in a PR
+    permissions:
+      contents: read
+    timeout-minutes: 15        # ~3-4 minutes normally
+    steps:
+      - name: Line ends as the owner's PC has them (setup.ps1 clones with core.autocrlf=false)
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        with:
+          node-version: "22"
+      - name: Unit tests on Windows (node --test tests/*.test.js, like setup.ps1; failures become error annotations)
+        shell: powershell
+        env:
+          PYTHONUTF8: "1"
+        run: |
+          $gitRoot = 'C:\Program Files\Git'
+          $env:Path = (Join-Path $gitRoot 'bin') + ';' + (Join-Path $gitRoot 'usr\bin') + ';' + $env:Path
+          $out = Join-Path $env:RUNNER_TEMP 'unit.tap'
+          $p = Start-Process -FilePath (Get-Command node).Source -ArgumentList @('--test', '--test-reporter=tap', 'tests/*.test.js') -NoNewWindow -Wait -PassThru -RedirectStandardOutput $out
+          node .github/scripts/tap_annotate.js $out
+          Write-Host "node --test exit code: $($p.ExitCode)"
+          exit $p.ExitCode
