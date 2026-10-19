@@ -490,7 +490,7 @@ C8 줄 번호 함수(#89)는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | A2 보안 헤더(`app/_headers`) | 합쳐짐, 실제 응답 헤더로 확인(모니터) | #6, 문서 #33 | — |
 | A3 서버·DB 쪽 크레딧 제거 | 합쳐짐 | #9, #35 | — |
 | A4 익명 집계 Worker(`cf/metrics`, D1) | 합쳐짐. 앱 쪽은 꺼짐(`metrics: false`) | #15, #26 | 켜기(아래 순서) |
-| A5 푸시 알림 Worker(`cf/alerts`, D1) | 초안 PR, 아직 안 합침. D1 `yoonsiljang-alerts` 만들기·id 넣기는 끝남 | #85 | `docs/ARCHITECTURE.md` D19 '켜는 순서' 3~10번 그대로(합치기 → 비밀값·키 → B 설정 → Workers Paid → `PLAN` `"paid"` → 공개 배포) |
+| A5 푸시 알림 Worker(`cf/alerts`, D1) | 합쳐짐(2026-10-19, 합친 커밋 `7981b4c`), 자동 배포 성공(`PLAN` `"free"`). 알림 계산은 아직 꺼진 채(`ALERTS_CODE_SHA` 없음 — 공장·따라잡기 실행이 안내만 남김) | #85 | `docs/ARCHITECTURE.md` D19 '켜는 순서' 4~10번(비밀값·커밋 id·키 → B 설정 → Workers Paid → `PLAN` `"paid"` → 공개 배포) |
 | A6 관리자 주소(운영 현황은 Cloudflare Access 뒤) | 합쳐짐 | #23 | Access 설정(사용자). 설정 전에는 관리자 주소도 403 |
 | A7 텔레그램 모니터링 | 합쳐짐 | #14, #18 | — |
 | A8 사고 대응 문서 | 합쳐짐 | #10 | — |
@@ -509,9 +509,11 @@ C8 줄 번호 함수(#89)는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 계정을 Workers Paid로 바꾸기 → `PLAN`을 `"paid"`로 바꾸는 한 줄 PR → 공개 배포
 (`PUBLIC_DEPLOY`=`on`)를 다시 켜야 실제 사용자에게 닿음(두 Worker는 공개 주소에서 온 요청만 받음). 자세히는 `docs/ARCHITECTURE.md` D19 '켜는 순서'. 변호사·의료 검수는 사용자가 맡김(의뢰 자료는 저장소 밖). 그 밖의 일은 나중에(가족이 이어받음).
 
-**이어받는 분께 — A의 남은 일(짧게, 2026-10-16 오후 기준, 2026-10-19에 1·3번 고침)**
-1. A5 알림 Worker: PR #85(초안, `platform/alerts-worker`). ~~D1 `yoonsiljang-alerts` 만들기와 그 Database ID를 `cf/alerts/wrangler.jsonc`에 넣기~~ —
-   끝남. 켜는 순서는 `docs/ARCHITECTURE.md` D19 '켜는 순서' 그대로: **합치기(자동 배포, `PLAN` `"free"`) → `ALERTS_SECRET`·`ALERTS_CODE_SHA`·`setup_keys`
+**이어받는 분께 — A의 남은 일(짧게, 2026-10-16 오후 기준, 2026-10-19에 1·3번 고침, 2026-10-20에 1번 — #85 합침·배포)**
+1. A5 알림 Worker: ~~PR #85 합치기~~ — 합쳐짐(2026-10-19 22:49 KST, 합친 커밋 `7981b4cd8e9bb016574469e0a1aa9fa2891efa3d`). 자동 배포(cf-alerts 실행
+   39263532877)의 'Apply D1 migrations'·'Deploy the Worker'가 초록이고, Cloudflare에 Worker `yoonsiljang-alerts`와 D1 표(알림 표 5개 + 마이그레이션 기록)가
+   생김(A가 Cloudflare 조회로 확인; `/health`는 A의 환경에서 프록시가 막아 열어 보지 못함). **다음은 사용자:** `ALERTS_SECRET` → `ALERTS_CODE_SHA`에 위 40자
+   → cf-alerts `setup_keys`(D19 켜는 순서 4~6번). 켜는 순서는 `docs/ARCHITECTURE.md` D19 '켜는 순서' 그대로: **합치기(자동 배포, `PLAN` `"free"`) → `ALERTS_SECRET`·`ALERTS_CODE_SHA`·`setup_keys`
    → B 설정(`config.js`의 `alertsApi`·`pushPublicKey` — 배포 뒤 공개키·주소를 B에게) → 계정을 Workers Paid로 바꾸기 → `PLAN`을 `"paid"`로 바꾸는
    한 줄 PR → `PUBLIC_DEPLOY` `on`**. 순서를 바꾸지 않아요: 무료 묶음 그대로 출시하면 새 가격 뒤 2시간 안 계산(2026-10-16 사용자 결정)을 바쁜 날에
    지키지 못하고(무료는 D1 하루 계산 3번), Workers Paid 출시(2026-10-19 사용자 결정)와도 어긋나요.

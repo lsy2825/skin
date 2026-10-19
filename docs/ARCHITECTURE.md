@@ -612,9 +612,11 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 - **켜는 순서(처음 한 번, 2026-10-16 사용자 승인 뒤).** 각 단계 끝의 '확인'이 되면 다음으로 가요.
   1. **D1 데이터베이스 만들기 — 사용자. 끝남(2026-10-16).** 사용자가 대시보드에서 `yoonsiljang-alerts`(위치 Asia-Pacific)를 만들었어요
      (A의 세션에서는 권한이 없어 만들지 못했어요). Database ID `a70a7a62-d058-4efc-bf35-cb625d48ae93`(비밀 아님).
-  2. **id 적기 — A. 끝남(이 PR).** `cf/alerts/wrangler.jsonc`의 `database_id`에 그 id를 적었어요. 아래 단계는 이 PR을 사용자가 승인해 합친
-     뒤부터예요. 확인: PR의 자동 검사가 초록.
-  3. **Worker 배포 — 자동(`PLAN` `"free"`).** 합치면 `cf-alerts`가 돌아요(계정은 아직 무료라 무료 묶음으로 — 8·9번에서 유료로). 확인: Actions → cf-alerts → 그 실행에서 'Apply D1 migrations'와 'Deploy the Worker'에
+  2. **id 적기 — A. 끝남(#85, 2026-10-19 합침 — 합친 커밋 `7981b4cd8e9bb016574469e0a1aa9fa2891efa3d`).** `cf/alerts/wrangler.jsonc`의 `database_id`에 그 id를 적었어요.
+     확인: PR의 자동 검사(`quick`·`windows-unit`)가 초록이었어요.
+  3. **Worker 배포 — 자동(`PLAN` `"free"`). 끝남(2026-10-19, cf-alerts 실행 39263532877 — 'Apply D1 migrations'·'Deploy the Worker' 초록; Cloudflare에
+     Worker `yoonsiljang-alerts`와 D1 표 6개(알림 표 5개 + 마이그레이션 기록)가 있음을 A가 확인. `/health`는 A의 환경에서 프록시가 막아 못 열어 봄 — 6번 실행의
+     마지막 단계가 `/health`를 확인해요).** 합치면 `cf-alerts`가 돌아요(계정은 아직 무료라 무료 묶음으로 — 8·9번에서 유료로). 확인: Actions → cf-alerts → 그 실행에서 'Apply D1 migrations'와 'Deploy the Worker'에
      초록 체크(회색 '건너뜀'이 아님)가 있고, 맨 위에 'tested, not deployed' 알림이 없어요. 브라우저로
      `https://yoonsiljang-alerts.lsy2825.workers.dev/health`를 열면 `"ok":true`. 아직 키가 없으니 `"sending":false`, `"key":null`이 정상이에요.
      권한 오류는 'Apply D1 migrations'(토큰에 D1 → Edit 필요)나 'Deploy the Worker'(Workers → Admin 필요)에서 빨갛게 나요(지금 토큰의 권한은 모름).
@@ -628,7 +630,7 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
      값 칸에 Ctrl+V로 붙여 넣고 저장한 뒤, 아무 글자나 복사해 클립보드를 덮어요. **이 값은 채팅·문서 어디에도 붙여 넣지 않아요.** 따로 적어 둘
      필요도 없어요(6번이 Worker에 복사해요). 확인: Secrets 목록에 `ALERTS_SECRET`이 보여요(값은 다시 볼 수 없는 게 정상).
   5. **`ALERTS_CODE_SHA` 넣기 — 사용자.** 같은 화면의 **Variables** 탭 → New repository variable. 이름 `ALERTS_CODE_SHA`, 값은 A가 알려 주는
-     합친 커밋 id(40자, 리뷰한 알림 코드가 든 커밋). 확인: 다음 날 06시 뒤 weekly-prices 실행의 `price_alerts` job에 'ALERTS_CODE_SHA is not
+     합친 커밋 id(40자, 리뷰한 알림 코드가 든 커밋 — #85는 `7981b4cd8e9bb016574469e0a1aa9fa2891efa3d`). 확인: 다음 날 06시 뒤 weekly-prices 실행의 `price_alerts` job에 'ALERTS_CODE_SHA is not
      set' 알림이 없고, 30분마다(07분·37분)의 `alerts-catchup` 실행도 같아요. 5와 6은 같은 날 해요(6 전에 `price_alerts`나 `alerts-catchup`이 돌면 Worker에
      아직 비밀값이 없어 경고 한 줄만 나요 — 6 뒤 첫 따라잡기가 계산해요).
   6. **키 설정 — 사용자(한 번).** Actions → cf-alerts → Run workflow → Branch는 **main** → `setup_keys`만 체크(`replace_keys`는 체크하지 않음)
