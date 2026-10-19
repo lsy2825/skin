@@ -858,8 +858,9 @@ def shared_titles(raw, items):
     sex, device or amount of its own ('男) 팔전체' / '男) 다리전체', '클라리티Ⅱ' / '헐리우드 스펙트라'), and (c) the two pages are no
     copies: pages that list other lines too, each of them at one price on every page of the branch, are one price list shown on
     several pages (셀린 다산점 lists its '메디컬 스킨케어 스페셜 4주 · 8주 · 12주' program on 8 skin-care pages — 4주 and 12주 at one
-    price everywhere, 8주 at 390,000 on 6 pages and other prices on 2: one program, not 8 products); a line whose price depends
-    on the page (블리비 포항점's 착색토닝 5회 · 10회 on its device pages) is no sign of copies. Then its rows take their title in
+    price everywhere, 8주 at 390,000 on 7 pages (one of them with another list price) and at 350,000 on 1: one program, not 8
+    products); a line whose price depends on the page (블리비 포항점's 착색토닝 5회 · 10회 on its device pages) is no sign of
+    copies. Then its rows take their title in
     front of the shown name (title_words; main keeps it out of mname): all of them when fewer than MIN_SOLD branches (this one
     counted) sell the line under that name (광주점's tab text names no product anywhere), else only the products that met an
     earlier row of their price: the rows the fold kept keep the line. A line other branches sell ('바디 착색토닝(…) 1부위 1회' at
@@ -873,7 +874,8 @@ def shared_titles(raw, items):
     on top of each product ('옵션5) 덴서티 하이 300샷 추가', '[추가] 포텐자 …' — the older rule folds it), nor a row of an event page
     (EVENT_PAGE: the same product at an event price beside the price list's — no sign of two products).
     Known: the titles follow the prices — when the clinic's prices change so that no two products meet any more, the line's rows
-    go back to the line's name (and the next build's changes list them as gone and new). Titling every line of (a) and (b)
+    go back to the line's name (data-meta.json's changes do not list such a rename as gone and new — build2/datameta.py, the
+    same last part at the same price — but the app finds no item it saved under the old name). Titling every line of (a) and (b)
     whether or not two products meet would hold the names, but renames 462 rows where nothing folded (데이뷰 수원점 300;
     measured 2026-10-19), against 42 rows now."""
     sets, sold = defaultdict(list), defaultdict(set)
