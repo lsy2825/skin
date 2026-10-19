@@ -312,8 +312,10 @@ jobs:
           esac
           python3 .github/scripts/telegram.py "윤실장 가격 알림: 이 D1 하루(09시~다음 날 09시)의 계산 횟수 상한(COMPUTES_PER_DAY — 요금제 설정 PLAN이 유료면 12번, 무료면 3번)에 닿아 이 실행의 새 가격 계산을 미뤘어요. $U 이 알림은 D1 하루에 한 번(06시 몫으로 미룬 뒤 09시까지로 바뀌면 한 번 더)만 와요. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
       # A start that trying again cannot cure (11th review): the Worker answered a 4xx (401/403 — the GitHub ALERTS_SECRET is
-      # not the Worker's; 404 — ALERTS_URL is not the alerts Worker), an answer the pinned code does not know, a data.json
-      # shape the Worker would refuse, or ALERTS_CODE_SHA unset while public hosting is on and ALERTS_SECRET is set. Nothing
+      # not the Worker's; 404 — ALERTS_URL is not the alerts Worker) or — 12th review — a 3xx (a redirect: ALERTS_URL behind
+      # Cloudflare Access or moved) or a 2xx that is not JSON (ALERTS_URL is some other site), ALERTS_URL is not an https
+      # address, an answer the pinned code does not know, a data.json shape the Worker would refuse, or ALERTS_CODE_SHA unset
+      # while public hosting is on and ALERTS_SECRET is set. Nothing
       # is computed until a person fixes it — one line a run that meets it (the 30-minute catch-up has no Telegram; before,
       # only GET /health stale told, about 3 days later).
       - name: Alert on a price-alerts setup problem that stops every computation (Telegram)
@@ -371,7 +373,7 @@ jobs:
   # copy, the same pinned code and checks) computes. A computation that fails after it started is a Telegram line too
   # (outputs.failed — 10th review), and so is a start no retry can cure (outputs.startfail — 11th review: a 4xx such as
   # ALERTS_SECRET not matching the Worker's, a data.json shape the Worker would refuse, ALERTS_CODE_SHA unset while public
-  # hosting is on and ALERTS_SECRET is set).
+  # hosting is on and ALERTS_SECRET is set; 12th review: a 3xx, a 2xx that is not JSON, an ALERTS_URL that is not https).
   # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
   # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
   # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
@@ -391,8 +393,9 @@ jobs:
   # Never fails the run: the data steps and notify.mjs end with a ::notice/::warning and exit 0, and the JOB's
   # continue-on-error covers anything else. No step has its own continue-on-error (7th review): a step that fails or times
   # out (notify.mjs that cannot load, a hung call) ends the job before the end mark, so `done` stays empty and the alert job
-  # sends a Telegram line. A Worker that keeps refusing (4xx) is a startfail line; one that does not answer (5xx, network)
-  # shows on the daily monitor (GET /health down, then stale).
+  # sends a Telegram line. A Worker that keeps refusing (3xx/4xx) is a startfail line; one that does not answer (5xx,
+  # network) shows on the daily monitor (GET /health down, then stale) — but an ALERTS_URL naming a host that does not
+  # resolve looks the same here while the monitor checks the right address (MONITOR_WORKER_URLS): only stale tells (12th).
   # ALERTS_URL defaults to the alerts Worker's workers.dev address; without the ALERTS_SECRET secret notify.mjs only prints
   # a ::warning (nothing is sent).
   price_alerts:
