@@ -92,6 +92,23 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   await p.goto(BASE + '#about'); await p.waitForTimeout(400);
   const about = await p.locator('#main').textContent();
   const dts = await p.$$eval('#main dl.kv dt .k.kt', (ks) => ks.map((k) => k.textContent));
+  // one colour for a condition (2026-10-16 hierarchy audit T1): the condition tags (.kt) are butter like 체험가·한정가, not the
+  // grey of the end-date badge (.k4); '급변·확인 중' (.kx) keeps its own tone; the butter text stays >= 4.5:1, light and dark
+  for (const scheme of ['light', 'dark']) {
+    await p.emulateMedia({ colorScheme: scheme }); await p.waitForTimeout(150);
+    const col = await p.$$eval('#main dl.kv dt .k', (ks) => {
+      const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).slice(0, 3).map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+      const ratio = (a, b) => { const x = lum(a), y = lum(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      return ks.map((k) => { const cs = getComputedStyle(k); return { cls: k.className, t: k.textContent, bg: cs.backgroundColor, cr: +ratio(cs.color, cs.backgroundColor).toFixed(2) }; });
+    });
+    const of = (c) => col.filter((x) => x.cls.split(' ').includes(c));
+    const butter = of('k1')[0] && of('k1')[0].bg;
+    ok(`조건 배지 한 색(${scheme}): 평일·시간 한정·정해진 시간만 = 체험가·한정가 버터, '~10/17까지'·고시가는 회색`,
+      !!butter && of('kt').length >= 2 && of('kt').every((x) => x.bg === butter) && of('k2').every((x) => x.bg === butter) && of('k4').length >= 2 && of('k4').every((x) => x.bg !== butter) && of('kx').every((x) => x.bg !== butter),
+      col.map((x) => `${x.t}:${x.bg}`).join(' / '));
+    ok(`조건 배지 글자 대비 4.5:1 이상(${scheme})`, col.length > 0 && col.every((x) => x.cr >= 4.5), col.map((x) => `${x.t} ${x.cr}`).join(' / '));
+  }
+  await p.emulateMedia({ colorScheme: 'light' });
   // '토요일만 등' (a badge only the site's days can make) is listed only when the file has them, like the visit sheet's words
   ok(WHEN ? '가격 종류 설명: \'평일·시간 한정\'·\'정해진 시간만\'·\'토요일만 등\'' : '가격 종류 설명(요일 칸 없는 자료): \'평일·시간 한정\'·\'정해진 시간만\', \'토요일만 등\' 없음',
     dts.includes(LABEL) && dts.includes(SLOT) && dts.includes('토요일만 등') === WHEN && !about.includes('평일 낮 등'), dts.join(' / '));

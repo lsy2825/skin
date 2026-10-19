@@ -305,6 +305,25 @@
   // days with only Saturday/Sunday bits (no weekday bit): the rows a weekday holiday leaves out only because of their days
   const weekendOnly = (days) => { const d = (days || 0) & ALL_DAYS; return d !== 0 && (d & 31) === 0; };
 
+  // ---- a price range as text, both ends in ONE unit (2026-10-16 hierarchy audit T7: '5,390~27.5만원' and '중간 2만원' next to
+  // '19,690원' read as different numbers). Both ends 10만원 or more: 만 with at most one decimal ('11만~44.5만원',
+  // '202.3만~493.7만원'); otherwise, and when both ends round to the same 만, full won ('5,390~275,000원'). One price, or two
+  // ends the same: that price ('19,690원').
+  // rangeParts gives the two ends as shown (the unit '원' on the high end) so a screen can keep each end on one line and let
+  // the line break only at '~'. opts.won: full won at both ends whatever the size — a screen whose other totals are in won
+  // (내 견적: the summary '2,022,680원 ~ 4,936,800원', plans B·C·D) shows the same total the same way in its plan A.
+  const MAN_FROM = 100000;
+  const commas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const manTxt = (n) => { const v = Math.round(n / 1000) / 10, int = Math.trunc(v), dec = Math.round((v - int) * 10);
+    return `${commas(int)}${dec ? "." + dec : ""}만`; };
+  function rangeParts(lo, hi, opts) {
+    if (!(hi > lo)) return { one: true, lo: `${commas(lo)}원`, hi: "", text: `${commas(lo)}원` };
+    const man = !(opts && opts.won) && lo >= MAN_FROM && manTxt(lo) !== manTxt(hi);   // two ends that round to the same 만 stay in won
+    const a = man ? manTxt(lo) : commas(lo), b = man ? `${manTxt(hi)}원` : `${commas(hi)}원`;
+    return { one: false, lo: a, hi: b, text: `${a}~${b}` };
+  }
+  const rangeText = (lo, hi, opts) => rangeParts(lo, hi, opts).text;
+
   return { weekdayHoliday, weekendOnly, periodOver, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
-    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, cheapest, isOnce, withoutOnce, lineCost, compareClinics, limitOnce, matchPackage };
+    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, cheapest, isOnce, withoutOnce, lineCost, compareClinics, limitOnce, matchPackage, rangeParts, rangeText };
 });

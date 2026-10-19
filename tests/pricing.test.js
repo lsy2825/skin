@@ -481,3 +481,41 @@ test("periodOver: a visit after the event's end date (user decision 2026-10-16: 
   assert.equal(P.periodOver("2099-12-31", { date: "2026-10-20" }), false);
 });
 
+
+test("price range text: both ends in one unit (hierarchy audit T7)", () => {
+  // under 10만원 at the low end: full won at both ends, never '5,390~27.5만원'
+  assert.equal(P.rangeText(5390, 275000), "5,390~275,000원");
+  assert.equal(P.rangeText(19690, 31900), "19,690~31,900원");
+  assert.equal(P.rangeText(53900, 4939000), "53,900~4,939,000원");
+  assert.equal(P.rangeText(99999, 100000), "99,999~100,000원");
+  // both ends 10만원 or more: 만 at both ends, at most one decimal, '.0' dropped
+  assert.equal(P.rangeText(110000, 440000), "11만~44만원");
+  assert.equal(P.rangeText(100000, 445000), "10만~44.5만원");
+  assert.equal(P.rangeText(2022680, 4936800), "202.3만~493.7만원");
+  assert.equal(P.rangeText(1999960, 2000000), "1,999,960~2,000,000원");   // ends that round to the same 만 stay in won
+  assert.equal(P.rangeText(12345678, 23456789), "1,234.6만~2,345.7만원");
+  // one price
+  assert.equal(P.rangeText(19690, 19690), "19,690원");
+  assert.equal(P.rangeText(440000, 440000), "440,000원");
+  assert.equal(P.rangeText(19690, 10000), "19,690원");                    // a high end below the low end is not a range
+  // the same unit on both ends, always
+  for (const [lo, hi] of [[5390, 275000], [9000, 12000], [100000, 2500000], [150000, 150001], [70000, 99000]]) {
+    const t = P.rangeText(lo, hi), [a, b] = t.split("~");
+    assert.equal(a.includes("만"), b.includes("만"), t);
+  }
+  // the parts: each end as shown, the unit on the high end only, so a screen breaks the line at '~' only
+  assert.deepEqual(P.rangeParts(2022680, 4936800), { one: false, lo: "202.3만", hi: "493.7만원", text: "202.3만~493.7만원" });
+  assert.deepEqual(P.rangeParts(5390, 5390), { one: true, lo: "5,390원", hi: "", text: "5,390원" });
+});
+
+test("price range text in won only: a screen whose totals are in won (내 견적) shows the same total the same way", () => {
+  // the cart summary '2,022,680원 ~ 4,936,800원' and plan A: one number, one unit (hierarchy audit T7, review of #14)
+  assert.equal(P.rangeText(2022680, 4936800, { won: true }), "2,022,680~4,936,800원");
+  assert.equal(P.rangeText(110000, 440000, { won: true }), "110,000~440,000원");
+  assert.equal(P.rangeText(5390, 275000, { won: true }), "5,390~275,000원");     // already won without the option
+  assert.equal(P.rangeText(440000, 440000, { won: true }), "440,000원");
+  assert.deepEqual(P.rangeParts(2022680, 4936800, { won: true }), { one: false, lo: "2,022,680", hi: "4,936,800원", text: "2,022,680~4,936,800원" });
+  // without the option (or with won: false) the rule above stays
+  assert.equal(P.rangeText(2022680, 4936800, { won: false }), "202.3만~493.7만원");
+  assert.equal(P.rangeText(2022680, 4936800, {}), "202.3만~493.7만원");
+});

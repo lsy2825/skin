@@ -74,6 +74,21 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     const add = await p.locator('.sheet').innerText();
     ok('담기 창: "가장 싼 곳"·병원 이름 대신 지점 수·범위·중간값', !/가장 싼 곳/.test(add) && /\d+곳 · [\d,]+원~[\d,]+원 · 중간값/.test(add), add.split('\n').filter((x) => /중간값|가장 싼/.test(x)).join(' / '));
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+    // one '중간값' per key (2026-10-16 hierarchy audit M1·T7): the 담기 sheet's option and line, the range bar's label and the
+    // compare header give the same number on the same basis and branch count; ranges keep one unit at both ends
+    await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(600);
+    const hmed = num(await p.locator('.cmphead .hmed').innerText()), basis = await p.locator('.cmphead .basis').innerText();
+    const midl = await p.locator('.rangebar .midl').innerText().catch(() => '');
+    await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '횟수·다른 옵션으로 담기' }).click(); await p.waitForTimeout(400);
+    const optTxt = await p.locator('.sheet .opt[aria-pressed="true"]').innerText().catch(() => ''), line = await p.locator('.sheet .note').innerText().catch(() => '');
+    const n0 = (/(\d+)곳/.exec(basis) || [])[1], n1 = (/(\d+)곳/.exec(line) || [])[1];
+    // (the bar is drawn only when the middle sits inside the range; the options only when the treatment has several)
+    ok('같은 중간값: 비교 머리글 = 범위 막대 = 담기 창 옵션·안내(곳 수도 같음)', hmed > 0 && (!midl || num(midl) === hmed) && (!optTxt || num((/중간값 ([\d,]+원)/.exec(optTxt) || [])[1]) === hmed)
+      && num((/중간값 ([\d,]+원)/.exec(line) || [])[1]) === hmed && !!n0 && n0 === n1 && /^중간값: /.test(basis.split(' · ')[1] || ''), `${hmed} · ${midl} · ${optTxt.replace(/\n/g, ' ')} · ${line} · ${basis}`);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+    await p.goto(BASE + '#home'); await p.waitForTimeout(400);
+    const ranges = await p.$$eval('.pc .save', (xs) => xs.map((x) => x.textContent).filter((t) => t.includes('~')));
+    ok('홈 카드 범위: 양 끝 같은 단위(\'5,390~27.5만원\' 없음)', ranges.length > 0 && ranges.every((t) => { const [a, b] = t.split(' · ')[0].split('~'); return a.includes('만') === b.includes('만'); }), ranges.join(' / '));
     await p.evaluate(() => localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: '내 장바구니', items: [] }]))); await p.goto(BASE + '#cart'); await p.reload(); await p.waitForTimeout(500);
     const empty = await p.locator('#main').innerText();
     ok('빈 장바구니 안내: "어디가 가장 싼지" 대신 지점마다 예상 총액', /지점마다 예상 총액/.test(empty) && !/가장 싼지/.test(empty));
@@ -87,6 +102,19 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     ok('플래그 켜면: 줄 그은 정가', await p.locator('#clinics li.rk s').count() > 0);
     await p.goto(BASE + '#explore'); await p.waitForTimeout(400);
     ok('플래그 켜면: 지점 순위·TOP 5', /지점 순위/.test(await p.locator('#main').innerText()) && /TOP 5/.test(await p.locator('#main').innerText()));
+    // the search cards and the 담기 sheet follow the flag too (B1-1): the lowest with '~' and its clinic, '최저가' in the heads;
+    // the sheet's numbers are read once per sheet (repaint on '+' keeps them)
+    await p.goto(BASE + `#search/${encodeURIComponent('보톡스')}?nl=0`); await p.waitForTimeout(900);
+    const sheads = await p.$$eval('#main .card > .row .sub', (xs) => xs.map((x) => x.textContent).filter((t) => /최저가|중간값/.test(t)));
+    const srow = await p.locator('#main .card', { hasText: '같은 조건 가격 비교 바로가기' }).locator('li .item').first().innerText().catch(() => '');
+    ok('플래그 켜면: 검색 종류·바로가기 카드는 최저가(원~·지점)', sheads.length >= 2 && sheads.every((t) => /최저가/.test(t)) && /원~/.test(srow) && /최저 /.test(srow), `${sheads.join(' / ')} · ${srow.replace(/\n/g, ' | ')}`);
+    await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);
+    await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '횟수·다른 옵션으로 담기' }).click(); await p.waitForTimeout(400);
+    const hero0 = await p.locator('.sheet .hero').innerText().catch(() => ''), opt0 = await p.locator('.sheet .opt[aria-pressed="true"]').innerText().catch(() => '');
+    await p.locator('.sheet button[aria-label="하나 더"]').click(); await p.waitForTimeout(150);
+    const hero1 = await p.locator('.sheet .hero').innerText().catch(() => ''), opt1 = await p.locator('.sheet .opt[aria-pressed="true"]').innerText().catch(() => '');
+    ok('플래그 켜면: 담기 창은 가장 싼 곳·옵션 최저, \'+\' 뒤에도 같음', /가장 싼 곳/.test(hero0) && (!opt0 || /최저 [\d,]+원/.test(opt0)) && hero0 === hero1 && opt0 === opt1, `${hero0.replace(/\n/g, ' ')} · ${opt0.replace(/\n/g, ' ')}`);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     ok('스크립트 오류 없음(플래그 켬)', !p.errs.length, p.errs.join(' '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();

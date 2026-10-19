@@ -57,6 +57,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 a { color: var(--accent); text-underline-offset: 3px; }
 [hidden] { display: none !important; }
 .num { font-variant-numeric: tabular-nums; }
+.nw { white-space: nowrap; }   /* one end of a price range (rangeEl): the line breaks at '~' only */
 .sr { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 svg.i { width: 20px; height: 20px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; vertical-align: -4px; }
 svg.i.sm { width: 16px; height: 16px; vertical-align: -3px; }
@@ -187,7 +188,8 @@ a.src { font-size: 13px; }
   min-height: 36px; padding: 6px 14px; font-size: 13.5px; font-weight: 620; white-space: nowrap; transition: background var(--fast), color var(--fast), transform var(--fast), border-color var(--fast); }
 .card .chip { background: var(--surface); }
 .chip:active { transform: scale(.96); }
-.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
+/* the chosen chip looks chosen whether it is a toggle (aria-pressed) or one of a radiogroup (aria-checked: the product chips) */
+.chip[aria-pressed="true"], .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .chip.on { background: var(--sage-soft); border-color: transparent; color: var(--sage); }
 .chip .dot, .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 .chip.mini-chip { min-height: 28px; padding: 3px 10px; font-size: 13px; }
@@ -262,6 +264,9 @@ button.item:active { background: var(--fill); }
 .item .t { font-weight: 620; line-height: 1.45; min-width: 0; }
 .item .p { font-weight: 720; font-size: 16px; text-align: right; white-space: nowrap; letter-spacing: -0.02em; }
 .item .m { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--muted); }
+/* 내 견적 브랜드·지역별 합계: a total range in won ('2,708,640~3,891,580원') breaks at '~' (rangeEl) before it squeezes the name */
+.item.sumr { grid-template-columns: minmax(6em, 1fr) auto; }
+.item.sumr .p { white-space: normal; }
 .rank { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; width: 100%; text-align: left; border: 0; background: none;
   padding: 14px 12px; border-radius: 14px; transition: background var(--fast); }
 .rank:hover { background: var(--sunken); }
@@ -280,11 +285,13 @@ li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .chev { margin-left: auto; color: var(--ink-2); font-weight: 650; display: inline-flex; align-items: center; gap: 2px; }
 .bdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
-/* badges (kinds of price, states): three tones only — neutral, notice (butter), warning (coral) */
+/* badges (kinds of price, states): three tones only — neutral, notice (butter), warning (coral). Butter = a condition on the
+   price: 체험가·한정가 (.k1/.k2) and every condition tag (.kt: 첫 방문, 평일·시간 한정, 정해진 시간만, 요일만 …), one colour
+   (2026-10-16 hierarchy audit T1: grey .kt read like the end-date badge). Neutral .k4 = information (end date, VAT, 고시가). */
 .k { display: inline-flex; align-items: center; gap: 3px; font-size: 13px; font-weight: 650; padding: 2px 7px; border-radius: 6px; white-space: nowrap; line-height: 1.5;
   background: var(--fill); color: var(--ink-2); }
-.k1, .k2 { background: var(--butter-soft); color: var(--butter-ink); }
-.k4, .kt { background: var(--fill); color: var(--ink-2); }
+.k1, .k2, .kt { background: var(--butter-soft); color: var(--butter-ink); }
+.k4 { background: var(--fill); color: var(--ink-2); }
 .kx { background: var(--coral-soft); color: var(--coral); }
 .k.ok { background: var(--sage-soft); color: var(--sage); }
 
@@ -359,8 +366,8 @@ li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .vchip { display: grid; gap: 1px; padding: 6px 12px; min-height: 48px; min-width: 72px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: left; transition: transform var(--fast), border-color var(--fast); }
 .vchip:active { transform: scale(.97); }
 .vchip b { font-size: 13.5px; } .vchip span { font-size: 13px; color: var(--muted); }
-.vchip[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
-.vchip[aria-pressed="true"] span { color: color-mix(in srgb, var(--surface) 75%, transparent); }
+.vchip[aria-pressed="true"], .vchip[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--surface); }
+.vchip[aria-pressed="true"] span, .vchip[aria-checked="true"] span { color: color-mix(in srgb, var(--surface) 75%, transparent); }
 .guide { margin-top: 14px; padding: 14px 16px; border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--line-soft); }
 .guide p, .gitem p { margin: 6px 0 0; line-height: 1.6; }
 .gitem { padding: 16px 0; border-top: 1px solid var(--line-soft); }
