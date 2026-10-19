@@ -215,7 +215,6 @@ a.src { font-size: 13px; }
 .seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 2px; background: var(--fill); border-radius: 14px; padding: 3px; }
 .seg button { border: 0; background: none; border-radius: 11px; padding: 9px 4px; font-size: 13.5px; font-weight: 650; color: var(--muted); transition: background var(--mid) var(--ease), color var(--fast); }
 .seg button[aria-selected="true"], .seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(31, 29, 26, .1); }
-.seg.seg4 button { font-size: 13px; padding: 9px 2px; }
 .seg.vsw { width: 116px; flex: none; }
 .seg.vsw button { padding: 6px 4px; font-size: 13px; }
 /* compare: clinics as swipe cards (same order as the list) */
@@ -1034,7 +1033,9 @@ details.fold.small > summary { cursor: pointer; }
 .cmphead .crumb { display: flex; flex-wrap: nowrap; align-items: center; gap: 2px 4px; font-size: 13px; color: var(--muted); min-width: 0; overflow: hidden; }
 .cmphead .crumb button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmphead .crumb button { border: 0; background: none; padding: 0 4px; min-height: 36px; color: inherit; font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
-.cmphead .crumb .sep { color: var(--faint); }
+.cmphead .crumb .sep { color: var(--muted); }   /* 5.3:1 light · 7.2:1 dark (위계 점검 20; --faint was 1.84:1) */
+/* the step on screen (aria-current): dark and bold, still underlined — it is a button like the others */
+.cmphead .crumb button.cur { color: var(--ink); font-weight: 700; flex-shrink: .25; }   /* a long path cuts the steps above first */
 /* where a path button took you: one soft ring that fades (움직임 꺼짐 = html.calm: a plain ring for the same time) */
 .flash { border-radius: 10px; animation: flash 1.2s ease-out; }
 @keyframes flash { from { box-shadow: 0 0 0 3px var(--accent); } to { box-shadow: 0 0 0 3px transparent; } }
@@ -1046,12 +1047,56 @@ html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-of
 .cmphead .basis { font-size: 13px; color: var(--ink-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmphead .hrow { display: flex; align-items: center; gap: 8px; margin-top: 4px; min-width: 0; }
 .cmphead .hrow > * { min-width: 0; }
-.cmphead .hmed { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; }
-.cmphead .hmed span { font-weight: 600; color: var(--muted); margin-right: 4px; font-size: 13px; }
-.cmphead .addbtn { min-height: 44px; border-radius: 14px; padding: 0 14px; font-size: 15px; background: var(--primary); color: var(--on-primary); border-color: transparent; max-width: 60%; }
+/* the middle price never breaks inside its number (위계 점검 19: '97,900 / 원' on 8 of 36 X keys at 390): one line each, the
+   word over the number — narrow, so 담기 keeps the room for its label, and 담기 is the one that cuts (…) when it must */
+.cmphead .hmed { flex: 1 0 auto; display: grid; white-space: nowrap; font-size: 15px; font-weight: 700; line-height: 1.25; }
+.cmphead .hmed span { font-weight: 600; color: var(--muted); font-size: 13px; }
+.cmphead .addbtn { min-height: 44px; border-radius: 14px; padding: 0 14px; font-size: 15px; background: var(--primary); color: var(--on-primary); border-color: transparent; flex: 0 1 auto; }
 .cmphead .addbtn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmphead .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); }
-.cmphead .morebtn { min-width: 44px; min-height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; }
+@media (max-width: 360px) { .cmphead .addbtn { padding: 0 8px; } }   /* narrow phones: the label's room */
+.cmphead .morebtn { min-width: 44px; min-height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; flex: none; }
+/* 위계 점검 9 — folded while the list scrolls (html.cmp-fold, set by app.js heads() from the scroll handler; classes only):
+   the app bar slides up and the header keeps the path, the basis line (as it is) and 중간값 · 담기 · ⋯. The title row
+   goes to the top of the header and the header's sticky top moves up by that row and its padding, out of view; the header's
+   height in the page is unchanged, so nothing below moves. 390×844: 60 + 179 + 72 px (37%) → about 129 + 72 (24%).
+   Keyboard focus in the app bar brings it back; the hidden ♡ is out of the tab order. It unfolds 24px above where it folded
+   (app.js HEADS_BACK), so a finger resting on the edge does not make it flicker. */
+html.cmp-fold header.top { transform: translateY(-100%); box-shadow: none; }
+html.cmp-fold header.top:focus-within { transform: none; }
+html.cmp-fold .cmphead { top: calc(env(safe-area-inset-top, 0px) - var(--cmpt-h, 32px) - 10px); }
+html.cmp-fold .cmphead .tline { order: -1; opacity: 0; }
+html.cmp-fold .cmphead .tline .favbtn { visibility: hidden; }
+/* 위계 점검 40 — 비교's sub-navigation (시술별 / 지점 비교 / 전체 가격표, four screens): an underlined tab row, 36px, lighter than
+   the path under it; the chosen tab is the dark, bold one with the line */
+.subnav { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border-bottom: 1px solid var(--line); }
+.subnav button { min-height: 36px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; border-radius: 0; background: none; padding: 0 4px;
+  font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--fast), border-color var(--fast); }
+.subnav button:hover { color: var(--ink); }
+.subnav button[aria-selected="true"] { color: var(--ink); font-weight: 700; border-bottom-color: var(--ink); }
+/* 위계 점검 20 — 규격 바꾸기 in three sizes: 분야 chips 13 · the treatment 17 · its spec chips 15 */
+#cmppick .famname { display: block; font-size: 17px; font-weight: 700; line-height: 1.4; color: var(--ink); }
+#cmppick .vchip b { font-size: 15px; }
+#cmppick details.cmpother > .chips > .chip { font-size: 13px; }
+/* 위계 점검 38 — the branch price list's small sticky header: the branch and its 분야 chips (the table's, same state), shown by
+   heads() once the list is under the app bar. 56px laid over the list's top (negative margin): showing it moves nothing.
+   Fixed on screen then: 60 + 56 + the cart bar 48 + tabs 72 = 236 of 844 (28%). The name: the brand (13, grey) over the branch
+   (15, bold), each cut on its own, so a narrow phone keeps which branch */
+.bhead { position: sticky; top: var(--top-h); z-index: 15; display: none; align-items: center; gap: 8px; height: 56px; margin: 0 -6px -56px;
+  background: color-mix(in srgb, var(--surface) 96%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--line-soft); }
+.bhead.on { display: flex; }
+.bhead .bn { flex: 0 1 auto; max-width: 45%; min-width: 0; display: grid; line-height: 1.25; font-size: 15px; font-weight: 700; }
+.bhead .bn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bhead .bn .bb { font-size: 13px; font-weight: 600; color: var(--muted); }
+.card.flush .bhead .chips { flex: 1; min-width: 0; margin: 0; padding: 2px 0; }
+html.br-on { scroll-padding-top: calc(var(--top-h) + 64px); }
+/* a short screen (375×667, 320×568): the app bar slides away while the small header shows, as on 비교 folded — 60 + 56 + 72 of
+   568 was 33%; 56 + 72 is 23% (with the cart bar 48 more: 31%). Keyboard focus in the bar brings it back over the header */
+@media (max-height: 700px) {
+  html.br-fold header.top { transform: translateY(-100%); box-shadow: none; }
+  html.br-fold header.top:focus-within { transform: none; }
+  html.br-fold .bhead { top: env(safe-area-inset-top, 0px); }
+}
 .rangebar { position: relative; height: 8px; margin: 14px 2px 22px; border-radius: 4px; background: var(--fill-2); }
 .rangebar .mid { position: absolute; top: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--s1); border: 3px solid var(--surface); transform: translateX(-50%); }
 .rangebar .midl { position: absolute; top: 16px; transform: translateX(-50%); font-size: 13px; color: var(--muted); white-space: nowrap; }

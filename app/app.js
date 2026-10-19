@@ -2812,8 +2812,9 @@
     return box;
   };
 
-  // 비교 tab sub-navigation: 시술별 / 지점 순위 / 지점 비교 / 전체 가격표
-  const cmpNav = (cur) => h("div", { class: FLAGS.branchRanking ? "seg seg4" : "seg", role: "tablist" }, [["compare", "시술별"], FLAGS.branchRanking ? ["rank", "지점 순위"] : null, ["versus", "지점 비교"], ["table", "전체 가격표"]].filter(Boolean).map(([v, l]) =>
+  // 비교 tab sub-navigation: 시술별 / 지점 순위 / 지점 비교 / 전체 가격표 — a light underlined tab row in the same place on the
+  // four screens, lighter than the path under it (위계 점검 40: the white pill on a filled track read before the path)
+  const cmpNav = (cur) => h("div", { class: "subnav", role: "tablist" }, [["compare", "시술별"], FLAGS.branchRanking ? ["rank", "지점 순위"] : null, ["versus", "지점 비교"], ["table", "전체 가격표"]].filter(Boolean).map(([v, l]) =>
     h("button", { type: "button", role: "tab", "aria-selected": cur === v ? "true" : "false", onclick: () => nav(v) }, l)));
   // the chosen procedure lives in the URL (#compare?k=X12): change both, or the old ?k= wins on the next render
   function pickKey(i) { st.key = i; history.replaceState(null, "", `#compare?k=${KEYS[i].id}`); render(); }
@@ -3326,15 +3327,19 @@
       const box = to === "cat" ? t.closest(".chips") || t : to === "fam" ? t.closest(".keyhead") || t : t;
       box.classList.remove("flash"); void box.offsetWidth; box.classList.add("flash"); setTimeout(() => box.classList.remove("flash"), 1300); };
     const SEG_T = { cat: "다른 분야 고르기", fam: "다른 시술 고르기", spec: "규격 바꾸기" };
-    const seg = (t, to) => h("button", { type: "button", onclick: () => jump(to), "aria-label": `${t} — ${SEG_T[to]}로 가기` }, t);
+    // the step on screen (the last one) is the current place: dark and bold, 'aria-current'; every step stays a button with
+    // its underline (위계 점검 20). '›' in the muted grey (5.3:1 light · 7.2:1 dark; --faint was 1.84:1)
+    const seg = (t, to, cur) => h("button", { type: "button", class: cur ? "cur" : null, "aria-current": cur ? "page" : null, onclick: () => jump(to), "aria-label": `${t} — ${SEG_T[to]}로 가기` }, t);
     const sep = () => h("span", { class: "sep", "aria-hidden": "true" }, "›");
+    const three = !!fam && fam.label !== k.label && fam.label !== fam.f.name;
     // the line right above the median says it is the median's basis: the list below counts every branch with a price
     // ('조건부 포함 185곳') and stays on screen under this sticky header (2026-10-16 hierarchy audit M2). 282px at 320 wide.
+    // Folded (scrolled, 위계 점검 9) the line stays as it is, '중간값:' too: the list's own count shows under it then
     const basis = N ? `${regionName()} · 중간값: ${N.ptop ? "조건 없는 가격" : "조건부 포함"} ${N.prices.length}곳 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`
       : `${regionName()} · 이 조건의 가격이 없어요`;
     return h("section", { class: "cmphead", "aria-label": "지금 비교하는 시술" },
-      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, "cat"), sep(), seg(fam ? fam.f.name : k.label, "fam"),
-        fam && fam.label !== k.label && fam.label !== fam.f.name ? [sep(), seg(fam.label, "spec")] : null),
+      h("nav", { class: "crumb", "aria-label": "분야 › 시술 › 규격" }, seg(k.cat, "cat"), sep(), seg(fam ? fam.f.name : k.label, "fam", !three),
+        three ? [sep(), seg(fam.label, "spec", true)] : null),
       h("div", { class: "tline" }, h("h2", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
       h("div", { class: "basis" }, basis),
       h("div", { class: "hrow" }, h("div", { class: "hmed num" }, N ? [h("span", {}, "중간값"), won(N.med)] : null),
@@ -3349,13 +3354,44 @@
     return d;
   }
   // the sticky header's real height feeds scroll-padding (focus never lands under it) and the jump margins
-  let cmphRO = null;
+  // (and the title row's height, --cmpt-h: how far the folded header moves up, see heads())
+  let cmphRO = null, cmpEl = null;
   function watchCmpHead() {
-    const el = $(".cmphead"); document.documentElement.classList.toggle("cmp-on", !!el);
+    const el = $(".cmphead"), root = document.documentElement; cmpEl = el; root.classList.toggle("cmp-on", !!el);
+    root.classList.toggle("br-on", !!$(".bhead"));
     if (cmphRO) cmphRO.disconnect();
-    if (!el || !window.ResizeObserver) return;
-    cmphRO = new ResizeObserver(() => document.documentElement.style.setProperty("--cmph", `${Math.round(el.getBoundingClientRect().height)}px`));
-    cmphRO.observe(el);
+    if (el && window.ResizeObserver) {
+      const t = el.querySelector(".tline");
+      cmphRO = new ResizeObserver(() => { root.style.setProperty("--cmph", `${Math.round(el.getBoundingClientRect().height)}px`);
+        if (t) root.style.setProperty("--cmpt-h", `${Math.round(t.getBoundingClientRect().height)}px`); heads(); });
+      cmphRO.observe(el); if (t) cmphRO.observe(t);
+    }
+    heads();
+  }
+  // What stays on top while a long screen scrolls (위계 점검 9·38). Called from the scroll handler (passive) and after each
+  // draw; it only switches classes — never render() — so a press in progress and the typed words are untouched.
+  //  · compare: the header sticks under the app bar as before. Once its own place in the page has scrolled past the top
+  //    by its title row, html.cmp-fold: the app bar slides away and the header shows the path, the basis line and
+  //    중간값 · 담기 · ⋯ (styles.css: the title row moves to the top, out of view). The header's height in the page never
+  //    changes, so nothing below it moves; scrolling back up shows the full header and the bar again.
+  //  · branch: once the price list is under the app bar, the list's small header (지점 · 분야 chips) shows (html.br-fold;
+  //    on a short screen, max-height 700, the app bar slides away then too — styles.css)
+  // Each switches back only HEADS_BACK px above where it switched on: a finger resting on the edge does not make it flicker.
+  const HEADS_BACK = 24;
+  function heads() {
+    const root = document.documentElement;
+    let fold = false;
+    if (cmpEl && cmpEl.isConnected && getComputedStyle(cmpEl).position === "sticky") {
+      const prev = cmpEl.previousElementSibling, t = cmpEl.querySelector(".tline"), cs = getComputedStyle(cmpEl);
+      const at = prev ? prev.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(cmpEl.parentElement).rowGap) || 0) + (parseFloat(cs.marginTop) || 0)
+        : cmpEl.parentElement.getBoundingClientRect().top;   // where the header sits in the page (its sticky place aside)
+      fold = at <= -((t ? t.offsetHeight : 0) + (parseFloat(cs.paddingTop) || 0)) + (root.classList.contains("cmp-fold") ? HEADS_BACK : 0);
+    }
+    root.classList.toggle("cmp-fold", fold);
+    const bh = $(".bhead");
+    const on = !!bh && bh.parentElement.getBoundingClientRect().top < (parseFloat(getComputedStyle(root).getPropertyValue("--top-h")) || 60) + (bh.classList.contains("on") ? HEADS_BACK : 0);
+    if (bh) bh.classList.toggle("on", on);
+    root.classList.toggle("br-fold", on);
   }
   // what the compare screen's bottom bar and tools card held, in one list
   function cmpMoreSheet(k, rk, N) {
@@ -3410,7 +3446,8 @@
     if (fam && fam.f.vs.length > 1) {
       // 쉬운 보기 (default): 종류 → 용량·부위 → 횟수, one step at a time. 자세히: every variant, grouped by kind (the earlier view)
       const easy = st.cmpMode !== "detail";
-      card.append(h("div", { class: "row", style: "margin-top:14px;gap:8px" }, h("span", { class: "sub", style: "flex:1;min-width:0" }, `${fam.f.name} ${fam.f.vs.length}가지 · 용량·부위·횟수가 같은 것끼리만 비교해요`),
+      // the three steps in three sizes (위계 점검 20): 분야 chips 13 · the treatment 17 · its spec chips 15 (styles.css #cmppick)
+      card.append(h("div", { class: "row", style: "margin-top:14px;gap:8px" }, h("span", { class: "sub", style: "flex:1;min-width:0" }, h("b", { class: "famname" }, fam.f.name), `${fam.f.vs.length}가지 · 용량·부위·횟수가 같은 것끼리만 비교해요`),
         h("div", { class: "seg modesw", role: "group", "aria-label": "옵션 보기 방식" }, [["easy", "쉬운 보기"], ["detail", "자세히"]].map(([v, l]) =>
           h("button", { type: "button", "aria-pressed": (easy ? "easy" : "detail") === v ? "true" : "false", onclick: () => { st.cmpMode = v; store.set("cmpMode", v); track("option_mode", { v }); render(); } }, l)))));
       if (easy) card.append(specSteps(fam.f, k.i));
@@ -3939,8 +3976,27 @@
         h("button", { class: "chip", type: "button", "aria-pressed": st.bsort === v ? "true" : "false", onclick: () => { st.bsort = v; render(); } }, l)))));
     box.append(h("div", { class: "card flush" }, list, moreSlot));
     paint();
+    // 위계 점검 38: deep in the list, a small header keeps which branch and which 분야 (heads() shows it once the list is under
+    // the app bar). Its chips are the table's 분야 (st.bcat): a tap redraws the list in place (paint — the typed words stay),
+    // marks the table's own chips the same and goes back up to the table's controls
+    { const card = list.closest(".card"), tbl = q.closest(".card"), own = tbl && tbl.querySelector(".chips");
+      const ciOf = (n) => (n === 0 ? -1 : D.meta.cats.indexOf(cats[n - 1][0]));
+      if (card && own) card.prepend(branchHead(b, cats, (ci) => {
+        st.bcat = ci;
+        for (const row of [own, card.querySelector(".bhead .chips")]) [...row.children].forEach((c, n) => c.setAttribute("aria-pressed", ciOf(n) === ci ? "true" : "false"));
+        paint(); tbl.scrollIntoView({ block: "start" });
+        const on = own.querySelector('[aria-pressed="true"]'); if (on) on.focus({ preventScroll: true }); })); }
     return box;
   };
+  // the branch price list's small sticky header: the branch and the same 분야 chips as the table (order: 전체, then cats).
+  // The brand (13, grey) sits over the branch's own name (15, bold), so a narrow phone keeps the part that says which branch
+  // ('블리비 부산 서…' at 320 when they were on one line)
+  function branchHead(b, cats, pick) {
+    const chip = (ci, label) => h("button", { class: "chip", type: "button", "aria-pressed": st.bcat === ci ? "true" : "false", onclick: () => pick(ci) }, label);
+    return h("div", { class: "bhead", role: "group", "aria-label": `${bname(b)} 가격표 분야` },
+      h("b", { class: "bn" }, h("span", { class: "bb" }, brandOf(b)[0]), " ", h("span", { class: "bs" }, BR[b].name)),
+      h("div", { class: "chips" }, chip(-1, "전체"), cats.map(([c, n]) => chip(D.meta.cats.indexOf(c), `${c} ${n}`))));
+  }
 
   // ---------------- 지점 순위: branch price level (geometric mean of price / median over shared options)
   views.rank = () => {
@@ -5423,8 +5479,12 @@
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => nav(b.dataset.tab)));
   $("#locbtn").addEventListener("click", () => { if (D) locSheet(); });
   $("#notibtn").addEventListener("click", () => nav("saved"));
-  // the top bar gets a hairline once the page scrolls under it
-  window.addEventListener("scroll", () => { $("#top").classList.toggle("scrolled", window.scrollY > 4); seePrice(); }, { passive: true });
+  // the top bar gets a hairline once the page scrolls under it; the sticky headers fold and unfold (heads, 위계 점검 9·38)
+  window.addEventListener("scroll", () => { $("#top").classList.toggle("scrolled", window.scrollY > 4); heads(); seePrice(); }, { passive: true });
+  window.addEventListener("resize", heads, { passive: true });   // a turned phone: the header is no longer sticky below 500px high
+  // the logo goes home the way the 홈 tab does: pushed, drawn, at the top (위계 점검 23 — as a plain '#home' link it kept the
+  // scroll of the screen it left, 1485px down). Back (popstate) is unchanged: the screen left comes back as before.
+  $("#top a.brand").addEventListener("click", (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button) return; e.preventDefault(); nav("home"); });
 
   // the ops screen (app/screens/ops.js, chat A) has content only on the admin address behind Cloudflare Access (A6): the two
   // ways in (마이 menu, the data-state card) are drawn only there. ops.js sets App.onAdminHost; without it, nowhere.
