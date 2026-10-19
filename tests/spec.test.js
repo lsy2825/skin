@@ -134,3 +134,43 @@ test("a new device's '신규 런칭·입고·도입' is not a first-visit price 
   assert.equal(Spec.dropNewItem("A 신규 런칭 B 신규출시 C"), "A   B   C");
   assert.equal(Spec.dropNewItem(null), "");
 });
+
+test("kbFinder: a unique name finds its note by name first, else by fid (as before)", () => {
+  const A = { id: "a", families: ["리쥬란"], fids: ["rejuran"] }, B = { id: "b", families: ["리쥬란"], fids: [] }, C = { id: "c", families: [], fids: ["toxin"] };
+  const K = Spec.kbFinder([A, B, C], [{ name: "리쥬란", fid: "rejuran" }, { name: "사각턱 보톡스", fid: "toxin" }, { name: "없음", fid: "none" }]);
+  assert.equal(K.of({ name: "리쥬란", fid: "other" }), A);   // the first entry naming it, whatever its fids
+  assert.equal(K.of({ name: "사각턱 보톡스", fid: "toxin" }), C);
+  assert.equal(K.viaName({ name: "사각턱 보톡스", fid: "toxin" }), null);
+  assert.equal(K.of({ name: "없음", fid: "none" }), null);
+  assert.equal(K.shared({ name: "리쥬란" }), false);
+});
+
+test("kbFinder: a name shared by families in different categories needs the entry's fids (C #114, 에어녹스 ×3)", () => {
+  const fams = [{ name: "에어녹스", fid: "airnox-face", cat: "윤곽·필러" }, { name: "에어녹스", fid: "airnox-lift", cat: "리프팅" }, { name: "에어녹스", fid: "generic", cat: "기타" }];
+  const LIFT = { id: "lift", families: ["에어녹스"], fids: ["airnox-lift"] }, FACE = { id: "face", families: ["에어녹스"], fids: ["airnox-face"] };
+  const K = Spec.kbFinder([LIFT, FACE], fams);
+  assert.equal(K.shared(fams[0]), true);
+  assert.equal(K.of(fams[1]), LIFT);
+  assert.equal(K.of(fams[0]), FACE);            // not LIFT, the first entry with the name
+  assert.equal(K.of(fams[2]), null);            // no entry names its fid: no note rather than another family's
+  // an entry that names no fids means every family with that name
+  const ALL = { id: "all", families: ["에어녹스"], fids: [] };
+  const K2 = Spec.kbFinder([ALL], fams);
+  assert.deepEqual(fams.map((f) => K2.of(f)), [ALL, ALL, ALL]);
+  // the old rule (first entry with the name) would have given LIFT to all three
+  assert.notDeepEqual(fams.map((f) => K.of(f)), [LIFT, LIFT, LIFT]);
+});
+
+test("kbFinder: real data — every family's note is one that names it or its fid; shared names never borrow another fid's note", () => {
+  const fs = require("node:fs"), path = require("node:path");
+  const D = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/data.json"), "utf8"));
+  const KI = new Set(D.keys.map((k) => k[0]));
+  const fams = D.meta.fam.map(([name, , vs, cat, fid]) => ({ name, cat, fid: fid || "", n: vs.filter(([id]) => KI.has(id)).length })).filter((f) => f.n);
+  const K = Spec.kbFinder((D.meta.kb || {}).entries || [], fams);
+  for (const f of fams) {
+    const e = K.of(f);
+    if (!e) continue;
+    assert.ok(e.families.includes(f.name) || e.fids.includes(f.fid), f.name);
+    if (K.shared(f) && e.families.includes(f.name) && e.fids.length) assert.ok(e.fids.includes(f.fid), `${f.name} ${f.cat}`);
+  }
+});

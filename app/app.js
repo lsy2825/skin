@@ -87,7 +87,7 @@
   };
   let CHK = new Map();
   let CONC = { concerns: [], safety: { rules: [], personal: { pattern: "(?!)" } } }, pendingChat = "", concernPick = null;   // pendingChat: a message from the home box for 죠미와 대화 (memory only)
-  let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache, KB, kbByFam, kbByFid;
+  let D, S, BR, KEYS, ROWS, KI, byKB, byB, nameIdx, FAM, famOf, BK, SI, byName, GR, byG, gcache, KB, kbFind, famsByName;
   let ADDON_COL = false;   // this file has the build's add-on field (row field 15 → r[19]); without it the name decides (isAddonRow)
   let WHEN_COL = false;    // this file has the site's visit days / hours (row fields 16-17 → r[20]/r[21], C #71); older files: none
   // carts: old single cart [{k, q}] becomes the first saved cart
@@ -224,8 +224,10 @@
     }
     // Treatment Knowledge Base (knowledge/treatments.json): entries matched to families by name, else by base family id
     KB = D.meta.kb || { entries: [], statuses: {} };
-    kbByFam = new Map(); kbByFid = new Map();
-    for (const e of KB.entries) { for (const n of e.families) if (!kbByFam.has(n)) kbByFam.set(n, e); for (const x of e.fids) if (!kbByFid.has(x)) kbByFid.set(x, e); }
+    // 22 family names are shared across compare categories (C #114): the note and the family are found with the fid then
+    kbFind = Spec.kbFinder(KB.entries, FAM);
+    famsByName = new Map();
+    for (const f of FAM) { if (!famsByName.has(f.name)) famsByName.set(f.name, []); famsByName.get(f.name).push(f); }
     // concern taxonomy (knowledge/concerns.json) for '피부 고민으로 찾기'
     CONC = D.meta.concerns || CONC;
     BK = new Map(BR.map((b) => [bkey(b.i), b.i]));
@@ -2757,8 +2759,9 @@
   // only medically reviewed text is 'verified'; drafts are shown (labelled) only while flags.showDraftKnowledge is on
   const KB_STATE = () => (FLAGS.showDraftKnowledge ? "설명은 의료진 검수 전 초안이에요." : "의료진 검수를 마친 설명만 보여줘요.");
   const kbVisible = (e) => !!e && ((e.review || {}).status === "approved" || FLAGS.showDraftKnowledge);
-  const kbOf = (f) => { const e = (f && (kbByFam.get(f.name) || kbByFid.get(f.fid))) || null; return kbVisible(e) ? e : null; };
-  const famByName = (n) => FAM.find((f) => f.name === n);
+  const kbOf = (f) => { const e = (f && kbFind.of(f)) || null; return kbVisible(e) ? e : null; };
+  // a family's name on a list that mixes compare categories: a shared name (에어녹스 in 윤곽·필러·리프팅·기타) says which one
+  const famTitle = (f) => (kbFind.shared(f) && f.cat ? `${f.name} (${f.cat})` : f.name);
   const MAIN_TYPES = { toxin: ["주름 보톡스", "사각턱 보톡스", "스킨보톡스", "다한증 보톡스", "바디 보톡스"], filler: ["코 필러", "턱끝 필러", "애교 필러", "눈밑 필러", "입술 필러"],
     lifting: ["슈링크 유니버스", "울쎄라", "써마지 FLX", "인모드", "올리지오"], toning: ["레이저토닝", "피코토닝", "제네시스", "착색토닝"] };
   const DISCLAIM = "일반적인 설명이에요. 진단이나 효과 보장이 아니고 특정 시술을 권하지 않아요. 나에게 맞는지는 의료진과 상담하세요.";
@@ -2926,19 +2929,19 @@
       h("div", { style: "margin-top:10px" }, q), list));
     const entry = (f, members) => { const e = kbOf(f);
       return h("div", { class: "gitem" },
-        h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, h("b", { style: "flex:1;min-width:0" }, members ? `${e ? e.title : f.name} · ${members.length}가지` : f.name),
+        h("div", { class: "row", style: "flex-wrap:nowrap;gap:8px" }, h("b", { style: "flex:1;min-width:0" }, members ? `${e ? e.title : f.name} · ${members.length}가지` : c ? f.name : famTitle(f)),
           h("span", { class: "sub", style: "flex:none" }, `${members ? new Set(members.flatMap((m) => m.vs.flatMap((v) => [...byKB[v.k].keys()]))).size : f.n}곳`),
           members ? null : h("button", { class: "btn sm soft", type: "button", style: "flex:none", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, "가격 비교")),
         e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : null, e && e.method ? h("p", { class: "sub" }, e.method) : null,
         e ? h("div", { class: "row", style: "gap:4px;margin-top:6px" }, reviewBadge(e), evidenceBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, members ? null : f) }, "부작용·주의사항·근거 보기")) : null,
-        members ? h("div", { class: "chips wrapc", style: "margin-top:8px" }, members.map((m) => h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${KEYS[m.main].id}`) }, m.name))) : null);
+        members ? h("div", { class: "chips wrapc", style: "margin-top:8px" }, members.map((m) => h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${KEYS[m.main].id}`) }, c ? m.name : famTitle(m)))) : null);
     };
     const paint = () => {
       let fams = q.value.trim() ? famFind(q.value) : FAM.slice().sort((a, b) => CMP_CATS.indexOf(a.cat) - CMP_CATS.indexOf(b.cat) || b.n - a.n);
       if (c) fams = fams.filter((f) => f.cat === c);
       // many families that share one note (제모: one per body area) → one entry with the areas as chips
       const byFid = new Map();
-      for (const f of fams) if (!kbByFam.has(f.name) && kbByFid.has(f.fid)) byFid.set(f.fid, [...(byFid.get(f.fid) || []), f]);
+      for (const f of fams) if (!kbFind.viaName(f) && kbFind.viaFid(f)) byFid.set(f.fid, [...(byFid.get(f.fid) || []), f]);
       const done = new Set(), out = [];
       for (const f of fams) {
         const grp = byFid.get(f.fid);
@@ -4361,7 +4364,7 @@
     // kinds of this procedure with a plain-language line each ('보톡스' → 주름·스킨·사각턱·바디 …)
     const fams = tokens.length ? famFind(qs) : [];
     // main types side by side when the search hits a group people often mix up (보톡스, 필러)
-    const grp = Object.entries(MAIN_TYPES).map(([g, names]) => [g, names.map(famByName).filter((f) => f && fams.includes(f) && kbOf(f))]).find(([, x]) => x.length >= 3);
+    const grp = Object.entries(MAIN_TYPES).map(([g, names]) => [g, names.map((n) => (famsByName.get(n) || []).find((f) => fams.includes(f) && kbOf(f))).filter(Boolean)]).find(([, x]) => x.length >= 3);
     const main = grp && grp[1], how = grp && (grp[0] === "lifting" || grp[0] === "toning");   // devices differ by method, injections by place
     const mainCard = !main ? null : (h("div", { class: "card" }, h("h3", {}, "주요 종류 한눈에 비교"),
       h("div", { class: "sub" }, "이름은 비슷해도 놓는 곳과 목적이 달라요. 어떤 게 맞는지는 의료진과 상담하세요."),

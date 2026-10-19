@@ -293,7 +293,7 @@
     const sido = [...new Set(D.branches.map((x) => S[x[5]]).filter(Boolean))];
     for (const x of [...BRAND, ...sido, "리저브", "본점"]) areas.delete(x);
     const KB = D.meta.kb || { entries: [] };
-    const kbOf = (f) => KB.entries.find((e) => e.families.includes(f.name)) || KB.entries.find((e) => e.fids.includes(f.fid)) || null;
+    const kbOf = require("./spec.js").kbFinder(KB.entries, fams).of;   // the app's rule (shared family names go by fid)
     return ctx({ fams, brands: BRAND, sido, areas: [...areas], concerns: D.meta.concerns, kbOf, price });
   }
 
