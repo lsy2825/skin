@@ -130,12 +130,28 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
     compare with the newest older one. returns (changes [[gid, branch, before, after]], new [[gid, branch, price]],
     gone [[label, branch, before, group key]] (options no longer listed — all of them: the caller drops the ones a rule moved
     out of the group, then keeps GONE_MAX), prev date, that snapshot {group key: {"brand|branch": price}}: a group key it does
-    not have has no change, new or gone entry against it)"""
-    snap = {k: [groups[g][0], {bkeys[b]: p for b, p in low_reg[g].items()}] for g, k in enumerate(keep) if low_reg[g]}
+    not have has no change, new or gone entry against it). build2/appdata.py does the same in three steps (snapshot,
+    changes_since, write_snapshot) so that it writes the snapshot after the review queue (held_back)"""
+    snap = snapshot(keep, groups, low_reg, bkeys)
+    write_snapshot(hist, date, snap)
+    return changes_since(snap, date, keep, bkeys, prev_date_files)
+
+
+def snapshot(keep, groups, low_reg, bkeys):
+    """this build's {group key: [label, {"brand|branch": lowest regular price}]} (the .auto.json.gz snapshot)"""
+    return {k: [groups[g][0], {bkeys[b]: p for b, p in low_reg[g].items()}] for g, k in enumerate(keep) if low_reg[g]}
+
+
+def write_snapshot(hist, date, snap):
+    """data2/history/<date>.auto.json.gz (mtime 0: same data -> same bytes)"""
     body = json.dumps(snap, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    with open(os.path.join(hist, f"{date}.auto.json.gz"), "wb") as raw:      # mtime=0: same data -> same bytes
+    with open(os.path.join(hist, f"{date}.auto.json.gz"), "wb") as raw:
         with gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) as f:
             f.write(body)
+
+
+def changes_since(snap, date, keep, bkeys, prev_date_files):
+    """snap against the newest snapshot in prev_date_files dated before `date` (snapshot_and_changes' return value)"""
     older = sorted(p for p in prev_date_files if os.path.basename(p)[:10] < date)
     if not older:
         return [], [], [], "", {}
@@ -157,3 +173,21 @@ def snapshot_and_changes(hist, date, keep, groups, low_reg, bkeys, prev_date_fil
             if bk not in now and bk in bidx:
                 gone.append([label, bidx[bk], p, k])
     return changes, new, gone, os.path.basename(older[-1])[:10], {k: m for k, (_, m) in prev.items()}
+
+
+def held_back(snap, held, before, keep, bkeys):
+    """the snapshot to keep: snap, but each held (group index, branch index) — its regular lowest is a price waiting for review
+    (build2/appdata.py held) — at the price of the snapshot it was compared with (before = {group key: {"brand|branch": price}}),
+    and left out where that one had none. So the held price is no baseline for the next build: still the same and unapproved
+    there, it is held again; approved, it is a change once; back to the old price, nothing happened"""
+    out = {k: [label, dict(m)] for k, (label, m) in snap.items()}
+    for g, b in held:
+        k, bk = keep[g], bkeys[b]
+        if k not in out:
+            continue
+        was = before.get(k, {}).get(bk)
+        if was is None:
+            out[k][1].pop(bk, None)
+        else:
+            out[k][1][bk] = was
+    return {k: v for k, v in out.items() if v[1]}

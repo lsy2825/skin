@@ -1644,6 +1644,120 @@ ok("끝-끝 clean.main → appdata.main: 규칙이 되살린 줄(값이 바뀐 �
    _e_added == [("강남점", 250000)] and _e_meta["changes"]["counts"]["added"] == 1 and sorted(_e_raw) == [("강남점", 250000), ("마곡점", 199000)]
    and "X13" in _e_recl.get("2026-10-19", []) and len(datameta.rows_of(_e_cur)) == 4,
    (_e_added, _e_raw, _e_cur["meta"]["recl"], len(datameta.rows_of(_e_cur))))
+# 검토 대기 가격(row[13] = 1)은 승인 전까지 가격 변동·기록에 없음(2026-10-19 실제 수집: 블리비 대구 동성로점·제주점 '얼굴 점빼기(2mm 이하)
+# 개당' 1,000·5,000 → 100. 줄은 비교에서 숨었는데 '가격 변동'(changes·achg)과 data-meta.json changes에 나왔고, 10-19 기록에 100이 들어가
+# 다음 주 기준이 됐음 — 다음 주에 바른 1,000이 오면 그게 ×10으로 검토 대기, 승인 없이 100이 그대로면 그냥 보이게 됨)
+_hb = [(b, "리프팅", "울쎄라", "울쎄라 100샷 1회", 300000) for b in ("강남점", "마곡점", "역삼점")]
+_hn = [(b, c, g, o, {"강남점": 29000, "마곡점": 250000}.get(b, p)) for b, c, g, o, p in _hb]     # 강남점 -90%(검토 대기), 마곡점 진짜 인하
+_hk = [x if x[0] != "강남점" else x[:4] + (300000,) for x in _hn]                                  # 다음 주: 강남점이 원래 가격으로
+
+
+def _h_read(tmp, d, m, day):
+    """a build in tmp: changes {(id, branch): (before, after)} of X13, achg {branch: (before, after)}, achg.new branches, row[13] by branch,
+    data-meta changes rows (list, brand-less), X13 and group snapshot price by branch, meta.review"""
+    s, br = d["s"], d["branches"]
+    bn = lambda b: s[br[b][1]]
+    hist = os.path.join(tmp, "data2", "history")
+    k = json.load(open(os.path.join(hist, f"{day}.json"), encoding="utf-8"))
+    with _gz.open(os.path.join(hist, f"{day}.auto.json.gz"), "rt", encoding="utf-8") as f:
+        a = {bk.split("|")[1]: p for _, mm in json.load(f).values() for bk, p in mm.items()}
+    return ({bn(b): (x, y) for kk, b, x, y in d["changes"] if d["keys"][kk][0] == "X13"}, {bn(b): (x, y) for g, b, x, y in d["achg"]["chg"]},
+            sorted(bn(b) for g, b, p in d["achg"]["new"]), {bn(r[0]): r[13] for r in datameta.rows_of(d)},
+            sorted([f, r[1]] + r[3:] for f in ("price", "added", "removed") for r in m.get("changes", {}).get(f, [])),
+            {kk.split("|")[2]: v for kk, v in k.items() if kk.startswith("X13|")}, a, d["meta"]["review"])
+
+
+def _h_files(tmp, day):
+    return [open(os.path.join(tmp, "data2", "history", f"{day}{x}"), "rb").read() for x in (".json", ".keys.json.gz", ".auto.json.gz")]
+
+
+def _h_keep(tmp, to):
+    """save (to=path) or restore (to=(path,)) app/data.json + data2/history"""
+    src, dst = (tmp, to) if isinstance(to, str) else (to[0], tmp)
+    if os.path.exists(os.path.join(dst, "data2", "history")):
+        shutil.rmtree(os.path.join(dst, "data2", "history"))
+    shutil.copytree(os.path.join(src, "data2", "history"), os.path.join(dst, "data2", "history"))
+    os.makedirs(os.path.join(dst, "app"), exist_ok=True)
+    shutil.copy(os.path.join(src, "app", "data.json"), os.path.join(dst, "app", "data.json"))
+
+
+with tempfile.TemporaryDirectory() as tmp, tempfile.TemporaryDirectory() as _held:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    os.makedirs(os.path.join(tmp, "app"))
+    with open(os.path.join(tmp, "data2", "branches.csv"), "w", newline="", encoding="utf-8") as f:
+        f.write("brand,branch,address,lat,lng\n")
+    _e_build(tmp, _hb, "2026-10-14")
+    _h1 = _h_read(tmp, *_e_build(tmp, _hn, "2026-10-19"), "2026-10-19")
+    _f1 = _h_files(tmp, "2026-10-19")
+    _h2 = _h_read(tmp, *_e_build(tmp, _hn, "2026-10-19"), "2026-10-19")       # the same collection again
+    _f2 = _h_files(tmp, "2026-10-19")
+    _h_keep(tmp, _held)
+    with open(os.path.join(tmp, "data2", "review_ok.csv"), "w", newline="", encoding="utf-8-sig") as f:
+        _okw = csv.writer(f)
+        _okw.writerow(["brand", "branch", "name", "price"])
+        _okw.writerow(["닥터에버스", "강남점", [r for r in csv.DictReader(open(os.path.join(tmp, "data2", "review.csv"), encoding="utf-8-sig"))][0]["name"], 29000])
+    _h3 = _h_read(tmp, *_e_build(tmp, _hn, "2026-10-19"), "2026-10-19")       # approved, same collection
+    _h4 = _h_read(tmp, *_e_build(tmp, _hn, "2026-10-19"), "2026-10-19")
+    os.remove(os.path.join(tmp, "data2", "review_ok.csv"))
+    _h_keep(tmp, (_held,))
+    _h5 = _h_read(tmp, *_e_build(tmp, _hk, "2026-10-26"), "2026-10-26")       # next week: back to 300,000
+    _h_keep(tmp, (_held,))
+    _h6 = _h_read(tmp, *_e_build(tmp, _hn, "2026-10-26"), "2026-10-26")       # next week: still 29,000, nobody approved
+ok("검토 대기(-90%) 가격: 그 수집의 가격 변동(changes·achg)·data-meta.json changes에 없음, 진짜 인하(마곡점)는 그대로, 줄은 row[13] = 1",
+   _h1[0] == {"마곡점": (300000, 250000)} and _h1[1] == {"마곡점": (300000, 250000)} and _h1[2] == [] and _h1[3]["강남점"] == 1
+   and _h1[4] == [["price", "마곡점", 300000, 250000]] and _h1[7] == 1, _h1[:5])
+ok("... 그 수집의 기록(.json·.keys·.auto)은 그 지점에서 지난 기록 가격(300,000)을 그대로 — 추세 점·다음 주 기준이 아님",
+   _h1[5] == {"강남점": 300000, "마곡점": 250000, "역삼점": 300000} and _h1[6] == _h1[5], _h1[5:7])
+ok("... 같은 수집 다시 빌드: 결과·기록 파일이 같음(더 오래된 기록과 비교)", _h2[:4] == _h1[:4] and _h2[5:] == _h1[5:] and _h2[4] == [] and _f2 == _f1,
+   _h2[:5])
+ok("... 승인(review_ok.csv)하면 가격 변동에 한 번: changes·achg에, data-meta.json에도(같은 수집 다시 빌드여도), 기록은 29,000",
+   _h3[0].get("강남점") == (300000, 29000) and _h3[1].get("강남점") == (300000, 29000) and _h3[3]["강남점"] == 0 and _h3[7] == 0
+   and _h3[4] == [["price", "강남점", 300000, 29000]] and _h3[5]["강남점"] == _h3[6]["강남점"] == 29000, _h3[:5])
+ok("... 승인 뒤 다시 빌드: data-meta.json엔 다시 안 나옴(지난 파일과 같음), changes·achg는 그 수집의 변동 그대로",
+   _h4[4] == [] and _h4[0] == _h3[0] and _h4[1] == _h3[1], _h4[:5])
+ok("... 다음 주에 원래 가격(300,000)으로 돌아오면: 변동·검토 대기·data-meta 항목 없음(main은 29,000 → 300,000을 ×10으로 검토 대기에 넣었음)",
+   _h5[0] == {} and _h5[1] == {} and _h5[7] == 0 and _h5[3]["강남점"] == 0 and _h5[4] == [] and _h5[5]["강남점"] == 300000, _h5[:5])
+ok("... 다음 주에도 29,000이고 승인 없으면: 다시 검토 대기, 변동 없음, 기록은 여전히 300,000(main은 기록이 29,000이라 그냥 보이게 됨)",
+   _h6[0] == {} and _h6[1] == {} and _h6[7] == 1 and _h6[3]["강남점"] == 1 and _h6[4] == [] and _h6[5]["강남점"] == _h6[6]["강남점"] == 300000, _h6[:5])
+# the pieces: appdata.held (only where a waiting row is the lowest plain price), datameta.changes (a name with a waiting row lists nothing;
+# a previous file's waiting row stands for the price before it, when that file says it)
+_hr = [dict(brand="A", branch=b, name=n, sale=str(p), kind="일반", tags=t, keys="X13 T1", days="0", hours="")
+       for b, n, p, t in [("갑", "울쎄라 100샷", 9000, ""), ("갑", "울쎄라 100샷 이벤트", 100000, ""), ("을", "울쎄라 100샷", 9000, ""),
+                          ("을", "울쎄라 100샷 2", 9000, ""), ("병", "울쎄라 100샷", 5000, "첫 방문"), ("병", "울쎄라 100샷 2", 90000, "")]]
+_ho = [[{"갑": 0, "을": 1, "병": 2}[r["branch"]], 0, 0, int(r["sale"])] + [0] * 9 + [int(i in (0, 2, 4))] for i, r in enumerate(_hr)]
+_hbest = {"X13|A|갑": 9000, "T1|A|갑": 9000, "X13|A|을": 9000, "T1|A|을": 9000, "X13|A|병": 90000, "T1|A|병": 90000}
+_hk_, _hg_ = appdata.held(_hr, _ho, [0, 0, 0, 0, -1, 0], _hbest, {0: {0: 9000, 1: 9000, 2: 90000}})
+ok("held: 검토 대기 줄이 그 지점의 일반가 최저일 때만(id 모두·자동 묶음) — 같은 가격의 다른 줄이 있거나 조건부 줄이면 아님",
+   _hk_ == {"X13|A|갑", "T1|A|갑"} and _hg_ == {(0, 0)}, (_hk_, _hg_))
+ok("hold_back: 묶인 곳은 지난 기록 가격, 지난 기록에 없으면 뺌", appdata.hold_back(_hbest, _hk_, {"X13|A|갑": 300000}) ==
+   {"X13|A|갑": 300000, "X13|A|을": 9000, "T1|A|을": 9000, "X13|A|병": 90000, "T1|A|병": 90000})
+ok("groups.held_back: 묶인 곳은 지난 기록 가격, 없으면 빼고 빈 묶음도 뺌",
+   appdata.G.held_back({"g": ["L", {"A|갑": 9000, "A|을": 9000}], "h": ["M", {"A|갑": 1}]}, {(0, 0), (1, 0)}, {"g": {"A|갑": 300000}}, ["g", "h"], ["A|갑", "A|을"])
+   == {"g": ["L", {"A|갑": 300000, "A|을": 9000}]})
+
+
+def _hm(rows, review=()):
+    """mini() + row[13] (rows: (branch, name, price, kind, waiting)) + meta.about.review"""
+    d = mini([r[:4] for r in rows])
+    d["cols"] += [[0] * len(rows) for _ in range(7)] + [[int(r[4]) for r in rows]]
+    d["meta"]["about"] = {"review": [dict(brand="A", branch=b, name=n, before=str(x), price=str(p), status="검토 대기") for b, n, x, p in review]}
+    return d
+
+
+_hw = [("강남점", "점빼기", 100, "일반", 1)]
+_hp = _hm([("강남점", "점빼기", 1000, "일반", 0), ("강남점", "점빼기 새 이벤트", 900, "일반", 0)])
+_hq = _hm(_hw + [("강남점", "점빼기 새 이벤트", 100, "일반", 1)], [("강남점", "점빼기", 1000, 100), ("강남점", "점빼기 새 이벤트", 900, 100)])
+_c = lambda a, b: sorted([f, r[2]] + r[3:] for f in ("price", "added", "removed") for r in datameta.changes(a, b, "v")[f])
+ok("datameta.changes: 이번에 검토 대기인 이름은 아무 항목도 없음, 다음 빌드에서 승인되면 지난 가격에서 바뀐 것으로·돌아오면 없음·"
+   "지난 가격을 모르면 뺌·없어진 이름은 보였던 가격만",
+   _c(_hp, _hq) == [] and _c(_hq, _hm([("강남점", "점빼기", 100, "일반", 0)])) == [["price", "점빼기", 1000, 100]]
+   and _c(_hq, _hm([("강남점", "점빼기", 1000, "일반", 0), ("강남점", "점빼기 새 이벤트", 900, "일반", 0)])) == []
+   and _c(_hm(_hw), _hm([("강남점", "점빼기", 90, "일반", 0)])) == []
+   and _c(_hm(_hw + [("강남점", "점빼기 1회", 3000, "일반", 0)], [("강남점", "점빼기", 1000, 100)]), _hm([("강남점", "점빼기 1회", 3000, "일반", 0)])) == []
+   and _c(_hm(_hw + [("강남점", "점빼기", 2000, "일반", 0), ("강남점", "점빼기 1회", 3000, "일반", 0)], [("강남점", "점빼기", 1000, 100)]),
+          _hm([("강남점", "점빼기 1회", 3000, "일반", 0)])) == [["removed", "점빼기", 2000]]
+   and _c(_hq, _hm([("강남점", "점빼기", 100, "일반", 1)], [("강남점", "점빼기", 1000, 100)])) == [],
+   [_c(_hp, _hq), _c(_hq, _hm([("강남점", "점빼기", 100, "일반", 0)]))])
 import homedata  # noqa: E402
 _hd = {"s": ["", "A", "강남점", "리쥬란 2cc", "평일 낮", "X24", "11:00-16:00", "리쥬란 힐러 2cc"], "keys": [["X24", "스킨부스터", "리쥬란 힐러 2cc"]],
        "meta": {"fam": [], "brands": [["A"]], "updated": "2026-10-16"}, "branches": [[0, 2, 0, None, None, 0, 0, 0, 0, 3]], "colDelta": [2], "groups": [],
