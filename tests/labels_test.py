@@ -1904,6 +1904,64 @@ _, _ks, _, _ = taxonomy.build(rows_at([("리팟레이저 단한번의시술로 �
 ok("... 띄어쓰기만 다른 이름이 된 두 규격은 한 규격(지점이 많은 쪽 id)", [k["n"] for k in _ks] == [8], [(k["label"], k["sub"], k["n"]) for k in _ks])
 _v = taxonomy.variant("태반추출물 주사 (통칭 태반주사) (1회 체험가)", cat="기타")[0]
 ok("'태반추출물 주사 (통칭 태반주사)'는 태반주사 시술군(밴스 4곳이 카드를 따로 만들었음)", _v["fam"] == "placenta" and _v["label"] == "태반주사", (_v["fam"], _v["label"]))
+# 3d) TREATMENT_TAXONOMY §6 후속 (2026-10-19, lsy2825/skin#120 다음)
+# (a) 제품 규칙(FAMILIES)이 띄어 쓴 모델 번호를 양에 붙여 읽었음: '올리디아 120 2cc' → 1202cc, '지방분해주사 2 1부위' → 21부위
+_vt = lambda n, d=None, cat="": taxonomy.variant(n, cat=cat, display=d)[0]
+_o120, _o240, _o, _g = _vt("올리디아 120 2cc"), _vt("올리디아 240 2cc"), _vt("올리디아 2cc"), _vt("올리디아 120 올리디아 120 2cc 1회", "올리디아 120 · 올리디아 120 2cc 1회")
+ok("모델 번호: '올리디아 120 2cc'는 2cc · 모델 120(1202cc 아님), 240·모델 없는 것과 다른 규격",
+   _o120["amount"] == "2cc" and _o120["label"] == "올리디아 120 2cc" and len({_o120["sig"], _o240["sig"], _o["sig"]}) == 3, (_o120["label"], _o120["sig"]))
+ok("... 묶음 제목이 모델 번호를 또 말해도 한 번('올리디아 120 · 올리디아 120 2cc 1회' = '올리디아 120 2cc')", _g["sig"] == _o120["sig"] and _g["label"] == "올리디아 120 2cc",
+   (_g["label"], _g["sig"]))
+_zb = _vt("지방분해주사 2 1부위 (복부/허벅지 외)")
+ok("... '지방분해주사 2 1부위'는 1부위 · 모델 2(21부위 아님)", _zb["amount"] == "1부위" and _zb["label"] == "카복시·지방분해주사 2 1부위", (_zb["label"], _zb["sig"]))
+ok("... 괄호 뒤 양도 같음('올리디아 120(스킨부스터) 1cc'의 120이 빠져 '올리디아 1cc'와 한 규격이던 것)",
+   _vt("올리디아 120(스킨부스터) 1cc")["sig"] != _vt("올리디아 1cc")["sig"] and _vt("올리디아 120(스킨부스터) 1cc")["amount"] == "1cc")
+ok("... 양 앞이 아니면 그대로('中 택 1 1회'), 붙여 쓴 모델('리프테라2 3000샷')도 그대로",
+   _vt("아쿠아필 / 비타민관리 / 소노케어 / 크라이오 中 택 1 1회 체험가")["sig"] == "aquapeel|아쿠아필||비타민소노케어크라이오中택|||1"
+   and _vt("리프테라2 리프테라2 3000샷")["sig"] == "liftera|리프테라2||||3000샷|1")
+# (b) 같은 상품이 갈려 있던 것: 쁨 '바디레이저 · 울핏 100샷' 4곳(표기 2)과 '울핏 100샷' 5곳(표기 1)
+_u1, _u2 = _vt("바디레이저 울핏 100샷", "바디레이저 · 울핏 100샷", "바디"), _vt("울핏 100샷", None, "바디")
+ok("두 글자 옵션: 장비 칸('바디레이저') 아래 장비와 양('울핏 100샷')은 그것만으로 읽음 — '울핏 100샷'과 한 규격", _u1["sig"] == _u2["sig"], (_u1["sig"], _u2["sig"]))
+for _n, _d in [("요정 귀 필러 2cc 수입", "요정 귀 필러 · 2cc 수입"), ("여드름관리 압출 1개", "여드름관리 · 압출 1개"), ("주사류 백옥 1회", "주사류 · 백옥 1회")]:
+    ok(f"... 상품 칸 아래 두 글자는 그대로 칸 제목과 함께('{_d}')", _vt(_n, _d)["sig"] != _vt(_d.split(" · ")[1])["sig"], _vt(_n, _d)["sig"])
+_, _ks, _, _ = taxonomy.build(rows_at([("바디레이저 · 울핏 100샷", "바디", f"p{i}") for i in range(4)] + [("울핏 100샷", "바디", f"q{i}") for i in range(3)]))
+ok("... 빌드: 한 규격 '울핏 100샷'(7곳, '(표기 1)'·'(표기 2)' 없음)", [(k["label"], k["n"]) for k in _ks] == [("울핏 100샷", 7)], [(k["label"], k["n"]) for k in _ks])
+# '리팟레이저 … · 5mm 이내 1개'(상품 낱말이 칸 제목에만: 되살린 규격)와 '리팟레이저 … · 리팟 5mm 이내 1개'(밴스 다른 지점, 같은 300,000)
+_rp = ([("리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 5mm 이내 1개", "피부·레이저", f"a{i}") for i in range(4)]
+       + [("리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 리팟 5mm 이내 1개", "피부·레이저", f"b{i}") for i in range(3)]
+       + [("리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 10mm 이내 1개", "피부·레이저", f"a{i}") for i in range(3)])
+_rows = [dict(r, group="리팟레이저 단 한번의 시술로 흑자 제거! 시술안내") for r in rows_at(_rp)]
+_rk, _ks, _fs, _st = taxonomy.build(_rows)
+ok("이름 + 시술 종류 낱말(키에서): '리팟레이저 5mm 이내 1개' 4곳과 '리팟 5mm 이내 1개' 3곳은 한 키(7곳), 시술군 하나(찾기 규칙은 짧은 이름 '리팟')",
+   sorted((k["label"], k["n"]) for k in _ks) == [("리팟레이저 10mm 이내 1개", 3), ("리팟레이저 5mm 이내 1개", 7)] and [(f["name"], f["rx"]) for f in _fs] == [("리팟레이저", "리팟")]
+   and any(x.get("by") == "keys" and x["into"] == "리팟" for x in _st["fam_alias"]), ([(k["label"], k["n"]) for k in _ks], [(f["name"], f["rx"]) for f in _fs]))
+_, _ks, _fs, _ = taxonomy.build([dict(r, group="리팟레이저 단 한번의 시술로 흑자 제거! 시술안내") for r in rows_at(
+    [("리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 5mm 이내 1개", "피부·레이저", f"a{i}") for i in range(4)]
+    + [("리팟레이저 단 한번의 시술로 흑자 제거! 시술 · 리팟 20mm 이내 1개", "피부·레이저", f"b{i}") for i in range(3)])])
+ok("... 같이 파는 규격이 없으면 따로(시술군 둘)", len(_fs) == 2 and len(_ks) == 2, [(f["name"], f["keys"]) for f in _fs])
+# '울트라콜' / '울트라콜 200'은 따로: 모델 없는 이름이 100인지 200인지 모름(쁨 안산점은 '울트라콜 100 3cc' 230,000 · '울트라콜 200 3cc' 450,000을 같이 팖)
+_, _ks, _, _ = taxonomy.build(rows_at([("울트라콜(PDO 콜라겐부스터) 4cc 1회", "기타", f"{i}점") for i in range(3)] + [("울트라콜200(PDO 콜라겐부스터) 4cc 1회", "기타", f"{i}점") for i in range(3, 6)]))
+ok("'울트라콜 4cc'와 '울트라콜200 4cc'는 따로(합치지 않음)", sorted(k["label"] for k in _ks) == ["울트라콜 4cc", "울트라콜200 4cc"], [k["label"] for k in _ks])
+# (c) 한 페이지에 같은 이름·다른 가격 줄이 이미 비교 규격에 들어 있던 것(2026-10-18 빌드 55개 규격 172줄): 구분할 낱말이 이름에 없으면 키 없음
+def twin_rows(items):
+    """[(option as the site writes it, branch, sale, orig, site tab), …] → clean.csv-like rows of one page per branch"""
+    return [dict(brand="A", branch=b, name=re.sub(r"\[[^\]]*\]\s*", "", o), mname=re.sub(r"\[[^\]]*\]\s*", "", o), option=o, addon="0", kind="일반",
+                 cat="기타", keys="", sale=s, orig=g, src_cat=t, url=f"u/{b}", group="리니어지") for o, b, s, g, t in items]
+_ln = [("리니어지 100샷", f"{i}점", "90000", "170000", "레이저리프팅") for i in range(3)] + [("리니어지 100샷", "동대문", "47000", "85000", "레이저리프팅"),
+                                                                                   ("리니어지 100샷", "동대문", "90000", "170000", "레이저리프팅")]
+_rk, _ks, _, _st = taxonomy.build(twin_rows(_ln))
+ok("한 페이지 두 가격(밴스 동대문 '리니어지 100샷' 47,000 · 90,000, 각자 정가): 비교 규격(3곳)이 있어도 그 두 줄은 키 없음",
+   [(k["label"], k["n"]) for k in _ks] == [("리니어지 100샷", 3)] and _rk[3:] == ["", ""] and _st["twins_alone"] == 2, ([(k["label"], k["n"]) for k in _ks], _rk, _st["twins_alone"]))
+_rk, _ks, _, _ = taxonomy.build(twin_rows([("아르기닌 주사 1회", f"{i}점", "150000", "", "수액") for i in range(3)]
+                                          + [("[EVENT] 아르기닌 주사 1회", "주엽", "99000", "150000", "수액"), ("아르기닌 주사 1회", "주엽", "150000", "", "수액")]))
+ok("... 행사가와 정가('[EVENT] 아르기닌 주사 1회' 99,000 · '아르기닌 주사 1회' 150,000, 톡스앤필)는 한 상품 — 키에 남음(지점 값은 행사가)",
+   [(k["label"], k["n"]) for k in _ks] == [("아르기닌 주사", 4)] and all(_rk), ([(k["label"], k["n"]) for k in _ks], _rk))
+_rk, _ks, _, _ = taxonomy.build(twin_rows([("립쥬란 1cc", f"{i}점", "180000", "250000", "스킨부스터") for i in range(3)]
+                                          + [("립쥬란 1cc", "하남", "119000", "180000", "5일간의 예쁨 특가"), ("립쥬란 1cc", "하남", "180000", "250000", "스킨부스터")]))
+ok("... 행사 칸의 값과 일반 칸의 값(쁨 하남미사점 '5일간의 예쁨 특가' 119,000 · '스킨부스터' 180,000)도 한 상품", [k["n"] for k in _ks] == [4] and all(_rk), _rk)
+_rk, _ks, _, _ = taxonomy.build(twin_rows([("필링몰 10회", f"{i}점", "250000", "", "필링") for i in range(3)]
+                                          + [("[BASIC] 필링몰 10회", "천안", "250000", "450000", "필링"), ("[PREMIUM] 필링몰 10회", "천안", "440000", "", "필링")]))
+ok("... 대괄호 속 등급('[BASIC]' · '[PREMIUM] 필링몰 10회')은 행사가 아님 — 키 없음", [k["n"] for k in _ks] == [3] and _rk[3:] == ["", ""], _rk)
 # the build guard on what ships (appdata.check_family_names, before app/data.json is written)
 import appdata  # noqa: E402
 try:
