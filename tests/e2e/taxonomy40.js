@@ -73,6 +73,48 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
   ok('B11 검색 "강남": 병원(블리비 강남역점)·지역(강남구) 묶음', /블리비 강남역점/.test(t2) && /강남구 · \d+곳/.test(t2), t2.replace(/\s+/g, ' ').slice(0, 120));
   await p.locator('.card.typed .chip', { hasText: '블리비 강남역점' }).click(); await p.waitForTimeout(800);
   ok('B12 병원 칩 → 그 지점 화면', /#branch\//.test(await p.evaluate(() => location.hash)) && /강남역점/.test(await p.locator('#main').innerText()));
+  // 5) the product layer reads the list on screen (2026-10-16 hierarchy audit): in 수도권, a key whose rows name a product only
+  // outside it shows no '섞여 있어요' note, no product chips and no per-row product tag; a key mixed inside 수도권 keeps them
+  // (§4), each chip's count is the list it opens, and the chosen chip — like the chosen spec chip — looks chosen
+  await p.evaluate(() => localStorage.setItem('pc:region', JSON.stringify('수도권'))); await p.reload();
+  await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
+  const pick = await p.evaluate(() => {
+    const { D, BR, ROWS } = App.state(), S = D.s, CAP = ['서울', '경기', '인천'];
+    const live = (r) => !r[15] && r[17] !== 1;
+    const mixed = (rs) => { const named = new Set(); let none = 0; for (const r of rs) { const ps = Classify.products(S[r[2]]); if (!ps.length) none++; ps.forEach((x) => named.add(x)); } return named.size > 1 || (named.size > 0 && none > 0); };
+    const byK = new Map();
+    for (const r of ROWS) if (live(r)) for (const id of (S[r[7]] || '').split(' ').filter(Boolean)) { if (!byK.has(id)) byK.set(id, []); byK.get(id).push(r); }
+    let outside = null, inside = null;
+    for (const [id, rs] of [...byK].sort((a, b) => b[1].length - a[1].length)) {
+      const here = rs.filter((r) => CAP.includes(BR[r[0]].region));
+      if (here.length < 10) continue;
+      if (!outside && mixed(rs) && !mixed(here)) outside = id;
+      if (!inside && mixed(here)) inside = id;
+      if (outside && inside) break;
+    }
+    return { outside, inside };
+  });
+  if (pick.outside) {
+    await go(`compare?k=${pick.outside}`);
+    const st0 = await p.evaluate(() => ({ note: !!document.querySelector('.pricecard .mixnote'), chips: document.querySelectorAll('#clinics .prodmix .chip').length, tags: document.querySelectorAll('#clinics .k.prodk').length, rows: document.querySelectorAll('#clinics li.rk').length }));
+    ok(`B14 수도권 ${pick.outside}(제품명은 수도권 밖에서만): '섞여 있어요'·제품 칩·줄마다 '제품 표기 없음' 없음`, st0.rows > 0 && !st0.note && !st0.chips && !st0.tags, JSON.stringify(st0));
+  } else console.log('SKIP | B14 | 수도권 밖에서만 제품이 섞이는 비교 묶음이 데이터에 없음');
+  if (pick.inside) {
+    await go(`compare?k=${pick.inside}`);
+    ok(`B15 수도권 ${pick.inside}(수도권 안에서 섞임): 가격 위 안내·제품 칩은 그대로`, await p.locator('.pricecard .mixnote').count() === 1 && await p.locator('#clinics .prodmix .chip').count() >= 3);
+    const chips = await p.$$eval('#clinics .prodmix .chip', (xs) => xs.map((x) => x.textContent));
+    const one = chips.slice(1).sort((a, b) => +(/(\d+)곳$/.exec(a) || [0, 0])[1] - +(/(\d+)곳$/.exec(b) || [0, 0])[1])[0];
+    await p.locator('#clinics .prodmix .chip', { hasText: one }).first().click(); await p.waitForTimeout(600);
+    const h3n = +(await p.locator('#clinics h3').innerText()).replace(/\D/g, ''), want = +(/(\d+)곳$/.exec(one) || [0, -1])[1];
+    ok('B16 제품 칩의 곳 수 = 누른 뒤 목록 곳 수(0곳 칩 없음)', h3n === want && h3n > 0 && chips.every((c) => c === '전체' || +(/(\d+)곳$/.exec(c) || [0, 0])[1] > 0), `${one} → ${h3n}곳 · ${chips.join(', ')}`);
+    const look = await p.$$eval('#clinics .prodmix .chip', (xs) => xs.map((x) => [x.getAttribute('aria-checked'), getComputedStyle(x).backgroundColor]));
+    const on = look.filter((x) => x[0] === 'true'), off = look.filter((x) => x[0] === 'false');
+    ok('B17 고른 제품 칩은 고른 모양(aria-checked → 채움), 나머지와 다름', on.length === 1 && off.length > 0 && off.every((x) => x[1] !== on[0][1]), JSON.stringify(look.slice(0, 3)));
+  } else console.log('SKIP | B15~B17 | 수도권 안에서 제품이 섞이는 비교 묶음이 데이터에 없음');
+  await go('compare?k=X24');
+  const vlook = await p.$$eval('.vsteps .vchip', (xs) => xs.map((x) => [x.getAttribute('aria-checked'), getComputedStyle(x).backgroundColor]));
+  const von = vlook.filter((x) => x[0] === 'true'), voff = vlook.filter((x) => x[0] === 'false');
+  ok('B18 지금 비교 중인 규격 칩(쉬운 보기)도 고른 모양', von.length >= 1 && voff.length > 0 && voff.every((x) => von.every((y) => y[1] !== x[1])), JSON.stringify(vlook.slice(0, 3)));
   ok('B13 페이지 오류 0개', !errs.length, errs.slice(0, 3).join(' / '));
   await b.close();
   const pass = R.filter(Boolean).length;

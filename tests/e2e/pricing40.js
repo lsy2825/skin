@@ -17,7 +17,6 @@ const VAT = (r) => (r[12] === 2 ? Math.round(r[3] * 1.1) : r[3]);   // 'VAT 포�
 const Pricing = require(path.join(__dirname, '..', '..', 'app', 'domain', 'pricing.js'));
 const WHEN = Pricing.hasWhenFields(D);
 const timeLimited = (r) => WHEN && Pricing.whenLimited(r[16], S[r[17]]);
-const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).replace(/\.0$/, '')}만` : v.toLocaleString());
 
 (async () => {
   const b = await chromium.launch();
@@ -41,7 +40,9 @@ const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).re
   const rv = [...reg.values()].sort((a, b) => a - b);
   const regTxt = cls.find((t) => t.startsWith('일반가')) || '';
   ok('C1 가격 종류별 범위: 일반가·이벤트가 등 둘 이상, 한 눈금', cls.length >= 2 && await p.locator('.pcls').count() === 1, cls.map((t) => t.split('\n')[0]).join(' / '));
-  ok('C2 일반가 지점 수·범위 = 데이터(지점마다 일반가 최저)', regTxt.includes(`${rv.length}곳`) && regTxt.includes(`${pricey(rv[0])}~${pricey(rv[rv.length - 1])}원`), `기대 ${rv.length}곳 ${pricey(rv[0])}~${pricey(rv[rv.length - 1])} · 화면 ${regTxt.replace(/\s+/g, ' ')}`);
+  // the range in one unit at both ends (Pricing.rangeText, 2026-10-16 hierarchy audit T7: not '1.1만~16.5만원' from 10,890)
+  const rvTxt = Pricing.rangeText(rv[0], rv[rv.length - 1]);
+  ok('C2 일반가 지점 수·범위 = 데이터(지점마다 일반가 최저)', regTxt.includes(`${rv.length}곳`) && regTxt.includes(rvTxt), `기대 ${rv.length}곳 ${rvTxt} · 화면 ${regTxt.replace(/\s+/g, ' ')}`);
   ok('C3 이 카드엔 병원 이름이 없음(객관 표시)', !D.branches.some((x) => cls.join(' ').includes(S[x[1]])));
 
   // 2) price sheet order with the price class
@@ -58,10 +59,11 @@ const pricey = (v) => (v >= 10000 ? `${(v / 10000).toFixed(v % 10000 ? 1 : 0).re
   const tiles = await p.$$eval('.scens .scen', (xs) => xs.map((x) => x.innerText));
   ok('C6 방문 계획 A~D 네 가지, 각각 방문 수', tiles.length === 4 && tiles.every((t) => /방문 \d/.test(t)), tiles.map((t) => t.split('\n').slice(0, 3).join(' ')).join(' / '));
   const hero = (await p.locator('.cartsum .hp').innerText()).replace(/\s+/g, '');
-  const aTotal = (tiles[0].match(/[\d.,]+만?~[\d.,]+만원|[\d,]+원/) || [''])[0].replace(/\s+/g, '');
-  const toWon = (t) => t.includes('만') ? Math.round(parseFloat(t) * 10000) : num(t);
-  const heroLo = hero.split('~')[0], aLo = aTotal.split('~')[0];
-  ok('C7 A(한 곳에서 모두) 범위 = 요약의 예상 총액 범위', aTotal && Math.abs(toWon(aLo) - num(heroLo)) <= 1000, `${aTotal} vs ${hero}`);
+  // plan A's range: in won like the summary above it ('2,022,680~4,936,800원'), the same total never in two units on one
+  // screen (2026-10-16 hierarchy audit T7: the summary said '2,022,680원 ~ 4,936,800원' and plan A '202.3만~493.7만원')
+  const aTotal = (tiles[0].match(/[\d.,]+만?~[\d.,]+만?원|[\d,]+원/) || [''])[0].replace(/\s+/g, '');
+  const heroLo = hero.split('~')[0], aLo = aTotal.split('~')[0], heroHi = hero.split('~')[1] || heroLo, aHi = aTotal.split('~')[1] || aLo;
+  ok('C7 A(한 곳에서 모두) 범위 = 요약의 예상 총액 범위, 같은 원 단위', aTotal && !/만/.test(aTotal) && num(aLo) === num(heroLo) && num(aHi) === num(heroHi), `${aTotal} vs ${hero}`);
   const bTotal = num((tiles[1].match(/[\d,]+원/) || ['0'])[0]), bVisits = +(tiles[1].match(/방문 (\d+)곳/) || [0, 0])[1];
   const cTxt = tiles[2], cTotal = /원/.test(cTxt) ? num((cTxt.match(/[\d,]+원/) || ['0'])[0]) : null;
   ok('C8 B ≤ C ≤ A의 가장 낮은 합계(나눠 갈수록 싸거나 같음)', bTotal > 0 && (cTotal == null || (bTotal <= cTotal && cTotal <= num(heroLo) * 1.0 + 1000)), `B ${bTotal} · C ${cTotal} · A ${heroLo}`);
