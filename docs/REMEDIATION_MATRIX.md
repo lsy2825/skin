@@ -111,6 +111,10 @@
 | A14 가격 변동 지점 단위(C #100) | 해결(#101) | 브라우저 | audit40 `reclHit`(`meta.reclBranches`) | e2e audit40 | — |
 | 새 장비·제품은 첫 방문 아님(C #99) | 해결(#102) | 단위·브라우저 | `Spec.dropNewItem`(`build2/clean.py` NEW_ITEM과 같은 식), `classify` | spec.test·classify.test, e2e new_item | — |
 | 견적 반복 가격·받아 봤어요·방문일·기간 확인(사용자 결정) | 해결(#103·#105) | 단위·브라우저 | `Pricing.condClass`·`lineCost`·`periodOver`, 견적 줄 `done`, `r[22]` | pricing.test, e2e cart_repeat | 로그인을 켜면 서버 견적 칸에 `done`(A에게 부탁) |
+| 위계 점검 묶음 1~6(6.0 디자인 개선 표·규칙 1~6) | 해결(lsy2825/skin#115·#116·#123·#124·#125·#135·#136) | 단위·브라우저 | 선택 칩·제품 섞임 지역·조건 배지 한 색·중간값 한 기준(`Pricing.rangeParts`), 담기 대상, 공통 더 보기(`Stats.more`)·길이 예산, 접기, 고정 머리글, 같은 모양, 글자·색·간격 토큰 | e2e length_budget·hier_folds·sticky_head·same_shape·type_steps·color_roles·space_steps | 순번 28(C 분야 칸)·36(화면별 분리 뒤) |
+| 이름이 같은 시술군(C #114) | 해결(#119) | 단위·브라우저 | `Spec.kbFinder`(겹치는 이름은 fid로), 사전 목록 분야 표시 | spec.test | C #120으로 이름 겹침 0, 빌드 가드 |
+| 알림 다시 기준 잡기(C #112) | 해결(#121) | 단위·브라우저 | `Intel.reclMark`·`reclRebase`·`rebaseAlert`, 알림 `a.rm` | intel.test, e2e audit40 B4b~d | C `meta.reclBuilt`가 오면 'rebuilt' 임시 규칙 꺼짐 |
+| 재방문 가격(C #111) | 해결(#134) | 단위·브라우저 | `Pricing.isRevisit`·`isTrial`·`canTake(x, done, visited)`, 다녀온 병원(store 'visited') | pricing.test, e2e cart_repeat | 문구 C 확인, 다녀온 병원은 이 기기에만(로그인 켤 때 A) |
 
 ## C — 6.0 데이터(채팅 C, 2026-10-15)
 
