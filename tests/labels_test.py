@@ -2449,6 +2449,74 @@ _rk, _ks, _, _st = taxonomy.build(twin_rows([("아르기닌 주사 1회", f"{i}�
                                             + [("아르기닌 주사 이벤트 1회", "주엽", "99000", "150000", "수액"), ("아르기닌 주사 1회", "주엽", "150000", "", "수액")]))
 ok("... 이름 속 '이벤트'(대괄호 밖)도 행사가로 읽음 — 두 줄 다 키에 남음(4곳)", [(k["label"], k["n"]) for k in _ks] == [("아르기닌 주사", 4)] and all(_rk)
    and _st["twins_alone"] == 0, ([(k["label"], k["n"]) for k in _ks], _rk, _st["twins_alone"]))
+# 3e) 검수 2026-10-19: 직접 만든 비교 묶음의 크기·개수 — X33 '점 빼기 1개 (2mm 이하)'에 '2mm 이상' 86줄(블리비 '얼굴 점빼기(2mm 이상)
+# 개당' 58줄, 5,000~10,000원)이 들어가 지점 최저·중간값이 2mm 넘는 점 가격으로 나올 수 있었음(블리비 대구 동성로점: '2mm 이하' 줄은
+# 검토 대기, X33은 '2mm 이상' 5,000). 같은 실수: X34 '염증주사 1개'에 'N개까지·N개 미만' 묶음 가격, X12 300샷·X20 10KJ에 다른 양을 적은 메모
+_K = {k[0]: k for k in xkeys.X}
+_x = lambda kid, n: xkeys.match(_K[kid], n)
+for n in ["얼굴 점빼기(2mm 이상) 개당", "점제거 (2mm이상)", "점제거 1개 (2mm 이상 일반점)", "점제거 (1mm 이상의 일반점)", "점 제거 1개 (0.2cm 이상)",
+          "점 제거 1개 (3mm이하)", "co2 점제거 (2~3mm)", "점 1개 (4mm기준)", "얼굴 점 제거 (중) 1개 (2mm 이상 *부가세 10% 별도)"]:
+    ok(f"X33 '2mm 이하'에 더 큰 점 가격이 안 들어감: '{n}'", not _x("X33", n))
+for n in ["점 1개 (중)", "점 1개 중", "점제거(중) 1개", "점제거 大", "점 제거(大)", "점, 비립종, 사마귀 大"]:
+    ok(f"X33: mm 없이 中·大·중·대인 점도 안 들어감: '{n}'", not _x("X33", n))
+for n in ["점/비립종/사마귀/쥐젖 비립종 1개", "얼굴 점빼기 편평사마귀 개당", "점 제거 혈관점 개당", "혈관점제거 1개", "잡티 / 점 제거 체리혈관종 (어븀 or co2) 1개",
+          "점제거 편평사마귀/비립종/쥐젖/피지샘증식증/혈관종 (1개)", "점,편평사마귀,비립종,쥐젖제거 1회", "얼굴or목) 전체 점 제거 (리터치 있음)", "아이스점빼기 풀페이스",
+          "점제거(2mm이하/5개까지/얼굴전체/바디제외) (카톡플친 적용가)"]:
+    ok(f"X33: 다른 병변·얼굴 전체·여러 개 가격은 안 들어감: '{n}'", not _x("X33", n))
+for n in ["얼굴 점빼기(2mm 이하) 개당", "점제거小 (2mm이하)", "점 제거 1개 (0.2cm 이하)", "어븀 점제거 1~2mm", "점제거(중, 1-2mm) 1개", "점 1개 (2mm기준)",
+          "점제거(소, 1mm미만) 1개", "점 1개 (소)", "점제거 1개당", "점 제거 얼굴 개당", "[1회 체험가] 점제거 1개 (2mm이하)", "얼굴점제거 개당 (2mm 이하/5개한정)"]:
+    ok(f"X33: 2mm 이하·작은 점·크기 없는 점 하나는 그대로: '{n}'", _x("X33", n))
+for n in ["염증주사 5개까지", "염증주사 10개 미만", "얼굴 염증주사 1-5개 미만", "염증주사 (1회체험가/3개 이하)", "염증주사 [1~3부위]", "염증주사 5부위 이하",
+          "염증주사(얼굴,목 중 1부위 전체/최대 10개 까지)", "점제거ㅣ염증주사 점제거(2mm 이하, 최대 5개까지)"]:
+    ok(f"X34 '염증주사 1개'에 여러 개 묶음 가격이 안 들어감: '{n}'", not _x("X34", n))
+for n in ["염증주사 1개", "염증주사 1부위", "염증주사(여드름 진정주사) 개당 - 최대 10개", "[EVENT] 염증주사 1부위 (1부위 추가 시 5000원)"]:
+    ok(f"X34: 하나 가격은 그대로(개당에 붙은 '최대 N개'는 구매 한도): '{n}'", _x("X34", n))
+ok("X12 300샷: '100샷 (*최대 300샷 가능)'은 100샷 가격(X11에만)", not _x("X12", "슈링크유니버스 100샷 (첫방문) (*최대 300샷 가능)")
+   and _x("X11", "슈링크유니버스 100샷 (첫방문) (*최대 300샷 가능)"))
+ok("X20 10KJ: '3만줄(1만줄당 43,000원)'은 3만줄 가격 — 괄호 속 단가는 양이 아님", not _x("X20", "<온다리프팅 초 !> 3만줄(1만줄당 43,000원)")
+   and _x("X20", "온다리프팅 1만줄") and _x("X20", "온다 10KJ (최대30KJ) (카톡플친 적용가)"))
+ok("... 단가가 상품 자체면 그대로('슈링크 100샷당 9,900원', '울쎄라 100샷당')", _x("X11", "슈링크 100샷당 9,900원") and _x("X13", "울쎄라 100샷당"))
+_ms = getattr(xkeys, "mole_size", None)
+ok("X33 크기 읽기(xkeys.mole_size): '2mm 이하' 2 · '2mm 이상' 무한 · '0.2cm 이하' 2 · '2~3mm' 3 · '(중)' 무한 · 크기 없음 None",
+   _ms and [_ms(n, xkeys.comp(n)) for n in ["점제거 (2mm 이하)", "점제거 (2mm 이상)", "점제거 (0.2cm 이하)", "점제거 (2~3mm)", "점 1개 (중)", "점제거 1개당"]]
+   == [2, float("inf"), 2, 3, float("inf"), None])
+# … and the auto keys of 점 빼기 read the same sizes (taxonomy._mole_size): with X33 holding only 2 mm or less, the rows that left it made
+# auto keys of their own — '점 1개 (소)·(중)·(대)·(특대)' one '점 빼기 1개' (5,000~50,000), '(2mm 이상)'·'(2mm이하)' one '점 빼기 2mm 1개'
+_sig = lambda n: (taxonomy.variant(n, False, "일반", "피부", n)[0] or {}).get("sig")
+for a, b in [("점 1개 (소)", "점 1개 (중)"), ("점 1개 (중)", "점 1개 (대)"), ("점 1개 (대)", "점 1개 (특대)"), ("점 제거(小)", "점 제거(大)"),
+             ("얼굴 점빼기(2mm 이하) 개당", "얼굴 점빼기(2mm 이상) 개당"), ("점제거 1개 (2mm이하)", "점제거 1개 (2mm 이상 일반점)"),
+             ("점 제거 1개 (5mm이하)", "점제거(5mm이상) 1개"), ("점제거 1개", "점 제거 1개 (0.2cm 이상)"),
+             ("점/비립종/사마귀/쥐젖 · 사마귀 1개", "점/비립종/사마귀/쥐젖 · 사마귀 1개 (바디부위)")]:
+    ok(f"점 빼기 자동 묶음: '{a}'와 '{b}'는 다른 규격", _sig(a) and _sig(b) and _sig(a) != _sig(b), (_sig(a), _sig(b)))
+_lb = lambda n: (taxonomy.variant(n, False, "일반", "피부", n)[0] or {}).get("label")
+ok("점 빼기 규격 이름: '2mm 이상'·'中 2mm 이상'·'大 5mm 이상'·'中 1개' — '빼기 빼기' 없음",
+   [_lb(n) for n in ["얼굴 점빼기(2mm 이상) 개당", "점제거 中 (2mm이상)", "점제거 大 (5mm이상)", "점 1개 (중)"]]
+   == ["점 빼기 2mm 이상", "점 빼기 中 2mm 이상", "점 빼기 大 5mm 이상", "점 빼기 中 1개"],
+   [_lb(n) for n in ["얼굴 점빼기(2mm 이상) 개당", "점제거 中 (2mm이상)", "점제거 大 (5mm이상)", "점 1개 (중)"]])
+# the build this checkout made (data2/clean.csv — the factory and pr-build run this file after their build): every X33 row is one mole
+# of 2 mm or less, every X34 row one spot — read with words of its own, not with xkeys.match
+_cp = os.path.join(ROOT, "data2", "clean.csv")
+if os.path.exists(_cp):
+    _cr = list(csv.DictReader(open(_cp, encoding="utf-8")))
+    _big = re.compile(r"\d(?:\.\d+)?\s*(?:mm|cm)\s*(?:이상|초과)|(?:[3-9]|\d{2,})(?:\.\d+)?\s*mm|0\.[3-9]\s*cm|[~\-]\s*[3-9]\s*mm|[中大]|\((?:중|대|특대)\)|사마귀|비립종|쥐젖|혈관|전체")
+    _w = [(r["brand"], r["branch"], r["name"]) for r in _cr if "X33" in r["keys"].split() and _big.search(r["mname"])]
+    ok(f"data2/clean.csv: X33 {sum('X33' in r['keys'].split() for r in _cr)}줄 모두 2mm 이하 점 하나(더 큰 점·다른 병변·얼굴 전체 없음)", not _w, _w[:5])
+    _many = re.compile(r"\d+\s*(?:개|부위)\s*(?:까지|미만|이하)|\d+\s*[-~]\s*\d+\s*(?:개|부위)")
+    _w = [(r["brand"], r["branch"], r["name"]) for r in _cr if "X34" in r["keys"].split() and _many.search(r["mname"]) and "개당" not in r["mname"]]
+    ok(f"data2/clean.csv: X34 {sum('X34' in r['keys'].split() for r in _cr)}줄에 'N개까지·N개 미만' 묶음 가격 없음", not _w, _w[:5])
+    # every 점 빼기 auto key holds one size: the same lower bound ('… 이상' or not) and the same size word (or none)
+    _vp = os.path.join(ROOT, "data2", "variants.json")
+    if os.path.exists(_vp):
+        _mole = {k["id"] for k in json.load(open(_vp, encoding="utf-8"))["keys"] if k.get("fam") == "mole"}
+        _sz = lambda n: (xkeys.mole_lower(xkeys.comp(n)) is not None, "".join(sorted(xkeys.mole_words(n))) if len(xkeys.mole_words(n)) == 1 else "")
+        _by = {}
+        for r in _cr:
+            for k in r["keys"].split():
+                if k in _mole:
+                    _by.setdefault(k, {}).setdefault(_sz(r["mname"]), r["name"])
+        _mix = {k: list(m.values()) for k, m in _by.items() if len(m) > 1}
+        ok(f"data2/clean.csv: 점 빼기 자동 묶음 {len(_mole)}개가 저마다 한 크기('이상'·中·大·특대가 섞이지 않음)", not _mix, list(_mix.items())[:3])
+
 # the build guard on what ships (appdata.check_family_names, before app/data.json is written)
 import appdata  # noqa: E402
 try:
