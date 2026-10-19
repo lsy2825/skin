@@ -1133,7 +1133,7 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
     assert.ok(p.MAX_SUBS * 2 <= perWeek * 0.8, `${plan}: ≈ 2 pushes per phone a week with ≥ 20% headroom`);
     assert.ok(p.MAX_SUBS <= perDay, `${plan}: every phone can be pushed in one day`);
   }
-  assert.match(cfg, /"PLAN": "free"/, "wrangler.jsonc picks the free profile until the account is on Workers Paid (11th review; the limits come from src/worker.js PLANS)");
+  assert.match(cfg, /"PLAN": "paid"/, "wrangler.jsonc picks the paid profile now that the account is on Workers Paid (launch step 9; the limits come from src/worker.js PLANS)");
 });
 
 test("planted failing expiring rows (the earliest end dates) cannot hold the queue: real phones are sent, planted rows go after 3 failures", T, async () => {
@@ -3056,7 +3056,7 @@ test("11th review (the 06:00 share, catch-ups): K − 1 computations and a 'rese
   }
 });
 
-test("10th/11th review (plan profile): PLAN picks the limits — free in wrangler.jsonc until the account is on Workers Paid, free when PLAN is missing or anything else; each var still overrides within the platform's own limits; no wrangler limits block", T, async () => {
+test("10th/11th review (plan profile): PLAN picks the limits — paid in wrangler.jsonc since the account is on Workers Paid (launch step 9), free when PLAN is missing or anything else; each var still overrides within the platform's own limits; no wrangler limits block", T, async () => {
   assert.deepEqual(PLANS.free, { SEND_LIMIT: 40, MAX_SUBS: 1750, NEW_PER_DAY: 500, COMPUTES_PER_DAY: 3 }, "the 9th review's free values, MAX_SUBS 1,750 since the 11th (D1 Free's day with 5% left)");
   assert.deepEqual({ SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, COMPUTES_PER_DAY }, PLANS.free, "the old names = the free profile");
   assert.deepEqual(PLANS.paid, { SEND_LIMIT: 200, MAX_SUBS: 15000, NEW_PER_DAY: 1500, COMPUTES_PER_DAY: 12 });
@@ -3064,13 +3064,14 @@ test("10th/11th review (plan profile): PLAN picks the limits — free in wrangle
   assert.equal(planOf({ PLAN: "paid" }), "paid");
   assert.deepEqual(limits({ PLAN: "paid", MAX_SUBS: "9000", COMPUTES_PER_DAY: "500", SEND_LIMIT: "100000" }), { plan: "paid", SEND_LIMIT: 500, MAX_SUBS: 9000, NEW_PER_DAY: 1500, COMPUTES_PER_DAY: 99 });
   assert.deepEqual(limits({ SEND_LIMIT: "60", NEW_PER_DAY: "x" }), { plan: "free", SEND_LIMIT: 45, MAX_SUBS: 1750, NEW_PER_DAY: 500, COMPUTES_PER_DAY: 3 }, "free: ≤ 45 pushes a run (50 outside requests)");
-  // the deployed config: PLAN "free" until the account is on Workers Paid (11th review: merging deploys at once; the launch
-  // switches the account, then a one-line PR sets "paid"), and no per-limit var (a set one would beat the profile), no
+  // the deployed config: PLAN "paid" since the account is on Workers Paid (launch step 8 first, then this one-line PR — 11th
+  // review: "paid" on a Free account is wrong), and no per-limit var (a set one would beat the profile), no
   // "limits" block, the same ten-minute cron for both profiles
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   const code = cfg.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
-  assert.match(code, /\n {4}"PLAN": "free",?\n/);
-  assert.match(cfg, /until\s+(?:\/\/\s+)?the account IS on Workers Paid/, "the comment says when it becomes paid");
+  assert.match(code, /\n {4}"PLAN": "paid",?\n/);
+  assert.match(cfg, /now that the account IS on\s+(?:\/\/\s+)?Workers Paid/, "the comment says why it is paid");
+  assert.match(cfg, /≤ 1,750 subscriptions first/, "the comment says how to go back to free safely");
   for (const v of ["SEND_LIMIT", "MAX_SUBS", "NEW_PER_DAY", "COMPUTES_PER_DAY"]) assert.equal(new RegExp(`"${v}"\\s*:`).test(code), false, `wrangler.jsonc sets no ${v}: the profile decides`);
   assert.equal(/"limits"\s*:/.test(code), false, "no limits block (a Free account refuses it at deploy)");
   assert.match(code, /"crons": \["\*\/10 23,0-11 \* \* \*"\]/);

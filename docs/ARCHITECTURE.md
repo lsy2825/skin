@@ -188,10 +188,10 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
 **D19. 가격 알림 푸시는 Cloudflare Worker + D1로, 내용 없는 주 1회 묶음으로 보낸다 (2026-10-15, A5; 출시 요금제는 Workers Paid — 2026-10-19 사용자 결정).** 코드: `cf/alerts/`
 - **요금제(10차, 2026-10-19 사용자 결정 — 11차에 켜는 순서를 고침):** 앱은 Cloudflare Workers Paid(계정당 최소 월 $5)로 출시해요. 그런데 이 PR을
   합치는 순간 `cf-alerts`가 Worker를 배포하고(아래 '켜는 순서' 3번), 그때 계정은 아직 무료예요. 그래서 `wrangler.jsonc`의 변수 **`PLAN`은 계정이
-  Workers Paid가 될 때까지 `"free"`**로 둬요(11차 검증 발견 3: `"paid"`로 먼저 배포하면 무료 계정에서 유료 한도 — 실행당 발송 200·D1 하루 계산
+  Workers Paid가 될 때까지 `"free"`**로 뒀고, 계정을 바꾼 뒤 한 줄 PR로 `"paid"`가 됐어요(아래 '켜는 순서' 9번)(11차 검증 발견 3: `"paid"`로 먼저 배포하면 무료 계정에서 유료 한도 — 실행당 발송 200·D1 하루 계산
   12번·구독 15,000 — 가 쓰였어요). 켜는 순서는 **계정을 Workers Paid로 바꿈 → `PLAN`을 `"paid"`로 바꾸는 한 줄 PR을 합침 → 그다음
   `PUBLIC_DEPLOY`를 `on`**이에요(아래 '켜는 순서' 8~10번). `/health`의 `plan`은 이 **설정값만** 보여 줘요 — 계정의 요금제는 Worker가 알 수 없어
-  대시보드 요금제 화면으로만 확인해요. Worker의 한도는 `PLAN`(`"free"` 지금 | `"paid"` 출시)이 고르는 묶음이에요(`src/worker.js`
+  대시보드 요금제 화면으로만 확인해요. Worker의 한도는 `PLAN`(`"paid"` 지금 — Workers Paid 계정 | `"free"` 무료 계정용)이 고르는 묶음이에요(`src/worker.js`
   `PLANS`·`limits`). 칸마다 변수(`SEND_LIMIT`·`MAX_SUBS`·`NEW_PER_DAY`·`COMPUTES_PER_DAY`)로 따로 덮어쓸 수 있어요(플랫폼 한도 안: 발송은 무료 ≤ 45·
   유료 ≤ 500, 계산 ≤ 99). `PLAN`이 없거나 다른 글자면 `free`예요(어느 계정에서도 맞는 쪽). 무료 계정이 배포에서 거절하는 wrangler `limits` 칸은
   두지 않고, 한도는 모두 코드가 지켜요. 무료 계정에서 `"paid"`가 돌면: 실행마다 51번째 푸시부터 런타임이 'Too many subrequests'로 막아요 — 11차부터
@@ -649,7 +649,7 @@ robots.txt 확인은 Source Policy Registry(`scrape/sources.py` → `data2/sourc
      Billing → Billable Usage → Set Budget Alert로 예산 알림을 켜요(예: $1 — 쓰는 양에 따른 금액이 그 값을 넘으면 다음 날 이메일, 사용을 막지는
      않음; Cloudflare가 기본 $10 알림을 만들어 두기도 해요). 확인: **대시보드 요금제 화면에 Workers Paid가 보여요** — 이것만이 확인이에요
      (`/health`의 `plan`은 `wrangler.jsonc`의 `PLAN` 설정값일 뿐 계정 요금제를 모름, 11차 검증).
-  9. **`PLAN`을 `"paid"`로 — A가 한 줄 PR, 사용자가 승인해 합침(8번이 끝난 뒤에만).** `cf/alerts/wrangler.jsonc`의 `"PLAN": "free"`를
+  9. **`PLAN`을 `"paid"`로 — A가 한 줄 PR, 사용자가 승인해 합침(8번이 끝난 뒤에만). 이 PR로 끝남(8번 확인 뒤 합침).** `cf/alerts/wrangler.jsonc`의 `"PLAN": "free"`를
      `"PLAN": "paid"`로 바꾸는 PR이에요(그 PR의 시험이 지금 `"free"`를 확인하는 줄도 함께 고쳐요). 합치면 `cf-alerts`가 다시 배포해요. 확인:
      `/health`가 `"plan":"paid"`(설정값). **8번 전에 합치면 안 돼요:** 무료 계정에서 유료 묶음이 돌면 발송 실행마다 51번째 푸시에서 멈추고(11차부터
      실패로 세지 않고 남은 행을 풀어 다음 실행이 이어 보냄), D1 하루 계산 12번이 무료 하루 한도(100,000줄)를 넘을 수 있어요(넘으면 09:00 KST까지 계정의

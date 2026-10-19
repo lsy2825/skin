@@ -1,5 +1,5 @@
 // 가격 알림 (yoonsiljang-alerts): Web Push subscriptions in D1 and a once-a-week bundled push, Cloudflare Workers Paid (the
-// plan profile below; PLAN "free" fits a Free account).
+// plan profile below; wrangler.jsonc sets PLAN "paid" since the account is on Workers Paid; "free" fits a Free account).
 //   POST   /v1/push/subscribe       {subscription, rules} → 201 {id}       (the phone keeps the id; nothing personal stored)
 //   PUT    /v1/push/rules/{id}      {rules}               → 200 {ok:true} | 404 (unknown id); rules [] DELETES the row
 //                                                            (200 {ok:true}; afterwards that id answers 404)
@@ -18,8 +18,8 @@
 //
 // D1 arithmetic for BOTH plan profiles (re-check when changing the cron, PLANS, PAIR_CAP, LEASE_MS, an index or the start gate).
 // 10th review — a user decision of 2026-10-19: the app launches on Cloudflare Workers PAID ($5 a month). 11th review: the
-// account is still Free when this Worker is first deployed (merging deploys it), so wrangler.jsonc keeps PLAN "free" until
-// the account IS on Workers Paid; the launch is: switch the account → merge a one-line PR setting PLAN "paid" → then
+// account was still Free when this Worker was first deployed (merging deploys it), so wrangler.jsonc kept PLAN "free" until
+// the account WAS on Workers Paid; the launch: switch the account → merge the one-line PR setting PLAN "paid" (done) → then
 // PUBLIC_DEPLOY "on" (GET /health "plan" shows the setting only, never the account's plan). Paid includes, a month (renewed
 // on the subscription date — the worst month has 31 days), FOR THE WHOLE ACCOUNT (cf/metrics shares it): 50 million D1 rows
 // written (then $1.00 a million), 25 billion read (then $0.001 a million), 5 GB stored (then $0.75 a GB-month); Workers 10
