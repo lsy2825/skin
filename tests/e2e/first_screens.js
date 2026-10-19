@@ -36,10 +36,12 @@ const NAV_H = 64;   // the tab bar covers the bottom of the screen
       return { name: vis('.cmphead .cmpt'), range: vis('.pricecard .hp'), add: vis('.cmphead .addbtn'), rangeTxt: (document.querySelector('.pricecard .hp') || {}).innerText || '' }; }, NAV_H);
     ok(`${tag} 비교 첫 화면에 시술명·가격 범위·담기`, first.name && first.range && first.add && /[\d,]+원/.test(first.rangeTxt), JSON.stringify(first));
 
-    // the header stays when the list is scrolled
+    // the header stays when the list is scrolled — folded (위계 점검 9: the title row moves out of view above, so the header's
+    // own top is above the screen): the path (시술 › 규격), 중간값 and 담기 stay on top of the screen
     await p.evaluate(() => window.scrollTo(0, 1200)); await p.waitForTimeout(200);
-    const stuck = await p.evaluate(() => { const r = document.querySelector('.cmphead').getBoundingClientRect(); return Math.round(r.top); });
-    ok(`${tag} 내려도 머리글(시술명·담기)이 위에 남음`, stuck >= 0 && stuck <= 80, `top ${stuck}px`);
+    const stuck = await p.evaluate(() => { const r = (s) => { const e = document.querySelector(s); return e ? e.getBoundingClientRect() : null; };
+      const c = r('.cmphead .crumb'), m = r('.cmphead .hmed'), a = r('.cmphead .addbtn'); return { crumb: c && Math.round(c.top), med: m && Math.round(m.bottom), add: a && Math.round(a.bottom) }; });
+    ok(`${tag} 내려도 머리글(경로의 시술·규격, 중간값, 담기)이 위에 남음`, stuck.crumb >= 0 && stuck.crumb <= 80 && stuck.med > 0 && stuck.med <= 240 && stuck.add > 0 && stuck.add <= 240, JSON.stringify(stuck));
 
     // 3) one tap keeps it
     await p.locator('.cmphead .addbtn').click(); await p.waitForTimeout(300);
