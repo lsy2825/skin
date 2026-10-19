@@ -175,10 +175,11 @@ def changes_since(snap, date, keep, bkeys, prev_date_files):
     return changes, new, gone, os.path.basename(older[-1])[:10], {k: m for k, (_, m) in prev.items()}
 
 
-def held_back(snap, held, before, keep, bkeys):
+def held_back(snap, held, before, keep, bkeys, moved=()):
     """the snapshot to keep: snap, but each held (group index, branch index) — its regular lowest is a price waiting for review
     (build2/appdata.py held: {place: the regular lowest of the other rows there, or None}) — at the lower of that and the price
-    of the snapshot it was compared with (before = {group key: {"brand|branch": price}}), left out where neither is. So the held
+    of the snapshot it was compared with (before = {group key: {"brand|branch": price}}; not where the rules moved a row of that
+    price there, moved = {(brand|branch, group key, price)}: appdata.achg_moved), left out where neither is. So the held
     price is no baseline for the next build: still the same and unapproved there, it is held again; approved, it is a change
     once; back to the old price, nothing happened (appdata.held_price, the same for the comparison ids)"""
     out = {k: [label, dict(m)] for k, (label, m) in snap.items()}
@@ -186,7 +187,8 @@ def held_back(snap, held, before, keep, bkeys):
         k, bk = keep[g], bkeys[b]
         if k not in out:
             continue
-        ps = [p for p in (shown, before.get(k, {}).get(bk)) if p is not None]
+        old = before.get(k, {}).get(bk)
+        ps = [p for p in (shown, None if (bk, k, old) in moved else old) if p is not None]
         if ps:
             out[k][1][bk] = min(ps)
         else:

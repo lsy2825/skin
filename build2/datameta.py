@@ -63,9 +63,9 @@ def resolved(data):
 def waiting(data):
     """the names with a row waiting for review (row[13] = 1): {(brand, branch, name, kind): (the prices the name stands for, {its
     waiting prices})}. It stands for the prices it listed before it waited — the build's review list (meta.about.review, its
-    data2/review.csv) has them as 'was' (every price of that name, '' none: a new name), a list from before that column gives the
-    prices shown with each waiting row's 'before' (the id's or group's price it moved from). None when the list does not have one
-    of the name's waiting rows (200 kept)"""
+    data2/review.csv) has them as 'was' (every price of that name, '' none: a new name, '?' not known), a list from before that column
+    gives the prices shown with each waiting row's 'before' (the id's or group's price it moved from). None when the list does not
+    have one of the name's waiting rows (appdata.REVIEW_KEEP kept) or says '?'"""
     s, brands = data["s"], [b[0] for b in data["meta"]["brands"]]
     br = [(brands[b[0]], s[b[1]]) for b in data["branches"]]
     said = {}
@@ -83,7 +83,7 @@ def waiting(data):
         was, prices = out.get(k, (shown.get(k, []), set()))
         x = said.get((b[0], b[1], n, r[3]))
         try:
-            if x is None or was is None:
+            if x is None or was is None or x.get("was") == "?":
                 was = None
             elif "was" in x:
                 was = sorted({int(p) for p in str(x["was"] or "").split()})
