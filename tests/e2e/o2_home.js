@@ -94,6 +94,27 @@ async function firstVisit(b, { prefs = {}, breakHome = false } = {}) {
     ok('페이지 오류 없음(검색)', !errs.length, errs.join(' | '));
     await ctx.close(); }
 
+  // 3b) 담기 on a home card before the full file: waits, then puts in that card's own spec — home.json numbers its keys
+  //     differently from data.json, so the key is found again by its id (위계 점검 1: one tap, no option sheet)
+  //     The card is one whose key has another number in data.json than in home.json, or the test could not tell the two apart
+  { const { ctx, p, errs, release } = await firstVisit(b);
+    await p.waitForSelector('.pc', { timeout: 20000 });
+    const full = (await (await fetch(BASE + 'data.json')).json()).keys.map((k) => k[0]);   // from Node: the page's request is held
+    const pick = await p.evaluate((full) => { const { D } = window.App.state();
+      return [...document.querySelectorAll('#main .pwrap')].findIndex((w) => { const l = w.querySelector('.pc .l').textContent.trim(), hi = D.keys.findIndex((k) => k[2] === l);
+        return hi >= 0 && full.indexOf(D.keys[hi][0]) !== hi; }); }, full);
+    ok('홈 카드 중 home.json과 data.json의 키 번호가 다른 카드가 있음', pick >= 0, `카드 ${pick}`);
+    const card = p.locator('#main .pwrap').nth(Math.max(0, pick)), label = (await card.locator('.pc .l').innerText()).trim();
+    await card.locator('.addbtn').click(); await p.waitForTimeout(300);
+    const waitMsg = await p.locator('#toast').innerText(), early = await p.evaluate(() => (JSON.parse(localStorage.getItem('pc:carts') || '[]')[0] || { items: [] }).items.length);
+    ok('홈 카드 담기는 전체 가격을 기다림', /전체 가격을 받는 대로 담을게요/.test(waitMsg) && early === 0, waitMsg);
+    release();
+    const done = await p.waitForFunction(() => { const c = JSON.parse(localStorage.getItem('pc:carts') || '[]'); return c[0] && c[0].items.length === 1 && window.App.Data.SYNC.have; }, null, { timeout: 60000 }).then(() => true).catch(() => false);
+    const got = await p.evaluate(() => { const it = JSON.parse(localStorage.getItem('pc:carts'))[0].items[0]; const k = window.App.data().keys.find((x) => x[0] === it.k); return k && k[2]; }).catch(() => null);
+    ok('전체 가격이 오면 그 카드의 규격이 창 없이 담김', done && got === label && await p.locator('.sheet').count() === 0, `${got} / ${label}`);
+    ok('페이지 오류 없음(홈 카드 담기)', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+
   // 4) home.json changed in transit (checksum ≠ meta): not used, the app waits for data.json as before
   { const { ctx, p, errs, release } = await firstVisit(b, { breakHome: true });
     await p.waitForTimeout(2500);

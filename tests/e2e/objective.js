@@ -70,7 +70,9 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     const ql = await p.locator('.qline').count();
     ok('장바구니 견적: 할인율(N%↓)·줄 그은 정가 없음', ql > 0 && !/\d%↓/.test(await p.locator('#main').innerText()) && await p.locator('.qline s').count() === 0, `견적 줄 ${ql}개`);
     ok('병원별 비교: 기본 지역·이름순, "가장 싼 곳" 없음', (await p.locator('.sortchips .chip[aria-checked="true"]').textContent()).includes('지역·이름순') && !/가장 싼 곳|1위보다/.test(await p.locator('#main').innerText()));
+    // the add sheet: a home card's 담기 puts its spec in with one tap (위계 점검 1); pressed again ('담김') it opens the sheet
     await p.goto(BASE + '#home'); await p.waitForTimeout(400); await p.locator('#main .addbtn').first().click(); await p.waitForTimeout(300);
+    if (!(await p.locator('.sheet').count())) { await p.locator('#main .addbtn').first().click(); await p.waitForTimeout(300); }
     const add = await p.locator('.sheet').innerText();
     ok('담기 창: "가장 싼 곳"·병원 이름 대신 지점 수·범위·중간값', !/가장 싼 곳/.test(add) && /\d+곳 · [\d,]+원~[\d,]+원 · 중간값/.test(add), add.split('\n').filter((x) => /중간값|가장 싼/.test(x)).join(' / '));
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);

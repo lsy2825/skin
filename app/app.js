@@ -44,10 +44,11 @@
     copyText(url, "링크를 복사했어요 — 받는 사람도 비밀번호가 필요해요");
   }
   // 죠미's toast: her face, one short line, optionally one action (되돌리기 / 관심 보기 / 알림 관리). One toast at a time:
-  // a new one replaces the last, so the same success is never stacked.
-  function jomiToast(expr, text, act) {
+  // a new one replaces the last, so the same success is never stacked. sub: 죠미's own line under a fixed first line
+  function jomiToast(expr, text, act, sub) {
     const el = $("#toast");
-    const kids = [jprefs().freq === "off" ? null : h("img", { class: "mascot", src: jomiSrc(expr, "face"), alt: "", width: 24, height: 24, "data-expr": expr }), h("span", { class: "tt" }, text)].filter(Boolean);   // 죠미 설정: 끄기 → no face
+    const kids = [jprefs().freq === "off" ? null : h("img", { class: "mascot", src: jomiSrc(expr, "face"), alt: "", width: 24, height: 24, "data-expr": expr }),
+      h("span", { class: "tt" }, sub ? [h("b", { class: "tm" }, text), h("span", { class: "ts" }, sub)] : text)].filter(Boolean);   // 죠미 설정: 끄기 → no face
     if (act) kids.push(h("button", { type: "button", onclick: () => { el.classList.remove("on", "act"); toastStop(); act[1](); } }, act[0]));
     el.replaceChildren(...kids); el.classList.add("on", "jt"); el.classList.toggle("act", !!act);
     toastTimer(act ? 5000 : 2600, ["on", "act"]);
@@ -640,22 +641,37 @@
     if (more || (n && el.dataset.n === "0")) { el.classList.remove("bump"); void el.offsetWidth; el.classList.add("bump"); }
     el.dataset.n = n;
   }
-  // target: the spec named on the button ('담기 · 2cc') where the button alone must say what it adds (6.0: '+담기가 뭘 담는지')
-  const addBtn = (k, target) => {
+  // the spec named on a 담기 button ('담기 · 2cc'): the button alone must say what it adds (6.0: '+담기가 뭘 담는지'). The same
+  // short name everywhere the key's own button shows (compare header, home cards, quick compare); the full name is in aria-label.
+  // A family's only option is called '기본' (348 of them): that names nothing, so the key's own name ('코 조각주사') goes there
+  const addTarget = (k) => (famOf[k] && famOf[k].label !== "기본" ? famOf[k].label : KEYS[k].label);
+  const addBtn = (k) => {
+    const target = addTarget(k), id = KEYS[k].id;
     const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false",
-      "aria-label": target ? `${inCart(k) ? "담김" : "담기"} · ${target} — ${KEYS[k].label} ${inCart(k) ? "횟수 바꾸기" : "내 견적에 담기"}` : `${KEYS[k].label} ${inCart(k) ? "담김 · 횟수 바꾸기" : "내 견적에 담기"}` },
-      icon(inCart(k) ? "check" : "plus", "sm"), target ? h("span", {}, `${inCart(k) ? "담김" : "담기"} · ${target}`) : inCart(k) ? "담김" : "담기");
-    // with a target (the compare header): the spec on screen goes in with one tap (audit U11 — no second spec picker);
-    // once it is in, the same button opens the sheet to change sessions or take it out
-    b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => (target && !inCart(k) ? quickAdd(k) : addKeySheet(k)), "전체 가격을 받는 대로 담기 화면을 열게요"); });
+      "aria-label": `${inCart(k) ? "담김" : "담기"} · ${target} — ${KEYS[k].label} ${inCart(k) ? "횟수 바꾸기" : "내 견적에 담기"}` },
+      icon(inCart(k) ? "check" : "plus", "sm"), h("span", {}, h("span", { class: "av" }, `${inCart(k) ? "담김" : "담기"} · `), target));   // .av: hidden on 320px home cards
+    // the spec on screen goes in with one tap (audit U11, 위계 점검 1 — no second spec picker); once it is in, the same button
+    // opens the sheet to change sessions, the option or the cart, or to take it out. Queued until the full file is in (a home
+    // card on a first visit): the key is found again by its id there, since home.json numbers its keys differently
+    b.addEventListener("click", (e) => { e.stopPropagation(); whenFull(() => { const kk = KI[id]; if (kk == null) return; if (inCart(kk)) addKeySheet(kk); else quickAdd(kk); }, inCart(k) ? "전체 가격을 받는 대로 담기 화면을 열게요" : "전체 가격을 받는 대로 담을게요"); });
     return b;
   };
+  // one toast for every way into 내 견적 (6.0 표 3행, 위계 점검 22): a fixed line saying what went in and how many the cart now
+  // holds, 죠미's line under it. With two or more 내 견적 the line names the cart, and only then does 죠미 talk about the others.
+  // 죠미 설정 '끄기': the fixed line alone — her face and her words both stay out
+  function addedToast(cart, what, undo) {
+    const many = st.carts.length > 1, t = what.length > 30 ? `${what.slice(0, 29)}…` : what;
+    jomiToast("happy", `${many ? `'${cart.name}'에` : "내 견적에"} 담았어요 · ${t} (${cart.items.length}개)`, ["되돌리기", undo],
+      jprefs().freq === "off" ? null : many ? jline("addedMany") : jline("added"));   // literal intents: tests/jomilines.test.js reads them
+  }
   function quickAdd(k) {
     const c = cur(), it = { t: "k", k: KEYS[k].id, q: 1 };
     c.items.push(it); track("cart_add", { k: it.k }); metric("keep_cart"); saveCarts(); render();
-    jomiToast("happy", `${jline("added") || "내 견적에 담았어요"} (${c.items.length}개)`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
+    addedToast(c, KEYS[k].label, () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); });
   }
-  const rowAddBtn = (i) => h("button", { class: "addbtn", type: "button", onclick: (e) => { e.stopPropagation(); addRowSheet(i); } }, icon("plus", "sm"), "담기");
+  // a price row's 담기: the row already shows what it is, the name says it for screen readers (위계 점검 21 — '담기' ×400)
+  const rowAddBtn = (i) => h("button", { class: "addbtn", type: "button", "aria-label": `${S[ROWS[i][2]]} · ${bname(ROWS[i][0])} 내 견적에 담기`,
+    onclick: (e) => { e.stopPropagation(); addRowSheet(i); } }, icon("plus", "sm"), "담기");
 
   // bottom sheet
   // keyboard: focus moves into the sheet, Tab stays inside, Esc closes, focus returns to the opener
@@ -701,7 +717,7 @@
       h("div", { class: "row" }, h("h3", {}, title), h("span", { class: "sp" }), h("button", { class: "tbtn-i", type: "button", "aria-label": "닫기", style: "margin:-6px -8px 0 0", onclick: () => close() }, icon("x"))), body(close));
     bg.append(sh);
     document.body.append(bg);
-    setTimeout(() => { const first = sh.querySelector("input, select, textarea") || sh.querySelectorAll("button")[1] || sh.querySelector("button"); if (first) first.focus(); }, 30);
+    setTimeout(() => { const bs = [...sh.querySelectorAll("button")].filter((x) => !x.disabled), first = sh.querySelector("input, select, textarea") || bs[1] || bs[0]; if (first) first.focus(); }, 30);   // a disabled '하나 빼기' cannot take focus
     return close;
   }
   // small text-input sheet (cart names …) with inline validation instead of window.prompt
@@ -722,9 +738,12 @@
     return h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "담을 내 견적"),
       h("div", { class: "chips" }, st.carts.map((c, i) => h("button", { class: "chip", type: "button", "aria-pressed": i === sel ? "true" : "false", onclick: () => set(i) }, c.name))));
   }
-  // add a comparable procedure: pick the option (variant), sessions and cart
+  // add a comparable procedure: pick the option (variant), sessions and cart. Opened from a '담김' button (the key is already
+  // in this 내 견적): what was asked for comes first — its sessions (as they are now), the cart, 빼기 / n회로 바꾸기 — and the
+  // family's other options fold under it (위계 점검 1 검토: 30 options pushed the buttons off the screen)
   function addKeySheet(k0) {
-    const s = { k: k0, q: 1, ci: st.ci };
+    const had = cur().items.find((c) => c.t === "k" && c.k === KEYS[k0].id);
+    const s = { k: k0, q: had ? had.q || 1 : 1, ci: st.ci, more: false };
     const fam = famOf[k0];
     sheet(fam ? fam.f.name : KEYS[k0].label, (close) => {
       const box = h("div", {});
@@ -736,11 +755,13 @@
         // ② off: the compare header's numbers (keyNums — same basis, same branch count, same '중간값'), no clinic named
         const top = HL ? numsOf(s.k)[0] : null, N = HL ? null : numsOf(s.k);
         const have = st.carts[s.ci].items.find((c) => c.t === "k" && c.k === KEYS[s.k].id);
+        const opts = fam && fam.f.vs.length > 1 ? h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = HL ? numsOf(v.k) : null, vN = HL ? null : numsOf(v.k);
+          return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
+            h("b", {}, v.label), h("span", { class: "num" }, vr ? (vr.length ? `최저 ${won(vr[0].p)}` : "가격 없음") : vN ? `중간값 ${won(vN.med)}` : "가격 없음")); })) : null;
+        const optFold = had && opts ? h("details", { class: "fold small optfold", open: s.more, ontoggle: (e) => { s.more = e.currentTarget.open; } },
+          h("summary", {}, `다른 옵션 ${fam.f.vs.length - 1}개`), opts) : null;
         fill(box,
-          fam && fam.f.vs.length > 1 ? h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "옵션"),
-            h("div", { class: "opts" }, fam.f.vs.map((v) => { const vr = HL ? numsOf(v.k) : null, vN = HL ? null : numsOf(v.k);
-              return h("button", { class: "opt", type: "button", "aria-pressed": v.k === s.k ? "true" : "false", onclick: () => { s.k = v.k; paint(); } },
-                h("b", {}, v.label), h("span", { class: "num" }, vr ? (vr.length ? `최저 ${won(vr[0].p)}` : "가격 없음") : vN ? `중간값 ${won(vN.med)}` : "가격 없음")); }))) : null,
+          opts && !had ? h("div", {}, h("div", { class: "sub", style: "margin:12px 0 6px" }, "옵션"), opts) : null,
           h("div", { class: "row", style: "margin-top:14px" }, h("div", {}, h("div", { class: "sub" }, "횟수(회차)"), h("div", { class: "sub", style: "font-size:13px" }, "체험가·한정가·첫 방문가는 첫 회만 그 가격")),
             h("span", { class: "sp" }), qtyEl(() => s.q, (v) => { s.q = v; paint(); })),
           cartPicker(s.ci, (i) => { s.ci = i; paint(); }),
@@ -755,8 +776,9 @@
               if (have) have.q = s.q; else { c.items.push(it); track("cart_add", { k: it.k }); metric("keep_cart"); }
               saveCarts(); close(); render();
               if (have) toast("횟수를 바꿨어요");
-              else jomiToast("happy", jline("added") || `'${c.name}'에 담았어요`, ["되돌리기", () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); }]);
-            } }, have ? `${s.q}회로 바꾸기` : `${s.q}회 담기`)));
+              else addedToast(c, KEYS[s.k].label, () => { c.items = c.items.filter((x) => x !== it); saveCarts(); render(); toast("되돌렸어요"); });
+            } }, have ? `${s.q}회로 바꾸기` : `${s.q}회 담기`)),
+          optFold);
       };
       paint();
       return box;
@@ -966,7 +988,7 @@
           if (added) metric("keep_cart");
           saveCarts(); close(); render();
           if (!added) toast("횟수를 바꿨어요");
-          else jomiToast("happy", jline("added") || `'${cart.name}'에 담았어요`, ["되돌리기", () => { cart.items = cart.items.filter((x) => x !== added); saveCarts(); render(); toast("되돌렸어요"); }]);
+          else addedToast(cart, added.t === "r" ? n : KEYS[s.how].label, () => { cart.items = cart.items.filter((x) => x !== added); saveCarts(); render(); toast("되돌렸어요"); });
         } }, `${s.q}회 담기`));
       paint();
       return box;
@@ -2432,14 +2454,14 @@
     if (hits.length) box.append(h("p", { class: "note" }, "가격만으로 고르지 마세요. 이름이 같아도 용량·회차·조건·정품 여부·시술 의료진이 다를 수 있어요. 각 가격의 'i'(가격 근거)에서 조건과 부작용·주의사항을 함께 확인하세요."));
     if (!hits.length) { box.append(noResults(f, cq, go, route)); return box; }
     box.append(h("div", { class: "card flush" }, h("ul", { class: "list" }, hits.slice(0, f.n).map((i) => { const r = ROWS[i], x = rowPos(i), u = Search.unitPrice(S[r[2]], r[3]);
-      return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
+      return h("li", {}, h("div", { class: "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
         h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${r[0]}`) }, bdot(r[0]), bname(r[0])), listS(r),
           r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round(disc(i) * 100)}%↓`) : null, kindBadge(r),
           u ? h("span", { class: "unitp" }, `${u.unit === "샷" ? "100샷" : u.unit === "U" ? "10U" : "1" + u.unit}당 ${won(u.price)}`) : null,
           x && FLAGS.lowestHighlight ? h("span", { class: x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : "" }, `${x.n}곳 중 ${x.rank}위`) : null,
           ...(cq ? cq.unstated(normBySid.get(r[2])).map((t) => h("span", { class: "k kx", title: "상품명에 적혀 있지 않아요. 1회로 단정하지 않아요" }, t)) : []),
           f.sort === "recent" ? h("span", {}, `${ver(i)} 확인`) : null, dist(r[0]) != null ? h("b", {}, km(dist(r[0]))) : null,
-          h("button", { class: "linkbtn", type: "button", onclick: () => priceSheet(i) }, icon("info", "xs"), "가격 근거"), srcLink(i), h("span", { class: "sp" }), rowAddBtn(i)))); })),
+          h("button", { class: "linkbtn", type: "button", onclick: () => priceSheet(i) }, icon("info", "xs"), "가격 근거"), srcLink(i)), rowAddBtn(i))); })),
       hits.length > f.n ? h("button", { class: "more-link", type: "button", onclick: () => go({ n: f.n + 200 }) }, `더 보기 (${(hits.length - f.n).toLocaleString()}개 남음)`) : null));
     return box;
   }
@@ -3231,7 +3253,7 @@
       h("div", { class: "tline" }, h("h2", { class: "cmpt" }, k.label), favBtn("k", k.id, k.label)),
       h("div", { class: "basis" }, basis),
       h("div", { class: "hrow" }, h("div", { class: "hmed num" }, N ? [h("span", {}, "중간값"), won(N.med)] : null),
-        rk.length ? addBtn(k.i, fam ? fam.label : k.label) : null,
+        rk.length ? addBtn(k.i) : null,
         h("button", { class: "morebtn", type: "button", "aria-label": "더 보기", "aria-haspopup": "dialog", onclick: () => cmpMoreSheet(k, rk, N) }, icon("ellipsis", "sm"))));
   }
   // a fold of the compare screen that stays open across redraws of the same procedure (♡, 담기, settings all call render())
@@ -3736,8 +3758,8 @@
         h("div", { class: "sub", style: "margin-top:8px" }, "같은 옵션을 파는 지점들의 중간 가격과 비교했어요")));
       if (cheapHere.length) box.append(h("details", { class: "card flush fold" }, h("summary", {}, `이 지점이 제일 싼 시술 ${cheapHere.length}개`),
         h("ul", { class: "list" }, cheapHere.slice(0, 200).map((x) => { const r = ROWS[x.i];
-          return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
-            h("span", { class: "m" }, h("span", {}, `${x.n}곳 중 ${x.sole ? "혼자 " : "공동 "}최저`), h("span", { class: "down" }, pctTxt(r[3] / x.med - 1)), kindBadge(r), srcLink(x.i), h("span", { class: "sp" }), rowAddBtn(x.i)))); }))));
+          return h("li", {}, h("div", { class: "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
+            h("span", { class: "m" }, h("span", {}, `${x.n}곳 중 ${x.sole ? "혼자 " : "공동 "}최저`), h("span", { class: "down" }, pctTxt(r[3] / x.med - 1)), kindBadge(r), srcLink(x.i)), rowAddBtn(x.i))); }))));
     }
     const rows = byB[b].filter((i) => st.special || !isSpecial(ROWS[i]));
     const cats = D.meta.cats.map((c, ci) => [c, rows.filter((i) => ROWS[i][1] === ci).length]).filter(([, n]) => n);
@@ -3752,12 +3774,12 @@
       const so = { cat: (a, c) => ROWS[a][1] - ROWS[c][1] || ROWS[a][3] - ROWS[c][3], price: (a, c) => ROWS[a][3] - ROWS[c][3], priceDesc: (a, c) => ROWS[c][3] - ROWS[a][3], med: (a, c) => vm(a) - vm(c), disc: (a, c) => disc(c) - disc(a) }[st.bsort];
       const shown = rows.filter((i) => !dupRows().has(i) && (st.bcat < 0 || ROWS[i][1] === st.bcat) && t.every((w) => S[ROWS[i][2]].toLowerCase().includes(w))).sort((a, c) => (ROWS[a][15] ? 1 : 0) - (ROWS[c][15] ? 1 : 0) || so(a, c));   // a row collected twice is one line (E4)
       list.replaceChildren(...shown.slice(0, 400).map((i) => { const r = ROWS[i];
-        return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
+        return h("li", {}, h("div", { class: r[15] ? "item" : "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
           h("span", { class: "m" }, D.meta.cats[r[1]], listS(r), r[4] && FLAGS.discountEmphasis ? h("span", { class: "k kt" }, `${Math.round((r[4] - r[3]) / r[4] * 100)}%↓`) : null, kindBadge(r),
             sessOf(i) > 1 ? h("span", {}, sessOf(i) >= 99 ? "이용권" : `${sessOf(i)}회`) : null,
             (() => { const x = r[15] ? null : rowPos(i); if (!FLAGS.lowestHighlight) return h("button", { class: "linkbtn", type: "button", onclick: () => priceSheet(i) }, icon("info", "xs"), "가격 근거");
               return x ? h("button", { class: `linkbtn ${x.vsMed < -0.005 ? "down" : x.vsMed > 0.005 ? "up" : ""}`, type: "button", title: "계산 기준·조건·원본 보기", onclick: () => priceSheet(i) }, `${x.n}곳 중 ${x.rank}위 · ${pctTxt(x.vsMed)}`, icon("info", "xs")) : null; })(),
-            srcLink(i), h("span", { class: "sp" }), r[15] ? null : rowAddBtn(i)))); }));
+            srcLink(i)), r[15] ? null : rowAddBtn(i))); }));
       if (!shown.length) list.replaceChildren(h("li", { class: "empty" }, "찾는 시술이 없어요"));
       else if (shown.length > 400) list.append(h("li", { class: "empty" }, `${shown.length}개 중 400개만 보여요. 검색으로 좁혀 보세요.`));
     };
@@ -4691,13 +4713,13 @@
     if (!found.length) { res.append(h("div", { class: "empty" }, "담은 시술을 2개 이상 묶은 패키지를 찾지 못했어요.")); return res; }
     const stateTxt = { match: "같은 시술", spec: "용량·부위·제품 다름", check: "구성 확인 필요" };
     res.append(h("ul", { class: "list" }, found.slice(0, 30).map((y) => { const r = ROWS[y.i];
-      return h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
+      return h("li", {}, h("div", { class: "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
         h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${y.b}`) }, bdot(y.b), bname(y.b)), kindBadge(r),
           ...y.m.matched.map((z) => h("span", { class: `k ${z.state === "match" ? "k1" : "kx"}` }, `${itemLabel(items[z.j])}: ${stateTxt[z.state]}`)),
           y.m.extras.length ? h("span", { class: "k k4" }, `추가 구성: ${y.m.extras.join(", ")}`) : null,
           y.gain != null ? h("b", { class: y.gain > 0 ? "down" : "up" }, y.gain > 0 ? `따로(${won(y.sep)})보다 ${won(y.gain)} 싸요` : `따로(${won(y.sep)})가 ${won(-y.gain)} 싸요`)
             : h("span", {}, y.sep == null ? "같은 지점 단품 가격이 없어 비교 못 함" : !y.qtyOk && y.m.full ? `같은 지점에서 따로 ${won(y.sep)} · 횟수가 달라 직접 비교 안 함` : `같은 지점에서 따로 ${won(y.sep)} · 구성이 달라 직접 비교 안 함`),
-          srcLink(y.i), h("span", { class: "sp" }), rowAddBtn(y.i)))); })));
+          srcLink(y.i)), rowAddBtn(y.i))); })));
     return res;
   }
 
