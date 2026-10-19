@@ -1,0 +1,184 @@
+name: alerts-catchup
+
+# Price alerts within 2 hours of new prices (9th review — a user decision of 2026-10-16; docs/ARCHITECTURE.md D19).
+# weekly.yml's price_alerts job computes right after every deploy; this run, every 30 minutes (10th review: it was every
+# hour), computes what that job could not: its notify failed or timed out, the public app did not serve the new
+# data-meta.json yet, the Worker answered 'busy' (another run was computing) or 'deferred' (COMPUTES_PER_DAY computations
+# already started this D1 day — the first run after 09:00 KST computes them; or the D1 day's last one is kept for the 06:00
+# factory run — a catch-up may take it from 08:00 KST only, when no run did: 11th review). When nothing changed it costs one
+# D1 request: start answers 'done' (≤ 30 rows read —
+# measured 5 — nothing written: cf/alerts/src/worker.js start). Cost of every 30 minutes: GitHub Actions minutes are free for a public
+# repository (standard runners; about 1 minute a run — 48 runs a day), and the Worker sees 48 starts a day (≤ 30 rows read
+# each: ≤ 1,440 a day, ≤ 44,640 a 31-day month of the 25 billion the Workers Paid plan includes — nothing written when
+# there is nothing to compute; the free plan's 5 million a day the same way).
+# It tells the Worker it is the catch-up (ALERTS_CATCHUP=1): until 08:00 KST it computes changed prices only and leaves the
+# day's computation of unchanged prices to the 06:00 KST factory run (the 06:07–07:37 runs may come while that run is still
+# collecting — GitHub starts it 20–25 minutes late and a collection takes ~40–45 minutes: 'Weekly prices 2026-10-17' was
+# saved at 07:06 KST — worker.js CATCHUP_ROLL_HOUR); from 08:00 (the first push goes out at 08:00) it also does that
+# computation if no run did. For the same reason it never takes the D1 day's last computation before 08:00 KST (it is the
+# 06:00 run's; the Worker answers 'deferred' with until 08:00 — 11th review: the 06:07 catch-up took it for the prices
+# deferred the afternoon before, and the 06:00 collection then waited for 09:00).
+# A start no retry can cure (a 3xx or 4xx, a 2xx that is not JSON, an ALERTS_URL that is not https — 12th review —, an
+# unknown answer, a data.json shape the Worker refuses, no pin while public hosting is on and ALERTS_SECRET is set) writes
+# startfail=true here too; this job has no Telegram, so weekly.yml's price_alerts
+# job (the same steps) is what tells the owner — at the next factory run that deploys, the daily 06:00 schedule at the
+# latest.
+# The same guards as weekly.yml's price_alerts job, step for step (tests/factory_worker.test.js compares them): the CODE is
+# the reviewed commit in the repository Variable ALERTS_CODE_SHA (never main, never github.sha); the DATA is main's
+# app/data.json — two files, a regular file whose sha256/bytes are the ones its data-meta.json names — used only when the
+# public app serves that same data-meta.json (what the phones were given) and only while public hosting is on
+# (PUBLIC_DEPLOY "on"); it is JSON.parse'd, never run. Only the ALERTS_* secrets; no Cloudflare token (no `environment:`),
+# no Telegram secret, installs nothing, reads the repository only. A run that fails or is skipped says so on its page
+# (::warning/::notice) and exits green: the next run tries again 30 minutes later; a computation that failed after it
+# started or was deferred shows on GET /health "compute" (failed / deferred), which the daily monitor turns into a Telegram
+# line, and a Worker link that stays broken shows as /health stale. GitHub may start a scheduled run late (21–25 minutes
+# were seen for weekly.yml's 06:00 schedule; the :07/:37 delay is to be measured in the first week after the merge) or,
+# under load, drop one (then the next run catches up 30 minutes later).
+on:
+  schedule:
+    - cron: "7,37 * * * *"   # every 30 minutes at :07 and :37 (UTC = KST minutes); 00:07 UTC = 09:07 KST, the first run of a D1 day
+  workflow_dispatch:         # "Run workflow" (branch main)
+
+permissions: {}       # nothing by default; the job asks for read only
+
+concurrency:
+  group: alerts-catchup
+  cancel-in-progress: false
+
+jobs:
+  catchup:
+    # main only: the data must be main's deployed copy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    permissions:
+      contents: read
+    timeout-minutes: 20       # the data step (at most 5) + notify (at most 10)
+    steps:
+      # no pin while public hosting is on and ALERTS_SECRET is set (alerts are set up): no run computes until a person sets
+      # it — startfail=true (weekly.yml's alert job sends a Telegram line; 11th review). Otherwise a notice (not set up yet)
+      - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
+        id: pin
+        env:
+          PIN: ${{ vars.ALERTS_CODE_SHA }}
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+          SET_UP: ${{ secrets.ALERTS_SECRET != '' }}
+        run: |
+          if printf '%s' "$PIN" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "sha=$PIN" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLIC" = on ] && [ "$SET_UP" = true ]; then
+            echo "::warning title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code while public hosting is on and alerts are set up (their factory token exists) — no price alerts are computed until a person sets it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "startfail=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code — price alerts skipped"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.pin.outputs.sha }}     # the CODE: the reviewed commit, never main
+          path: code
+          persist-credentials: false
+      # main's deployed copy — checked against the public app below like weekly.yml's — and nothing while public hosting is
+      # paused (the phones get no new data then)
+      - name: Which data (main's deployed copy)
+        id: which
+        if: steps.pin.outputs.ok == 'true'
+        env:
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+        run: |
+          if [ "$PUBLIC" != on ]; then
+            echo "::notice title=price alerts::public hosting is paused (repository variable PUBLIC_DEPLOY is not \"on\") — the phones get no new data, so no alerts are computed"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.which.outputs.ref }}   # the DATA: main's deployed copy — two files, never run
+          path: data
+          persist-credentials: false
+          sparse-checkout: |
+            /app/data.json
+            /app/data-meta.json
+          sparse-checkout-cone-mode: false   # exactly these two files
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        with:
+          node-version: "22"
+      # the same step as weekly.yml's (regular files, data-meta.json's sha256/bytes, the public app serves that data-meta.json)
+      - name: Take data.json (regular file, checksums, and the public app serves it)
+        id: data
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        timeout-minutes: 5         # three tries × 60 s + two 30 s waits = 4 min at worst
+        env:
+          APP_URL: ${{ vars.PUBLIC_APP_URL || 'https://yoonsiljang.lsy2825.workers.dev' }}
+        run: |
+          set -u
+          export LC_ALL=C            # byte ranges in the patterns below
+          skip() { echo "::warning title=price alerts::$1 — nothing sent (the alerts-catchup run, every 30 minutes, checks again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          # (1) regular files (a symlink could point at a file of this machine), and the checksums of data-meta.json
+          for f in app/data.json app/data-meta.json; do
+            mode=$(git -C data ls-tree HEAD -- "$f" | cut -d' ' -f1)
+            if [ "$mode" != 100644 ] || [ ! -f "data/$f" ] || [ -L "data/$f" ]; then skip "$f in the data commit is not a regular file (mode '$mode')"; fi
+          done
+          want=$(python3 -I - data/app/data-meta.json data/app/data.json <<'PY'
+          import hashlib, json, re, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as f:
+                  meta = json.load(f)
+          except Exception:
+              sys.exit(1)
+          want = meta.get("sha256") if isinstance(meta, dict) else None
+          with open(sys.argv[2], "rb") as f:
+              raw = f.read()
+          if not isinstance(want, str) or not re.fullmatch(r"[0-9a-f]{64}", want) or hashlib.sha256(raw).hexdigest() != want or meta.get("bytes") != len(raw):
+              sys.exit(1)
+          print(want)
+          PY
+          ) || skip "app/data.json of the data commit does not match its data-meta.json"
+          # (2) the public app's data-meta.json names the same data.json: HTTP 200 over https, no redirect followed, 1 MB cap
+          APP_URL=${APP_URL%/}
+          # the whole value must be one https address ([[ =~ ]] anchors to the whole string, so a line break fails)
+          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)*$ ]]; then skip "repository variable PUBLIC_APP_URL is not an https address"; fi
+          P="$RUNNER_TEMP/public-data-meta.json"
+          for i in 1 2 3; do
+            rm -f "$P"
+            served=""
+            if code=$(curl --silent --show-error --fail --proto '=https' --max-redirs 0 --max-time 60 --max-filesize 1000000 \
+                        -o "$P" -w '%{http_code}' "$APP_URL/data-meta.json") && [ "$code" = 200 ] && [ -f "$P" ] && [ ! -L "$P" ]; then
+              served=$(python3 -I - "$P" <<'PY'
+          import json, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as f:
+                  meta = json.load(f)
+          except Exception:
+              sys.exit(0)
+          v = meta.get("sha256") if isinstance(meta, dict) else None
+          print(v if isinstance(v, str) else "")
+          PY
+              )
+            fi
+            if [ "$served" = "$want" ]; then
+              cp data/app/data.json "$RUNNER_TEMP/data.json"
+              echo "price alerts: the data commit's data.json is the one the public app serves (sha256 checked)"
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "price alerts: try $i — the public app does not serve this data.json"
+            [ "$i" = 3 ] || sleep 30
+          done
+          skip "the public app does not serve this data.json (a deploy that did not reach it, or a newer one)"
+      # start (the fingerprint, as the catch-up) → done | busy | deferred | compute — weekly.yml's step plus ALERTS_CATCHUP
+      - name: Price alerts (cf/alerts/notify.mjs)
+        id: notify
+        if: steps.pin.outputs.ok == 'true' && steps.data.outputs.ok == 'true'
+        timeout-minutes: 10
+        run: node code/cf/alerts/notify.mjs "$RUNNER_TEMP/data.json"
+        env:
+          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL || 'https://yoonsiljang-alerts.lsy2825.workers.dev' }}
+          ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
+          ALERTS_CATCHUP: "1"

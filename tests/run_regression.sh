@@ -33,6 +33,7 @@ run "metrics worker (cf/metrics: 8 stages only, no IP stored, Access)" bash -c "
 run "spec labels (no price/date/promo words, nothing we glued)" python3 tests/labels_test.py
 run "data size guard (app/data.json under 20 MiB, guard runs in the build)" python3 tests/size_guard_test.py
 run "branch addresses (own address, loose forms, on saved public pages)" python3 tests/branch_addr_test.py
+run "price alerts Worker (cf/alerts: rules, SQL on node:sqlite, send rules, factory side)" bash -c "node --test cf/alerts/test/*.test.mjs"
 # backup / restore needs the real current data as CSV files (data2/db/, git-ignored, made by build2/export_db.py from
 # data2/clean.csv, which build2/weekly.py makes). A fresh checkout has neither: make what can be made from a clean.csv that is
 # there; if there is none, say SKIP out loud (never OK, never a bare FAIL) and how to get it — the suite is not run, not passed.

@@ -219,7 +219,7 @@ jobs:
   # (data2/report.md, app/data-meta.json) is taken, as regular files, and read as data.
   # Without the TELEGRAM_* secrets the scripts print a notice and do nothing; they always exit 0.
   alert:
-    needs: [update, deploy, redeploy]
+    needs: [update, deploy, redeploy, price_alerts]
     if: always()
     runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
     timeout-minutes: 5
@@ -261,6 +261,71 @@ jobs:
             case "$REDEPLOY" in cancelled) WHY="중단됨(시간 초과 또는 취소)";; *) WHY="실패";; esac
             python3 .github/scripts/telegram.py "윤실장 다시 배포 요청 $WHY ($WHEN). main에 더 새 배포 코드가 있어 이 실행은 배포를 건너뛰었는데, 그 코드로 다시 만드는 새 실행을 띄우지 못했어요. 앱 주소에는 아직 전 판이 있어요. Actions → weekly-prices → Run workflow(skip_scrape)를 눌러 주세요. 실행 기록: $RUN_URL"
           fi
+      # The price-alerts job (cf/alerts) never fails the run (continue-on-error): it says it reached its end in its output
+      # `done`. One that ran and did not — a step failed, a timeout, cancelled — is reported here (whichever way GitHub shows
+      # a failed continue-on-error job's result). Its own skips (no pinned code, public hosting paused, the public app serving
+      # other data, the Worker refusing) are ::notice/::warning lines on the run's page; a Worker link that stays broken also
+      # shows on the daily monitor (GET /health "stale").
+      - name: Alert on a price-alerts job that did not finish (Telegram)
+        if: >-
+          needs.price_alerts.result == 'failure' || needs.price_alerts.result == 'cancelled' ||
+          (needs.price_alerts.result == 'success' && needs.price_alerts.outputs.done != 'true')
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
+          python3 .github/scripts/telegram.py "윤실장 가격 알림 계산(price_alerts)이 끝까지 돌지 못했어요 ($WHEN). 앱과 가격 자료는 영향이 없어요(배포는 이미 끝났어요). 30분마다 도는 따라잡기(alerts-catchup)가 이 가격을 다시 계산해요 — 며칠 이어지면 감시의 알림 Worker 줄(/health stale)도 경고해요. 실행 기록: $RUN_URL"
+      # notify.mjs failed AFTER the Worker answered compute (10th review): the Worker counted it and holds its lease for 15
+      # minutes; the next alerts-catchup run (every 30 minutes) computes the same prices again — not counted, once a D1 day.
+      # notify exits 0 (the job reaches its end mark), so this is the only line about it; a catch-up's failure shows on GET
+      # /health "compute": "failed" (the daily monitor).
+      - name: Alert on a price-alerts computation that failed after it started (Telegram)
+        if: needs.price_alerts.outputs.failed == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
+          python3 .github/scripts/telegram.py "윤실장 가격 알림 계산이 시작한 뒤 실패했어요 ($WHEN). 앱과 가격 자료는 영향이 없어요. Worker가 15분 뒤 계산 임대를 풀고, 30분마다 도는 따라잡기(alerts-catchup)가 같은 가격을 다시 계산해요(같은 가격의 다시 계산은 D1 하루에 한 번 횟수 상한에 세지 않아요). 되풀이되면 실행 기록의 ::warning과 알림 Worker의 /health compute를 보세요. 실행 기록: $RUN_URL"
+      # The Worker deferred this computation: COMPUTES_PER_DAY computations already started this D1 day (the D1 write
+      # budget — the plan profile: paid 12, free 3), or before 06:00 KST its last one is kept for the 06:00 run (a catch-up
+      # may not take it before 08:00 KST — 11th review). One line a D1 day: only the first deferred factory run of a D1 day
+      # gets deferred=true (the Worker's start says first: true), one more when 'reserve' (06:00) became 'cap' (09:00);
+      # later ones are ::warning lines on their run pages, and GET /health "compute": "deferred" tells the daily monitor.
+      - name: Alert on a deferred price-alerts computation (Telegram)
+        if: needs.price_alerts.outputs.deferred == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          UNTIL: ${{ needs.price_alerts.outputs.until }}
+        run: |
+          case "$UNTIL" in
+            06:00) U="06:00 KST 정기 실행이 계산해요(그날 마지막 1번은 그 실행 몫으로 남겨 둬요. 그 실행이 계산하지 못하면 08:00 KST 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요)";;
+            08:00) U="08:00 KST 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요";;
+            *) U="09:00 KST(새 D1 하루) 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요";;
+          esac
+          python3 .github/scripts/telegram.py "윤실장 가격 알림: 이 D1 하루(09시~다음 날 09시)의 계산 횟수 상한(COMPUTES_PER_DAY — 요금제 설정 PLAN이 유료면 12번, 무료면 3번)에 닿아 이 실행의 새 가격 계산을 미뤘어요. $U 이 알림은 D1 하루에 한 번(06시 몫으로 미룬 뒤 09시까지로 바뀌면 한 번 더)만 와요. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
+      # A start that trying again cannot cure (11th review): the Worker answered a 4xx (401/403 — the GitHub ALERTS_SECRET is
+      # not the Worker's; 404 — ALERTS_URL is not the alerts Worker) or — 12th review — a 3xx (a redirect: ALERTS_URL behind
+      # Cloudflare Access or moved) or a 2xx that is not JSON (ALERTS_URL is some other site), ALERTS_URL is not an https
+      # address, an answer the pinned code does not know, a data.json shape the Worker would refuse, or ALERTS_CODE_SHA unset
+      # while public hosting is on and ALERTS_SECRET is set. Nothing
+      # is computed until a person fixes it — one line a run that meets it (the 30-minute catch-up has no Telegram; before,
+      # only GET /health stale told, about 3 days later).
+      - name: Alert on a price-alerts setup problem that stops every computation (Telegram)
+        if: needs.price_alerts.outputs.startfail == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 .github/scripts/telegram.py "윤실장 가격 알림: 설정 문제로 새 가격 계산을 시작하지 못했어요 — 고칠 때까지 어느 실행도 계산하지 않아요(다시 돌려도 같아요). ALERTS_SECRET·Worker 설정 확인: GitHub의 ALERTS_SECRET과 Worker의 값이 같은지(cf-alerts → Run workflow → sync_secret), ALERTS_URL, 저장소 변수 ALERTS_CODE_SHA, 실행 기록의 ::warning. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
       # what the data alerts read: the run's data2/report.md and app/data-meta.json from the latest main (a successful run
       # pushed them there) — regular files only (mode 100644), otherwise those alerts are skipped with a notice
       - name: Take the run's report from main (regular files only)
@@ -285,3 +350,225 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: python3 .github/scripts/health_check.py --report-only --send
+
+  # Price alerts (cf/alerts): hand the watched treatments' numbers of the app data the phones were just given to the alerts
+  # Worker, which marks who gets a push (sent 08:00–21:00 KST). A job of its own on a FRESH runner, so nothing the factory
+  # ran (scrapers, `pip install -r requirements.txt` packages, build code) can touch this machine, its files, $GITHUB_ENV or
+  # the alerts token: only this job has ALERTS_*, it installs nothing, it can only read the repository, and it never gets
+  # the Cloudflare token (no `environment:`, no CLOUDFLARE_* secret).
+  # WHEN (약속 1 '공장 배포 뒤'): after this run's deploy job DEPLOYED the app (green and not skipped — a skipped deploy is
+  # done by the run that saved the newer build, or by the redeploy run); and on a daily schedule run with nothing to build
+  # (run=false: no deploy job), on the copy already deployed — ending prices are checked every day. Never after a failed or
+  # cancelled factory or deploy.
+  # WHAT (9th review — alerts within 2 hours of new prices, a user decision of 2026-10-16): every run that gets here —
+  # the schedule, Run workflow (a manual collection, price-check.yml's rebuild, the redeploy job's rebuild), a push, a
+  # Re-run — runs notify.mjs the same way. It first sends the data's FINGERPRINT (the numbers a digest can be computed
+  # from, not the file's bytes) to the Worker's start: prices it already finished today (a code-only rebuild, a re-run)
+  # are 'done' after one D1 request that writes nothing; changed prices are computed at once (key set, watched pairs,
+  # digest, finish). The Worker allows COMPUTES_PER_DAY computations per D1 day (00:00–24:00 UTC = 09:00–09:00 KST; the
+  # plan profile — Workers Paid 12, free 3 — and before 06:00 KST one of them is kept for the 06:00 run, from a catch-up
+  # until 08:00 KST: the write arithmetic in cf/alerts/src/worker.js); past it the answer is 'deferred'
+  # (a ::warning, and the alert job sends one Telegram line a D1 day — one more when 'reserve' became 'cap'), and 'busy'
+  # while another run computes. Whatever this job cannot finish, alerts-catchup.yml (every 30 minutes, on main's deployed
+  # copy, the same pinned code and checks) computes. A computation that fails after it started is a Telegram line too
+  # (outputs.failed — 10th review), and so is a start no retry can cure (outputs.startfail — 11th review: a 4xx such as
+  # ALERTS_SECRET not matching the Worker's, a data.json shape the Worker would refuse, ALERTS_CODE_SHA unset while public
+  # hosting is on and ALERTS_SECRET is set; 12th review: a 3xx, a 2xx that is not JSON, an ALERTS_URL that is not https).
+  # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
+  # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
+  # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
+  # but cannot edit Actions variables, so nothing the factory pushes can ever become the code that holds ALERTS_SECRET.
+  # (github.sha is NOT used: a scheduled run takes main's last commit, which may be a factory push nobody reviewed.) Unset or
+  # malformed → the job is skipped with a notice (a ::warning and startfail=true once public hosting is on and ALERTS_SECRET
+  # is set — alerts are set up, so nothing would be computed until a person sets it).
+  # The DATA is app/data.json of the SAME saved commit the deploy job took its files from (needs.update.outputs.sha — not
+  # whatever main is by now); on a no-build schedule day, main's copy. Either way it is used only when (1) it is a regular
+  # file whose sha256/bytes are the ones its data-meta.json names (the deploy job's and the app's own check) and (2) the
+  # public app serves that same data-meta.json (repository Variable PUBLIC_APP_URL, default the public app; https only, no
+  # redirects, 1 MB cap; three tries 30 s apart) — so the numbers are what the phones were given, never a build that did not
+  # reach them. While public hosting is paused (PUBLIC_DEPLOY not "on") nothing is computed (a notice). The file is only
+  # JSON.parse'd — never run. main is also checked out (only cf/alerts and app/domain) for one thing: a notice when main's
+  # alerts code is newer than the pin. Pinned code that lags main is harmless (the shape guard in notify.mjs and the
+  # Worker's own checks refuse data they cannot read).
+  # Never fails the run: the data steps and notify.mjs end with a ::notice/::warning and exit 0, and the JOB's
+  # continue-on-error covers anything else. No step has its own continue-on-error (7th review): a step that fails or times
+  # out (notify.mjs that cannot load, a hung call) ends the job before the end mark, so `done` stays empty and the alert job
+  # sends a Telegram line. A Worker that keeps refusing (3xx/4xx) is a startfail line; one that does not answer (5xx,
+  # network) shows on the daily monitor (GET /health down, then stale) — but an ALERTS_URL naming a host that does not
+  # resolve looks the same here while the monitor checks the right address (MONITOR_WORKER_URLS): only stale tells (12th).
+  # ALERTS_URL defaults to the alerts Worker's workers.dev address; without the ALERTS_SECRET secret notify.mjs only prints
+  # a ::warning (nothing is sent).
+  price_alerts:
+    needs: [update, deploy]
+    if: >-
+      !cancelled() && needs.update.result == 'success' &&
+      ((needs.deploy.result == 'success' && needs.deploy.outputs.skipped == '') ||
+      (github.event_name == 'schedule' && needs.update.outputs.run == 'false' && needs.deploy.result == 'skipped'))
+    runs-on: ubuntu-24.04      # fixed image (see pr-checks.yml)
+    permissions:
+      contents: read
+    timeout-minutes: 20       # the data step (at most 5) + notify (at most 10)
+    continue-on-error: true
+    outputs:
+      done: ${{ steps.end.outputs.done }}   # "true" when every step ran (the alert job reports a job that did not)
+      deferred: ${{ steps.notify.outputs.deferred }}   # "true" when the Worker deferred the computation (COMPUTES_PER_DAY) — the first deferred factory run of a D1 day only
+      until: ${{ steps.notify.outputs.until }}         # "06:00" | "09:00" (KST): when a deferred computation can run
+      failed: ${{ steps.notify.outputs.failed }}       # "true" when notify.mjs failed after the Worker answered compute
+      startfail: ${{ steps.notify.outputs.startfail || steps.pin.outputs.startfail }}   # "true": nothing is computed until a person fixes the setup (11th review)
+    steps:
+      # no pin while public hosting is on and ALERTS_SECRET is set (alerts are set up): no run computes until a person sets
+      # it — startfail=true (weekly.yml's alert job sends a Telegram line; 11th review). Otherwise a notice (not set up yet)
+      - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
+        id: pin
+        env:
+          PIN: ${{ vars.ALERTS_CODE_SHA }}
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+          SET_UP: ${{ secrets.ALERTS_SECRET != '' }}
+        run: |
+          if printf '%s' "$PIN" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "sha=$PIN" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLIC" = on ] && [ "$SET_UP" = true ]; then
+            echo "::warning title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code while public hosting is on and alerts are set up (their factory token exists) — no price alerts are computed until a person sets it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "startfail=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code — price alerts skipped"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.pin.outputs.sha }}     # the CODE: the reviewed commit, never main
+          path: code
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true'
+        with:
+          ref: main                  # a HINT only (the step below): is main's alerts code newer than the pin? Never run, no data
+          path: published
+          persist-credentials: false
+          sparse-checkout: |
+            /cf/alerts/
+            /app/domain/
+          sparse-checkout-cone-mode: false   # exactly these two folders (cone mode would add app/*.json too)
+      - name: Is main's alerts code newer than the pin? (a hint, no security role)
+        if: steps.pin.outputs.ok == 'true'
+        run: |
+          if ! diff -rq code/cf/alerts published/cf/alerts >/dev/null 2>&1 || ! diff -rq code/app/domain published/app/domain >/dev/null 2>&1; then
+            echo "::notice title=price alerts::main's cf/alerts or app/domain differs from ALERTS_CODE_SHA — after reviewing it, set the variable to the new commit"
+          fi
+      # which commit's data: the one this run's deploy job deployed (its own check: on main, newest build, checksums), or —
+      # a schedule run with nothing to build — main's copy (checked against the public app below like the other)
+      - name: Which data (the commit this run deployed; main's copy on a no-build day)
+        id: which
+        if: steps.pin.outputs.ok == 'true'
+        env:
+          DEPLOYED: ${{ needs.deploy.result == 'success' && needs.deploy.outputs.skipped == '' }}
+          SAVED: ${{ needs.update.outputs.sha }}
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+        run: |
+          if [ "$PUBLIC" != on ]; then
+            echo "::notice title=price alerts::public hosting is paused (repository variable PUBLIC_DEPLOY is not \"on\") — the phones get no new data, so no alerts are computed"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          elif [ "$DEPLOYED" != true ]; then
+            echo "ref=main" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [[ $SAVED =~ ^[0-9a-f]{40}$ ]]; then
+            echo "ref=$SAVED" >> "$GITHUB_OUTPUT"
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning title=price alerts::the factory job named no valid commit — nothing sent"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.which.outputs.ref }}   # the DATA: the deployed commit (or main on a no-build day) — two files, never run
+          path: data
+          persist-credentials: false
+          sparse-checkout: |
+            /app/data.json
+            /app/data-meta.json
+          sparse-checkout-cone-mode: false   # exactly these two files
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        with:
+          node-version: "22"
+      # the data commit's data.json, kept only when (1) both files are regular files and data.json's sha256/bytes are the
+      # ones its data-meta.json names, and (2) the public app serves that same data-meta.json (what the phones were given).
+      # No secret in this step; the files are read as bytes and JSON only.
+      - name: Take data.json (regular file, checksums, and the public app serves it)
+        id: data
+        if: steps.pin.outputs.ok == 'true' && steps.which.outputs.ok == 'true'
+        timeout-minutes: 5         # three tries × 60 s + two 30 s waits = 4 min at worst
+        env:
+          APP_URL: ${{ vars.PUBLIC_APP_URL || 'https://yoonsiljang.lsy2825.workers.dev' }}
+        run: |
+          set -u
+          export LC_ALL=C            # byte ranges in the patterns below
+          skip() { echo "::warning title=price alerts::$1 — nothing sent (the alerts-catchup run, every 30 minutes, checks again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          # (1) regular files (a symlink could point at a file of this machine), and the checksums of data-meta.json
+          for f in app/data.json app/data-meta.json; do
+            mode=$(git -C data ls-tree HEAD -- "$f" | cut -d' ' -f1)
+            if [ "$mode" != 100644 ] || [ ! -f "data/$f" ] || [ -L "data/$f" ]; then skip "$f in the data commit is not a regular file (mode '$mode')"; fi
+          done
+          want=$(python3 -I - data/app/data-meta.json data/app/data.json <<'PY'
+          import hashlib, json, re, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as f:
+                  meta = json.load(f)
+          except Exception:
+              sys.exit(1)
+          want = meta.get("sha256") if isinstance(meta, dict) else None
+          with open(sys.argv[2], "rb") as f:
+              raw = f.read()
+          if not isinstance(want, str) or not re.fullmatch(r"[0-9a-f]{64}", want) or hashlib.sha256(raw).hexdigest() != want or meta.get("bytes") != len(raw):
+              sys.exit(1)
+          print(want)
+          PY
+          ) || skip "app/data.json of the data commit does not match its data-meta.json"
+          # (2) the public app's data-meta.json names the same data.json: HTTP 200 over https, no redirect followed, 1 MB cap
+          APP_URL=${APP_URL%/}
+          # the whole value must be one https address ([[ =~ ]] anchors to the whole string, so a line break fails)
+          if ! [[ $APP_URL =~ ^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~-]+)*$ ]]; then skip "repository variable PUBLIC_APP_URL is not an https address"; fi
+          P="$RUNNER_TEMP/public-data-meta.json"
+          for i in 1 2 3; do
+            rm -f "$P"
+            served=""
+            if code=$(curl --silent --show-error --fail --proto '=https' --max-redirs 0 --max-time 60 --max-filesize 1000000 \
+                        -o "$P" -w '%{http_code}' "$APP_URL/data-meta.json") && [ "$code" = 200 ] && [ -f "$P" ] && [ ! -L "$P" ]; then
+              served=$(python3 -I - "$P" <<'PY'
+          import json, sys
+          try:
+              with open(sys.argv[1], encoding="utf-8") as f:
+                  meta = json.load(f)
+          except Exception:
+              sys.exit(0)
+          v = meta.get("sha256") if isinstance(meta, dict) else None
+          print(v if isinstance(v, str) else "")
+          PY
+              )
+            fi
+            if [ "$served" = "$want" ]; then
+              cp data/app/data.json "$RUNNER_TEMP/data.json"
+              echo "price alerts: the data commit's data.json is the one the public app serves (sha256 checked)"
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "price alerts: try $i — the public app does not serve this data.json"
+            [ "$i" = 3 ] || sleep 30
+          done
+          skip "the public app does not serve this data.json (a deploy that did not reach it, or a newer one)"
+      # start (the fingerprint) → done | busy | deferred | compute; deferred=true goes to this step's output
+      - name: Price alerts (cf/alerts/notify.mjs)
+        id: notify
+        if: steps.pin.outputs.ok == 'true' && steps.data.outputs.ok == 'true'
+        timeout-minutes: 10
+        run: node code/cf/alerts/notify.mjs "$RUNNER_TEMP/data.json"
+        env:
+          ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL || 'https://yoonsiljang-alerts.lsy2825.workers.dev' }}
+          ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
+      - name: Reached the end (the alert job reports a price-alerts job that did not)
+        id: end
+        run: echo "done=true" >> "$GITHUB_OUTPUT"

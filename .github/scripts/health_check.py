@@ -12,7 +12,14 @@ Checks (each returns problems as short Korean lines; no problem → no message, 
   live       (watchdog) the app URL answers 200 and its data-meta.json parses; the live file is then used for freshness —
              only when PUBLIC_DEPLOY is "on"; while public hosting is paused the frozen public copy is skipped and freshness
              is judged on the repository's app/data-meta.json
-  workers    (watchdog) each URL in MONITOR_WORKER_URLS (space/comma separated, empty = skipped) answers below HTTP 500
+  workers    (watchdog) each URL in MONITOR_WORKER_URLS (space/comma separated, empty = skipped) answers GET /health with 200
+             {"ok": true}; an alive alerts Worker (cf/alerts) adds a warning line when its body says capacity != "ok" (table
+             nearly full / full), stale: true (no factory finish for 2+ days, or none ever since the first subscription),
+             sending: false (VAPID key missing or unusable), refusing: true (phones that took our pushes refuse our VAPID
+             token at a push service that took nothing else — kept for a few days, then counted), pairs: "capped" (the
+             factory's watched list was cut at PAIR_CAP, or a new pair waited for a free row under it), compute: "failed" /
+             "deferred" (a price-alerts computation that never finished, or a deferred one, in this D1 day or the one
+             before) or a "key" that is not app/config.js pushPublicKey (when that is set)
 
 Messages hold brand names, dates, counts and the run link only — no personal data, no secrets. Standard library only.
 --send without the Telegram secrets prints a ::notice and sends nothing. Exit 0 unless the arguments are wrong.
@@ -174,9 +181,89 @@ def worker_urls(text):
     return [u for u in re.split(r"[\s,]+", text or "") if u]
 
 
-def check_workers(fetch, urls_text):
+def app_push_key(root):
+    """app/config.js pushPublicKey — the VAPID public key phones subscribe with (chat B's file, read only). '' when empty,
+    missing or unreadable (then nothing is compared)."""
+    m = re.search(r'\bpushPublicKey:\s*"([A-Za-z0-9_-]*)"', read_text(os.path.join(root, "app", "config.js")) or "")
+    return m.group(1) if m else ""
+
+
+def worker_warnings(host, data, app_key=""):
+    """Warning lines from an ALIVE Worker's /health body (a missing field = no warning; no numbers or keys in the message).
+    capacity: the alerts Worker (cf/alerts) never evicts a subscription, so a full table needs a person: 'nearly_full'
+    (>= 80% of MAX_SUBS) or 'full' (503 FULL for new phones). stale: the price factory has not finished a run into that
+    Worker for more than 2 days, or never since the first phone subscribed more than 2 days ago (finished: null)
+    (cf/alerts/notify.mjs sends nothing when it fails, the job stays green; weekly.yml's price_alerts job and the 30-minute
+    alerts-catchup.yml both run it, so two days without a finish means both kept failing). sending: false = no push can go out (the
+    VAPID_PRIVATE_JWK secret is missing or cannot sign, or VAPID_PUBLIC_KEY is set to another key). refusing: true = a send
+    run today or yesterday found phones that took our pushes refusing our VAPID token at a push service that took nothing
+    else (kept, not counted, held back and tried again a few a run — cf/alerts rules.js PROBES — for up to
+    REFUSING_GRACE_DAYS = 7 days; after that they are counted and removed). pairs: "capped" = the factory's watched (key, region) list was cut at PAIR_CAP today or
+    yesterday, or a new pair had to wait a day for a free row under it (subscriptions planted on real keys, or more real
+    ones than the cap — keys the factory's data.json does not have never take a place since the 5th review) — some alerts
+    were not computed. The message names the NARROW cleanup query as the candidate, but only when the compare keys did not
+    change recently: after a reclassification (data.json meta.recl) phones that have not opened the app yet still hold only
+    old keys and the narrow query deletes them too (B's app then turns push off at its next PUT — 404 — instead of
+    subscribing again). The wide one also removes real phones that have not received a push yet (at launch, nearly all of
+    them). Either needs a user decision then (docs/SECURITY_ARCHITECTURE.md §4).
+    key: the VAPID public key the Worker pushes with; when app/config.js pushPublicKey is set and differs, every phone
+    subscribes with a key the Worker cannot push to (the push services refuse, the subscriptions end up removed).
+    compute (10th review — what the 30-minute alerts-catchup run cannot report itself: it has no Telegram secret):
+    "failed" = a price-alerts computation started in this D1 day or the one before (09:00-09:00 KST) and never finished
+    (its lease ran out; the same prices are retried once uncounted, then counted); "deferred" = a start was deferred in
+    that time (COMPUTES_PER_DAY used up, or its last one kept for the 06:00 KST run) — new prices waited up to 09:00 / 06:00
+    KST. A missing field (an older Worker) = no warning."""
+    out = []
+    cap = data.get("capacity")
+    if cap == "nearly_full":
+        out.append(f"알림 Worker 구독 표가 거의 찼어요 ({host}): 정리하거나 MAX_SUBS를 올리세요")
+    elif cap == "full":
+        out.append(f"알림 Worker 구독 표가 가득 찼어요 — 새 구독을 못 받아요 ({host}): 정리하거나 MAX_SUBS를 올리세요")
+    elif cap is not None and cap != "ok":
+        out.append(f"알림 Worker 구독 표 상태를 알 수 없어요 ({host}): capacity={str(cap)[:20]}")
+    if data.get("stale") is True:
+        if "finished" in data and data.get("finished") is None:
+            out.append(f"알림 Worker가 공장에서 숫자를 한 번도 못 받았어요. 첫 구독 뒤 2일 넘게 지났어요 ({host}): "
+                       "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계, 30분마다 도는 따라잡기(alerts-catchup)를 확인하세요")
+        else:
+            # an ALERTS_URL naming a host that does not resolve shows here only (this check reads the right address, so the
+            # Worker is not down) — 12th review
+            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 30분마다 도는 따라잡기(alerts-catchup) 실행 기록을 확인하세요"
+                       " — Worker는 이렇게 답하므로 실행 기록이 '연결 안 됨'(fetch failed)이면 ALERTS_URL이 다른 주소를 가리키는지 보세요")
+    if data.get("sending") is False:
+        out.append(f"알림 Worker가 푸시를 보낼 수 없어요 ({host}): VAPID_PRIVATE_JWK 비밀값이 없거나 쓸 수 없는 키예요 "
+                   "(VAPID_PUBLIC_KEY를 넣었다면 그 키와 맞지 않아요)")
+    if data.get("refusing") is True:
+        out.append(f"알림 Worker: 푸시를 받던 휴대폰이 우리 VAPID 키를 거절하는데 그 푸시 서비스로 성공한 푸시가 없어요 ({host}). "
+                   "우리 설정 고장일 수 있어 그 구독은 지우지 않고 미뤄 두며 실행마다 몇 개씩만 다시 시도해요(7일까지, 그 뒤에는 평소처럼 세어 지워요). "
+                   "VAPID 키 쌍과 app/config.js pushPublicKey를 확인하세요")
+    if data.get("pairs") == "capped":
+        out.append(f"알림 Worker: 지켜보는 (시술, 지역) 쌍이 상한(PAIR_CAP)에 닿아 일부만 계산했어요(새 쌍은 빈 자리가 날 때까지 기다려요) ({host}). 심은 구독이 "
+                   "있는지 보고 좁은 정리 쿼리를 쓰거나 상한을 올리세요(D1 하루 쓰기 한도 때문에 둔 상한이에요). 좁은 정리 쿼리도 최근 재분류(key 변경)가 "
+                   "있었으면 앱을 아직 안 연 진짜 휴대폰까지 지우므로 사용자 결정 뒤에만, 넓은 정리 쿼리는 아직 푸시를 못 받은 진짜 구독도 지우므로 "
+                   "늘 사용자 결정 뒤에만 써요(docs/SECURITY_ARCHITECTURE.md §4)")
+    comp = data.get("compute")
+    if comp == "failed":
+        out.append(f"알림 Worker: 어제나 오늘(D1 하루, 09시 기준) 시작한 가격 알림 계산이 끝나지 못했어요 ({host}). 같은 가격은 30분마다 도는 "
+                   "따라잡기(alerts-catchup)가 한 번은 횟수에 세지 않고 다시 계산해요. 되풀이되면 weekly-prices의 price_alerts와 alerts-catchup "
+                   "실행 기록의 ::warning을 확인하세요")
+    elif comp == "deferred":
+        out.append(f"알림 Worker: 어제나 오늘(D1 하루, 09시 기준) 계산 횟수 상한(COMPUTES_PER_DAY)에 닿아 새 가격 계산을 미뤘어요 ({host}) — "
+                   "그 가격은 09시(또는 06시 정기 실행 몫이면 06시) 뒤에 계산돼요. 날마다 되풀이되면 데이터 PR을 묶어 합치거나 "
+                   "요금제 설정(PLAN)·상한을 검토하세요(cf/alerts/src/worker.js 계산)")
+    elif comp is not None and comp != "ok":
+        out.append(f"알림 Worker 계산 상태를 알 수 없어요 ({host}): compute={str(comp)[:20]}")
+    key = data.get("key")
+    if app_key and isinstance(key, str) and key and key != app_key:
+        out.append(f"알림 Worker의 VAPID 공개키가 app/config.js pushPublicKey와 달라요 ({host}): 이대로면 휴대폰 구독이 "
+                   "모두 거절돼요. 둘을 같은 키로 맞추세요")
+    return out
+
+
+def check_workers(fetch, urls_text, app_key=""):
     """(problems, notes). Each Worker answers GET <url>/health with 200 {"ok": true} after touching its bindings; anything
-    else — 404 included — counts as down, because an API Worker can answer '/' while its real routes throw."""
+    else — 404 included — counts as down, because an API Worker can answer '/' while its real routes throw. app_key =
+    app/config.js pushPublicKey (compared with the alerts Worker's "key")."""
     urls = worker_urls(urls_text)
     if not urls:
         return [], ["Worker 검사 건너뜀 (MONITOR_WORKER_URLS 비어 있음)"]
@@ -188,12 +275,15 @@ def check_workers(fetch, urls_text):
             continue
         try:
             status, body = fetch(u.rstrip("/") + "/health", {})
+            data = None
             try:
-                healthy = status == 200 and json.loads(body.decode("utf-8")).get("ok") is True
+                data = json.loads(body.decode("utf-8")) if status == 200 else None
+                healthy = isinstance(data, dict) and data.get("ok") is True
             except (ValueError, AttributeError):
                 healthy = False
             if healthy:
                 notes.append(f"Worker 살아 있음: {host}")
+                out += worker_warnings(host, data, app_key)
             else:
                 out.append(f"Worker 상태 확인 실패: {host} (GET /health → HTTP {status})")
         except Exception as e:
@@ -310,7 +400,10 @@ def run(args, env, fetch=http_fetch, now=None, send=telegram.send):
         meta, where = (live_meta, "배포된 data-meta.json") if live_meta else (file_meta, "app/data-meta.json")
         notes.append(f"수집일 검사 기준: {where}")
         problems += guarded("freshness", lambda: check_freshness(meta, today, where=where), problems, [])
-        w_problems, w_notes = guarded("workers", lambda: check_workers(fetch, env.get("MONITOR_WORKER_URLS", "")), problems, ([], []))
+        # the key phones subscribe with: main's app/config.js (this checkout). While public hosting is paused the public app
+        # is an older copy, so a key changed on main reaches phones only after the next public deploy.
+        app_key = app_push_key(args.root)
+        w_problems, w_notes = guarded("workers", lambda: check_workers(fetch, env.get("MONITOR_WORKER_URLS", ""), app_key), problems, ([], []))
         problems += w_problems
         notes += w_notes
         title = "윤실장 감시: 확인할 것 {n}건"

@@ -475,7 +475,7 @@ C8 줄 번호 함수(#89)는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | A2 보안 헤더(`app/_headers`) | 합쳐짐, 실제 응답 헤더로 확인(모니터) | #6, 문서 #33 | — |
 | A3 서버·DB 쪽 크레딧 제거 | 합쳐짐 | #9, #35 | — |
 | A4 익명 집계 Worker(`cf/metrics`, D1) | 합쳐짐. 앱 쪽은 꺼짐(`metrics: false`) | #15, #26 | 켜기(아래 순서) |
-| A5 푸시 알림 Worker(`cf/alerts`, D1) | 초안 PR, 아직 안 합침 | #85 | D1 `yoonsiljang-alerts` 만들기(사용자) → 합치기·배포·VAPID 키 → B에게 `alertsApi`·`pushPublicKey` |
+| A5 푸시 알림 Worker(`cf/alerts`, D1) | 초안 PR, 아직 안 합침. D1 `yoonsiljang-alerts` 만들기·id 넣기는 끝남 | #85 | `docs/ARCHITECTURE.md` D19 '켜는 순서' 3~10번 그대로(합치기 → 비밀값·키 → B 설정 → Workers Paid → `PLAN` `"paid"` → 공개 배포) |
 | A6 관리자 주소(운영 현황은 Cloudflare Access 뒤) | 합쳐짐 | #23 | Access 설정(사용자). 설정 전에는 관리자 주소도 403 |
 | A7 텔레그램 모니터링 | 합쳐짐 | #14, #18 | — |
 | A8 사고 대응 문서 | 합쳐짐 | #10 | — |
@@ -490,18 +490,22 @@ C8 줄 번호 함수(#89)는 화면에서 쓸 곳이 생길 때(바뀐 줄만 �
 | DB 가격 조건 '시간대'(C #83 부탁) | 합쳐짐 | #87 | — |
 
 **2026-10-16 사용자 결정(자세히는 NOTES.md).** 저장소는 공개로 둔다(`docs/SECURITY_ARCHITECTURE.md` §0). 익명 집계·푸시 알림 켜기 승인.
-켜는 순서: A5 배포 → B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 공개 배포(`PUBLIC_DEPLOY`=`on`)를 다시 켜야 실제 사용자에게 닿음
-(두 Worker는 공개 주소에서 온 요청만 받음). 변호사·의료 검수는 사용자가 맡김(의뢰 자료는 저장소 밖). 그 밖의 일은 나중에(가족이 이어받음).
+켜는 순서(2026-10-19 고침 — 출시는 Workers Paid, 사용자 결정): A5 합치기(자동 배포, `PLAN` `"free"`) → `ALERTS_SECRET`·`ALERTS_CODE_SHA`·`setup_keys` →
+B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 계정을 Workers Paid로 바꾸기 → `PLAN`을 `"paid"`로 바꾸는 한 줄 PR → 공개 배포
+(`PUBLIC_DEPLOY`=`on`)를 다시 켜야 실제 사용자에게 닿음(두 Worker는 공개 주소에서 온 요청만 받음). 자세히는 `docs/ARCHITECTURE.md` D19 '켜는 순서'. 변호사·의료 검수는 사용자가 맡김(의뢰 자료는 저장소 밖). 그 밖의 일은 나중에(가족이 이어받음).
 
-**이어받는 분께 — A의 남은 일(짧게, 2026-10-16 오후 기준)**
-1. A5 알림 Worker: PR #85(초안, `platform/alerts-worker`). 합치기 전에 사용자가 Cloudflare 대시보드 → Storage & Databases → D1 → Create로
-   `yoonsiljang-alerts`를 만들고, 그 Database ID를 `cf/alerts/wrangler.jsonc`의 `REPLACE_WITH_D1_ID` 자리에 넣어요(채팅에서 만들기는 막혔음).
-   배포 뒤 공개키·주소를 B에게(`config.js`의 `alertsApi`·`pushPublicKey`).
+**이어받는 분께 — A의 남은 일(짧게, 2026-10-16 오후 기준, 2026-10-19에 1·3번 고침)**
+1. A5 알림 Worker: PR #85(초안, `platform/alerts-worker`). ~~D1 `yoonsiljang-alerts` 만들기와 그 Database ID를 `cf/alerts/wrangler.jsonc`에 넣기~~ —
+   끝남. 켜는 순서는 `docs/ARCHITECTURE.md` D19 '켜는 순서' 그대로: **합치기(자동 배포, `PLAN` `"free"`) → `ALERTS_SECRET`·`ALERTS_CODE_SHA`·`setup_keys`
+   → B 설정(`config.js`의 `alertsApi`·`pushPublicKey` — 배포 뒤 공개키·주소를 B에게) → 계정을 Workers Paid로 바꾸기 → `PLAN`을 `"paid"`로 바꾸는
+   한 줄 PR → `PUBLIC_DEPLOY` `on`**. 순서를 바꾸지 않아요: 무료 묶음 그대로 출시하면 새 가격 뒤 2시간 안 계산(2026-10-16 사용자 결정)을 바쁜 날에
+   지키지 못하고(무료는 D1 하루 계산 3번), Workers Paid 출시(2026-10-19 사용자 결정)와도 어긋나요.
 2. ~~배포 작업 나누기~~ — 합쳐짐(#82, 2026-10-16). 합친 뒤 첫 실행(push 38870353095)은 새 배포 코드라 deploy를 건너뛰고 redeploy가 재빌드를 띄움 → 그 실행(38870836337)의 deploy job이 토큰을 받아 실제 배포까지 성공.
    **사용자 할 일:** GitHub Settings → Environments → New environment `cloudflare` → Deployment branches를 `main`만 →
    Environment secret `CLOUDFLARE_API_TOKEN` 추가(GitHub에 저장된 값은 다시 볼 수 없으니 Cloudflare → API Tokens에서 새로 만들거나 Roll한 값) → Actions → weekly-prices → Run workflow(skip_scrape)로 deploy job이 초록인지 확인 → 그다음에 Repository secret `CLOUDFLARE_API_TOKEN` 지우기(순서를 바꾸면 그 사이 배포가 토큰 없이 실패). 저장소는 공개로 둬요(무료 요금제의 Environment secret은 공개 저장소에서만 동작).
    자세히는 `docs/SECURITY_ARCHITECTURE.md` §5.
-3. 공개 배포 다시 켜기(GitHub 저장소 변수 `PUBLIC_DEPLOY`=`on` → Actions → weekly-prices → Run workflow(skip_scrape) 한 번) — 사용자 결정. 집계·푸시 두 Worker는 공개 주소 Origin만 받아서, 켜기 전에는 실제 사용자 요청이 없어요.
+3. 공개 배포 다시 켜기(GitHub 저장소 변수 `PUBLIC_DEPLOY`=`on` → Actions → weekly-prices → Run workflow(skip_scrape) 한 번) — 사용자 결정.
+   **1번의 Workers Paid 전환과 `PLAN` `"paid"` PR을 합친 뒤에만** 켜요(2026-10-19 사용자 결정, `docs/ARCHITECTURE.md` D19 켜는 순서 8~10번). 집계·푸시 두 Worker는 공개 주소 Origin만 받아서, 켜기 전에는 실제 사용자 요청이 없어요.
 4. 비밀번호 화면 번호 바꾸기: 도구 합쳐짐(#81). PC의 Git Bash에서 `git switch main && git pull`(pin.bat 파일 받기) → `tools\windows\pin.bat` 실행 → 열린 `pin/…` PR이 초록이고 05:30~06:30 KST가 아니면 합치기(`docs/LOCAL_SETUP_WINDOWS.md` 4-1). 그 뒤 화면 검사의 `APP_PIN`은 새 번호. 공개 주소는 3번 전까지 예전 번호예요.
 5. 사용자 설정: Cloudflare Access(관리자 주소 — Zero Trust에서 만든 AUD·팀 도메인은 비밀이 아니라서 PR로 `cf/admin/wrangler.jsonc`에), GitHub 비밀 검사·push protection(Settings → Code security).
 6. A9 전용 도메인과 요청 제한(도메인을 산 뒤).

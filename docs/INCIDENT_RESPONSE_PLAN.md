@@ -11,7 +11,7 @@
 | 가격 공장 | GitHub Actions `weekly.yml` → `tools/factory.sh` (매일 06:00 KST 판단, 월요일·행사 종료 시 수집) | 빌드가 실패하면 저장·배포 전에 멈추고, 앱은 어제 데이터를 그대로 보여줘요 |
 | 앱 주소 | 공개: Cloudflare Workers 정적 파일 `yoonsiljang` (무료), https://yoonsiljang.lsy2825.workers.dev — **2026-10-15 판으로 고정**(공개 배포 멈춤, 저장소 변수 `PUBLIC_DEPLOY`=`on`일 때만 배포). 관리자: `yoonsiljang-admin`(Cloudflare Access 뒤)이 빌드마다 갱신 | GitHub Pages는 없어요. 보안 헤더는 `app/_headers` |
 | 새 Worker(만드는 중) | `cf/metrics`(익명 집계, A4), `cf/alerts`(푸시, A5) + D1 | 배포 전까지는 해당 없음 |
-| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(Environment `cloudflare`로 옮기면 그쪽, `docs/SECURITY_ARCHITECTURE.md` §5)(+ 생기면 `ALERTS_URL`·`ALERTS_SECRET`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
+| 비밀값 | GitHub Secrets: `CLOUDFLARE_API_TOKEN`·`CLOUDFLARE_ACCOUNT_ID`(Environment `cloudflare`로 옮기면 그쪽, `docs/SECURITY_ARCHITECTURE.md` §5)(+ 알림을 켜면 `ALERTS_SECRET`; `ALERTS_URL`은 선택 — 기본 주소가 있어요. 저장소 변수(비밀 아님): `ALERTS_CODE_SHA`·`PUBLIC_APP_URL`). Worker secret: VAPID 비밀키 등 | 저장소에는 비밀값이 없어요(`python3 tests/security/scan_secrets.py`) |
 | 로그인·DB(Supabase) | 꺼져 있음(`app/config.js` 비어 있음) | §7은 켠 뒤에만 해당 |
 
 ## 1. 등급과 첫 대응 시간
@@ -40,8 +40,8 @@
 | 새어 나간 것 | 할 일 |
 |---|---|
 | **Cloudflare API 토큰** | ① Cloudflare 대시보드 → 오른쪽 위 프로필 → **API Tokens**에서 해당 토큰을 **Roll**(새 값 발급)하거나 삭제해요. ② 새 값을 넣어요: Environment `cloudflare`로 옮겼다면 Settings → **Environments → cloudflare → Environment secrets**의 `CLOUDFLARE_API_TOKEN`(Repository secrets에 다시 만들지 않아요 — 이름이 같으면 Environment 값이 이기고, Repository secret이 생기면 합치기 전 실행의 Re-run을 막는 장치가 사라져요). 옮기기 전이면 Settings → Secrets and variables → Actions → **Repository secrets**의 `CLOUDFLARE_API_TOKEN`. ③ Cloudflare → Workers & Pages에서 모르는 Worker나 배포가 없는지 봐요(Deployments 탭). 있으면 §3처럼 되돌려요 |
-| **VAPID 비밀키(푸시)** | ① 새 키 쌍을 만들어요(`node cf/alerts/vapid-keygen.mjs`, A5 이후). ② `wrangler secret put`으로 Worker에 넣어요. ③ 공개키를 B에게 부탁 메모로 보내 `config.js`를 바꾸게 해요. 기존 구독은 새 키로 다시 구독해야 해요 |
-| **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
+| **VAPID 비밀키(푸시)** | 키를 바꾸면 모든 휴대폰이 알림을 다시 신청해야 해요(2026-10-16 절차, A5). **먼저(9차 검증):** B의 '가격 알림 받기'(`pushSubscribe`) 수정 — 브라우저에 남은 구독의 `applicationServerKey`가 지금의 `pushPublicKey`와 다르면 그 구독을 `unsubscribe()`한 뒤 새로 `subscribe()` — 이 공개 앱에 나간 뒤에만 키를 바꿔요(새는 중이라 급하면 바꾸되, 그동안 휴대폰은 '켜짐'으로 보이면서 옛 키 구독이 첫 발송에서 지워지고, 다시 켜도 같은 일이 되풀이된다는 것을 알고 해요). ① **새 키 넣기:** GitHub → Actions → **cf-alerts** → Run workflow → Branch **main** → `setup_keys`와 `replace_keys`를 **둘 다** 체크 → Run. 러너 안에서 새 쌍을 만들고, 비공개키는 Worker 비밀값으로만 들어가요(출력·파일 없음). 같은 실행이 `ALERTS_SECRET`도 GitHub 값으로 다시 넣어요(키 교체에 딸린 일일 뿐 — `ALERTS_SECRET`만 바꿀 때는 아래 줄의 `sync_secret`). `cf/alerts/wrangler.jsonc`의 `VAPID_PUBLIC_KEY`는 비워 둬요(차 있으면 이 실행이 거절하고 아무것도 안 바꿔요). ② **확인:** 실행이 초록이고 요약에 새 공개키(87자)가 보여요. `https://yoonsiljang-alerts.lsy2825.workers.dev/health`가 `"sending":true`이고 `"key"`가 그 새 공개키예요. ③ **앱:** A가 새 공개키를 B에게 부탁 메모로 보내 `app/config.js`의 `pushPublicKey`를 바꾸게 해요(급하면 §1 예외). 바뀌기 전까지 감시가 'VAPID 공개키가 달라요'를 날마다 경고해요. 공개 배포가 멈춘 동안에는 바뀐 `config.js`가 휴대폰에 닿지 않아요. ④ **옛 구독(코드 기준, 2026-10-16 다시 고침):** 옛 키로 한 구독은 푸시 서비스가 거절해요. Worker는 푸시 서비스마다 **새 키가 처음 2xx를 받은 날**을 적어 두고(`stat` `ok:`), 마지막 푸시가 그날보다 오래된 행은 옛 키 구독으로 보고 401·403 3번 뒤 지워요(경고 없음) — 다시 구독한 휴대폰이 옛 행 때문에 막히지 않아요. 새 키가 그 서비스에서 아직 한 번도 통하지 않았으면(다시 구독한 휴대폰이 없음) 옛 행은 '우리 설정 고장일 수 있음'으로 보호를 받아 **7일(`REFUSING_GRACE_DAYS`)까지** 지워지지 않고(미뤄 두고 실행마다 그 서비스에서 2개씩만 다시 시도 — 그래서 옛 행이 많아도 다른 푸시 서비스의 휴대폰은 그날 받아요; 처음 한 번씩은 모두 시도돼요. 그 서비스가 2xx를 주면 받은 적 있는 행이 실행마다 40개씩 풀려요) `/health`의 `"refusing":true`와 감시 경고가 날마다 나요. 7일이 지나면 평소처럼 세어 지워요. 잘못된 키를 잠깐 넣었다가 되돌려도 맞는 키의 `ok:` 날짜는 지워지지 않아요(키마다 따로 남김, 3차 검토) — 되돌린 뒤 그 키로 받던 휴대폰은 계속 '지금 키로 받은 기기'로 보호를 받아요. B의 '키가 다르면 다시 구독' 처리(부탁 메모)가 나간 뒤에는 휴대폰이 앱을 열 때 새 키로 다시 구독하고 옛 id를 지워요. 진짜 설정 고장(새 키를 잘못 넣음, `VAPID_SUBJECT` 오류 등)도 같은 경고가 나요 — 7일 안에 ①~②를 다시 확인하세요(그 뒤에는 거절하는 구독이 지워져요) |
+| **`ALERTS_SECRET` 등 Worker 공유 비밀** | Worker secret과 GitHub Secret을 같은 새 값으로 바꿔요. ① 새 값을 내 PC에서 만들어(`docs/ARCHITECTURE.md` D19 켜는 순서 4번의 방법, 클립보드에만) GitHub 저장소 Settings → Secrets and variables → Actions → **Repository secrets**의 `ALERTS_SECRET` → Update에 붙여 넣어요. ② GitHub → Actions → **cf-alerts** → Run workflow → Branch **main** → **`sync_secret`만** 체크 → Run. 그 값을 stdin으로 Worker에 넣고 VAPID 키는 건드리지 않아요. (또는 Cloudflare 대시보드 → Workers & Pages → `yoonsiljang-alerts` → Settings → Variables and Secrets → `ALERTS_SECRET` → Edit에 같은 값을 붙여 넣어요.) ③ 클립보드를 다른 글자로 덮어요. ④ **확인:** 다음 날 06시 뒤 weekly-prices 실행의 `price_alerts`에 '401' 경고가 없고, `/health`의 `finished`가 그날로 바뀌어요. **`setup_keys`는 쓰지 않아요** — VAPID 키가 있으면 거절하고, `replace_keys`를 같이 고르면 모든 휴대폰이 다시 구독해야 해요. 바꾸는 사이에는 공장의 알림 단계만 실패하고, 가격 빌드는 계속돼요 |
 | **비밀번호 화면 번호(PIN)** | 이건 화면을 가리는 것일 뿐이에요. 데이터는 공개 주소에 있어요. 사용자가 PC에서 `tools/windows/pin.bat`을 실행해요(#81, `docs/LOCAL_SETUP_WINDOWS.md` 4-1). 번호는 화면에 안 보이게 입력하고 채팅·저장소에 남지 않아요. 도구가 `app/gate.js`의 `HASH`와 `app/sw.js`의 `VER`(날짜·시각 숫자, 지금보다 100 이상) 두 줄만 바꾼 `pin/…` PR을 열고, 그 PR을 합치면 끝이에요. **예전 번호는 공개 기록에 남아 있어요** |
 | **Supabase 키**(켠 뒤) | 대시보드에서 키를 교체해요. service_role이 나갔으면 JWT secret까지 바꿔요. Auth 로그와 `audit_logs`에서 이상 변경을 찾아요 |
 | **GitHub 토큰·계정** | §5 |
@@ -100,8 +100,50 @@
 - 집계(`cf/metrics`)에는 날짜·단계·횟수만 있어요. 잃어도 개인정보 피해는 없고, 그날 숫자만 비어요.
 - 알림(`cf/alerts`)에는 푸시 구독 주소와 알림 조건이 있어요(이름·연락처 없음).
   - 의심되면 Worker를 이전 버전으로 되돌리거나(§3), 알림 cron을 멈춰요(대시보드 → Worker → Settings → Triggers).
-- **D1 시점 복구(Time Travel):** 항상 켜져 있고 추가 비용이 없어요. 데이터베이스를 **지난 1분 단위 어느 시점으로든** 되돌릴 수 있고, 보관 기간은 **무료 플랜 7일 / 유료 플랜 30일**이에요(Cloudflare 문서 'Time Travel and backups'·'D1 Limits', 2026-10-15 확인. 이 계정은 무료 플랜이라 7일). 사용법: `wrangler d1 time-travel info <DB이름> --timestamp=<시각>`으로 그 시각의 북마크를 얻고, `wrangler d1 time-travel restore <DB이름> --timestamp=<시각>`으로 되돌려요. 되돌리면 그 사이의 모든 쓰기가 사라지고 진행 중인 요청은 취소되며, 되돌리기 직전 북마크가 출력되니 적어 두면 되돌린 것을 다시 되돌릴 수 있어요. 더 길게 보관하려면 R2로 내보내기 Workflow가 따로 필요해요(지금은 하지 않아요).
-- **개인정보와의 관계:** 알림 D1에서 구독을 지워도(끄기·조건 0개·푸시 서비스 404/410) 지운 행은 위 기간(무료 7일)만큼은 Time Travel 기록에 남아 있을 수 있어요. 처리방침의 '바로 지워요'는 운영 중인 DB 기준이에요(C에게 전달함, 변호사 질문 대상).
+  - **알림 계산이 미뤄짐(텔레그램 '계산 횟수 상한(COMPUTES_PER_DAY …)에 닿아 이 실행의 새 가격 계산을 미뤘어요', 9차·10차·11차):** 사고가
+    아니에요. 이 D1 하루(09:00~다음 날 09:00 KST)에 새 가격 계산을 이미 `COMPUTES_PER_DAY`번(요금제 설정 `PLAN`: 유료 12·무료 3) 셌거나, 06:00 KST
+    전이라 마지막 한 번을 06시 정기 실행 몫으로 남긴 것이에요. 06시 몫이면 **06:00 KST 정기 실행이 계산해요**(main의 가격 — 미뤄진 가격을 담음;
+    30분마다의 따라잡기는 08:00 KST 전에는 그 몫을 쓰지 않음 — 11차. 그 실행이 계산하지 못하면 08:07 따라잡기), 상한이면 09:00 KST 뒤 첫 따라잡기
+    (`alerts-catchup.yml`, 30분마다 07·37분)가 계산해요. 하는 일 없음. 텔레그램은 **D1 하루에 한 줄**(그 하루 처음 미뤄진 weekly-prices 실행),
+    06시 몫으로 한 줄이 간 뒤 09시까지로 바뀌면 한 줄 더 와요(11차) — 그 밖의 미룸과 따라잡기의 미룸은 실행 기록의 `::warning`과 다음 날 09:30
+    감시의 '계산 횟수 상한에 닿아' 줄(`/health` `"compute":"deferred"`)로 보여요. 날마다 되풀이되면 사용자 결정: 데이터 PR을 묶어 합치거나,
+    `COMPUTES_PER_DAY`를 올리되 쓰기 계산을 다시 하거나(`cf/alerts/src/worker.js` 머리 주석 — 유료에서 하루 1번 더 ≈ 달 254만 줄, 3번 더까지 5%를
+    남김), 무료로 돌리는 중이라면 Workers Paid로 옮긴 뒤 `PLAN`을 `"paid"`로(출시 요금제, `ARCHITECTURE.md` D19 켜는 순서 8·9번).
+  - **알림 설정 문제로 계산이 시작되지 않음(텔레그램 '설정 문제로 새 가격 계산을 시작하지 못했어요 … ALERTS_SECRET·Worker 설정 확인', 11차):**
+    다시 돌려도 같은 답이 와서 **고칠 때까지 어느 실행도 계산하지 않아요**. 실행 기록의 `::warning`이 원인을 말해요: `start answered 401`·`403` →
+    GitHub의 `ALERTS_SECRET`과 Worker의 값이 달라요 — GitHub 값을 바꾼 뒤라면 `cf-alerts` → Run workflow(main) → **`sync_secret`만** 체크(§2
+    `ALERTS_SECRET` 줄); `answered 404` → `ALERTS_URL`(저장소 secret·변수)이 알림 Worker 주소가 아니에요; `answered 301`·`302`·`307` 같은 3xx →
+    `ALERTS_URL`이 리다이렉트하는 주소(Cloudflare Access 뒤 주소·옮긴 주소 — 따라가지 않아요, 12차); `answered 200 with a body that is not JSON` →
+    `ALERTS_URL`이 다른 사이트(HTML 페이지)를 가리켜요(받은 본문은 기록에 적지 않아요, 12차); `ALERTS_URL must be https`·`ALERTS_URL is not a URL` →
+    `ALERTS_URL` 값의 형식이 틀렸어요(`https://`로 시작하는 알림 Worker 주소로 고쳐요, 12차); `answered no known decision` → 고정 코드
+    (`ALERTS_CODE_SHA`)와 배포된 Worker가 맞지 않아요 — 리뷰한 최신 커밋으로 변수를 올려요; `shape changed` → `data.json`의 key·지역이 Worker 규칙과
+    안 맞아요(A가 `cf/alerts/src/rules.js`를 고침); `ALERTS_CODE_SHA is not set … while public hosting is on` → 저장소 변수 `ALERTS_CODE_SHA`에 리뷰한
+    커밋 id(40자). 텔레그램은 그런 weekly-prices 실행마다 한 줄이에요(30분마다의 따라잡기는 텔레그램이 없음). 고친 뒤 다음 따라잡기가 계산해요.
+  - **알림 계산이 시작한 뒤 실패(텔레그램 '가격 알림 계산이 시작한 뒤 실패했어요', 또는 감시의 '시작한 가격 알림 계산이 끝나지 못했어요', 10차):**
+    Worker가 그 계산을 셌고 임대를 쥔 채 끝났어요. 15분 뒤 임대가 풀리면 30분마다의 따라잡기가 **같은 가격을 횟수에 세지 않고** 한 번 다시
+    계산해요(D1 하루에 한 번 — 그 뒤 시도는 세요). 하는 일: 실행 기록의 `::warning`(경로 + HTTP 상태 또는 네트워크 오류)을 봐요. Worker 5xx가
+    이어지면 Cloudflare 대시보드 → Workers & Pages → `yoonsiljang-alerts` → Logs/Metrics, D1 오류면 아래 'D1 한도'. 되풀이되면 그날 상한을 다
+    쓸 수 있어요(위 줄).
+  - **D1 한도를 넘는 날 — 무료 계정만**(모든 D1 쿼리가 09:00 KST까지 실패 — `/health` 503, 감시 경고): 그날 알림이 멈출 뿐 앱·가격은 그대로예요.
+    09:00 KST 뒤 첫 따라잡기가 계산을 다시 해요. Workers Paid 계정은 멈추지 않고 넘은 만큼 청구돼요 — 예산 알림 이메일이 오면 같은 원인(아래 §9
+    'D1 한도')을 봐요.
+  - **따라잡기가 계속 실패:** `alerts-catchup` 실행 기록의 `::warning`을 봐요(공개 앱이 다른 data-meta를 보여 줌·Worker 오류·비밀값 없음). 계산을
+    시작한 뒤 실패했다면 다음 날 09:30 감시의 `compute` 줄이, 이틀 넘게 finish가 없으면 `/health stale` 줄이 텔레그램으로 와요. 따라잡기는 30분마다
+    다시 돌므로 원인을 고치면 다음 시각에 계산돼요. **`stale`인데 감시가 Worker를 정상(down 아님)으로 보면 `ALERTS_URL`부터 봐요**(12차): 없는
+    호스트(틀린 이름)를 가리키면 notify는 '연결 안 됨'(`fetch failed`)으로 실패하지만 감시는 `MONITOR_WORKER_URLS`의 맞는 주소를 보므로 down이
+    뜨지 않고 `stale`로만 드러나요(다시 시도하면 나을 수도 있는 네트워크 오류와 구별이 안 돼 `startfail` 텔레그램은 없음).
+  - **'다시 보낸 finish'(12차·13차·14차):** 실행 기록에 `the Worker says these prices are already finished (this finish committed and its answer was lost)`나
+    `the finish was sent again after its answer was lost and the Worker says the first try finished (409 …)`가 있으면 정상이에요 — finish는 D1에 다
+    쓰였고 답만 잃었어요. Worker는 다시 온 finish를 아무것도 쓰지 않고 돌려보내요(그 사이 다른 계산의 행을 지우지 않게). 13차: D1이 finish 배치를
+    커밋한 **뒤에** 오류('Network connection lost.' 같은 것)로 답한 첫 시도도 같아요 — 오늘 이 가격이 끝난 것으로 적혀 있으면 **누가 임대를
+    쥐었든**(14차: 커밋과 오류 사이에 다른 가격의 계산이 임대를 가져가도) Worker가 200 `finished: "before"`로 답하고(아무것도 안 씀) notify는 끝난
+    것으로 봐요(텔레그램 없음). 반대로 첫 시도의 `/v1/internal/finish answered 409`는 임대가 이 실행의 것이 아니고 오늘 이 가격이 끝난 것으로
+    적혀 있지도 않다는 뜻 — **그 배치는** 되돌려져 아무것도 쓰지 않았어요(Worker 로그 `this batch wrote nothing (rolled back)`; 커밋과 오류 사이에
+    다른 가격의 계산이 시작부터 finish까지 다 끝낸 경우만 예외인데, 본 적 없고 그때는 더 새 가격이 기준이 돼요) — 보통 그 실행이 15분 임대를 넘겨
+    다른 계산이 임대를 가져간 것이고, `failed=true` 텔레그램이 와요. 다음 계산(그 다른 계산 또는 따라잡기)이 최신 가격으로 계산하니 하는 일은 없어요; 되풀이되면 계산이 왜 그렇게
+    오래 걸리는지 봐요.
+- **D1 시점 복구(Time Travel):** 항상 켜져 있고 추가 비용이 없어요. 데이터베이스를 **지난 1분 단위 어느 시점으로든** 되돌릴 수 있고, 보관 기간은 **무료 플랜 7일 / 유료 플랜 30일**이에요(Cloudflare 문서 'Time Travel and backups'·'D1 Limits', 2026-10-15 확인. 이 계정은 출시 전까지 무료 플랜이라 7일, 출시 요금제인 Workers Paid로 바꾸면 30일 — 2026-10-19 사용자 결정). 사용법: `wrangler d1 time-travel info <DB이름> --timestamp=<시각>`으로 그 시각의 북마크를 얻고, `wrangler d1 time-travel restore <DB이름> --timestamp=<시각>`으로 되돌려요. 되돌리면 그 사이의 모든 쓰기가 사라지고 진행 중인 요청은 취소되며, 되돌리기 직전 북마크가 출력되니 적어 두면 되돌린 것을 다시 되돌릴 수 있어요. 더 길게 보관하려면 R2로 내보내기 Workflow가 따로 필요해요(지금은 하지 않아요).
+- **개인정보와의 관계:** 알림 D1에서 구독을 지워도(끄기·조건 0개·푸시 서비스 404/410) 지운 행은 위 기간(무료 7일, Workers Paid 30일)만큼은 Time Travel 기록에 남아 있을 수 있어요. 처리방침의 '바로 지워요'는 운영 중인 DB 기준이에요(C에게 전달함, 변호사 질문 대상).
 - **데이터베이스가 사는 곳:** 집계 DB는 계정 쪽 정보로도 `running_in_region: APAC`(아시아·태평양)로 확인했어요. 알림 DB는 만들 때 같은 지역 힌트(`apac`)를 줘요.
 
 **Supabase(로그인·DB를 켠 뒤에만)**
@@ -121,7 +163,7 @@
 ## 9. 남용·스팸
 
 - **집계 Worker:** 날짜·단계별 숫자만 늘어나요. 이상하게 튀면 그날 숫자를 분석에서 빼요. 저장된 개인정보가 없어서 사용자를 찾아 막는 방법은 없어요(설계상 그래요).
-- **알림 Worker:** 구독 한도와 입력 검사가 먼저 막아요. 반복되면 구독 받기를 잠시 멈추는 판(배포)을 올려요.
+- **알림 Worker:** 구독 한도와 입력 검사가 먼저 막아요. 반복되면 구독 받기를 잠시 멈추는 판(배포)을 올려요. 감시가 `"pairs":"capped"`(지켜보는 쌍이 `PAIR_CAP`에 닿음)를 경고하면 심은 구독인지 보고, **좁은 정리 쿼리**(규칙의 key가 하나도 공장의 key 목록에 없고 푸시를 받은 적 없는 구독만, `SECURITY_ARCHITECTURE.md` §4)를 후보로 봐요. **단 key가 최근 바뀌었으면(재분류 — 최근 `data.json`의 `meta.recl` 날짜) 사용자 결정 뒤에만 써요**(6차 검증): 재분류 뒤 며칠은 앱을 아직 열지 않은 진짜 휴대폰도 옛 key만 갖고 있어 이 쿼리에 걸리고, 지워진 휴대폰은 다음 알림 변경 때 404를 받아 앱(B의 지금 코드)이 다시 구독하지 않고 푸시를 '꺼짐'으로 바꿔요 — 사용자는 앱을 다시 연 뒤(그때 앱이 남은 브라우저 구독을 지워요) 켜야 해요 — 바로 켜면 옛 구독을 그대로 다시 보내요(부탁 → B: 404에서 보낼 규칙이 남았으면 브라우저 구독을 `unsubscribe()` → 지금의 `pushPublicKey`로 새로 `subscribe()` → POST(앱을 켤 때마다 한 번만, 그것도 실패하면 '꺼짐'). '가격 알림 받기'(`pushSubscribe`)도 404를 받은 뒤이거나 브라우저에 남은 구독의 `applicationServerKey`가 지금의 `pushPublicKey`와 다르면 그 구독을 `unsubscribe()`한 뒤 새로 `subscribe()`해요. 같은 endpoint를 그대로 다시 POST하지 않아요). 지어낸 key의 쌍은 5차 검증 뒤 목록 자리를 차지하지 못하므로(공장이 보낸 key 목록에 있는 key만 순위에 듦; 6차부터 그런 규칙도 저장은 되고, 7차부터 답은 약속 1 그대로 `{id}`·`{ok:true}`), 그래도 `capped`가 이어지면 실제 key로 심은 것이거나 진짜 구독이 상한보다 많은 것 → `PAIR_CAP` 조정을 사용자와 정해요. **D1 한도(10차, 출시는 Workers Paid):** 무료 계정이면 하루 쓰기(계정 전체 100,000줄)나 읽기(5,000,000줄) 한도를 넘는 순간 09:00 KST까지 모든 D1 쿼리가 실패해 `/health`가 503이에요 — 그날 알림·집계가 멈추고 09:00 KST에 저절로 돌아와요. Workers Paid 계정이면 멈추지 않고 쓴 만큼 청구돼요(쓰기 달 5천만 줄·읽기 250억 줄 포함, 넘으면 100만 줄에 $1.00·$0.001) — 신호는 Cloudflare 예산 알림 이메일(다음 날)이에요. 최악 계산은 `cf/alerts/src/worker.js` 머리 주석과 `ARCHITECTURE.md` D19 표예요: 유료 묶음은 모든 상한이 31일 내내 차도 쓰기 **39,402,147줄**(`cf/metrics` 상한 포함, 포함량의 78.8% — 5%를 남김)·읽기 1,629,849,676줄(12차: notify가 다시 보내는 `watched` 몫을 넣음; 13차: 실패한 finish 배치가 읽은 줄은 모름이라 세는 계산과 죽은 시도 두 곳 모두 뺌 — 모두 finish 한 번씩 청구된다면 3,031,071,376줄; 14차: 커밋한 뒤 오류로 답한 finish 시도의 뒤 읽기 3줄도 넣음)이라 청구액 $5, 무료 묶음(계정이 유료가 되기 전 `PLAN` `"free"`)은 D1 하루 쓰기 **94,407줄**(5.6% 남음)·읽기 3,096,915줄(38.1% 남음 — 실패한 finish 시도가 모두 다 읽는다면 4,926,615줄, 5M 안)이에요(11차: 한 번 실패한 휴대폰의 줄·`DROP_ENDED`를 넣고 다시 셈 — 10차 셈은 실제로 유료 달 5천만 줄·무료 하루 100,000줄을 넘을 수 있었어요). 무료 계정에서 `PLAN`이 `"paid"`면(유료 전환 전에 합친 경우) 발송 실행이 51번째 푸시에서 런타임 한도에 걸려 멈추고(실패로 세지 않음, Worker 로그 'subrequest limit'), D1 하루 계산 12번이 무료 하루 한도를 넘을 수 있어요 → `PLAN`을 `"free"`로 되돌리는 PR을 합쳐요. **단 무료 묶음이 D1 Free 하루에 맞는 것은 구독이 1,750개 이하일 때뿐이에요**(12차 검증 — Worker는 아무도 밀어내지 않음): 유료로 그보다 많이 받은 뒤 계정을 무료로 돌리면(카드 만료 등으로 유료가 끊기는 경우도) `"free"`로 되돌려도 남은 행 수로 하루 한도를 넘어요(구독 15,000이면 하루 319,657줄, `COMPUTES_PER_DAY` 1이어도 155,617줄, 3,250개만 남아도 119,907줄) — **유료를 유지하거나, 먼저 구독을 1,750개 아래로 정리한 뒤**(`SECURITY_ARCHITECTURE.md` §4 정리 쿼리 — 사용자 결정) 되돌려요. 신호는 `"free"` 설정에서 `/health`의 `capacity`가 `"full"`인 것(되돌리기 전에는 D1 콘솔 `SELECT n FROM stat WHERE k = 'subs'`)이에요(`ARCHITECTURE.md` D19 켜는 순서 9번). 지금 동작(9차·10차·11차): 배포한 모든 실행(정기·Run workflow·push·Re-run)과 30분마다의 따라잡기가 먼저 데이터의 지문을 `start`에 묻고, 오늘 끝낸 같은 가격이면 `done`(0줄 쓰기), 바뀐 가격이면 바로 계산해요. 계산은 D1 하루(09:00–09:00 KST)에 `COMPUTES_PER_DAY`번(유료 12·무료 3)까지 세고, 21:00 UTC(06:00 KST) 전에는 한 번 적게(06시 정기 실행 몫 — 따라잡기는 08:00 KST 전에는 그 몫을 쓰지 않음), D1 하루의 마지막 15분(08:45–09:00 KST)에는 시작하지 않아요. 넘으면 `deferred` — 상한이면 09:00 KST 뒤 첫 따라잡기, 06시 몫이면 06:00 정기 실행이 계산해요(그 실행이 못 하면 08:07 따라잡기; 텔레그램은 D1 하루에 한 줄, 06시 몫이 09시까지로 바뀌면 한 줄 더, 감시의 `/health` `"compute":"deferred"`). 같은 가격의 죽은 계산을 다시 하는 것은 하루 한 번 세지 않아요. 그래서 손 수집·가격 재확인으로 낮에 새 데이터를 내도 그 실행이나 다음 따라잡기가 계산해요(보통 몇 분, 늦어도 약 1시간 — 길마다의 지연은 `ARCHITECTURE.md` D19 '약속하는 지연'). 계산을 손으로 더 돌릴 필요는 없어요 — 같은 가격의 Re-run·Run workflow는 `done`이라 0줄이고, 바뀐 가격은 상한 안에서 저절로 계산돼요. 무료로 돌리는 중에 데이터 PR이 하루 3번 넘게 합쳐지면 그 뒤 가격은 06:00/09:00 KST까지 기다려요(데이터 PR은 묶어 합쳐요). 무료에서 `/health`가 503이면 `cf/metrics` 스팸(같은 계정 한도를 따로 최대 하루 80,000줄)이나 PUT·DELETE 남용(상한 밖)부터 봐요. **넓은 정리 쿼리**는 푸시를 한 번도 받지 않은 구독을 모두(미뤄 둔 것·소식이 기다리는 것 포함) 지우므로, 아직 첫 푸시를 못 받은 진짜 휴대폰도 함께 지워져요 — 출시 초기에는 구독자 거의 전부라 **사용자 결정을 받은 뒤에만** 써요.
 - **가격 파일 대량 수집:** 도메인을 산 뒤 `data.json` 요청 제한 규칙(A9)을 켜요. 그 전에는 막을 방법이 거의 없어요.
 
 ## 10. 개인정보 요청
@@ -137,7 +179,7 @@
 |---|---|---|---|
 | 앱 화면·가격 데이터 | 직전 배포 버전 | **1분**(Cloudflare 롤백) / 10분(revert + 재배포) | §3. git 기록 전체가 백업이에요 |
 | 수집 원본 | 마지막 성공 수집 | — | `data2/accepted/`(커밋됨) |
-| 집계·알림 D1 | 지난 7일 안 어느 1분(무료 플랜; 유료는 30일) | 1시간 안(목표) | §7 Time Travel |
+| 집계·알림 D1 | 지난 30일 안 어느 1분(출시 요금제 Workers Paid; 출시 전 무료 플랜은 7일) | 1시간 안(목표) | §7 Time Travel |
 | Supabase(켠 뒤) | 플랜의 자동 백업 주기 + 주간 `pg_dump` | 1시간 안(목표) | §7. 복구 절차는 CI에서 매번 검증 |
 
 ## 12. 사고 기록 양식
