@@ -1,10 +1,10 @@
 // 위계 점검 묶음 5 '같은 역할은 같은 모양, 가까운 것끼리' (hierarchy audit REPORT 순번 29·30·31·32·33·34·35·39·47·50·52; 6.0 규칙
 // 3·4). What it holds on the screens the person reads, at 390 and 320 wide:
 //  29. a price line's badges in one order everywhere — kind & conditions (체험가·한정가·고시가, 첫 방문·평일·시간 한정 …) →
-//      warnings (kx: 기간 확인 필요, 초저가·조건 확인 …) → information (~10/31까지, VAT, 추가 옵션, 제품·장비): 비교 지점 줄,
+//      warnings (기간 끝남 kx, 기간 확인 필요 kc, 초저가·조건 확인 kw …) → information (~10/31까지, VAT, 추가 옵션, 제품·장비): 비교 지점 줄,
 //      지점 가격표, 검색 결과, 견적 펼친 줄
 //  30. every fold's summary line has the same chevron (one CSS mark, no svg / ▾ / none) at the line's right end; the compare
-//      screen's block folds are cards (no 12px extra above them: the view's 16), and opened they hold no card in a card
+//      screen's block folds are cards (no 12px extra above them: the view's 24 between blocks — 위계 점검 51), and opened they hold no card in a card
 //  31. the compare price card holds no framed or filled box: 제품 안내 (mixnote) is a line with no frame, still above the price
 //      range (C: TREATMENT_TAXONOMY §4); 조건부 가격 · 확인 필요 초저가 sit under a hairline with a badge, sentence unchanged
 //  32. search: between the filters and the results nothing else — two blocks 24px apart; '이렇게 찾았어요' in the filter card,
@@ -31,8 +31,10 @@ const CART = [{ t: 'k', k: 'X14', q: 3 }, { t: 'k', k: 'X01', q: 2 }, { t: 'k', 
 // in-page helpers
 const HELP = () => {
   window.__vis = (el) => !!el && el.checkVisibility() && el.getBoundingClientRect().width > 0;
-  // a badge's group: 0 kind & condition (butter k1 k2 kt, and 고시가), 1 warning (kx) or check (ok), 2 information (k4, prodk)
-  window.__grp = (k) => (k.matches('.k1, .k2, .kt') || k.textContent.trim() === '고시가') ? 0 : k.matches('.kx, .ok') ? 1 : 2;
+  // a badge's group: 0 kind & condition (butter k1 k2 kt, and 고시가), 1 warning — a price that cannot be had (kx), a condition to
+  // check (kc), a state of the data (kw) — or check (ok), 2 information (k4, prodk). The colour roles (위계 점검 27) gave the
+  // warnings three colours; their place in the line is the same
+  window.__grp = (k) => (k.matches('.k1, .k2, .kt') || k.textContent.trim() === '고시가') ? 0 : k.matches('.kx, .kc, .kw, .ok') ? 1 : 2;
   window.__badOrder = (box) => { let mx = 0; for (const k of [...box.querySelectorAll('.k')].filter(__vis)) { const g = __grp(k); if (g < mx) return [...box.querySelectorAll('.k')].filter(__vis).map((x) => x.textContent.trim()).join(' > '); mx = Math.max(mx, g); } return null; };
   // a fold's chevron: the ::after box (one mark for every fold) at the summary line's right end
   window.__chev = (s) => { const af = getComputedStyle(s, '::after'), cs = getComputedStyle(s), sr = s.getBoundingClientRect();
@@ -98,7 +100,7 @@ const HELP = () => {
     ok(`31 ${tag} 가격 카드 안에 테두리·채움 상자 없음`, !cmp.boxes.length, cmp.boxes.join(', '));
     ok(`31 ${tag} 조건부 가격·확인 필요 초저가: 위 선 + 배지, 채움 없음, 문장 그대로`, cmp.cl.length >= 1 && cmp.cl.every((c) => c.line && !c.fill && c.badges.length >= 1)
       && cmp.cl.some((c) => /조건이 맞을 때만 이 가격이에요\.$/.test(c.sub)), JSON.stringify(cmp.cl).slice(0, 240));
-    ok(`30 ${tag} 비교 덩어리 접기 2개는 카드, 위 간격은 화면 간격 16px`, cmp.cf.length === 2 && cmp.cf.every((c) => c.card && c.gap === 16), JSON.stringify(cmp.cf));
+    ok(`30 ${tag} 비교 덩어리 접기 2개는 카드, 위 간격은 화면 간격(덩어리 사이) 24px`, cmp.cf.length === 2 && cmp.cf.every((c) => c.card && c.gap === 24), JSON.stringify(cmp.cf));
     ok(`47 ${tag} 비교 줄: ⓘ 하나(가격 근거)`, cmp.infob === cmp.n, `${cmp.infob}/${cmp.n}`);
     ok(`47 ${tag} 비교 줄 ⓘ: 보이는 칸 36, 누르는 곳 44(오른쪽으로만 넓힘)`, cmp.hits.length === 3 && cmp.hits.every(__hitOkN), JSON.stringify(cmp.hits[0]));
     await p.evaluate(() => { for (const d of document.querySelectorAll('details.cmpfold')) d.open = true; }); await p.waitForTimeout(300);
@@ -191,14 +193,14 @@ const HELP = () => {
       ok('33 낮은 가격순: 지점 머리 없이 줄마다 지점 이름 링크(지점명 링크는 남음)', pr.n >= 10 && pr.heads === 0 && pr.links === pr.n, JSON.stringify(pr));
     }
     // the '종류' card: a line with no ⓘ (no note for that family) keeps its 14px right margin — its price ends where the hairlines
-    // end; a line with ⓘ has 4px and the ⓘ column (검토: the 4px reached the lines with no ⓘ)
+    // end; a line with ⓘ has 8px (위계 점검 51: 8px steps — it was 4) and the ⓘ column (검토: that margin reached the lines with no ⓘ)
     await go(p, '#search/' + encodeURIComponent('물광'), 1500);
     const fm = await p.evaluate(() => { const lis = [...document.querySelectorAll('#main .fams ul.list > li.rk')].filter(__vis);
       return lis.map((li) => { const it = li.querySelector(':scope > .item'), pp = it.querySelector('.p, .num'); const lr = li.getBoundingClientRect();
         return { ib: !!li.querySelector(':scope > .infob'), pad: parseFloat(getComputedStyle(it).paddingRight), priceR: pp ? Math.round(lr.right - pp.getBoundingClientRect().right) : null }; }); });
     const fNo = fm.filter((x) => !x.ib), fYes = fm.filter((x) => x.ib);
     if (!fNo.length) console.log(`SKIP | 52 ${tag} '종류' 카드에 ⓘ 없는 줄이 없음`);
-    else ok(`52 ${tag} '종류' 카드: ⓘ 없는 줄은 오른쪽 여백 14px(가는 선 끝), ⓘ 있는 줄은 4px + ⓘ 칸`, fNo.every((x) => x.pad === 14 && x.priceR >= 14) && fYes.every((x) => x.pad === 4), JSON.stringify(fm.slice(0, 5)));
+    else ok(`52 ${tag} '종류' 카드: ⓘ 없는 줄은 오른쪽 여백 14px(가는 선 끝), ⓘ 있는 줄은 8px + ⓘ 칸`, fNo.every((x) => x.pad === 14 && x.priceR >= 14) && fYes.every((x) => x.pad === 8), JSON.stringify(fm.slice(0, 5)));
 
     // ---------- 지점 (블리비 강남역점)
     const bi = await p.evaluate(() => { const { D } = App.state(); const x = D.branches.findIndex((y) => D.s[y[1]] === '강남역점'); return x >= 0 ? x : 0; });
