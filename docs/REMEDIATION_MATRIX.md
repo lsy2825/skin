@@ -142,6 +142,8 @@
 | 같은 페이지 두 가격 줄·모델 번호 | 해결(lsy2825/skin#127) | 단위·빌드 비교·검증 에이전트(3차) | `taxonomy` 쌍둥이(규격 단위, '+'·택 N 따로), 모델 번호 | labels_test | '+ 다른 시술' 묶음 줄이 단품 키에 남음(T6A7A6D3), TREATMENT_TAXONOMY §6 |
 | 급변 가격 검토 대기 보류 | 해결(lsy2825/skin#128) | 단위(끝-끝 흉내)·빌드 비교·검증 에이전트(3차) | `appdata.held`·`hold_back`·`held_price`, `groups.held_back`, `datameta` `was` | labels_test | 보이는 줄이 오른 경우는 검토 대기 동안 숨음(독스트링) |
 | 조건 낱말: 유앤아이 '데이타임'·'첫경험' | 해결(lsy2825/skin#122) | 단위·빌드 비교 | `clean.TIME_WORDS`·`TAGS` | labels_test | '첫체험'은 읽지 않음(데이뷰 '[재진]' 칸) |
+| E4 합치기: 조건이 서로 다른 두 페이지 | 해결(lsy2825/skin#130) | 단위·빌드 비교·검증 에이전트(3차) | `clean.apart`·합친 뒤 다시 나누기(성별·추가 옵션 지킴) | labels_test | '언제' 조건끼리는 매일이 아니어도 합침(주말 + 해피아워) |
+| 손규격 크기·개수 실수(X33·X34·X12·X20·X02·X08) | 해결(lsy2825/skin#132) | 단위·빌드 비교·검증 에이전트(3차) | `xkeys.mole_size`·`MM_EXTRA`·`AMOUNT_NOTE`·`bad_raw`, `taxonomy` 점 빼기 크기 | labels_test, xkeys 224, taxonomy 80 | 염증주사 개수 범위(T09603A8), X02 데이뷰 수원 다섯 부위 |
 
 ## 회귀 결과(2026-10-14)
 
