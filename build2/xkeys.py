@@ -6,9 +6,17 @@ when its normalized name contains every `need` pattern, none of the `bad` patter
 count / unit checks pass. 블리비 can instead use the hand-checked benchmark ids from analyze.py (`bench`).
 
 Every regex runs on `comp(name)`: spaces removed, 보톡스/보튤리눔 톡신 → 톡신, unit spellings unified
-(50유닛/50unit/50 U → 50U, CC → cc, 100 샷 → 100샷, 10,000J / 10KJ / 1만줄 → 10KJ).
+(50유닛/50unit/50 U → 50U, CC → cc, 100 샷 → 100샷, 10,000J / 10,000j / 10kj / 1만줄 / 1만 J → 10KJ).
 """
 import functools, re
+
+# toxin areas joined by '·' with no word for one of them (택 · 中 · 부위당 · 부위별 · 1부위 · 한부위) are a set done together: 데이뷰 수원점
+# '주름보톡스 이마·미간·눈가·눈밑·콧등 (국산)' 89,000 sits on its page between '주름보톡스 3부위 (국산)' 60,000 and '얼굴 전체' 119,000
+# ('1부위' 19,000), and 밴스 · 쁨 · 유앤아이 write '눈가·눈밑 (주름)보톡스' in packages. A list joined by '/' or ',' stays one area to
+# choose — 톡스앤필 평택점 '이마/미간/눈가/눈밑/콧대/고양이/자갈턱/콧볼 (국산)' 30,000 is its 콧볼톡신 alone (30,000); a count of
+# areas would take it out (2026-10-19, X02)
+_AREA = r"(?:이마|미간|눈가|눈밑|콧등|콧잔등|콧볼|콧대|자갈턱|턱끝|입꼬리|눈썹|인중)"
+AREA_SET = rf"^(?!.*(?:택|中|부위당|부위별|1부위|한부위)).*{_AREA}·(?:안쪽|바깥쪽?)?{_AREA}"
 
 # id, category, label (shown), need (all), bad (any), opts
 #   bench: 블리비 benchmark ids (analyze.B) whose prices stand for this key
@@ -26,7 +34,7 @@ X = [
     # 톡신
     ("X01", "톡신", "국산 사각턱 보톡스 50U", [r"(사각턱|^턱|[^자갈이중]턱)톡신|턱톡신"], [r"프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|침샘|측두|이중턱|자갈턱|턱라인|\+|1\+1|패키지|PKG|pkg|두배|용량업|파워|슬림핏|V핏|리프팅"],
      {"bench": ["P02"], "need_any": [r"(?<![미외영])국산"], "unit": (r"50U", r"\d+U")}),
-    ("X02", "톡신", "국산 주름 보톡스 1부위", [r"주름톡신|한부위톡신|1부위톡신|부위당|택1", r"톡신|톡스"], [r"침샘|귀밑|턱밑|두피|발모|탈모|MTS|연어|프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|[2-9]부위|10부위|\+|1\+1|패키지|PKG|목주름|이마전체|이마주름|이마톡신|이마\(|미간전체|눈가전체|얼굴위쪽|위쪽|아래쪽|얼굴전체|턱라인|텐션|특수|모공|스킨|세로|[2-9]회|다한증|[1-9]\d{2}U|풀페이스|목가로|(?<!\d)[2-9]대"],
+    ("X02", "톡신", "국산 주름 보톡스 1부위", [r"주름톡신|한부위톡신|1부위톡신|부위당|택1", r"톡신|톡스"], [r"침샘|귀밑|턱밑|두피|발모|탈모|MTS|연어|프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|보툴렉스|나보타|[2-9]부위|10부위|\+|1\+1|패키지|PKG|목주름|이마전체|이마주름|이마톡신|이마\(|미간전체|눈가전체|얼굴위쪽|위쪽|아래쪽|얼굴전체|턱라인|텐션|특수|모공|스킨|세로|[2-9]회|다한증|[1-9]\d{2}U|풀페이스|목가로|(?<!\d)[2-9]대", AREA_SET],
      {"bench": ["P01"], "need_any": [r"(?<![미외영])국산"]}),
     ("X03", "톡신", "국산 얼굴전체 스킨보톡스", [r"(얼굴전체|풀페이스|얼굴전체의)", r"(스킨톡신|더모톡신|더마톡신|쁨킨톡신)"], [r"프리미엄|내성|코어|고순도|수입|독일|미국|비건|할랄|제오민|\+|패키지|PKG|목"],
      {"bench": ["P03"], "need_any": [r"(?<![미외영])국산"]}),
@@ -117,6 +125,10 @@ X = [
      {"bench": ["O03"], "unit": (r"1부위", r"\d+부위")}),
 ]
 
+# energy after 만 or 000, in either case: '1만J', '6만 j', '1만줄', '8.5만줄' (85KJ — read 8.50KJ before), '50,000j', '10,000줄',
+# '10,000J당 1회' (2026-10-19: '온다리프팅 50,000j' (유앤아이 부평점) and '페이스 온다 2만J' (톡스앤필) were not read as 50KJ / 20KJ, so the
+# same amount sat under two keys — '온다 리프팅 6만J' beside '온다 리프팅 60KJ' — or under none). Not '줄기세포', not a word after J
+JOULE = r"(?:[Jj](?![a-zA-Z])|줄(?!기))"
 ADDON = re.compile(r"\s*\+\s*(진정관리|크라이오셀|크라이오|촉촉팩|LED\(5분\)|LED|모델링팩|모델링|재생관리|수분팩|수분관리|진정팩|미백관리|비타민관리|(?:LDM|ldm)\s*\d*분?|맞춤관리)(\s*\d+회)?", re.I)
 
 
@@ -134,8 +146,8 @@ def comp(s):
     s = re.sub(r"(\d)\s*샷", r"\1샷", s)
     s = re.sub(r"(\d),(\d{3})", r"\1\2", s)
     s = re.sub(r"(\d+)\s*(KJ|kj|Kj|kJ)", lambda m: f"{m.group(1)}KJ", s)
-    s = re.sub(r"(\d+)000\s*J\b", lambda m: f"{m.group(1)}KJ", s)
-    s = re.sub(r"(\d+)만\s*줄", lambda m: f"{int(m.group(1)) * 10}KJ", s)
+    s = re.sub(r"(\d+(?:\.\d+)?)\s*만\s*" + JOULE, lambda m: f"{float(m.group(1)) * 10:g}KJ", s)
+    s = re.sub(r"(\d+)000\s*" + JOULE, lambda m: f"{m.group(1)}KJ", s)
     s = re.sub(r"(\d+)K\b", r"\1KJ", s) if "온다" in s else s
     s = s.replace("FORMA", "FORMA").replace("forma", "FORMA").replace("Forma", "FORMA").replace("fx", "FX")
     s = re.sub(r"\s+", "", s)
@@ -433,7 +445,22 @@ if __name__ == "__main__":
         ("X33", "얼굴 점제거 (2mm 이하/10개한정)", True), ("X33", "점제거 2mm 이하 (최대 5개 한정)", True), ("X33", "점제거 5개 (1회 한정)", False),
         ("X33", "점제거 5개 한정가", False), ("X08", "풀페이스윤곽주사", False), ("X08", "(대표x/이벤트)풀페이스윤곽주사", False),
         ("X08", "얼굴전체 윤곽주사", False), ("X20", "온다 리프팅(고강도 극초단파) - 목주름 10,000J", False), ("X20", "화,수,목 온다리프팅 1만줄", True),
+        # 2026-10-19: energy in either case and after 만 / 000 (JOULE); areas joined by '·' are a set (AREA_SET)
+        ("X20", "온다리프팅 1만 J", True), ("X20", "온다 1만J (1회체험가)", True), ("X20", "온다 10,000j", True), ("X20", "온다 10,000줄", True),
+        ("X20", "온다리프팅 10,000J당 1회", True), ("X20", "바디온다 10,000J당 1회", False), ("X20", "온다 6만J 1회", False),
+        ("X02", "주름보톡스 이마·미간·눈가·눈밑·콧등 (국산)", False), ("X02", "주름보톡스 눈가·눈밑 (국산)", False),
+        ("X02", "주름보톡스 1부위 이마·미간·눈가 (국산)", True), ("X02", "주름보톡스 (이마·미간·눈가 中 택1) (국산)", True),
+        ("X02", "주름톡신(더모톡신) · 이마/미간/눈가/눈밑/콧대/고양이/자갈턱/콧볼 (국산)", True), ("X02", "주름톡신 · 턱끝 (자갈턱/호두주름) (국산)", True),
     ]
+    # energy amounts read as KJ (comp): any case, after 만 or 000, with 줄 — not a thread count, not '줄기세포'
+    for name, want in [("온다리프팅 50,000j", "50KJ"), ("페이스 온다 2만J", "20KJ"), ("온다리프팅 1만 J", "10KJ"), ("울쎄라피프라임 300샷+온다 6만j", "60KJ"),
+                       ("온다 10,000줄", "10KJ"), ("온다리프팅 10,000J당 1회", "10KJ당"), ("피팅레이저 · 페이스 피팅 8.5만줄 1회", "85KJ1회"),
+                       ("바디 온다 10만 줄 2회", "100KJ2회"), ("온다 100만줄", "1000KJ"), ("티타늄 40Kj", "40KJ"), ("온다1만줄(10kj)", "10KJ(10KJ)"),
+                       ("블루로즈 포르테 리프팅 1줄", "1줄"), ("울트라V 리프팅(PDO 녹는실) 100줄", "100줄"), ("10만 줄기세포", "10만줄기세포"),
+                       ("24K 골드테라피 1회", "24K골드")]:
+        if want not in comp(name):
+            tests.append(("X01", name, None))
+            print("FAIL comp", name, comp(name), "want", want)
     # mole sizes (X33 opt mm): the largest size a price covers
     for name, want in [("얼굴 점빼기(2mm 이하) 개당", 2), ("얼굴 점빼기(2mm 이상) 개당", float("inf")), ("점 제거 1개 (0.2cm 이하)", 2),
                        ("어븀 점제거 1~2mm", 2), ("co2 점제거 (2~3mm)", 3), ("점 1개 (4mm기준)", 4), ("점제거 1mm 기준 1~5개까지 개당", 1),
