@@ -1,8 +1,9 @@
 name: cf-alerts
 
 # Price-alert Worker (cf/alerts — launches on Cloudflare Workers Paid, a user decision of 2026-10-19: wrangler.jsonc vars.PLAN
-# "paid" picks the limits in code; the same deploy works on a Free account, which refuses only a wrangler "limits" block — none
-# is set). Two jobs: `test` (every run, no secret, no environment) → `deploy`
+# picks the limits in code — "free" until the account IS on Workers Paid, then a one-line PR sets "paid" (11th review: the first
+# deploy runs while the account is still Free; docs/ARCHITECTURE.md D19 launch steps). The same deploy works on either
+# account, which refuses only a wrangler "limits" block — none is set). Two jobs: `test` (every run, no secret, no environment) → `deploy`
 # (main only: apply D1 migrations → deploy → the one-time key setup or the ALERTS_SECRET sync, below).
 # The app itself is deployed by weekly.yml; this never touches app/. The D1 database id is in wrangler.jsonc (the user
 # created yoonsiljang-alerts on 2026-10-16); were it ever set back to the placeholder, deploying is skipped with a notice.

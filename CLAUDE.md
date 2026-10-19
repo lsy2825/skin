@@ -55,8 +55,9 @@ Windows PC: `tools\windows\setup.bat` 한 번(Git·Python·Node·Playwright 설�
   공장 job의 Re-run은 첫 단계에서 거절된다(deploy job만 다시 돌리기는 됨). **공개 주소 `yoonsiljang` 배포는
   2026-10-15 사용자 결정으로 멈춤** — GitHub 저장소 변수 `PUBLIC_DEPLOY`가 정확히 `on`일 때만 배포되고, 지금 공개 주소는 마지막 판을
   그대로 보여 준다. 공개 배포가 멈춘 동안 관리자 배포 실패는 공장 실행 실패(텔레그램 알림), 공개 배포를 켜면 경고만. Access 설정 전에는
-  관리자 주소도 모두 403이라 새 판은 로컬(`python -m http.server 8766 --directory app`)에서만 보인다. 다시 켜려면 변수를 `on`으로 바꾼 뒤
-  weekly-prices를 Run workflow(skip_scrape)로 한 번 돌린다. 2026-10-15 이전에 시작된 weekly-prices 실행은 Re-run하지 않는다(옛 factory.sh가
+  관리자 주소도 모두 403이라 새 판은 로컬(`python -m http.server 8766 --directory app`)에서만 보인다. 다시 켜려면 먼저 Cloudflare 계정을
+  Workers Paid로 바꾸고 `cf/alerts/wrangler.jsonc`의 `PLAN`을 `"paid"`로 바꾸는 PR을 합친 뒤(`docs/ARCHITECTURE.md` D19 켜는 순서 8~10번 — 무료
+  계정에서 유료 한도가 돌면 안 됨), 변수를 `on`으로 바꾸고 weekly-prices를 Run workflow(skip_scrape)로 한 번 돌린다. 2026-10-15 이전에 시작된 weekly-prices 실행은 Re-run하지 않는다(옛 factory.sh가
   공개 주소에 배포한다). deploy job이 없는 weekly-prices 실행(배포 분리를 합치기 전에 시작된 것)도 Re-run하지 않는다 — 옛 정의는 Cloudflare
   토큰을 공장 job에 주고, 섞인 빌드 검사 없이 main에 push한 뒤 그 job에서 배포한다. 토큰을 Environment `cloudflare`(main만)로 옮기면 그런
   Re-run은 토큰을 못 받지만 검사 없는 push는 남는다. main에는 직접 push하지 않고 PR로만 합친다(아래 '분업').

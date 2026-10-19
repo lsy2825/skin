@@ -4,8 +4,9 @@ name: alerts-catchup
 # weekly.yml's price_alerts job computes right after every deploy; this run, every 30 minutes (10th review: it was every
 # hour), computes what that job could not: its notify failed or timed out, the public app did not serve the new
 # data-meta.json yet, the Worker answered 'busy' (another run was computing) or 'deferred' (COMPUTES_PER_DAY computations
-# already started this D1 day — the first run after 09:00 KST computes them; or before 06:00 KST the D1 day's last one is
-# kept for the 06:00 factory run). When nothing changed it costs one D1 request: start answers 'done' (≤ 30 rows read —
+# already started this D1 day — the first run after 09:00 KST computes them; or the D1 day's last one is kept for the 06:00
+# factory run — a catch-up may take it from 08:00 KST only, when no run did: 11th review). When nothing changed it costs one
+# D1 request: start answers 'done' (≤ 30 rows read —
 # measured 5 — nothing written: cf/alerts/src/worker.js start). Cost of every 30 minutes: GitHub Actions minutes are free for a public
 # repository (standard runners; about 1 minute a run — 48 runs a day), and the Worker sees 48 starts a day (≤ 30 rows read
 # each: ≤ 1,440 a day, ≤ 44,640 a 31-day month of the 25 billion the Workers Paid plan includes — nothing written when
@@ -14,7 +15,13 @@ name: alerts-catchup
 # day's computation of unchanged prices to the 06:00 KST factory run (the 06:07–07:37 runs may come while that run is still
 # collecting — GitHub starts it 20–25 minutes late and a collection takes ~40–45 minutes: 'Weekly prices 2026-10-17' was
 # saved at 07:06 KST — worker.js CATCHUP_ROLL_HOUR); from 08:00 (the first push goes out at 08:00) it also does that
-# computation if no run did.
+# computation if no run did. For the same reason it never takes the D1 day's last computation before 08:00 KST (it is the
+# 06:00 run's; the Worker answers 'deferred' with until 08:00 — 11th review: the 06:07 catch-up took it for the prices
+# deferred the afternoon before, and the 06:00 collection then waited for 09:00).
+# A start no retry can cure (a 4xx, an unknown answer, a data.json shape the Worker refuses, no pin while public hosting
+# is on and ALERTS_SECRET is set) writes startfail=true here too; this job has no Telegram, so weekly.yml's price_alerts
+# job (the same steps) is what tells the owner — at the next factory run that deploys, the daily 06:00 schedule at the
+# latest.
 # The same guards as weekly.yml's price_alerts job, step for step (tests/factory_worker.test.js compares them): the CODE is
 # the reviewed commit in the repository Variable ALERTS_CODE_SHA (never main, never github.sha); the DATA is main's
 # app/data.json — two files, a regular file whose sha256/bytes are the ones its data-meta.json names — used only when the
@@ -46,14 +53,22 @@ jobs:
       contents: read
     timeout-minutes: 20       # the data step (at most 5) + notify (at most 10)
     steps:
+      # no pin while public hosting is on and ALERTS_SECRET is set (alerts are set up): no run computes until a person sets
+      # it — startfail=true (weekly.yml's alert job sends a Telegram line; 11th review). Otherwise a notice (not set up yet)
       - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
         id: pin
         env:
           PIN: ${{ vars.ALERTS_CODE_SHA }}
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+          SET_UP: ${{ secrets.ALERTS_SECRET != '' }}
         run: |
           if printf '%s' "$PIN" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "sha=$PIN" >> "$GITHUB_OUTPUT"
             echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLIC" = on ] && [ "$SET_UP" = true ]; then
+            echo "::warning title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code while public hosting is on and alerts are set up (their factory token exists) — no price alerts are computed until a person sets it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "startfail=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code — price alerts skipped"
             echo "ok=false" >> "$GITHUB_OUTPUT"

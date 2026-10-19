@@ -293,8 +293,9 @@ jobs:
           case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
           python3 .github/scripts/telegram.py "윤실장 가격 알림 계산이 시작한 뒤 실패했어요 ($WHEN). 앱과 가격 자료는 영향이 없어요. Worker가 15분 뒤 계산 임대를 풀고, 30분마다 도는 따라잡기(alerts-catchup)가 같은 가격을 다시 계산해요(같은 가격의 다시 계산은 D1 하루에 한 번 횟수 상한에 세지 않아요). 되풀이되면 실행 기록의 ::warning과 알림 Worker의 /health compute를 보세요. 실행 기록: $RUN_URL"
       # The Worker deferred this computation: COMPUTES_PER_DAY computations already started this D1 day (the D1 write
-      # budget — the plan profile: paid 12, free 3), or before 06:00 KST its last one is kept for the 06:00 run. One line a
-      # D1 day: only the first deferred factory run of a D1 day gets deferred=true (the Worker's start says first: true);
+      # budget — the plan profile: paid 12, free 3), or before 06:00 KST its last one is kept for the 06:00 run (a catch-up
+      # may not take it before 08:00 KST — 11th review). One line a D1 day: only the first deferred factory run of a D1 day
+      # gets deferred=true (the Worker's start says first: true), one more when 'reserve' (06:00) became 'cap' (09:00);
       # later ones are ::warning lines on their run pages, and GET /health "compute": "deferred" tells the daily monitor.
       - name: Alert on a deferred price-alerts computation (Telegram)
         if: needs.price_alerts.outputs.deferred == 'true'
@@ -304,8 +305,25 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           UNTIL: ${{ needs.price_alerts.outputs.until }}
         run: |
-          case "$UNTIL" in 06:00) U="06:00 KST(그날 정기 실행 몫으로 남긴 마지막 1번)";; *) U="09:00 KST(새 D1 하루)";; esac
-          python3 .github/scripts/telegram.py "윤실장 가격 알림: 이 D1 하루(09시~다음 날 09시)의 계산 횟수 상한(COMPUTES_PER_DAY — 요금제 설정 PLAN이 유료면 12번, 무료면 3번)에 닿아 이 실행의 새 가격 계산을 미뤘어요. $U 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요. 이 알림은 D1 하루에 한 번만 와요. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
+          case "$UNTIL" in
+            06:00) U="06:00 KST 정기 실행이 계산해요(그날 마지막 1번은 그 실행 몫으로 남겨 둬요. 그 실행이 계산하지 못하면 08:00 KST 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요)";;
+            08:00) U="08:00 KST 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요";;
+            *) U="09:00 KST(새 D1 하루) 뒤 첫 따라잡기(alerts-catchup, 30분마다)가 계산해요";;
+          esac
+          python3 .github/scripts/telegram.py "윤실장 가격 알림: 이 D1 하루(09시~다음 날 09시)의 계산 횟수 상한(COMPUTES_PER_DAY — 요금제 설정 PLAN이 유료면 12번, 무료면 3번)에 닿아 이 실행의 새 가격 계산을 미뤘어요. $U 이 알림은 D1 하루에 한 번(06시 몫으로 미룬 뒤 09시까지로 바뀌면 한 번 더)만 와요. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
+      # A start that trying again cannot cure (11th review): the Worker answered a 4xx (401/403 — the GitHub ALERTS_SECRET is
+      # not the Worker's; 404 — ALERTS_URL is not the alerts Worker), an answer the pinned code does not know, a data.json
+      # shape the Worker would refuse, or ALERTS_CODE_SHA unset while public hosting is on and ALERTS_SECRET is set. Nothing
+      # is computed until a person fixes it — one line a run that meets it (the 30-minute catch-up has no Telegram; before,
+      # only GET /health stale told, about 3 days later).
+      - name: Alert on a price-alerts setup problem that stops every computation (Telegram)
+        if: needs.price_alerts.outputs.startfail == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 .github/scripts/telegram.py "윤실장 가격 알림: 설정 문제로 새 가격 계산을 시작하지 못했어요 — 고칠 때까지 어느 실행도 계산하지 않아요(다시 돌려도 같아요). ALERTS_SECRET·Worker 설정 확인: GitHub의 ALERTS_SECRET과 Worker의 값이 같은지(cf-alerts → Run workflow → sync_secret), ALERTS_URL, 저장소 변수 ALERTS_CODE_SHA, 실행 기록의 ::warning. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
       # what the data alerts read: the run's data2/report.md and app/data-meta.json from the latest main (a successful run
       # pushed them there) — regular files only (mode 100644), otherwise those alerts are skipped with a notice
       - name: Take the run's report from main (regular files only)
@@ -346,17 +364,21 @@ jobs:
   # from, not the file's bytes) to the Worker's start: prices it already finished today (a code-only rebuild, a re-run)
   # are 'done' after one D1 request that writes nothing; changed prices are computed at once (key set, watched pairs,
   # digest, finish). The Worker allows COMPUTES_PER_DAY computations per D1 day (00:00–24:00 UTC = 09:00–09:00 KST; the
-  # plan profile — Workers Paid 12, free 3 — and before 06:00 KST one of them is kept for the 06:00 run: the write
-  # arithmetic in cf/alerts/src/worker.js); past it the answer is 'deferred'
-  # (a ::warning, and the alert job sends one Telegram line a D1 day), and 'busy' while another run computes. Whatever this
-  # job cannot finish, alerts-catchup.yml (every 30 minutes, on main's deployed copy, the same pinned code and checks)
-  # computes. A computation that fails after it started is a Telegram line too (outputs.failed — 10th review).
+  # plan profile — Workers Paid 12, free 3 — and before 06:00 KST one of them is kept for the 06:00 run, from a catch-up
+  # until 08:00 KST: the write arithmetic in cf/alerts/src/worker.js); past it the answer is 'deferred'
+  # (a ::warning, and the alert job sends one Telegram line a D1 day — one more when 'reserve' became 'cap'), and 'busy'
+  # while another run computes. Whatever this job cannot finish, alerts-catchup.yml (every 30 minutes, on main's deployed
+  # copy, the same pinned code and checks) computes. A computation that fails after it started is a Telegram line too
+  # (outputs.failed — 10th review), and so is a start no retry can cure (outputs.startfail — 11th review: a 4xx such as
+  # ALERTS_SECRET not matching the Worker's, a data.json shape the Worker would refuse, ALERTS_CODE_SHA unset while public
+  # hosting is on and ALERTS_SECRET is set).
   # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
   # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
   # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
   # but cannot edit Actions variables, so nothing the factory pushes can ever become the code that holds ALERTS_SECRET.
   # (github.sha is NOT used: a scheduled run takes main's last commit, which may be a factory push nobody reviewed.) Unset or
-  # malformed → the job is skipped with a notice.
+  # malformed → the job is skipped with a notice (a ::warning and startfail=true once public hosting is on and ALERTS_SECRET
+  # is set — alerts are set up, so nothing would be computed until a person sets it).
   # The DATA is app/data.json of the SAME saved commit the deploy job took its files from (needs.update.outputs.sha — not
   # whatever main is by now); on a no-build schedule day, main's copy. Either way it is used only when (1) it is a regular
   # file whose sha256/bytes are the ones its data-meta.json names (the deploy job's and the app's own check) and (2) the
@@ -369,7 +391,8 @@ jobs:
   # Never fails the run: the data steps and notify.mjs end with a ::notice/::warning and exit 0, and the JOB's
   # continue-on-error covers anything else. No step has its own continue-on-error (7th review): a step that fails or times
   # out (notify.mjs that cannot load, a hung call) ends the job before the end mark, so `done` stays empty and the alert job
-  # sends a Telegram line. A Worker that keeps refusing shows on the daily monitor (GET /health stale).
+  # sends a Telegram line. A Worker that keeps refusing (4xx) is a startfail line; one that does not answer (5xx, network)
+  # shows on the daily monitor (GET /health down, then stale).
   # ALERTS_URL defaults to the alerts Worker's workers.dev address; without the ALERTS_SECRET secret notify.mjs only prints
   # a ::warning (nothing is sent).
   price_alerts:
@@ -388,15 +411,24 @@ jobs:
       deferred: ${{ steps.notify.outputs.deferred }}   # "true" when the Worker deferred the computation (COMPUTES_PER_DAY) — the first deferred factory run of a D1 day only
       until: ${{ steps.notify.outputs.until }}         # "06:00" | "09:00" (KST): when a deferred computation can run
       failed: ${{ steps.notify.outputs.failed }}       # "true" when notify.mjs failed after the Worker answered compute
+      startfail: ${{ steps.notify.outputs.startfail || steps.pin.outputs.startfail }}   # "true": nothing is computed until a person fixes the setup (11th review)
     steps:
+      # no pin while public hosting is on and ALERTS_SECRET is set (alerts are set up): no run computes until a person sets
+      # it — startfail=true (weekly.yml's alert job sends a Telegram line; 11th review). Otherwise a notice (not set up yet)
       - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
         id: pin
         env:
           PIN: ${{ vars.ALERTS_CODE_SHA }}
+          PUBLIC: ${{ vars.PUBLIC_DEPLOY }}
+          SET_UP: ${{ secrets.ALERTS_SECRET != '' }}
         run: |
           if printf '%s' "$PIN" | grep -Eq '^[0-9a-f]{40}$'; then
             echo "sha=$PIN" >> "$GITHUB_OUTPUT"
             echo "ok=true" >> "$GITHUB_OUTPUT"
+          elif [ "$PUBLIC" = on ] && [ "$SET_UP" = true ]; then
+            echo "::warning title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code while public hosting is on and alerts are set up (their factory token exists) — no price alerts are computed until a person sets it"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "startfail=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice title=price alerts::repository variable ALERTS_CODE_SHA is not set to a 40-character commit id of reviewed alerts code — price alerts skipped"
             echo "ok=false" >> "$GITHUB_OUTPUT"

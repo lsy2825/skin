@@ -37,10 +37,13 @@ CREATE TABLE subs (
 -- is CLAIM_X's, subs_x). Keeping pend_x out of its WHERE also keeps the factory's expiring marks cheaper in D1 rows
 -- written (src/worker.js arithmetic). subs_fail: rows that failed before (CLAIM_F, a few
 -- slots per run): rows that DID receive a push before come first (a real phone with one failure), rows that never received
--- one after them (new, or planted), then fewest failures, then longest wait. An empty cron run reads almost nothing and a
--- full one stops after its rows without sorting.
+-- one after them (new, or planted), then fewest failures, then longest wait. Its WHERE names neither pend_w nor pend_x (11th
+-- review: with them, the factory's MARK_WEEKLY and MARK_EXPIRING also wrote a subs_fail entry for every phone that failed
+-- once — 7 rows a phone a computation instead of 5, measured); CLAIM_F skips its rows with nothing pending, one entry each,
+-- as CLAIM_X/CLAIM_W skip the rows that are not due (≤ MAX_SUBS entries in all). An empty cron run reads almost nothing and
+-- a full one stops after its rows without sorting.
 CREATE INDEX subs_due ON subs(fails, coalesce(last_w, '')) WHERE pend_w = 1;
-CREATE INDEX subs_fail ON subs((last_w IS NULL AND last_x IS NULL), fails, coalesce(last_w, '')) WHERE fails > 0 AND (pend_w = 1 OR pend_x IS NOT NULL);
+CREATE INDEX subs_fail ON subs((last_w IS NULL AND last_x IS NULL), fails, coalesce(last_w, '')) WHERE fails > 0;
 -- the few rows a send run holds right now (claim > 0: stale claims and a run's own count go through this, not a scan)
 CREATE INDEX subs_claim ON subs(claim) WHERE claim > 0;
 -- the rows held back (claim < 0), per push origin (the same expression as src/sql.js ORIGIN), rows that received a push

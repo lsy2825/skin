@@ -1053,7 +1053,7 @@ test("9th/10th review (CLI): start first — done calls nothing more; a deferred
     // factory run of the D1 day deferred=true + until for the workflow
     const later = await runCli(join(dir, "w2.json"));
     assert.equal(later.code, 0);
-    assert.match(later.out, /^::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — these prices are computed from 06:00 KST$/m);
+    assert.match(later.out, /^::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — that run computes these prices \(or the first alerts-catchup run after 08:00 KST\)$/m);
     assert.equal(later.output, "deferred=true\nuntil=06:00\n");
     assert.deepEqual(seen.splice(0), ["/v1/internal/start"]);
     // the second deferred factory run of that D1 day: the same ::warning, nothing for the workflow (one Telegram line a day)
@@ -1070,6 +1070,35 @@ test("9th/10th review (CLI): start first — done calls nothing more; a deferred
     assert.equal(broke.code, 0);
     assert.match(broke.out, /^::warning title=price alerts::price alert check failed \(\/v1\/internal\/digest answered 500\) — the next alerts-catchup run \(every 30 minutes\) computes again$/m);
     assert.equal(broke.output, "failed=true\n");
+    // 11th review: a start that trying again cannot cure — 401/403 (ALERTS_SECRET is not the Worker's), 404 (ALERTS_URL is not
+    // the alerts Worker), 400 — writes startfail=true (weekly.yml's alert job: one Telegram line) and does not promise a
+    // catch-up; a 5xx, 408 or 429 does not (tried 3 times here, then by the next catch-up)
+    for (const [status, fail] of [[401, true], [403, true], [404, true], [400, true], [500, false], [503, false], [429, false], [408, false]]) {
+      failPath = null;
+      const s2 = http.createServer((req, res) => { req.resume(); req.on("end", () => { res.writeHead(status, { "content-type": "application/json" }); res.end("{}"); }); });
+      await new Promise((ok) => s2.listen(0, "127.0.0.1", ok));
+      try {
+        const r = await new Promise((ok) => {
+          writeFileSync(out, "");
+          const child = spawn(process.execPath, [cli, join(dir, "w2.json")], { env: { PATH: process.env.PATH, ALERTS_URL: `http://127.0.0.1:${s2.address().port}`, ALERTS_SECRET: SECRET_VALUE, GITHUB_OUTPUT: out } });
+          let text = "";
+          child.stdout.on("data", (d) => { text += d; });
+          child.on("close", (code) => ok({ code, out: text, output: readFileSync(out, "utf8") }));
+        });
+        assert.equal(r.code, 0, String(status));
+        assert.equal(r.output, fail ? "startfail=true\n" : "", String(status));
+        if (fail) assert.match(r.out, new RegExp(`^::warning title=price alerts::price alert check failed \\(/v1/internal/start answered ${status}\\) — trying again will not help: check ALERTS_SECRET \\(GitHub and the Worker — cf-alerts Run workflow sync_secret\\), ALERTS_URL and the alerts Worker; nothing is computed until then$`, "m"), String(status));
+        else assert.match(r.out, /— the next alerts-catchup run \(every 30 minutes\) computes again$/m, String(status));
+      } finally { s2.close(); }
+    }
+    // a data.json the Worker would refuse (the shape guard): nothing is called, startfail=true
+    seen.splice(0);
+    writeFileSync(join(dir, "bad.json"), JSON.stringify({ ...WEEK2, keys: [["bad key!", "x"]] }));
+    const shape = await runCli(join(dir, "bad.json"));
+    assert.equal(shape.code, 0);
+    assert.match(shape.out, /^::warning title=price alerts::app\/data\.json shape changed/m);
+    assert.equal(shape.output, "startfail=true\n");
+    assert.deepEqual(seen, [], "nothing sent");
   } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -1090,11 +1119,30 @@ test("10th review (a lost start answer): the Worker took the lease but the answe
   assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('fc', 'lease') ORDER BY k"), [{ k: "fc", n: 2026102001 }], "counted once, the finish freed the lease");
 });
 
+test("11th review (the 06:00 share): a catch-up deferred 'reserve' is told 08:00 (a ::notice, never the first); a factory run 'reserve' 06:00; the factory run told 'cap' after a 'reserve' line is the first again", T, async () => {
+  const db = makeDb(), env = makeEnv(db, { COMPUTES_PER_DAY: "2" });
+  await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
+  let at = Date.parse("2026-10-20T12:00:00+09:00");
+  const f = async (url, init) => worker.fetch(new Request(url, init), env, { waitUntil() {} }, at);
+  const lines = [];
+  const go = (data, catchup) => notify({ data, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f, log: (l) => lines.push(l), waitMs: 0, catchup });
+  assert.equal((await go(WEEK1)).go, "compute");
+  assert.deepEqual(await go(WEEK2, true), { go: "deferred", why: "reserve", until: "08:00", first: false });
+  assert.match(lines.at(-1), /^::notice title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST factory run — that run computes these prices, or the first alerts-catchup run after 08:00 KST$/);
+  assert.deepEqual(await go(WEEK2), { go: "deferred", why: "reserve", until: "06:00", first: true });
+  // 06:30 KST: the 06:00 run computes (the share); 07:10 a newer collection is deferred 'cap' — the first again
+  at = Date.parse("2026-10-21T06:30:00+09:00");
+  assert.equal((await notify({ data: WEEK2, today: "2026-10-21", url: URL_, secret: SECRET_VALUE, fetch: f, log: () => {}, waitMs: 0 })).go, "compute");
+  at = Date.parse("2026-10-21T07:10:00+09:00");
+  const r = await notify({ data: WEEK1, today: "2026-10-21", url: URL_, secret: SECRET_VALUE, fetch: f, log: () => {}, waitMs: 0 });
+  assert.deepEqual(r, { go: "deferred", why: "cap", until: "09:00", first: true });
+});
+
 test("everything notify.mjs logged in this file holds counts only: no secret, URL, host, id, endpoint, key or region name", () => {
   assert.ok(ALL_LOGS.length >= 8, `only ${ALL_LOGS.length} log lines were collected`);
   const text = ALL_LOGS.join("\n");
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run \(every 30 minutes\) checks these prices again|::warning title=price alerts::this D1 day's computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — these prices are computed from 06:00 KST|::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST \(a new D1 day\) — the next alerts-catchup run computes these prices|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run \(every 30 minutes\) checks these prices again|::warning title=price alerts::this D1 day's computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — that run computes these prices \(or the first alerts-catchup run after 08:00 KST\)|::notice title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST factory run — that run computes these prices, or the first alerts-catchup run after 08:00 KST|::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST \(a new D1 day\) — the next alerts-catchup run computes these prices|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });

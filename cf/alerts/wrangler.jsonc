@@ -1,4 +1,5 @@
-// 가격 알림 (price alerts) Worker — Cloudflare Workers Paid (vars.PLAN "paid"; "free" fits a Free account). Deployed by
+// 가격 알림 (price alerts) Worker — launches on Cloudflare Workers Paid; vars.PLAN stays "free" (it fits a Free account) until
+// the account IS on Workers Paid, then a one-line PR sets "paid" (docs/ARCHITECTURE.md D19, the launch steps). Deployed by
 // .github/workflows/cf-alerts.yml:
 //   wrangler@4.145.0 (installed in a step without the token) d1 migrations apply DB --remote --config cf/alerts/wrangler.jsonc
 //   wrangler@4.145.0 deploy --config cf/alerts/wrangler.jsonc
@@ -46,14 +47,18 @@
     "VAPID_PUBLIC_KEY": "",
     "VAPID_SUBJECT": "https://yoonsiljang.lsy2825.workers.dev",
     // the plan profile (src/worker.js PLANS, limits — 10th review, a user decision of 2026-10-19: the app launches on
-    // Cloudflare Workers PAID; switch the account to Workers Paid BEFORE PUBLIC_DEPLOY goes on). "paid": 200 pushes a run,
-    // 15,000 subscriptions, 1,500 new a KST day, 12 computations a D1 day — the worst month stays inside the $5 plan's 50M
-    // rows written / 25B read (src/worker.js arithmetic). "free": the 9th review's 40 / 2,000 / 500 / 3 (D1 Free: 100,000
-    // rows written a day). On a Free account set "free" (more than 50 pushes a run would fail there). Each limit can still
-    // be set here on its own — "SEND_LIMIT", "MAX_SUBS", "NEW_PER_DAY", "COMPUTES_PER_DAY" (a var beats the profile; pushes
-    // ≤ 45 a run on free, ≤ 500 on paid; ≤ 99 computations) — re-check the arithmetic first. No "limits" block: a Free
-    // account refuses one at deploy, so every limit is kept in code
-    "PLAN": "paid",
+    // Cloudflare Workers PAID). "free" UNTIL THE ACCOUNT IS ON WORKERS PAID (11th review: merging deploys this Worker at once,
+    // while the account is still Free): 40 pushes a run, 1,750 subscriptions, 500 new a KST day, 3 computations a D1 day —
+    // D1 Free's 100,000 rows written a day with 5% left (src/worker.js arithmetic). The launch: switch the account to
+    // Workers Paid → merge a one-line PR setting "paid" here (200 / 15,000 / 1,500 / 12 — the worst month inside the $5
+    // plan's 50M rows written / 25B read) → then PUBLIC_DEPLOY "on" (docs/ARCHITECTURE.md D19 launch steps). GET /health
+    // "plan" shows this setting, not the account's plan. "paid" on a Free account: every send run stops at the 50th push
+    // (the subrequest limit — src/worker.js send releases the rest, counts no failure) and 12 computations can pass D1
+    // Free's day (then every D1 query fails until 09:00 KST). Each limit can still be set here on its own — "SEND_LIMIT",
+    // "MAX_SUBS", "NEW_PER_DAY", "COMPUTES_PER_DAY" (a var beats the profile; pushes ≤ 45 a run on free, ≤ 500 on paid; ≤ 99
+    // computations) — re-check the arithmetic first. No "limits" block: a Free account refuses one at deploy, so every
+    // limit is kept in code
+    "PLAN": "free",
     // (key, region) pairs the factory digests per run, and the most rows its snap table holds (+ one digest chunk of 500):
     // ≤ 2 × (PAIR_CAP + 500) = 7,000 D1 rows written per full computation (≤ COMPUTES_PER_DAY a D1 day). The D1 write budget
     // (Free: 100,000 a day, over it every D1 query fails until 09:00 KST; Paid: 50M a month in the $5) is for the whole

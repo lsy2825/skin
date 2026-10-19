@@ -91,7 +91,8 @@ export const WATCHED = `SELECT w.k AS k, w.r AS r FROM (
   ORDER BY w.got DESC, CASE WHEN s.added > ?3 THEN 0 WHEN s.k IS NULL THEN 1 ELSE 2 END, w.c DESC, s.added DESC, w.k, w.r
   LIMIT ?1 OFFSET ?2`;
 // ?1 today as yyyymmdd: the factory's watched list was cut at PAIR_CAP — GET /health "pairs": "capped" that day and the next
-export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n";
+// Written only when the day changes (11th review: every capped digest chunk of a computation rewrote it — up to 7 rows)
+export const STAT_CAPPED = "INSERT INTO stat (k, n) VALUES ('capped', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 
 // ?1 run ('updated|day': meta.updated = the collection date, the same on every rebuild until the next scrape) ?2 JSON
 // array of checked entries (rules.js cleanEntry). First sight of a pair = baseline, no news. Afterwards the numbers go to
@@ -155,6 +156,15 @@ const MOVED = `(${NEW_M} IS NOT ${V("m")} OR ${NEW_N} IS NOT ${V("n")} OR ${NEW_
 // q: V when it holds unfinished numbers (p = 1) and this digest moves on from them; the q already there when it does not
 const NEW_Q = (c) => `CASE WHEN ${REBASE} OR snap.p = 0 THEN NULL WHEN ${MOVED} THEN snap.p${c} ELSE snap.q${c} END`;
 const NEW_CB = `(CASE WHEN ${BAD_M} AND NOT ${TAKE_M} THEN 1 ELSE 0 END) + (CASE WHEN ${BAD_N} AND NOT ${TAKE_N} THEN 2 ELSE 0 END) + (CASE WHEN ${BAD_MED} AND NOT ${TAKE_MED} THEN 4 ELSE 0 END)`;
+// The row is written only when this entry differs from what the row already holds (11th review — D1 bills every row an
+// upsert writes, even with the same values): the same run, the same expiring numbers (e, s, u), the same regroup day g, the
+// same collection as V and the same numbers as V change nothing in the SET below (SAME: min/max/median of V and itself = V;
+// p, q, cb, cu, pu stay; pm/pn/pmed are read only while p = 1, and then they are V) — so a chunk notify.mjs sends again
+// after D1 committed it (its answer lost: a 5xx after the commit, a timeout) writes 0 rows instead of up to 500
+// (measured on a local D1), and so does a second computation the same day of a pair whose numbers did not move.
+const UNCHANGED_NOT = `snap.run IS NOT excluded.run OR snap.e IS NOT excluded.e OR snap.s IS NOT excluded.s OR snap.u IS NOT excluded.u
+    OR snap.g IS NOT excluded.g OR excluded.bu IS NOT coalesce(snap.pu, snap.bu)
+    OR excluded.m IS NOT ${V("m")} OR excluded.n IS NOT ${V("n")} OR excluded.med IS NOT ${V("med")}`;
 export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, s, u)
   SELECT j.value->>'$.k', j.value->>'$.r', j.value->>'$.m', j.value->>'$.n', j.value->>'$.med', substr(?1, 1, 10),
     coalesce(j.value->>'$.g', ''), ?1, ?4, j.value->>'$.e', j.value->>'$.s', j.value->>'$.u'
@@ -173,7 +183,11 @@ export const DIGEST = `INSERT INTO snap (k, r, m, n, med, bu, g, run, added, e, 
     pmed = CASE WHEN ${REBASE} THEN NULL ELSE ${NEW_MED} END,
     pu = CASE WHEN ${REBASE} OR excluded.bu = snap.bu THEN NULL ELSE excluded.bu END,
     cb = CASE WHEN ${REBASE} THEN 0 WHEN ${SAME} THEN snap.cb ELSE ${NEW_CB} END,
-    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} THEN snap.cu ELSE excluded.bu END`;
+    cu = CASE WHEN ${REBASE} THEN NULL WHEN ${SAME} THEN snap.cu ELSE excluded.bu END
+  WHERE ${UNCHANGED_NOT}`;
+// how many of the entries ?1 (a digest chunk) snap holds now: a pair DIGEST left unchanged (UNCHANGED_NOT false — a chunk
+// sent again) changed no row, so its `changes` cannot tell it from a pair left out for room (src/worker.js digest)
+export const DIGEST_HELD = "SELECT count(*) AS n FROM json_each(?1) j WHERE EXISTS (SELECT 1 FROM snap s WHERE s.k = j.value->>'$.k' AND s.r = j.value->>'$.r')";
 
 // finish (one batch, in this order). Weekly news = a pending pair against its baseline (from → to):
 //   watch    median moved ≥ 5% (|to.med − from.med| × 20 ≥ from.med, exact in integers) or a new lowest price — push.js
@@ -254,8 +268,12 @@ export const CLEAR_DATA = "DELETE FROM stat WHERE k = 'data'";
 //   retry     stale, it started this UTC day, it was for these same prices (stat 'lf') and no retry was taken this UTC day
 //             (stat 'fr'): taken without being counted (src/worker.js start)
 //   computes  computations counted this UTC day (stat 'fc' = UTC day × 100 + count)
-//   told      a factory run was already told it was deferred this UTC day (stat 'fd' = UTC day × 10 + 1; × 10 + 0 when
-//             only a catch-up was)
+//   told      how far a factory run was already told it was deferred this UTC day (stat 'fd' = UTC day × 10 + told): 0 =
+//             no factory run (a catch-up may have been deferred), 1 = told 'reserve' (until 06:00), 2 = told 'cap' (until
+//             09:00 — 11th review: the day's last computation was taken after a 'reserve' line, and the collection then waits
+//             for 09:00: that is news again)
+//   toldme    the run that was told last (stat 'fn' = its nonce) is this one: its start sent again after a lost answer gets
+//             the same first: true (11th review — the one Telegram line of the D1 day was lost with that answer)
 // Stat rows read by primary key only, nothing written.
 export const START_STATE = `SELECT coalesce((SELECT n FROM stat WHERE k = 'finish') = ?1, 0) AS today,
   coalesce((SELECT n FROM stat WHERE k = 'data') = ?2, 0) AS same,
@@ -266,7 +284,8 @@ export const START_STATE = `SELECT coalesce((SELECT n FROM stat WHERE k = 'finis
   coalesce((SELECT n FROM stat WHERE k = 'lease') <= ?3 - ?4 AND (SELECT n FROM stat WHERE k = 'lease') >= ?7
     AND (SELECT n FROM stat WHERE k = 'lf') = ?2 AND coalesce((SELECT n FROM stat WHERE k = 'fr'), 0) <> ?5, 0) AS retry,
   coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?5), 0) AS computes,
-  coalesce((SELECT n % 10 FROM stat WHERE k = 'fd' AND n / 10 = ?5), 0) AS told`;
+  coalesce((SELECT n % 10 FROM stat WHERE k = 'fd' AND n / 10 = ?5), 0) AS told,
+  coalesce((SELECT n % 10 FROM stat WHERE k = 'fd' AND n / 10 = ?5) > 0 AND (SELECT n FROM stat WHERE k = 'fn') = ?6, 0) AS toldme`;
 // one batch (D1 runs a batch as one transaction): take the lease ?1 (now, epoch ms — the token FINISH gives back) only while
 // none is live (?2 the lease in ms) and — unless ?5 = 1 (a retry, src/worker.js start) — fewer than ?4 computations were
 // counted this UTC day ?3 (?4 = COMPUTES_PER_DAY, or one less before 21:00 UTC). Then, only when the lease row now holds
@@ -279,6 +298,11 @@ export const TAKE_LEASE = `INSERT INTO stat (k, n) SELECT 'lease', ?1 WHERE coal
 export const LEASE_OF = `INSERT INTO stat (k, n) SELECT v.k, v.n FROM (SELECT 'ln' AS k, ?2 AS n UNION ALL SELECT 'lf', ?3) v
     WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
   ON CONFLICT(k) DO UPDATE SET n = excluded.n`;
+// ?1 now (epoch ms) ?2 the lease (ms) ?3 the nonce: the lease live now was taken with this nonce — the last statement of the
+// start's batch (11th review: a start sent again after a lost answer could read the state BEFORE its first try's batch
+// committed, then find that batch's lease in TAKE_LEASE and answer 'busy' to itself — a computation counted and never run).
+// Only for a start with a nonce (src/worker.js start)
+export const LEASE_MINE = `SELECT n AS lease FROM stat WHERE k = 'lease' AND n > ?1 - ?2 AND (SELECT n FROM stat WHERE k = 'ln') = ?3`;
 export const COUNT_COMPUTE = `INSERT INTO stat (k, n) SELECT 'fc', ?2 * 100 + 1 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
   ON CONFLICT(k) DO UPDATE SET n = CASE WHEN n / 100 = excluded.n / 100 THEN n + 1 ELSE excluded.n END`;
 // ?1 the lease token ?2 the UTC day: this UTC day's one uncounted retry is taken
@@ -288,11 +312,15 @@ export const MARK_RETRY = `INSERT INTO stat (k, n) SELECT 'fr', ?2 WHERE (SELECT
 // /health "compute": "failed" that UTC day and the next; the monitor warns)
 export const STAT_CFAIL = `INSERT INTO stat (k, n) SELECT 'cfail', ?2 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
   ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n`;
-// ?1 the UTC day ?2 1 = a factory run was deferred, 0 = a catch-up: stat 'fd' = UTC day × 10 + (1 once a factory run was
-// told that UTC day). Written only when it changes (≤ 2 rows a UTC day). GET /health "compute": "deferred" that UTC day and
-// the next; start's `told` (one Telegram line a D1 day)
+// ?1 the UTC day ?2 how far a run is told: 0 = a catch-up (told nothing), 1 = a factory run told 'reserve', 2 = told 'cap':
+// stat 'fd' = UTC day × 10 + the most any factory run was told that UTC day (START_STATE told). Written only when it grows
+// (≤ 3 rows a UTC day). GET /health "compute": "deferred" that UTC day and the next; start's `told` (one Telegram line a D1
+// day, one more when 'reserve' became 'cap')
 export const STAT_DEFERRED = `INSERT INTO stat (k, n) VALUES ('fd', ?1 * 10 + ?2)
-  ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n / 10 <> ?1 OR (n % 10 = 0 AND ?2 = 1)`;
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n / 10 <> ?1 OR n % 10 < ?2`;
+// ?1 the nonce of the factory run just told (first: true): stat 'fn' (START_STATE toldme). Written only when it changes
+// (≤ 2 rows a UTC day: the 'reserve' line and the 'cap' line)
+export const STAT_TOLD = "INSERT INTO stat (k, n) VALUES ('fn', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 // ?1 the lease token the start gave this computation: FINISH frees it (a lease another run took after it expired stays)
 export const FREE_LEASE = "DELETE FROM stat WHERE k = 'lease' AND n = ?1";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
@@ -375,8 +403,10 @@ export const CLAIM_P = `UPDATE subs SET claim = ?1 WHERE id IN (
 //   CLAIM_F  rows that failed before (fails > 0), at most FAIL_SLOTS of the limit: rows that DID receive a push before
 //            first (a real phone with one failure is never queued behind rows that never took a push — planted
 //            subscriptions, or brand-new ones), then fewest failures, then longest wait — subs_fail index, in order, no
-//            sort. A failing row costs every run at most one of these slots; a row that never received a push is removed
-//            after NEVER_DROP failures, or at its first 401/403 (worker.js DROP_FAILING / DROP_REFUSED)
+//            sort (its rows with nothing pending are passed over, one entry each: the index holds every row with fails > 0,
+//            so the factory's marks never touch it — 11th review). A failing row costs every run at most one of these
+//            slots; a row that never received a push is removed after NEVER_DROP failures, or at its first 401/403
+//            (worker.js DROP_FAILING / DROP_REFUSED)
 const RETURNS = "RETURNING id, endpoint, pend_w, last_w, pend_x, pend_xl, last_x, fails";
 const X_DUE = "(pend_x >= ?3 AND (coalesce(last_x, '') < ?3 OR (pend_w = 1 AND (last_w IS NULL OR last_w <= ?2))))";
 const ANY_DUE = "((pend_w = 1 AND (last_w IS NULL OR last_w <= ?2)) OR (pend_x >= ?3 AND coalesce(last_x, '') < ?3))";

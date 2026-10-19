@@ -16,10 +16,13 @@
 //                  written
 //        busy      another run is computing right now (one at a time) — a ::notice; the next catch-up run checks again
 //        deferred  why 'cap': the D1 day's computations (the Worker's COMPUTES_PER_DAY) are used up (until 09:00 KST); why
-//                  'reserve': its last one is kept for the 06:00 KST run (until 06:00 KST) — a ::warning, and when the
-//                  Worker says first: true (the first factory run deferred that D1 day) `deferred=true` and `until=…` in
-//                  $GITHUB_OUTPUT (weekly.yml's alert job sends ONE Telegram line a D1 day); why 'edge': the last 15 minutes
-//                  before 09:00 KST start nothing (a ::notice; the next catch-up computes)
+//                  'reserve': its last one is kept for the 06:00 KST factory run (until 06:00 KST — that run computes
+//                  main's prices, which hold these; a catch-up is told 08:00: from then it may take it if no run did) — a
+//                  ::warning (a catch-up's: a ::notice), and when the Worker says first: true (the first factory run
+//                  deferred that D1 day, the first told 'cap' after a 'reserve' line, or that same run's start sent again)
+//                  `deferred=true` and `until=…` in $GITHUB_OUTPUT (weekly.yml's alert job sends ONE Telegram line a D1 day,
+//                  two when 'reserve' became 'cap'); why 'edge': the last 15 minutes before 09:00 KST start nothing (a
+//                  ::notice; the next catch-up computes)
 //        compute   go on (the Worker took a lease, freed by the finish):
 //   2. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
 //      row (rewritten only when they change) and ranks only pairs of these keys in (3) — a key the data does not have can
@@ -38,7 +41,12 @@
 // build. News waits in D1 until a finish consumes it, and the next alerts-catchup run (every 30 minutes) computes again once
 // the lease (15 minutes) runs out — a retry of the same prices is not counted, once a D1 day (the Worker's start). A failure
 // AFTER the Worker answered compute also writes `failed=true` to $GITHUB_OUTPUT (weekly.yml's alert job sends a Telegram line;
-// a catch-up's shows on GET /health "compute": "failed", which the daily monitor warns about).
+// a catch-up's shows on GET /health "compute": "failed", which the daily monitor warns about). One that trying again cannot
+// cure — start answered a 4xx other than 408/429 (401/403: ALERTS_SECRET is not the Worker's; 404: ALERTS_URL is not the
+// alerts Worker), an answer this code does not know, or a data.json shape the Worker would refuse — writes `startfail=true`
+// (11th review: weekly.yml's alert job sends a Telegram line; before, only GET /health stale told, about 3 days later).
+// A Worker or D1 that does not answer (5xx, network) is retried here 3 times and by the next catch-up; the daily monitor's
+// GET /health check reports a Worker that stays down.
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -175,7 +183,7 @@ async function call(f, url, secret, path, body, { tries = 3, timeoutMs = 20000, 
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (r.ok) return await r.json();
-      err = new Error(`${path.split("?")[0]} answered ${r.status}`);
+      err = Object.assign(new Error(`${path.split("?")[0]} answered ${r.status}`), { status: r.status });
       if (r.status < 500 && r.status !== 429) break;     // other answers will not get better by retrying
     } catch (e) { err = e; }
     if (i + 1 < tries && waitMs) await new Promise((ok) => setTimeout(ok, waitMs * 2 ** i));
@@ -201,8 +209,16 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   }
   const opt = waitMs === undefined ? {} : { waitMs };
   const fp = fingerprint(data);
-  // the same body on every try of call(): a start D1 committed whose answer was lost gets this run's own lease back
-  const g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, nonce, catchup: true } : { fp, nonce }, opt);
+  // the same body on every try of call(): a start D1 committed whose answer was lost gets this run's own lease back.
+  // A 4xx other than 408/429 (401/403: ALERTS_SECRET is not the Worker's; 404: ALERTS_URL is not the alerts Worker; 400: a
+  // Worker that refuses this code's start) is not cured by trying again: startFail (the CLI's startfail=true — 11th review)
+  let g;
+  try {
+    g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, nonce, catchup: true } : { fp, nonce }, opt);
+  } catch (e) {
+    if (e && typeof e === "object" && Number.isInteger(e.status) && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) e.startFail = true;
+    throw e;
+  }
   if (g && g.go === "done") {
     log("price alerts: these prices were already computed (same fingerprint) — nothing to do");
     return { go: "done" };
@@ -212,13 +228,14 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
     return { go: "busy" };
   }
   if (g && g.go === "deferred") {
-    const why = ["cap", "reserve", "edge"].includes(g.why) ? g.why : "cap", until = g.until === "06:00" ? "06:00" : "09:00";
+    const why = ["cap", "reserve", "edge"].includes(g.why) ? g.why : "cap", until = ["06:00", "08:00"].includes(g.until) ? g.until : "09:00";
     if (why === "edge") log("::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST (a new D1 day) — the next alerts-catchup run computes these prices");
-    else if (why === "reserve") log("::warning title=price alerts::the D1 day's last computation (the Worker's COMPUTES_PER_DAY) is kept for the 06:00 KST run — these prices are computed from 06:00 KST");
+    else if (why === "reserve" && until === "08:00") log("::notice title=price alerts::the D1 day's last computation (the Worker's COMPUTES_PER_DAY) is kept for the 06:00 KST factory run — that run computes these prices, or the first alerts-catchup run after 08:00 KST");
+    else if (why === "reserve") log("::warning title=price alerts::the D1 day's last computation (the Worker's COMPUTES_PER_DAY) is kept for the 06:00 KST run — that run computes these prices (or the first alerts-catchup run after 08:00 KST)");
     else log("::warning title=price alerts::this D1 day's computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST");
     return { go: "deferred", why, until, first: why !== "edge" && g.first !== false };
   }
-  if (!g || g.go !== "compute" || !Number.isSafeInteger(g.lease)) throw new Error("/v1/internal/start answered no known decision");
+  if (!g || g.go !== "compute" || !Number.isSafeInteger(g.lease)) throw Object.assign(new Error("/v1/internal/start answered no known decision"), { startFail: true });
   try {
     return await compute({ data, today, url, secret, f, log, opt, fp, lease: g.lease });
   } catch (e) {
@@ -293,11 +310,19 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     const r = await notify({ data: readData(), url, secret, catchup: process.env.ALERTS_CATCHUP === "1" });
     // the first deferred factory run of a D1 day: the workflow's alert job sends one Telegram line (weekly.yml price_alerts
     // outputs.deferred / until)
-    if (r.go === "deferred" && r.first && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deferred=true\nuntil=${r.until === "06:00" ? "06:00" : "09:00"}\n`);
+    if (r.go === "deferred" && r.first && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deferred=true\nuntil=${["06:00", "08:00"].includes(r.until) ? r.until : "09:00"}\n`);
+    // a data.json the Worker would refuse: no run computes until cf/alerts/src/rules.js follows — startfail=true (weekly.yml's
+    // alert job sends a Telegram line; 11th review: only GET /health stale told, about 3 days later)
+    if (r.skipped === "shape" && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "startfail=true\n");
   })().catch((e) => {
     // never fail the price build; the message is a path + status or a network error (no secret, no ids). A failure after
-    // the Worker answered compute: failed=true for the workflow's alert job (weekly.yml price_alerts outputs.failed)
-    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next alerts-catchup run (every 30 minutes) computes again`);
+    // the Worker answered compute: failed=true for the workflow's alert job (weekly.yml price_alerts outputs.failed). A start
+    // that trying again cannot cure (startFail: a 4xx — ALERTS_SECRET, ALERTS_URL — or an answer this code does not know):
+    // startfail=true, and the line does not promise that the next catch-up computes (it gets the same answer)
+    if (e && e.startFail === true) {
+      console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — trying again will not help: check ALERTS_SECRET (GitHub and the Worker — cf-alerts Run workflow sync_secret), ALERTS_URL and the alerts Worker; nothing is computed until then`);
+      if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "startfail=true\n");
+    } else console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next alerts-catchup run (every 30 minutes) computes again`);
     if (e && e.afterStart === true && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "failed=true\n");
     process.exit(0);
   });
