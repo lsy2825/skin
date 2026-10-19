@@ -11,6 +11,8 @@ Rules (each dropped or changed row is listed in issues.csv with the reason):
          compared without word breaks or letter case; folds the old rule didn't make are listed as '합침'). One option line
          that a branch writes under several product titles at several prices is no item of its own: when two of its products
          meet at one price, they take their group title in front of the name and fold only with the same title (shared_titles)
+         · but a fold never makes a plain price of pages none of which gives one ('첫 방문' / '평일 낮'): such pages stay two
+         rows, each with its own condition, unless a page gives the price plain or their days make every day (CONFLICT)
 Columns added: kind (체험가 · 한정가 · 구독권 · 일반 · 고시가 — from the option's words, else the section's: section_kind),
 cat (common category), name (display name), mname (name used for matching), sess (sessions), tags (conditions such as 평일 낮 ·
 시간대 · 일요일 · 첫 방문), days / hours (the weekdays and hours written for the price: visit_days / visit_hours), keys (matched
@@ -26,6 +28,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "build2"))
 from xkeys import X, match, ONCE, COURSE, sessions, addon_only, comp  # noqa: E402
 import taxonomy  # noqa: E402
+import groups  # noqa: E402
 
 RAW = os.path.join(ROOT, "data2", "raw")
 TODAY = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=9))).date().isoformat()
@@ -532,7 +535,8 @@ def cond_tags(grp, opt, cat=""):
 def merge_tags(a, b):
     """tags of one price shown on two pages: a condition stays only when both pages state one — but the two time tags are one
     condition here: both '평일 낮' → '평일 낮', '평일 낮' and '시간대' → '시간대' (one page does not limit the days to weekdays;
-    2026-10-16 review: the plain intersection made such a price a plain one)"""
+    2026-10-16 review: the plain intersection made such a price a plain one). Pages whose conditions would leave a plain price
+    ('첫 방문' and '평일 낮') stay apart (CONFLICT)"""
     a, b = [t for t in a.split("·") if t], [t for t in b.split("·") if t]
     out = [t for t in a if t in b and t not in TIME_TAGS]
     ta, tb = [t for t in a if t in TIME_TAGS], [t for t in b if t in TIME_TAGS]
@@ -554,6 +558,64 @@ def visit_merge(a, b):
     # a 평일 page and a 주말 page together are every day (an '00:00-14:00' and a '14:00-24:00' page all day): no limit, as
     # visit_days / visit_hours give — else the price would stay out of the plain prices (groups.plain, rule 2) for nothing
     return (0 if days == ALL_DAYS else days), ("" if hours == ALL_HOURS else hours)
+
+
+def fold_cond(a, a_sect, b, b_sect):
+    """(tags, days, hours, kind, sect) of one price shown on two pages — rows a (kept) and b; *_sect: the row's kind is read
+    from its section alone (section_kind). A condition stays only when every page says it (merge_tags, visit_merge): the same
+    price on a page without it is open to anyone — a union turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones and
+    lost the unconditional lowest price. So does a kind read from the section alone: it goes when the other page says 일반, and
+    is no longer the section's when the other page's own words say the same kind"""
+    kind, sect = a["kind"], a_sect
+    if a_sect and b["kind"] == "일반":
+        kind, sect = "일반", False
+    elif a_sect and not b_sect and b["kind"] == a["kind"]:
+        sect = False
+    days, hours = visit_merge((a["days"], a["hours"]), (b["days"], b["hours"]))
+    return merge_tags(a["tags"], b["tags"]), days, hours, kind, sect
+
+
+def special(row):
+    """whether a clean row is no plain price (groups.plain): a condition tag, a weekday or hour limit, or a kind other than
+    일반 / 고시가 (from its own words or its section)"""
+    return not groups.plain(row["kind"], row["tags"], row["days"], row["hours"])
+
+
+# conditions of when a price is given, not of who gets it or how often (app/domain/pricing.js REPEAT_TAGS; its ONCE_TAGS and the
+# kinds 체험가 · 한정가 are the others)
+WHEN_TAGS = (*TIME_TAGS, "일요일")
+
+
+def when_only(row):
+    """whether all of a row's conditions are of when: days, hours and WHEN_TAGS, kind 일반 / 고시가"""
+    return row["kind"] in ("일반", "고시가") and all(t in WHEN_TAGS for t in row["tags"].split("·") if t)
+
+
+# CONFLICT (검수 lsy2825/skin#122, 2026-10-19): a fold never makes a plain price of pages none of which gives one by dropping who
+# gets it or how often. 유앤아이 부평점 lists '온다리프팅 50,000J' at 198,000 on its '1회 첫경험 체험가' tab (첫 방문, 체험가 by the tab)
+# and its '화수목 이벤트' tab (평일 낮, 화수목): fold_cond keeps what both pages say — nothing — and the row was a plain price
+# (groups.plain) of the comparison TE5C6CB9 below the branch's menu price 240,000, although no page offers it to anyone at any time.
+# clean.main folds as before, then folds such a row again from its pages, in their order: a page goes into the first row it is
+# not apart from, else it is a row of its own with its own condition. The fold stands as before when that gives one row, or a
+# row that is a plain price (a page gives the price plain, or a 평일 page and a 주말 page make every day): the price is open to
+# anyone, and one plain row says so (블리비 부천점 '레디어스 … 1시린지 한정가' 600,000 has a '프라임 타임 셀렉션' (평일 낮) page, a
+# '첫 시술 부탁해 이벤트' (첫 방문) one and two with no condition). Showcase copies follow SHOWCASE_SHARE there too: a copy goes
+# into the first row, and a row of copies alone takes the first other page that comes. Folds that keep the row special were
+# never folded again: '평일 낮' + '시간대' = '시간대', 화수목 + 평일 = 평일, '첫 방문·평일 낮' + '첫 방문' = '첫 방문', a 체험가 section +
+# '평일 낮' with 체험가 in its own words = 체험가 — also when nothing but the kind is left (two pages' own '한정가' with '평일 낮' /
+# '첫 방문' = 한정가 with no tag: a once-only price on any day, not a plain one).
+# Saved data of 2026-10-19 (all chains, before this rule): of 15,498 folds, 14,313 had no showcase copy on either side; 254 of
+# these joined two pages that both state a tag, days / hours or a section's kind and 3 kept none of it — 부평점, and 블리비 부천점
+# '레디어스 …' and 창원점 '울쎄라피 프라임 … 300샷 체험가' 849,000 ('평일 낮' + '첫 방문' pages whose own words say 한정가 / 체험가: still
+# special, and both have pages with no condition too); 4,971 joined two special pages and 1 made a plain price of them, 부평점's
+# (none of two when-only pages). 53 folds joined two showcase copies; none made a plain price of special ones.
+def apart(a, a_sect, b, b_sect):
+    """whether rows a and b of one price stay apart (CONFLICT): neither is a plain price, folded they would be one, and not all
+    their conditions are of when (when_only: a 평일 page and a 주말 page are every day, visit_merge)"""
+    if not (special(a) and special(b)) or (when_only(a) and when_only(b)):
+        return False
+    tags, days, hours, kind, _ = fold_cond(a, a_sect, b, b_sect)
+    return groups.plain(kind, tags, days, hours)
 
 
 # A showcase page repeats cards of the branch's other pages: at least SHOWCASE_SHARE of its items (and SHOWCASE_MIN or more) the
@@ -941,9 +1003,50 @@ def main():
     dropped_before = prev_dropped(os.path.join(ROOT, "data2", "issues.csv"))
     vdef = vat_policy()
     issues, out, seen, seen_old, sex_of, sect_of, weak_of = [], [], {}, {}, {}, {}, {}
+    # for CONFLICT after the loop — first_of: id(kept row) -> (index, raw row, by_sect, weak, sex, old-rule key) of its own page;
+    # pages_of: id(kept row) -> every page folded into it, its own first: (row as the page gave it, index, raw row, by_sect, weak,
+    # sex, old-rule key, its '합침' line)
+    first_of, pages_of = {}, {}
     showcase = showcase_pages(raw)
     items = [prepare(r) for r in raw]
     titled = shared_titles(raw, items)
+
+    def fold_note(r, prev, row):
+        """the issues.csv line of a fold the old rule (same option and list price) did not make: '합침'"""
+        return {**r, "action": "합침", "reason": "같은 상품·판매가가 두 페이지에(정가 다름)" if str(prev["orig"]) != str(row["orig"])
+                else "띄어쓰기·대소문자만 다른 같은 상품"}
+
+    def cond_after(prev, row, by_sect, weak):
+        """(tags, days, hours, kind, sect, weak) of the kept row prev once one more page of its price (row; by_sect: its kind
+        is read from its section alone, weak: a showcase page's copy) folds into it"""
+        if weak and not weak_of[id(prev)]:
+            # a showcase page's copy: the other page's condition and kind stand (SHOWCASE_SHARE)
+            return prev["tags"], prev["days"], prev["hours"], prev["kind"], sect_of[id(prev)], False
+        if weak_of[id(prev)] and not weak:
+            # the card a showcase page showed first: this page's condition and kind decide
+            return row["tags"], row["days"], row["hours"], row["kind"], by_sect, False
+        # a condition stays only when every page says it (fold_cond; a plain price of special pages: CONFLICT)
+        return fold_cond(prev, sect_of[id(prev)], row, by_sect) + (weak_of[id(prev)],)
+
+    def merge_into(prev, row, by_sect, weak):
+        """one more page of the kept row prev's price (row; by_sect, weak: see cond_after) folds into prev"""
+        prev["tags"], prev["days"], prev["hours"], prev["kind"], sect_of[id(prev)], weak_of[id(prev)] = \
+            cond_after(prev, row, by_sect, weak)
+        if row["addon"] == "1":
+            prev["addon"] = "1"
+        if row["back"] != "1":
+            prev["back"] = ""        # one of its pages was kept by the previous build too: the price was there
+        if event_page(prev) and not event_page(row) and not weak:
+            # the price list row wins (a showcase page is none): its category, link, list price and end date (an event's end
+            # date expired the row); the category stays when the first row's own words already gave one (a '필러/실리프팅' page
+            # read as 리프팅)
+            prev.update({"src_cat": row["src_cat"], "cat": row["cat"] if prev["cat"] == "기타" else prev["cat"], "url": row["url"],
+                         "orig": row["orig"], "until": row["until"]})
+        elif not prev["orig"] and row["orig"]:
+            prev["orig"] = row["orig"]
+        elif row["orig"] and prev["orig"] and row["orig"] < prev["orig"] and event_page(prev) and event_page(row):
+            prev["orig"] = row["orig"]   # two event pages, two list prices: the smaller one (닥터에버스 '평일한정' 343,100 vs 205,800)
+
     for i, r in enumerate(raw):
         it = items[i]
         if it["why"]:
@@ -1007,6 +1110,7 @@ def main():
         # 옵션5) 덴서티 하이 300샷 추가' / '인모드 리프팅 › …'), within one sex (남자 = 남성) or with a row that names no sex.
         # One option line of several products took its group title (shared_titles, 2026-10-19): both keys carry the title (mname
         # does not), so neither rule folds '男) 팔전체 12회 · 제모데이 …' with '男) 다리전체 12회 · 제모데이 …' by their shared line.
+        # A row the fold made a plain price of special pages ('첫 방문' / '평일 낮'·화수목) is folded again after the loop (CONFLICT).
         m = re.search(r"남성|남자|여성|여자|男|女", unicodedata.normalize("NFKC", mname))   # '女)' (유앤아이) is a sex too
         sex = SEX.get(m.group(), m.group()) if m else ""
         # a pass (구독권) never folds with a per-session row at the same price: both keys carry it
@@ -1021,40 +1125,14 @@ def main():
         if prev is None:
             prev = next((p for p in seen_old.get(k_old, []) if not sex or sex_of[id(p)] in (sex, "")), None)
         if prev is not None:
+            note = None
             if not any(p is prev for p in seen_old.get(k_old, [])):     # the old rule (same option and list price) kept these apart
-                other_orig = str(prev["orig"]) != str(orig or "")
-                issues.append({**r, "action": "합침", "reason": "같은 상품·판매가가 두 페이지에(정가 다름)" if other_orig else
-                               "띄어쓰기·대소문자만 다른 같은 상품"})
-            if weak and not weak_of[id(prev)]:
-                pass     # a showcase page's copy: the other page's condition and kind stand (SHOWCASE_SHARE)
-            elif weak_of[id(prev)] and not weak:
-                # the card a showcase page showed first: this page's condition and kind decide
-                prev.update({"tags": row["tags"], "days": row["days"], "hours": row["hours"], "kind": kind})
-                sect_of[id(prev)], weak_of[id(prev)] = by_sect, False
-            else:
-                # a condition stays only when every page says it: the same price on a page without it is open to anyone (a
-                # union turned 블리비's category-page prices into '평일 낮' / '첫 방문' ones — the unconditional lowest price was lost)
-                prev["tags"] = merge_tags(prev["tags"], row["tags"])
-                # a kind read from the section alone (section_kind) stays only when every page says it, like the tags
-                if sect_of.get(id(prev)) and kind == "일반":
-                    prev["kind"], sect_of[id(prev)] = "일반", False
-                elif sect_of.get(id(prev)) and not by_sect and kind == prev["kind"]:
-                    sect_of[id(prev)] = False
-                prev["days"], prev["hours"] = visit_merge((prev["days"], prev["hours"]), (row["days"], row["hours"]))
-            if row["addon"] == "1":
-                prev["addon"] = "1"
-            if row["back"] != "1":
-                prev["back"] = ""        # one of its pages was kept by the previous build too: the price was there
-            if event_page(prev) and not event_page(row) and not weak:
-                # the price list row wins (a showcase page is none): its category, link, list price and end date (an event's end
-                # date expired the row); the category stays when the first row's own words already gave one (a '필러/실리프팅' page
-                # read as 리프팅)
-                prev.update({"src_cat": r["category"], "cat": cat if prev["cat"] == "기타" else prev["cat"], "url": r["url"],
-                             "orig": orig or "", "until": r["until"]})
-            elif not prev["orig"] and orig:
-                prev["orig"] = orig
-            elif orig and prev["orig"] and orig < prev["orig"] and event_page(prev) and event_page(row):
-                prev["orig"] = orig              # two event pages, two list prices: the smaller one (닥터에버스 '평일한정' 343,100 vs 205,800)
+                note = fold_note(r, prev, row)
+                issues.append(note)
+            if id(prev) not in pages_of:
+                pages_of[id(prev)] = [(dict(prev), *first_of[id(prev)], None)]
+            pages_of[id(prev)].append((row, i, r, by_sect, weak, sex, k_old, note))
+            merge_into(prev, row, by_sect, weak)
             seen.setdefault(k, prev)
             if prev not in seen_old.setdefault(k_old, []):
                 seen_old[k_old].append(prev)
@@ -1064,7 +1142,48 @@ def main():
         sex_of[id(row)] = sex
         sect_of[id(row)] = by_sect
         weak_of[id(row)] = weak
+        first_of[id(row)] = (i, r, by_sect, weak, sex, k_old)
         out.append(row)
+    # CONFLICT: a row the fold made a plain price of pages none of which gives one is folded again from its pages, in their order —
+    # a page goes into the first row of its sex (or of none named, as above) it is not apart from (a showcase copy, or a page into a
+    # row of copies alone: SHOWCASE_SHARE), and the '합침' lines follow (the old rule's fold: a page of the same old-rule key came
+    # before). The fold stands when that is one row, or a row of it is a plain price: the price is open to anyone. An add-on stays
+    # one on every row (merge_into: one page says so — an add-on is never compared, so neither is any of its rows)
+    extra, notes_gone, notes = [], set(), []
+    for h in out:
+        pages = pages_of.get(id(h))
+        if not pages or special(h) or any(not p[4] and not special(p[0]) for p in pages):
+            continue      # one page, a special row, or a page (no showcase copy) that gives the price plain: the fold stands
+        rows, keys, at, new_notes = [], {}, {}, []
+        for row, i, r, by_sect, weak, sex, k_old, note in pages:
+            s = next((s for s in rows if (not sex or sex_of[id(s)] in (sex, ""))
+                      and (weak or weak_of[id(s)] or not apart(s, sect_of[id(s)], row, by_sect))), None)
+            if s is None:
+                s = dict(row)
+                rows.append(s)
+                sect_of[id(s)], weak_of[id(s)], sex_of[id(s)], keys[id(s)], at[id(s)] = by_sect, weak, sex, {k_old}, i
+                continue
+            if k_old not in keys[id(s)]:
+                new_notes.append(fold_note(r, s, row))
+                keys[id(s)].add(k_old)
+            merge_into(s, row, by_sect, weak)
+        if len(rows) < 2 or not all(special(s) for s in rows):
+            continue
+        if h["addon"] == "1":
+            for s in rows:
+                s["addon"] = "1"
+        h.clear()
+        h.update(rows[0])
+        sect_of[id(h)], weak_of[id(h)] = sect_of[id(rows[0])], weak_of[id(rows[0])]
+        for s in rows[1:]:
+            first_of[id(s)] = (at[id(s)],)
+            extra.append(s)
+        notes_gone.update(id(p[-1]) for p in pages if p[-1] is not None)
+        notes += new_notes
+    if extra:
+        out = sorted(out + extra, key=lambda row: first_of[id(row)][0])
+        issues = [x for x in issues if id(x) not in notes_gone] + notes
+    print(f"special prices a fold would have made plain (CONFLICT): {len(extra)} more rows")
     # a pass the branch lists again without the pass words: 밴스 창원 '얼굴전체' 690,000 / 정가 1,200,000원 next to '젠틀맥스프로플러스
     # 얼굴전체 1년이용권' at the same two prices — one-session prices do not match a year's pass to the won (2026-10-15)
     passes = defaultdict(list)
