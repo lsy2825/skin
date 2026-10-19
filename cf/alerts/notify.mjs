@@ -1,36 +1,41 @@
-// Price alerts, factory side (가격 알림 — 공장 쪽): ALERTS_MODE=full|keys node cf/alerts/notify.mjs [app/data.json]
+// Price alerts, factory side (가격 알림 — 공장 쪽): node cf/alerts/notify.mjs [app/data.json]
 // Run by .github/workflows/weekly.yml in its own job ('price_alerts', a fresh runner after the deploy job deployed the app
-// in that run, or on the daily schedule's 'nothing to build' days with the copy already deployed). That job runs the CODE
-// of ONE reviewed commit named by the repository Variable ALERTS_CODE_SHA (a human sets it when alerts code is merged; the
-// factory's GITHUB_TOKEN cannot change variables) and reads only the DATA: app/data.json of the commit the deploy job took
-// it from (or main's copy on a no-build day), used only when its sha256 is the one data-meta.json names and the public app
-// serves that same data-meta.json — what the phones were given — parsed as JSON, never run. Only that job gets ALERTS_URL
-// and ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on its machine. Plain node, no
+// in that run, or on the daily schedule's 'nothing to build' days with the copy already deployed) and by
+// .github/workflows/alerts-catchup.yml every hour on main's deployed copy, with ALERTS_CATCHUP=1 (9th review: alerts within
+// 2 hours of new prices — a user decision of 2026-10-16). Both run the CODE of ONE reviewed commit named by the repository Variable
+// ALERTS_CODE_SHA (a human sets it when alerts code is merged; the factory's GITHUB_TOKEN cannot change variables) and read
+// only the DATA: an app/data.json used only when its sha256 is the one its data-meta.json names and the public app serves
+// that same data-meta.json — what the phones were given — parsed as JSON, never run. Only those jobs get ALERTS_URL and
+// ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on their machine. Plain node, no
 // npm packages.
-// ALERTS_MODE (weekly.yml sets it): full = the FIRST attempt of the daily schedule run only — steps 1–5; keys = every other
-// run (started by a push to main, by Run workflow — a manual collection, price-check.yml's or the redeploy job's rebuild —
-// or a Re-run): only step 1, ≤ 1 D1 row written, and a ::notice that this data.json is computed by the next daily run
-// (06:00 KST): the D1 budget holds one computation a day (src/worker.js). A full run of a data.json the Worker already
-// finished today (same sha256, same KST day) stops after step 2's first page (done): no digest, no finish.
-//   1. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
-//      row (rewritten only when they change) and ranks only pairs of these keys in (2) — a key the data does not have can
+//   1. POST /v1/internal/start     fp = this data's FINGERPRINT (fingerprint() below: every number a digest can be computed
+//      from — not the file's bytes, not meta timestamps), and catchup: true from the catch-up. The Worker answers
+//        done      these prices were finished today (or before 06:00 KST — a catch-up: 07:00 — any day): a code-only
+//                  rebuild, a re-run or a catch-up with nothing new stops here — one D1 request, ≤ 4 rows read, nothing
+//                  written
+//        busy      another run is computing right now (one at a time) — a ::notice; the next catch-up run checks again
+//        deferred  the D1 day's computations (the Worker's COMPUTES_PER_DAY) are used up — a ::warning and `deferred=true`
+//                  in $GITHUB_OUTPUT (weekly.yml's alert job sends one Telegram line); the first catch-up after 09:00 KST
+//                  computes it
+//        compute   go on (the Worker took a lease, freed by the finish):
+//   2. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
+//      row (rewritten only when they change) and ranks only pairs of these keys in (3) — a key the data does not have can
 //      never be computed, so its pair must never take a place in the list (5th review); rules naming another key are
-//      still stored and wait (6th review), computed from the first daily run whose data.json has the key
-//   2. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
-//      at most the Worker's PAIR_CAP (most important first), in one page; data = this file's sha256 (done: already finished
-//      today); a pair whose key is not in this data.json is still skipped here (it would be one D1 row written for nothing)
-//   3. compute each pair from that data.json (the copy the phones were given) with the app's own code
+//      still stored and wait (6th review)
+//   3. GET  /v1/internal/watched   the (treatment key, region) pairs someone watches — no ids, no endpoints, no baselines;
+//      at most the Worker's PAIR_CAP (most important first), in one page; a pair whose key is not in this data.json is
+//      still skipped here (it would be one D1 row written for nothing)
+//   4. compute each pair from that data.json (the copy the phones were given) with the app's own code
 //      (app/domain/pricectx.js, pricing.js, stats.js — read only) on the price basis of the app's alert engine (병원 표시가)
 //      → digest entries (numbers only)
-//   4. POST /v1/internal/digest    500 entries at a time (a pair new to the Worker is kept only while its table has room
-//      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   5. POST /v1/internal/finish   the
-//      Worker marks who has news
+//   5. POST /v1/internal/digest    500 entries at a time (a pair new to the Worker is kept only while its table has room
+//      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   6. POST /v1/internal/finish   the
+//      Worker marks who has news, notes the fingerprint and frees the lease
 // Prints counts only (never keys, ids or endpoints). A failure prints a ::warning and exits 0: alerts never fail the price
-// build. News waits in D1 until a finish consumes it, and the next daily run (06:00 KST, weekly.yml ALERTS_MODE=full)
-// computes again — a run started by a push, by Run workflow or a Re-run only sends the key set (8th review: "the next run
-// catches up" sent an operator to Run workflow, which computes nothing).
+// build. News waits in D1 until a finish consumes it, and the next alerts-catchup run (every hour) computes again once the
+// lease (15 minutes) is free.
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, appendFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { pairStats } from "./src/digest.js";
@@ -89,6 +94,44 @@ export function reclDate(data, k) {
   return d;
 }
 
+// The data's FINGERPRINT (POST /v1/internal/start, finish): a sha256 over a canonical text of everything a digest entry can
+// be computed from, so equal fingerprints mean every pair's entry would be the same on the same day — and a rebuild that
+// changes no price (code, texts, timestamps, the file's bytes or row order) costs no computation:
+//   - meta.updated (the collection date: the run's collection, src/sql.js DIGEST SAME / CONFIRM);
+//   - per compare key, ascending: its regroup day (reclDate — g), its branches' lowest listed prices with their region,
+//     sorted (priceIndex: m, n, med of every region, 수도권 included), and its live rows' (region, listed price, end
+//     date), sorted (rowIndex before the day's end-date filter: e, s, u for any day).
+// Rows waiting for review (r[13]) are left out as priceIndex/rowIndex leave them out, and keys outside data.keys as notify
+// leaves them out. `today` is not in it: the Worker's start compares the KST day of the last finish itself. FP_VERSION
+// changes every fingerprint when this definition changes (one computation, then done again).
+const FP_VERSION = "alerts-fp-1";
+export function fingerprint(data) {
+  const S = data.s, rows = PriceCtx.rowsOf(data);
+  const region = (b) => S[data.branches[b][5]] || "";
+  const keys = [...new Set(data.keys.map((k) => k[0]))].sort();
+  const per = new Map(keys.map((k) => [k, { low: new Map(), rows: [] }]));
+  for (const r of rows) {
+    const ks = S[r[7]];
+    if (!ks || r[13]) continue;
+    const p = listedPrice(r), line = `${region(r[0])}|${p}|${S[r[10]] || ""}`;
+    for (const k of ks.split(" ")) {
+      const x = per.get(k);
+      if (!x) continue;
+      const low = x.low.get(r[0]);
+      if (low === undefined || p < low) x.low.set(r[0], p);
+      x.rows.push(line);
+    }
+  }
+  const h = createHash("sha256");
+  h.update(`${FP_VERSION}\n${data.meta.updated}\n`);
+  for (const k of keys) {
+    const x = per.get(k);
+    const lows = [...x.low].map(([b, p]) => `${region(b)}|${p}`).sort();
+    h.update(`${k}\t${reclDate(data, k)}\t${lows.join(",")}\t${x.rows.sort().join(",")}\n`);
+  }
+  return h.digest("hex");
+}
+
 // Does this data.json still have the shape the Worker accepts? Every compare key must match rules.js KEY_RE, there may be
 // at most MAX_KEYS of them, and every branch region must be one of REGIONS (or empty) — otherwise the Worker would answer
 // 400 (BAD_KEYS, BAD_DIGEST, BAD_RULES) and the phones' rules for those treatments would die quietly. → [] or the
@@ -135,13 +178,13 @@ async function call(f, url, secret, path, body, { tries = 3, timeoutMs = 20000, 
   throw err;
 }
 
-// mode 'full' (default) | 'keys'; sha = the data.json's sha256 (hex) — sent so the Worker can say done (see above); without
-// it a full run always computes
-export async function notify({ data, sha, mode = "full", today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs }) {
+// → {go: 'done' | 'busy' | 'deferred'} or, after a computation, {go: 'compute', pairs, entries, weekly, expiring, cleared,
+// changed}; {skipped: 'shape'} when the Worker would refuse this data.json. catchup: the hourly catch-up's run (the Worker
+// leaves the day's computation of unchanged prices to the 06:00 factory run until 07:00 KST — src/worker.js
+// CATCHUP_ROLL_HOUR)
+export async function notify({ data, today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs, catchup = false }) {
   checkUrl(url);
   url = url.replace(/\/+$/, "");
-  if (mode !== "full" && mode !== "keys") throw new Error("ALERTS_MODE must be full or keys");
-  if (sha !== undefined && !/^[0-9a-f]{64}$/.test(sha)) throw new Error("the data sha256 is not 64 hex digits");
   // a data.json the Worker would refuse: say so and call nothing — no finish, so GET /health "finished" stops advancing and
   // after 2 days "stale": true, which the monitor (.github/scripts/health_check.py) turns into a Telegram line; the phones'
   // rules are not silently dropped
@@ -150,26 +193,31 @@ export async function notify({ data, sha, mode = "full", today = kstDay(Date.now
     log(`::warning title=price alerts::app/data.json shape changed (${problems.join("; ")}) — nothing sent until cf/alerts/src/rules.js KEY_RE/REGIONS follow`);
     return { pairs: 0, entries: [], weekly: 0, expiring: 0, changed: 0, skipped: "shape" };
   }
-  const run = `${data.meta.updated}|${today}`;
   const opt = waitMs === undefined ? {} : { waitMs };
+  const fp = fingerprint(data);
+  const g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, catchup: true } : { fp }, opt);
+  if (g && g.go === "done") {
+    log("price alerts: these prices were already computed (same fingerprint) — nothing to do");
+    return { go: "done" };
+  }
+  if (g && g.go === "busy") {
+    log("::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again");
+    return { go: "busy" };
+  }
+  if (g && g.go === "deferred") {
+    log("::warning title=price alerts::today's full computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST");
+    return { go: "deferred" };
+  }
+  if (!g || g.go !== "compute" || !Number.isSafeInteger(g.lease)) throw new Error("/v1/internal/start answered no known decision");
+  const run = `${data.meta.updated}|${today}`;
   // the keys this data.json has, sent first: the Worker ranks only pairs of these keys (a key it cannot compute never takes
   // a place in the list); a rule naming another key is stored and waits. Ascending, each once (rules.js keySetJson)
   const keySet = [...new Set(data.keys.map((k) => k[0]))].sort();
-  const ks = await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
-  if (mode === "keys") {
-    const keysChanged = ks && ks.changed ? "changed" : "unchanged";
-    log(`price alerts: key set sent (${keySet.length} keys, ${keysChanged}) — only the daily schedule run computes`);
-    log("::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST). A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day");
-    return { mode, keys: keySet.length, changed: !!(ks && ks.changed) };
-  }
+  await call(f, url, secret, "/v1/internal/keys", { keys: keySet }, opt);
   const watched = [];
   let capped = false;
   for (let at = 0; at !== null;) {
-    const page = await call(f, url, secret, `/v1/internal/watched?at=${at}${at === 0 && sha ? `&data=${sha}` : ""}`, undefined, opt);
-    if (at === 0 && page.done === true) {
-      log("price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do");
-      return { mode, pairs: 0, entries: [], done: true };
-    }
+    const page = await call(f, url, secret, `/v1/internal/watched?at=${at}`, undefined, opt);
     watched.push(...page.pairs);
     capped = capped || page.capped === true;
     at = Number.isInteger(page.next) && page.next > at ? page.next : null;
@@ -192,12 +240,13 @@ export async function notify({ data, sha, mode = "full", today = kstDay(Date.now
     }
     if (waiting) log("::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today (GET /health pairs: capped)");
   }
-  // finish even with no pairs: it also clears yesterday's marks and records the day for GET /health "finished"
-  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, ...(sha ? { data: sha } : {}) }, opt);
+  // finish even with no pairs: it also clears yesterday's marks, records the day for GET /health "finished" and the
+  // fingerprint for start, and frees the lease
+  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, fp, lease: g.lease }, opt);
   const ending = entries.filter((e) => e.e != null).length;
   const skipped = watched.length - pairs.length;
   log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring (${done.cleared} stale expiring cleared)`);
-  return { mode, pairs: pairs.length, entries, ...done };
+  return { go: "compute", pairs: pairs.length, entries, ...done };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
@@ -209,17 +258,22 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   if (!secret) { console.log("::warning title=price alerts::ALERTS_SECRET is not set (ALERTS_URL is) — price alerts skipped. Create the repository secret ALERTS_SECRET (Settings → Secrets and variables → Actions → New repository secret), then run the cf-alerts workflow (Run workflow, branch main) so the Worker gets the same value: setup_keys the first time, sync_secret afterwards (it keeps the VAPID keys)"); process.exit(0); }
   if (!url) { console.log("::warning title=price alerts::ALERTS_URL is not set (ALERTS_SECRET is) — price alerts skipped. Set ALERTS_URL (an Actions secret or variable) to the alerts Worker's https address"); process.exit(0); }
   const file = process.argv[2] || "app/data.json";
-  const mode = process.env.ALERTS_MODE || "full";
-  // the data file is READ AS DATA (in weekly.yml: app/data.json of the deployed commit): a parse error never echoes its
-  // content (JSON.parse messages quote it). Its sha256 is of the bytes read
+  // the data file is READ AS DATA (app/data.json of the deployed commit, or main's in the catch-up): a parse error never
+  // echoes its content (JSON.parse messages quote it)
   const readData = () => {
     let raw;
     try { raw = readFileSync(file); } catch { throw new Error("the data file is not readable"); }
-    try { return { data: JSON.parse(raw.toString("utf8")), sha: createHash("sha256").update(raw).digest("hex") }; } catch { throw new Error("the data file is not readable JSON"); }
+    try { return JSON.parse(raw.toString("utf8")); } catch { throw new Error("the data file is not readable JSON"); }
   };
-  (async () => { checkUrl(url); return notify({ ...readData(), mode, url, secret }); })().catch((e) => {
+  (async () => {
+    checkUrl(url);
+    // ALERTS_CATCHUP=1: alerts-catchup.yml's run (anything else: a factory run)
+    const r = await notify({ data: readData(), url, secret, catchup: process.env.ALERTS_CATCHUP === "1" });
+    // a deferred computation: the workflow's alert job sends one Telegram line (weekly.yml price_alerts outputs.deferred)
+    if (r.go === "deferred" && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "deferred=true\n");
+  })().catch((e) => {
     // never fail the price build; the message is a path + status or a network error (no secret, no ids)
-    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next daily run (06:00 KST) computes again; a push, Run workflow or Re-run only sends the key set`);
+    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next alerts-catchup run (every hour) computes again`);
     process.exit(0);
   });
 }

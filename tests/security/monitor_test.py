@@ -277,6 +277,7 @@ probs, notes = cap_probs(b'{"ok":true,"capacity":"surprise"}')
 check("workers: unknown capacity value → a warning (not silence)", len(probs) == 1 and "알 수 없어요" in probs[0], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","stale":true}')
 check("workers: stale true → one warning line", len(probs) == 1 and "2일 넘게" in probs[0] and "price_alerts" in probs[0], str(probs))
+check("workers: stale names the hourly catch-up too (9th review: alerts-catchup.yml also computes)", "alerts-catchup" in probs[0], str(probs))
 # no finish EVER (finished: null) while phones subscribed more than 2 days ago: the factory → Worker link never worked
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","finished":null,"stale":true}')
 check("workers: stale with finished null → 'never received' line naming the ALERTS_* settings",

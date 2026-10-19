@@ -2,7 +2,7 @@
 # Local check of the alerts Worker in the real runtime (workerd via wrangler dev) with a local D1:
 #   bash cf/alerts/test/local_dev.sh
 # migrate a throw-away local D1 → wrangler dev on a free port (8795-8799) → subscribe / rules / delete / factory export
-# with curl → notify.mjs on app/data.json against it (full, the same data again = done, ALERTS_MODE=keys) → D1 rows read
+# with curl → notify.mjs on app/data.json against it (computed, the same prices again = done, busy, deferred) → D1 rows read
 # of a finish and a send run on the same runtime (test/d1_reads.mjs) → stop wrangler by its process group. Needs node +
 # npx (no account, no network to Cloudflare). The factory secret is made up for this run only.
 set -euo pipefail
@@ -85,19 +85,37 @@ grep -q '^price alerts: 3 watched pairs' "$STATE/notify.log" || fail "notify did
 SNAP=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c FROM snap WHERE p = 0" 2>/dev/null) || fail "could not read the local D1"
 case "$SNAP" in *'"c": 3'*|*'"c":3'*) ;; *) fail "baselines were not stored: $SNAP";; esac
 echo "ok   baselines stored for the 3 watched pairs"
-# the same data.json again the same KST day (6th review): the Worker answers done at the first watched page — no digest,
-# no finish (stat 'finish' + 'data' name today's finished data.json)
+# the same prices again the same KST day (9th review): start answers done — one request, nothing written (stat 'finish' +
+# 'data' name today's finished prices by their fingerprint, not by the file's bytes)
 ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify2.log"
-grep -q '^price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do$' "$STATE/notify2.log" || fail "the same data again the same day must stop at once"
+grep -q '^price alerts: these prices were already computed (same fingerprint) — nothing to do$' "$STATE/notify2.log" || fail "the same prices again the same day must stop at start"
 DS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT n FROM stat WHERE k = 'data'" 2>/dev/null) || fail "could not read the local D1 data stamp"
-WANT=$(node -e 'const h=require("crypto").createHash("sha256").update(require("fs").readFileSync("app/data.json")).digest("hex");console.log(parseInt(h.slice(0,13),16))')
-case "$DS" in *'"n": '"$WANT"*|*'"n":'"$WANT"*) ;; *) fail "stat 'data' should hold the tag of app/data.json's sha256 ($WANT): $DS";; esac
-echo "ok   same data again the same day: done at the first page (stat data = the file's sha256 tag)"
-# a run that is not the daily schedule's first attempt (ALERTS_MODE=keys): only the key set, and a notice
-ALERTS_MODE=keys ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs app/data.json | tee "$STATE/notify3.log"
-grep -q '^price alerts: key set sent ([0-9]* keys, unchanged) — only the daily schedule run computes$' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should send only the key set"
-grep -q '^::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST)' "$STATE/notify3.log" || fail "ALERTS_MODE=keys should say when this data is computed"
-echo "ok   ALERTS_MODE=keys: key set only"
+WANT=$(node --input-type=module -e 'import { fingerprint } from "./cf/alerts/notify.mjs"; import { readFileSync } from "node:fs"; console.log(parseInt(fingerprint(JSON.parse(readFileSync("app/data.json", "utf8"))).slice(0, 13), 16))')
+case "$DS" in *'"n": '"$WANT"*|*'"n":'"$WANT"*) ;; *) fail "stat 'data' should hold the tag of app/data.json's fingerprint ($WANT): $DS";; esac
+echo "ok   same prices again the same day: done at start (stat data = the fingerprint's tag)"
+# another computation holding the lease → a run with other prices is busy; once it finishes, a third computation of the
+# UTC day; a fourth new set of prices is deferred (COMPUTES_PER_DAY 3) with deferred=true for the workflow's alert job
+# other prices: the first row's listed price (column 3) 1,000 won up
+node -e 'const fs=require("fs");const d=JSON.parse(fs.readFileSync("app/data.json","utf8"));if(d.cols)d.cols[3][0]+=1000;else d.rows[0][3]+=1000;fs.writeFileSync(process.argv[1],JSON.stringify(d))' "$STATE/data2.json"
+FPB=$(printf 'b%.0s' $(seq 64)); FPC=$(printf 'c%.0s' $(seq 64))
+G=$(req POST /v1/internal/start '{"fp":"'$FPB'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "start of a second computation (takes the lease)"
+LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "start should answer compute: $G"
+: >"$STATE/gh-output"
+GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs "$STATE/data2.json" | tee "$STATE/notify3.log"
+grep -q '^::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again$' "$STATE/notify3.log" || fail "other prices while a computation holds the lease must be busy"
+TODAY=$(TZ=Asia/Seoul date +%F)
+# (the run notify.mjs computed: app/data.json's collection date | today — a finish prunes the pairs of any other run)
+RUN="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("app/data.json","utf8")).meta.updated)')|$TODAY"
+expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPB'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish frees the lease"
+G=$(req POST /v1/internal/start '{"fp":"'$FPC'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "a third computation this UTC day"
+LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "the third start should answer compute: $G"
+expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPC'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish"
+GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/alerts/notify.mjs "$STATE/data2.json" | tee "$STATE/notify4.log"
+grep -q "^::warning title=price alerts::today's full computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up" "$STATE/notify4.log" || fail "a fourth new set of prices this UTC day must be deferred"
+[ "$(cat "$STATE/gh-output")" = "deferred=true" ] || fail "deferred must reach \$GITHUB_OUTPUT: $(cat "$STATE/gh-output")"
+FC=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT n % 100 AS c, (SELECT count(*) FROM stat WHERE k = 'lease') AS l FROM stat WHERE k = 'fc'" 2>/dev/null) || fail "could not read the local D1 computation count"
+case "$FC" in *'"c": 3'*'"l": 0'*|*'"c":3'*'"l":0'*) ;; *) fail "three computations counted, no lease left: $FC";; esac
+echo "ok   start: busy while a computation holds the lease, deferred past COMPUTES_PER_DAY (deferred=true for the alert job)"
 # notify.mjs sent app/data.json's key set first (one row in the local D1); since then a rule naming a key that data.json
 # does not have is still stored (6th review) and answered exactly as 약속 1 says (7th review); a malformed key set is 400
 KS=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT count(*) AS c, json_array_length(max(keys)) AS n FROM keyset" 2>/dev/null) || fail "could not read the local D1 key set"
