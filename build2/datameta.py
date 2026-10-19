@@ -23,9 +23,10 @@ data-meta.json:
              under a '※…' heading) is not listed as added either: no clinic added it; nor is a row a rule only renamed (the same
              last part after ' · ' at the same price at the branch on the other side: build2/clean.py shared_titles).
              A price waiting for review (row[13] = 1: it moved ≥90% or ×10, build2/appdata.py review_queue — the app keeps it out
-             until someone approves it) is not listed, nor anything else of that name at that branch; the build after counts it from
-             the price before it (meta.about.review): approved, a change once (also on a rebuild of the same collection), back,
-             nothing (2026-10-19: 블리비 대구 동성로점 '얼굴 점빼기(2mm 이하) 개당' 1,000 → 100 was listed while the row was held)
+             until someone approves it) is not listed, nor any other price of that name and price kind at that branch; while it waits
+             the name stands for the prices it listed before (its 'was' in meta.about.review, waiting): approved, a change from those
+             once (also on a rebuild of the same collection), back at them, nothing; gone, those are removed (2026-10-19: 블리비 대구 동성로점
+             '얼굴 점빼기(2mm 이하) 개당' 1,000 → 100 was listed while the row was held)
 Only what was really observed is listed: a row is matched by brand + branch + option name + price kind.
 """
 import argparse, datetime, hashlib, json, os, re, sys
@@ -60,21 +61,37 @@ def resolved(data):
 
 
 def waiting(data):
-    """the rows waiting for review (row[13] = 1): {(brand, branch, name, kind): {price: the price before it, or None}} — before =
-    the price the build compared it with (meta.about.review, the build's data2/review.csv), None when that list does not say"""
+    """the names with a row waiting for review (row[13] = 1): {(brand, branch, name, kind): (the prices the name stands for, {its
+    waiting prices})}. It stands for the prices it listed before it waited — the build's review list (meta.about.review, its
+    data2/review.csv) has them as 'was' (every price of that name, '' none: a new name), a list from before that column gives the
+    prices shown with each waiting row's 'before' (the id's or group's price it moved from). None when the list does not have one
+    of the name's waiting rows (200 kept)"""
     s, brands = data["s"], [b[0] for b in data["meta"]["brands"]]
     br = [(brands[b[0]], s[b[1]]) for b in data["branches"]]
     said = {}
     for x in ((data["meta"].get("about") or {}).get("review") or []):
         try:
-            said[(x["brand"], x["branch"], x["name"], int(x["price"]))] = int(x["before"])
+            said[(x["brand"], x["branch"], x["name"], int(x["price"]))] = x
         except (KeyError, ValueError, TypeError):
             pass
-    out = defaultdict(dict)
+    shown, out = resolved(data), {}
     for r in rows_of(data):
-        if len(r) > 13 and r[13]:
-            b, n = br[r[0]], s[r[2]]
-            out[(b[0], b[1], n, r[5])][r[3]] = said.get((b[0], b[1], n, r[3]))
+        if not (len(r) > 13 and r[13]):
+            continue
+        b, n = br[r[0]], s[r[2]]
+        k = (b[0], b[1], n, r[5])
+        was, prices = out.get(k, (shown.get(k, []), set()))
+        x = said.get((b[0], b[1], n, r[3]))
+        try:
+            if x is None or was is None:
+                was = None
+            elif "was" in x:
+                was = sorted({int(p) for p in str(x["was"] or "").split()})
+            else:
+                was = sorted(set(was) | {int(x["before"])})
+        except (KeyError, ValueError, TypeError):
+            was = None
+        out[k] = (was, prices | {r[3]})
     return out
 
 
@@ -96,24 +113,26 @@ def changes(prev, cur, prev_version, back=None):
     """back: {(brand, branch, name, price)} of the rows a rule took back (appdata.came_back) — never 'added'"""
     a, b = resolved(prev), resolved(cur)
     wa, wb = waiting(prev), waiting(cur)
-    # a price waiting for review now: nothing of that name at that branch is listed (the price before it stands)
+    # a price waiting for review now: nothing of that name and kind at that branch is listed (what it listed before stands)
     for k in wb:
         a.pop(k, None)
         b.pop(k, None)
-    # one that waited in the previous build stood for the price before it: approved now it is a change from that price (once —
-    # also on a rebuild of the collection: `approved` passes the same-date rule below), back at that price it is nothing. A name
-    # gone now lists only the prices that were shown; one whose price before the previous file does not say is left out
+    # one that waited in the previous build stood for the prices it listed before (waiting): approved now it is a change from
+    # those (once — also on a rebuild of the collection: `approved` passes the same-date rule below), back at them it is
+    # nothing, gone it removes them. One the previous file cannot say for is left out
     approved = set()
-    for k, ps in wa.items():
-        if k in wb or k not in b:
+    for k, (was, held) in wa.items():
+        if k in wb:
             continue
-        if None in ps.values():
+        if was is None:
             a.pop(k, None)
             b.pop(k, None)
             continue
-        was = a.get(k, [])
-        a[k] = sorted(was + [p for p in set(ps.values()) if p not in was])
-        if any(p in b[k] for p in ps):
+        if was:
+            a[k] = was
+        else:
+            a.pop(k, None)
+        if held & set(b.get(k, ())):
             approved.add(k[:3])
     price, added, removed = [], [], []
     for k in sorted(set(a) | set(b)):

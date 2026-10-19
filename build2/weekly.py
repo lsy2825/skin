@@ -176,8 +176,8 @@ def main():
                f"- 정리한 줄: {len(issues)}개 (data2/issues.csv)"]
     if meta.get("review"):
         report.append(f"- **급변 가격 검토 대기 {meta['review']}개** (지난주보다 90% 넘게 내리거나 10배 넘게 오름) — data2/review.csv, "
-                      "맞으면 data2/review_ok.csv에 brand,branch,name,price로 추가. 그 전까지 앱 비교·가격 변동에서 빠지고 "
-                      "가격 기록은 지난 가격 그대로예요(승인하면 다음 빌드에 변동으로 한 번 나와요)")
+                      "맞으면 data2/review_ok.csv에 brand,branch,name,price로 추가. 그 전까지 앱 비교·가격 변동·가격 기록에서 "
+                      "빠져요(승인하면 다음 빌드에 변동으로 한 번 나와요)")
     if size_guard.report_line():
         report.append(size_guard.report_line())
     open(os.path.join(ROOT, "data2", "report.md"), "w", encoding="utf-8", newline="\n").write("\n".join(report) + "\n")
