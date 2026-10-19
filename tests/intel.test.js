@@ -110,3 +110,152 @@ test("new chains: nothing to say — old files, no previous snapshot, every chai
   assert.equal(I.newChainsNote([]), "");
   assert.equal(I.newChainsNote(undefined), "");
 });
+
+// ---- re-basing treatment alerts whose rows the rules moved (data.json meta.recl, C #112)
+// the test checkAlerts used before: rebase when the id's latest meta.recl date is after the alert's day (a.rb || a.created)
+const oldRule = (meta, id, since) => { let d = ""; for (const [dt, ks] of meta.recl || []) if (ks.includes(id)) d = dt; return !!d && d > since; };
+const M = (updated, recl, extra = {}) => ({ updated, built: updated, recl, ...extra });
+test("recl gap 1 (C #112): a rebuild of the same collection adds the id to that date's entry — the date test misses it", () => {
+  // collection 10-14; the alert was made on 10-15 with build 1; build 2 (a rule fix merged, still collection 10-14) moves T1
+  const b1 = M("2026-10-14", [["2026-10-14", ["T0"]]]), b2 = M("2026-10-14", [["2026-10-14", ["T0", "T1"]]]);
+  assert.equal(oldRule(b2, "T1", "2026-10-15"), false);                                  // the gap
+  const was = I.reclMark(b1, "T1", "2026-10-14.aaaa1111");
+  assert.deepEqual(was, { u: "2026-10-14", v: "2026-10-14.aaaa1111", f: [] });
+  assert.equal(I.reclRebase(was, I.reclMark(b2, "T1", "2026-10-14.bbbb2222")), "listed");
+  assert.equal(I.reclRebase(was, I.reclMark(b2, "T9", "2026-10-14.bbbb2222")), "");      // an id no build moved: kept
+});
+test("recl gap 2: collected 10-18, built 10-19 — an alert made on 10-18 with the 10-14 data misses the 10-18 entry", () => {
+  const before = M("2026-10-14", [["2026-10-14", ["T1"]]]), now = M("2026-10-18", [["2026-10-14", ["T1"]], ["2026-10-18", ["T1", "T2"]]]);
+  assert.equal(oldRule(now, "T2", "2026-10-18"), false);                                 // the gap
+  assert.equal(I.reclRebase(I.reclMark(before, "T2", "v1"), I.reclMark(now, "T2", "v2")), "listed");
+  assert.equal(I.reclRebase(I.reclMark(before, "T1", "v1"), I.reclMark(now, "T1", "v2")), "listed");
+  // the next open of the same build, and the next collection without a move: nothing
+  const seen = I.reclMark(now, "T2", "v2");
+  assert.equal(I.reclRebase(seen, I.reclMark(now, "T2", "v2")), "");
+  assert.equal(I.reclRebase(seen, I.reclMark(M("2026-10-25", now.recl), "T2", "v3")), "");
+});
+test("recl: an entry that leaves meta.recl (12 kept) is no move; data older than the baseline's is", () => {
+  const was = I.reclMark(M("2026-10-18", [["2026-08-02", ["T1"]], ["2026-10-18", ["T1"]]]), "T1", "v1");
+  assert.equal(I.reclRebase(was, I.reclMark(M("2026-10-25", [["2026-10-18", ["T1"]]]), "T1", "v2")), "");
+  assert.equal(I.reclRebase(was, I.reclMark(M("2026-10-14", []), "T1", "v0")), "older");   // a deploy rolled back
+});
+test("recl: the id already in its collection's entry (C #112's 33) — another build of that collection re-bases it", () => {
+  const recl = [["2026-10-14", ["T1", "T2"]]], m = M("2026-10-14", recl);
+  const was = I.reclMark(m, "T1", "2026-10-14.aaaa1111");
+  assert.equal(I.reclRebase(was, I.reclMark(m, "T1", "2026-10-14.aaaa1111")), "");          // the same build again
+  assert.equal(I.reclRebase(was, I.reclMark(m, "T1", "2026-10-14.bbbb2222")), "rebuilt");   // a rebuild may have moved it again
+  // an id the collection's entry does not list keeps its comparison on a rebuild; so does the next collection
+  assert.equal(I.reclRebase(I.reclMark(m, "T3", "2026-10-14.aaaa1111"), I.reclMark(m, "T3", "2026-10-14.bbbb2222")), "");
+  assert.equal(I.reclRebase(was, I.reclMark(M("2026-10-18", recl), "T1", "2026-10-18.cccc3333")), "");
+});
+test("recl: a build not known (data-meta.json not read: version '') is never 'another build' — no false 'rebuilt' at the next open", () => {
+  const m = M("2026-10-14", [["2026-10-14", ["T1"]]]);
+  const unknown = I.reclMark(m, "T1", "");
+  assert.equal(unknown.v, "");
+  assert.equal(I.reclRebase(unknown, I.reclMark(m, "T1", "2026-10-14.aaaa1111")), "");     // the same build, its version read now
+  assert.equal(I.reclRebase(I.reclMark(m, "T1", "2026-10-14.aaaa1111"), unknown), "");
+  // the other rules still hold without a version: a new entry, older data
+  assert.equal(I.reclRebase(unknown, I.reclMark(M("2026-10-18", [...m.recl, ["2026-10-18", ["T1"]]]), "T1", "")), "listed");
+  assert.equal(I.reclRebase(I.reclMark(M("2026-10-18", m.recl), "T1", ""), unknown), "older");
+});
+test("recl: with meta.reclBuilt (one entry per build that moved rows) its stamps tell exactly", () => {
+  const recl = [["2026-10-14", ["T1", "T2"]]];
+  const b1 = M("2026-10-14", recl, { reclBuilt: [["2026-10-14#1", ["T1", "T2"]]] });
+  const b2 = M("2026-10-14", recl, { reclBuilt: [["2026-10-14#1", ["T1", "T2"]], ["2026-10-14#2", ["T1"]]] });
+  const w1 = I.reclMark(b1, "T1", "v1"), w2 = I.reclMark(b1, "T2", "v1");
+  assert.deepEqual(w1, { u: "2026-10-14", v: "v1", f: ["2026-10-14", "b2026-10-14#1"], x: 1 });
+  assert.equal(I.reclRebase(w1, I.reclMark(b2, "T1", "v2")), "listed");
+  assert.equal(I.reclRebase(w2, I.reclMark(b2, "T2", "v2")), "");                          // build 2 did not move T2
+  // a phone that did not open the app during build 2 still finds it on the next collection
+  const next = M("2026-10-18", recl, { reclBuilt: b2.reclBuilt });
+  assert.equal(I.reclRebase(w1, I.reclMark(next, "T1", "v3")), "listed");
+});
+test("recl: alerts saved before marks re-base once when the id is listed, else only get a mark", () => {
+  const m = M("2026-10-18", [["2026-10-14", ["T1"]]]);
+  assert.equal(I.reclRebase(undefined, I.reclMark(m, "T1", "v")), "legacy");
+  assert.equal(I.reclRebase(undefined, I.reclMark(m, "T5", "v")), "");
+  assert.equal(I.reclRebase({ u: "2026-10-18" }, I.reclMark(m, "T1", "v")), "legacy");     // a broken mark
+  assert.deepEqual(I.reclMark(undefined, "T1", ""), { u: "", v: "", f: [] });
+  assert.deepEqual(I.reclMark({ recl: [["2026-10-14", null], "x"] }, "T1", ""), { u: "", v: "", f: [] });
+});
+test("recl: the shipped data.json — meta.recl is [[collection date, [ids]]] up to meta.updated; the 'day' gap is real", () => {
+  const meta = JSON.parse(require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "app", "data.json"), "utf8")).meta;
+  assert.ok(Array.isArray(meta.recl) && meta.recl.length <= 12);
+  for (const [d, ks] of meta.recl) assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(d) && d <= meta.updated && Array.isArray(ks), d);
+  if (!meta.recl.length) return;
+  const [d, ks] = meta.recl[meta.recl.length - 1], id = ks[0];
+  // an alert made on the day of the newest entry, with the build before it (that entry not there yet)
+  const before = { ...meta, recl: meta.recl.slice(0, -1) };
+  assert.equal(oldRule(meta, id, d), false);                                              // the gap
+  assert.equal(I.reclRebase(I.reclMark(before, id, "old"), I.reclMark(meta, id, "new")), "listed");
+});
+test("rebaseAlert: the new baseline is what is listed now; nothing fires at the next check of the same values", () => {
+  // newlow: base = now; no value now → no base, the next value is only a baseline
+  let a = { type: "newlow", base: 120000, last: 120000, lastAt: "2026-10-14" };
+  Object.assign(a, I.rebaseAlert(a, { value: 100000, count: 3 }));
+  assert.equal(a.base, 100000); assert.equal(a.last, undefined); assert.equal(a.lastAt, undefined);
+  assert.equal(I.evalAlert(a, { value: 100000 }, "2026-10-19").fire, false);
+  a = { type: "newlow", base: 120000 };
+  Object.assign(a, I.rebaseAlert(a, { value: null, count: 0 }));
+  assert.equal(a.base, undefined);
+  const r = I.evalAlert(a, { value: 90000 }, "2026-10-20");
+  assert.equal(r.fire, false); assert.equal(r.patch.base, 90000);
+  // newmatch: base = branch count now
+  a = { type: "newmatch", base: 3 };
+  Object.assign(a, I.rebaseAlert(a, { value: 1, count: 7 }));
+  assert.equal(a.base, 7); assert.equal(I.evalAlert(a, { value: 1, count: 7 }, "2026-10-19").fire, false);
+  assert.deepEqual(I.rebaseAlert({ type: "expiring", last: "2026-10-20" }, { value: 1 }), {});
+});
+test("rebaseAlert newmatch: no row in the region now is a count of 0, not 'no baseline' — a first branch later is news, as for a watch", () => {
+  // alertNow gives {value: null, count: 0} when the alert's region has no row
+  const a = { type: "newmatch", base: 3, lastAt: "2026-10-14" };
+  Object.assign(a, I.rebaseAlert(a, { value: null, count: 0 }));
+  assert.equal(a.base, 0); assert.equal(a.lastAt, undefined);
+  assert.equal(I.evalAlert(a, { value: null, count: 0 }, "2026-10-19").fire, false);      // still none: nothing
+  const r = I.evalAlert(a, { value: 50000, count: 2 }, "2026-10-20");
+  assert.equal(r.fire, true); assert.equal(r.patch.base, 2); assert.match(r.text, /0곳 → 2곳/);
+  // the watch, re-based on the same empty region, tells the same change
+  const w = I.evalWatch({}, { low: null, lowB: "", set: [], count: 0 }, "2026-10-19").patch;
+  assert.deepEqual(I.evalWatch(w, { low: 50000, lowB: "x|1", set: ["x|1", "y|2"], count: 2 }, "2026-10-20").events.map((e) => e.t), ["newmatch"]);
+  // no reading at all (no now): no base, the next count is only a baseline
+  assert.equal(I.rebaseAlert({ type: "newmatch", base: 3 }, null).base, undefined);
+});
+test("rebaseAlert target: a value under the target after the move counts as told — no notice now or at the next check", () => {
+  // told 90,000 (target 100,000); after the move 95,000 is listed. The old re-base dropped `last` and told 95,000 at the
+  // next open — news made by the new mix of rows, not by a price
+  const told = { type: "target", target: 100000, last: 90000, lastAt: "2026-10-14" };
+  const old = { ...told, ...I.evalAlert({ ...told, lastAt: "2026-10-19", base: null, last: null }, { value: 95000 }, "0000-00-00").patch };
+  delete old.lastAt; delete old.last;
+  assert.equal(I.evalAlert(old, { value: 95000 }, "2026-10-19").fire, true);              // the false notice
+  const a = { ...told, ...I.rebaseAlert(told, { value: 95000 }) };
+  assert.equal(a.last, 95000); assert.equal(a.lastAt, undefined);
+  assert.equal(I.evalAlert(a, { value: 95000 }, "2026-10-19").fire, false);
+  assert.equal(I.evalAlert(a, { value: 93000 }, "2026-10-20").fire, true);                // lower than 95,000: news (90,000 no longer blocks)
+  // the move made it lower than what was told (99,000 → 95,000), or brought it under the target never told before
+  // (120,000 → 95,000): the move is no news either
+  for (const was of [{ ...told, last: 99000 }, { type: "target", target: 100000 }]) {
+    const b = { ...was, ...I.rebaseAlert(was, { value: 95000 }) };
+    assert.equal(b.last, 95000);
+    assert.equal(I.evalAlert(b, { value: 95000 }, "2026-10-19").fire, false);
+    assert.equal(I.evalAlert(b, { value: 94000 }, "2026-10-20").fire, true);
+  }
+  // now above the target: nothing kept, the next crossing fires
+  const up = { ...told, ...I.rebaseAlert(told, { value: 130000 }) };
+  assert.equal(up.last, undefined); assert.equal(I.evalAlert(up, { value: 99000 }, "2026-10-21").fire, true);
+  // no value now (no row in the region): nothing kept, the next value under the target fires
+  const none = { ...told, ...I.rebaseAlert(told, { value: null, count: 0 }) };
+  assert.equal(none.last, undefined); assert.equal(I.evalAlert(none, { value: 95000 }, "2026-10-21").fire, true);
+});
+test("rebaseAlert target: like a watch's '목표가 이하' re-based on the same values — the move itself never tells a crossing", () => {
+  const T = 100000, only = { target: true, drop: false, lowbranch: false, newmatch: false, lowended: false, recheck: false };
+  const wNow = (v) => ({ low: v, lowB: "x|1", set: ["x|1"], count: 1 });
+  // [value after the move, the next value]: under → same (no news) · over → under (a real crossing)
+  for (const [moved, next, news] of [[95000, 95000, false], [130000, 99000, true]]) {
+    for (const was of [{ type: "target", target: T }, { type: "target", target: T, last: 90000, lastAt: "2026-10-14" }, { type: "target", target: T, last: 99500 }]) {
+      const t = { ...was, ...I.rebaseAlert(was, { value: moved }) };
+      const w = { target: T, on: only, ...I.evalWatch({}, wNow(moved), "2026-10-19").patch };
+      assert.equal(I.evalAlert(t, { value: next }, "2026-10-20").fire, news, JSON.stringify([was, moved, next]));
+      assert.equal(I.evalWatch(w, wNow(next), "2026-10-20").events.some((e) => e.t === "target"), news);
+    }
+  }
+});

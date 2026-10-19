@@ -1411,20 +1411,27 @@
   const noteOf = (a, t, x) => ({ at: today(), obs: D.meta.updated, type: t, k: a.k || "", name: alertName(a), b: x.b || "", before: x.before ?? null, after: x.after ?? null,
     text: `${alertName(a)} — ${NOTE_T[t] || ""}: ${x.text}`, id: a.id, read: false });
   const NOTE_T = { ...ALERT_TYPES, ...Intel.WATCH_T, past: "지난 기록", test: "TEST" };
+  // the data build on screen: data-meta.json's version (a checksum: two builds of one collection differ). '' when it was not
+  // read (state/data.js: a first download without data-meta.json) — unknown, so Intel.reclRebase never calls it another build
+  // (a stand-in such as collection/build day would differ from the real version at the next open: a false 'rebuilt')
+  const dataVer = () => SYNC.version || "";
+  const reclMarkOf = (id) => Intel.reclMark(D.meta, id, dataVer());
   function checkAlerts() {
     const td = today();
     let fired = 0;
     for (const a of st.alerts) {
-      // alerts made before 2026-10-14 compared the screen's (VAT-mode, region-filtered) price: re-base once, silently
-      // the treatment's rows were regrouped (a rule fix, meta.recl) or the alert moved to a successor id: a new mix of rows is
-      // not a price change, so the baseline is set again without a notice
-      const rd = a.k ? reclDate(a.k) : "";
-      if (a.k && KI[a.k] != null && (a.regroup || (rd && rd > (a.rb || a.created || "")))) {
-        a.rb = td; delete a.regroup;
+      // the treatment's rows were regrouped (a rule fix, meta.recl) since the build the baseline came from, or the alert
+      // moved to a successor id: a new mix of rows is not a price change, so the baseline is set again without a notice.
+      // Told by the mark of that build (a.rm, Intel.reclRebase), not by dates (C #112)
+      const mark = a.k && KI[a.k] != null ? reclMarkOf(a.k) : null;
+      if (mark && (a.regroup || Intel.reclRebase(a.rm, mark))) {
+        a.rb = td; a.rm = mark; delete a.regroup;
         if (a.type === "watch") Object.assign(a, Intel.evalWatch({}, watchNow(a), td).patch);
-        else { Object.assign(a, Intel.evalAlert({ ...a, lastAt: td, base: null, last: null }, alertNow(a), "0000-00-00").patch); delete a.lastAt; if (a.type === "target") delete a.last; }
+        else Object.assign(a, Intel.rebaseAlert(a, alertNow(a)));
         continue;
       }
+      if (mark) a.rm = mark;
+      // alerts made before 2026-10-14 compared the screen's (VAT-mode, region-filtered) price: re-base once, silently
       if (a.k && a.basis !== "listed") { a.basis = "listed"; a.reg = a.reg || st.region || "전국"; Object.assign(a, Intel.evalAlert({ ...a, lastAt: td, base: null, last: null }, alertNow(a), "0000-00-00").patch); delete a.lastAt; if (a.type === "target") delete a.last; continue; }
       if (a.type === "watch") {
         const r = Intel.evalWatch(a, watchNow(a), td);
@@ -1573,7 +1580,7 @@
   function addAlert(a) {
     if (st.alerts.length >= 20) { toast("알림은 20개까지예요. 관심 탭에서 정리해 주세요"); return false; }
     const al = { id: uid(), created: today(), ...a };
-    if (al.k) { al.basis = "listed"; al.rb = today(); al.reg = al.reg || st.region || "전국"; if (al.sp == null) al.sp = st.special; }
+    if (al.k) { al.basis = "listed"; al.rb = today(); al.rm = reclMarkOf(al.k); al.reg = al.reg || st.region || "전국"; if (al.sp == null) al.sp = st.special; }
     if (al.type === "watch") Object.assign(al, Intel.evalWatch({}, watchNow(al), today()).patch);   // first look = the base, nothing fires
     else Object.assign(al, Intel.evalAlert({ ...al, lastAt: today() }, alertNow(al), "0000-00-00").patch);   // set the baseline only
     delete al.lastAt;
