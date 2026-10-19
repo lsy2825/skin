@@ -92,7 +92,9 @@ CATS = [  # first match wins; tested on category + group + option
 # once-per-item section: 닥터에버스 연신내점 '각 항목 별로 1회 적용가능 KakaoTalk 플러스친구 …' (78 rows, 76 of them already '평일 낮';
 # the chain's 목동점 writes the same as '*각 항목별 1인 1회 한정', 분당·구로점 as '※항목별 1회씩 적용'). '항목별 1회' needs 적용 / 한정
 # after it — '각 항목별 1회씩 진행' would say what a package holds. A '1회 한정' alone: ONE_LIMIT below.
-# '첫 방문' reads '첫경험' like '첫 시술' (유앤아이 인천검단점's tab '첫경험 이벤트' › '… 첫경험 체험가', 부평점's '1회 첫경험 체험가', 2026-10-19).
+# '첫 방문' reads '첫경험' like '첫 시술' — a once-only price (유앤아이 인천검단점's tab '첫경험 이벤트' › '… 첫경험 체험가', 부평점's
+# '1회 첫경험 체험가', 2026-10-19). Both branches have a '첫방문' tab too (부평점 인모드 FX 얼굴전체 32,000 there, 39,000 here), so it may
+# mean the first time with that treatment, not a new patient — not known. '첫체험' is not read: 데이뷰 인천구월점 puts it under '[재진]'.
 TAGS = [("일요일", r"일요일|썬데이|선데이"),
         ("타임세일", r"타임\s*세일"), ("첫 방문", r"첫\s*방문|신규|웰컴|첫\s*시술|첫\s*경험|첫\s*구매"),
         ("1인 1회", r"(?<!\d)1\s*인\s*(?:당\s*)?(?:최대\s*)?1\s*(?:회|한정)|항목\s*별\s*(?:로\s*)?1\s*회\s*(?:씩\s*)?(?:적용|한정)")]
