@@ -235,11 +235,27 @@ STOP = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특�
 def amounts_text(name, spaced=False):
     """comp() of a name with a model number kept apart from the amount after it ('리프테라2 3000샷' → '리프테라2/3000샷').
     spaced: also a model number written apart from the name ('울트라콜 200 4cc' → 4cc, not 2004cc) — for the label of a name no
-    family covers (2026-10-19: one such key came with this build). The family rules still read '올리디아 120 2cc' as 1202cc:
-    changing that changes their signatures, a change of its own"""
+    family covers (2026-10-19: one such key came with this build). The family rules read it with model_apart() first"""
     if spaced:
         name = re.sub(r"(?<=[A-Za-z가-힣])\s+(\d+)\s+(?=\d)", r" \1/", name or "")
     return comp(re.sub(r"(?<=[A-Za-z가-힣])(\d+)\s+(?=\d)", r"\1/", name or ""))
+
+
+# a number written apart between a word and an amount is a model number, not part of the amount: '올리디아 120 2cc' (유앤아이 영등포점
+# lists 올리디아 120 / 240 / 365) is 120 and 2cc, '지방분해주사 2 1부위' (밴스) is 2 and 1부위. The family rules read 1202cc and 21부위
+# (docs/TREATMENT_TAXONOMY.md §1 and §6, 2026-10-19). Only before an amount: '中 택 1 1회' (a choice and a count) stays as written
+MODEL_APART = re.compile(r"(?<=[A-Za-z가-힣])\s+(\d+)\s+(?=\d+(?:[.,]\d+)*\s*(?:U|u|유닛|단위|cc|CC|cC|Cc|ml|샷|KJ|kj|부위|개(?!월)|줄|시린지|"
+                         r"[vV][iI][aA][lL]|분|mm)(?![a-zA-Z]))")
+
+
+def model_apart(name):
+    """the name with a model number written apart from the amount after it set off by '/' ('올리디아 120 2cc' → '올리디아 120/2cc'):
+    the amount reads 2cc and the model number stays in the name's other words — once: the group title in front ('올리디아 120 ·
+    올리디아 120 2cc 1회', clean.py mname) says it again, as the family rules take every '올리디아' out"""
+    s = MODEL_APART.sub(r" \1/", name or "")
+    for m in set(re.findall(r"(?<=\s)(\d+)/", s)):
+        s = re.sub(rf"(?<=[A-Za-z가-힣])\s+{m}(?=\s)", " ", s)
+    return s
 
 
 def _strip(name):
@@ -452,9 +468,14 @@ def _area_parts(seg):
 
 # group-title words that can change what an option is (sex, body area): with these the group title stays in the signature
 # — not 쁨's '바디레이저' tab of body devices (울트라인 바디·복부, 울핏): the same products stand in its '초음파' and '바디/체형관리'
-# tabs, and the tab name made two '울트라인 복부 1부위' families (2026-10-19). ('바디레이저 · 울핏 100샷' still keeps the title: an
-# option of two letters is not read alone, below — '울핏 100샷 (표기 1)' / '(표기 2)' stay)
+# tabs, and the tab name made two '울트라인 복부 1부위' families (2026-10-19). ('바디레이저 · 울핏 100샷': a two-letter option is read
+# alone only with a dose under such a device tab, DEVICE_TAB below — it was '울핏 100샷 (표기 1)' / '(표기 2)' until the follow-up)
 GROUP_MEANS = re.compile(r"남성|여성|남자|여자|바디(?!레이저)|얼굴|전신|부위|팔|다리|겨드랑|가슴|등|복부|허벅지|종아리|목|이마|눈|코|입|턱|볼|두피|헤어|손|발|어깨|엉덩|브라질|비키니")
+# a tab title that only names a kind of device ('바디레이저', '초음파', '고주파 리프팅'): under it a two-letter device and its dose
+# ('울핏 100샷') names the product by itself (_exact, 2026-10-19 follow-up)
+DEVICE_TAB = re.compile(r"(?:바디레이저|레이저|초음파|고주파|리프팅|[/·,&])+")
+# a price that says it is an event ('[EVENT] …', '[런칭이벤트] …', a site tab '5일간의 예쁨 특가'): build, page twins
+EVENT_MARK = re.compile(r"EVENT|[Ee]vent|이벤트|특가|할인|세일|SALE|기획전|한정")
 # 첫방문고객 / 첫시술고객 as one word: taking off only 첫방문 left '고객 비타민관리' (2026-10-15)
 KINDWORDS = re.compile(r"체험가|체험|한정가|한정|이벤트|EVENT|event|특가|첫방문(?:고객)?|첫시술(?:고객)?|1인1회|선착순|NEW|BEST|HOT|웰컴|신규|[♥★☆※♡]|\d+회")
 KINDONLY = re.compile(r"체험가|한정가|이벤트|EVENT|특가|선착순|NEW|BEST|HOT|[♥★☆※♡]")
@@ -641,10 +662,14 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
         gb = comp(" ".join(seg[:-1]))
         if len(lb) >= 2 and lb in gb:
             src = seg[-1]
-        elif len(lb) >= 3 and not GROUP_MEANS.search(gb):
+        elif (len(lb) >= 3 or (len(lb) == 2 and DEVICE_TAB.fullmatch(gb) and AMOUNT.search(amounts_text(seg[-1], spaced=True))
+                                and not labels.AREA_ONLY.fullmatch(lb))) and not GROUP_MEANS.search(gb):
             # '트러블 E · 여드름 옵션 · 여드름 약처방 2주', '스킨부스터 E · 재생주사 · 비타란 2CC 1회': the group titles are the clinic's page
             # sections and differ between branches of one chain; an option that names the product by itself decides alone.
             # Titles that say who or where ('남성 · …', '바디 · …') can change the product, so those keep the full name.
+            # A two-letter option only with a dose under a tab that names a kind of device (DEVICE_TAB): 쁨 '바디레이저 · 울핏 100샷'
+            # (4곳) is '울핏 100샷' (쁨 하남미사·홍대, 톡스앤필 — the same 50,000 at 쁨 홍대 and 강남본점); two letters under a product's
+            # own title stay whole ('[요정 귀 필러] · 2cc 수입', '여드름관리 · 압출 1개')
             src = seg[-1]
     sigtext = KINDWORDS.sub("", comp(src.replace("+", "＋") if bundle else src))
     # 'A or B' and 'A/B' choose the same way ('미희주사 옆볼or앞볼' and '옆볼/앞볼' were two keys, 검증 7차)
@@ -721,9 +746,9 @@ def _spaced(word, text):
 
 def _family_variant(raw, fam, sess, display=None):
     full = comp(raw)
-    st = _strip(raw)
+    st = model_apart(_strip(raw))
     by_unit = defaultdict(set)
-    for v, u in AMOUNT.findall(amounts_text(raw)):
+    for v, u in AMOUNT.findall(amounts_text(model_apart(raw))):
         by_unit[unit(u)].add(float(v))
     if fam["id"] not in ("inmode", "ldm"):        # minutes are the dose for these two ('LDM … #6분' vs '#24분')
         by_unit.pop("분", None)
@@ -983,6 +1008,61 @@ def build(rows, min_branches=3):
                 and (len(prices[page(r) + (twin_name(r),)]) > 1 or twins[page(r)] >= 2):
             vs[i] = None
             why["같은 페이지에 같은 이름·다른 가격(성별 등 구분 없음)"] += 1
+    # The same for a name no family rule covers (2026-10-19 follow-up of lsy2825/skin#120): a page listing one name at two or more
+    # prices of one kind lists products we can't tell apart, and a key holding them showed the cheaper as the branch's price. #120
+    # kept such rows out of the new joins only; on the 2026-10-18 build 172 of them stood in 55 keys. What they are, from the rows:
+    # - two menus or tiers on one page: 밴스 동대문 '리니어지 100샷' 47,000 (list 85,000 — the
+    #   price 영등포 lists as '(1회체험가)') and 90,000 (170,000), 여의도 '리팟레이저 · 10mm 이내 1개' 299,000 and 1,200,000, 명동2호
+    #   '3D엠보눈썹' 99,000 / 190,000 / 290,000, 데이뷰 분당점 '[베이직]' / '[프리미엄] 내맘대로 관리 10회' 350,000 / 550,000 (the
+    #   word is in the square brackets the name leaves out), 닥터에버스 홍대점 '위코우노 1회' 160,000 / 200,000 in two tabs. What
+    #   tells them apart is not in the name (밴스: a note the scraper does not keep — 추측) → none of them gets a key; the prices
+    #   stay in the app as the branch's own
+    # - an event price and its regular price: 톡스앤필 '[EVENT] 아르기닌 주사 1회' 99,000 (list 150,000) and '아르기닌 주사 1회' 150,000,
+    #   셀린 '[EVENT] Y코' / '[정상가] Y코', 쁨 하남미사점 '립쥬란 1cc' 119,000 in the '5일간의 예쁨 특가' tab and 180,000 in '스킨부스터':
+    #   the cheaper one, and only it, says it is an event (event_and_regular). One product the branch offers at both prices → they
+    #   stay, the cheaper is the branch's price as anywhere. Two tiers in square brackets ('[BASIC]' / '[PREMIUM] 필링몰 10회', 쁨)
+    #   are no event and stay out
+    # Rows go together by their spec (the loose signature), not their name: names that differ only in what the spec leaves out are
+    # the same twins — 밴스 천안 '콜라스터 오리지널 4cc' 99,000 (list 189,000) and '… 4cc 1회' 49,000 (90,000), the two menus as
+    # above with a count word, 포항 '브라이톤 레이저' / '… 1회'. The name alone left 23 rows of 11 keys (검수 2026-10-19)
+    # Two parts the spec leaves out do tell products apart: a '+' extra (xkeys.ADDON, taken off in _exact) and a choice count in square
+    # brackets. 유앤아이 구로점 '스케일링 5회' 250,000 / '스케일링 + 크라이오 5회' 350,000, 밴스 홍대 '위코우노 1CC (1회체험가)' 99,000 /
+    # '위코우노 1CC + LDM 6분 (1회체험가)' 129,000 (the 99,000 of 강서화곡·명동·성수·수지), 유앤아이 선릉점 '더마브이 [… 모드 택 1가지]' /
+    # '[… 택 2가지]' / '[… 택 3가지]'. When the plain rows of such a page are no twins by themselves, they keep the key and only the
+    # rows with the extra part leave it (검수 2026-10-19, 2nd: first every row of the page left — 23 real prices and the key '위코우노
+    # 2cc'). 선릉점 has no plain row: its three prices leave the key as before. (Other branches' '+' rows still stand in the plain key, §6)
+    twin_idx = defaultdict(list)
+    for i, (r, v) in enumerate(zip(rows, vs)):
+        if v and v["fam"] == "generic":
+            twin_idx[page(r) + (loose_sig(v["sig"], []), r.get("kind", ""))].append(i)
+    won = lambda x: int(x) if str(x or "").isdigit() else 0
+    # an event word anywhere in the option ('[EVENT] 아르기닌 주사 1회', '아르기닌 주사 이벤트 1회': KINDWORDS takes it out of the spec, so
+    # the two spell one spec) or the site tab ('5일간의 예쁨 특가') — 검수 2026-10-19, 2nd: read in square brackets only, '… 이벤트 1회'
+    # and '… 1회' of one page lost both their keys
+    marked = lambda r: bool(EVENT_MARK.search((r.get("option") or r.get("name") or "") + " " + (r.get("src_cat") or "")))
+    says_more = lambda r: bool(ADDON.search(r.get("mname") or r["name"]) or re.search(r"\[[^\]]*택\s*\d", r.get("mname") or r["name"]))
+
+    def event_and_regular(idx):
+        """two prices, every row of the lower one marked as an event in its option or its site tab, none of the higher one"""
+        ps = sorted({won(rows[i].get("sale")) for i in idx})
+        return len(ps) == 2 and all(marked(rows[i]) for i in idx if won(rows[i].get("sale")) == ps[0]) \
+            and not any(marked(rows[i]) for i in idx if won(rows[i].get("sale")) == ps[1])
+    twin_rows = 0
+    for idx in twin_idx.values():
+        if len({rows[i].get("sale") for i in idx}) < 2:
+            continue
+        more = [i for i in idx if says_more(rows[i])]
+        plain = [i for i in idx if i not in more]
+        if plain and more and (len({rows[i].get("sale") for i in plain}) < 2 or event_and_regular(plain)):
+            out = more
+        elif event_and_regular(idx):
+            continue
+        else:
+            out = idx
+        for i in out:
+            vs[i] = None
+            twin_rows += 1
+            why["같은 페이지에 같은 규격·다른 가격('+ …'·'택 N'만 다름)" if i in more else "같은 페이지에 같은 규격·다른 가격(구분할 낱말 없음)"] += 1
     # one way of writing each family name: '아르기닌 주사' / '아르기닌주사', '다리 전체 제모' / '다리전체 제모' were two families
     # (2026-10-15, 개선 보고서 E10). The spelling most rows use wins ('뒷목' 1,166 rows over one '뒷 목'), then the one with more
     # word breaks. Labels follow; signatures don't change. The glued-word check (labels.py) is given every name of the
@@ -1022,20 +1102,9 @@ def build(rows, min_branches=3):
     for sig in by_sig:
         by_old[loose_sig(sig)].append(sig)
     brs = lambda sigs: len({(rows[i]["brand"], rows[i]["branch"]) for s in sigs for i in by_sig[s]})
-    # A page listing one name twice at different prices (one price kind) lists two products we can't tell apart — 밴스 마포공덕·명동2호
-    # '제로팻주사 (1부위)' 300,000 and 500,000 (the '복부/허벅지 외' and '복부/허벅지' prices that 대치점 lists by name). Such rows, when
-    # their spec is no comparison of its own (sold at fewer than min_branches branches), take no part in the joins of 2026-10-19
-    # below (an amount in brackets, a bracket that only explains, a name and a kind word): they made the new key '제로팻주사 1부위' of
-    # two price levels (검수 2026-10-19). A spec compared already keeps them and joins as the rest (rows like these stand in 55 keys,
-    # 172 rows, of the 2026-10-18 build: docs/TREATMENT_TAXONOMY.md §6)
-    page_prices = defaultdict(set)
-    for r in rows:
-        page_prices[page(r) + (loose_text(r["name"]), r.get("kind", ""))].add(r.get("sale"))
-    is_twin = lambda i: len(page_prices[page(rows[i]) + (loose_text(rows[i]["name"]), rows[i].get("kind", ""))]) > 1
-    alone = {old for old, sigs in by_old.items() if vs[by_sig[sigs[0]][0]]["fam"] == "generic" and brs(sigs) < min_branches
-             and any(is_twin(i) for s in sigs for i in by_sig[s])}
-    twin_rows = sum(len(by_sig[s]) for old in alone for s in by_old[old])
-    gen = [s for old, sigs in by_old.items() if old not in alone for s in sigs if vs[by_sig[s][0]]["fam"] == "generic"]
+    # (a page's twin rows that can't be told apart have no variant since the twin rule above: 밴스 마포공덕·명동2호 '제로팻주사 (1부위)'
+    # 300,000 / 500,000 made the new key '제로팻주사 1부위' of two price levels in #120's first build, 검수 2026-10-19)
+    gen = [s for sigs in by_old.values() for s in sigs if vs[by_sig[s][0]]["fam"] == "generic"]
     # what only explains a generic spec's product (only_explains), and its loose signatures without (lk0) and without that (lk1)
     said_of = {s: [t for t in vs[by_sig[s][0]].get("details") or [] if only_explains(t, vs[by_sig[s][0]]["famname"])] for s in gen}
     lk0 = {s: loose_sig(s, []) for s in gen}
@@ -1146,9 +1215,36 @@ def build(rows, min_branches=3):
     # order. A name with one family gets the same rule (stats.fam_recat: '가다실 9가' 피부 → 기타, 33 of 36 branches). Ids don't change.
     # A name joined to a shorter one (name_alias: '올타이트 리프팅' → '올타이트') is that name's family, and the family's pattern for
     # related rows is the shorter name's ('아르기닌' finds the '아르기닌 1회' rows too, '아르기닌주사' doesn't)
+    # A name and a kind word once more, on the keys (2026-10-19 follow-up): name_alias reads each spec's own family name, but a spec
+    # whose product word stands only in its section title gets that word back above (product_head: 밴스 '리팟레이저 단 한번의 시술로
+    # 흑자 제거! 시술 · 5mm 이내 1개' 300,000, 12곳). So it never met '리팟 5mm 이내 1개' (밴스 동탄·미금·왕십리, the same 300,000 on
+    # the same section title), the chain's other pages writing the product in the option: five pairs of keys in two families
+    # '리팟레이저' / '리팟' (2026-10-19 build). Two such families are one when a key of the longer name, the kind word out, reads as a
+    # key of the shorter one — label and explanation (KIND_WORD; not when the shorter is only an area, as name_alias). The keys that
+    # read the same then become one (same_name, alike below: the one sold at more branches keeps its id)
+    fam_sigs = defaultdict(list)
+    for sig, k in keys.items():
+        fam_sigs[loose_text(k["famname"])].append(sig)
+    area = re.compile(f"(?:{labels.AREA_ONLY.pattern})+")
+    reads = lambda s, nm: (loose_text(keys[s]["label"]).replace(nm, "", 1), tuple(sorted(loose_text(d) for d in details.get(s, []))))
+    kalias, kalias_seen = {}, []
+    for n, sigs in sorted(fam_sigs.items()):
+        m = KIND_WORD.fullmatch(n)
+        a = m.group(1) if m else ""
+        if not a or a not in fam_sigs or area.fullmatch(a) or any(s in join_to for s in sigs + fam_sigs[a]):
+            continue
+        theirs = {reads(s, a): s for s in fam_sigs[a]}
+        same = next((s for s in sorted(sigs) if reads(s, n) in theirs), None)
+        if same:
+            kalias[n] = a
+            kalias_seen.append((n, a, keys[same]["label"]))
+    for n in [n for n, a in kalias.items() if a in kalias]:
+        del kalias[n]
+    k_rx = {n: keys[fam_sigs[a][0]]["rx"] for n, a in kalias.items()}
     by_name = defaultdict(list)
     for sig, k in keys.items():
-        by_name[join_to[sig][0] if sig in join_to else loose_text(k["famname"])].append(sig)
+        lf = loose_text(k["famname"])
+        by_name[join_to[sig][0] if sig in join_to else kalias.get(lf, lf)].append(sig)
     joined, recat, fam_key = [], [], {}
     for g, sigs in by_name.items():
         was = sorted({(keys[s]["famname"], keys[s]["cat"]) for s in sigs})
@@ -1166,7 +1262,8 @@ def build(rows, min_branches=3):
         if len(was) > 1 or was[0][1] != cat:
             (joined if len(was) > 1 else recat).append(dict(name=name, cat=cat, was=was, branches={c: len(b) for c, b in sorted(at.items())},
                                                             keys=len(sigs)))
-        own_rx = next((join_to[s][1] for s in sigs if s in join_to), None)
+        own_rx = next((join_to[s][1] for s in sigs if s in join_to), None) \
+            or next((k_rx[loose_text(keys[s]["famname"])] for s in sigs if loose_text(keys[s]["famname"]) in k_rx), None)
         fam_key[g] = loose_text(name)
         for s in sigs:
             k = keys[s]
@@ -1183,7 +1280,9 @@ def build(rows, min_branches=3):
     for sigs in same_name.values():
         if len(sigs) < 2 or not rescued_sigs & set(sigs):
             continue
-        sigs.sort(key=lambda x: (-keys[x]["n"], -len(by_sig[x]), x))
+        # (a tie goes to the put-back spec: the other one is a family joined to it since 2026-10-19 — '리팟 10mm 이내 1개 (1회 체험가)'
+        # 5곳 joins '리팟레이저 · 10mm 이내 1개 (1회체험가)' 5곳, which the 8곳 key of the build before had grown from)
+        sigs.sort(key=lambda x: (-keys[x]["n"], -len(by_sig[x]), x not in rescued_sigs, x))
         into = keys[sigs[0]]
         for s2 in sigs[1:]:
             merged.append(dict(into=into["label"], label=keys[s2]["label"], rows=len(by_sig[s2])))
@@ -1299,7 +1398,7 @@ def build(rows, min_branches=3):
                     continue
                 if explains(t):
                     lt = loose_text(t)
-                    g = join_to[v["sig"]][0] if v["sig"] in join_to else loose_text(v["famname"])
+                    g = join_to[v["sig"]][0] if v["sig"] in join_to else kalias.get(loose_text(v["famname"]), loose_text(v["famname"]))
                     said[fam_key.get(g, g)][lt] += 1
                     said_br[fam_key.get(g, g)][lt].add((rows[i]["brand"], rows[i]["branch"]))
                     spelt[lt][t] += 1
@@ -1315,7 +1414,8 @@ def build(rows, min_branches=3):
                  label_rejected=sorted(rejected, key=lambda x: -x["n"]), merged=sorted(merged, key=lambda x: -x["rows"]),
                  label_rescued=sorted(rescued, key=lambda x: -x["n"]), fam_joined=sorted(joined, key=lambda x: -x["keys"]),
                  fam_recat=sorted(recat, key=lambda x: (-x["keys"], x["name"])),
-                 fam_alias=[dict(name=n, into=a, spec=x) for n, a, x in alias_seen],
+                 fam_alias=[dict(name=n, into=a, spec=x) for n, a, x in alias_seen]
+                 + [dict(name=n, into=a, spec=x, by="keys") for n, a, x in kalias_seen if n in kalias],
                  twins_alone=twin_rows)
     return row_keys, list(keys.values()), list(fams.values()), stats
 
