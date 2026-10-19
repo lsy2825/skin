@@ -76,6 +76,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
   // 5) empty states
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload(); await unlock(p); await p.waitForSelector('.pc');
+    // the empty state, not the '전체 가격을 받는 중' wait: the full price file first (a fixed 400ms raced the download on a busy machine)
+    await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
     // the guidance line is one of Jomi's emptyCartSub lines: the file (app/data/jomi_lines.json), the engine's built-in ones
     // (before the file is read) or the app's plain fallback

@@ -43,10 +43,11 @@ const COND = '추가 옵션이에요(본 시술과 함께)';
     await p.goto(BASE + `#branch/${x.b}`); await p.waitForTimeout(500);
     await p.fill('input[aria-label="이 지점에서 시술 찾기"]', x.name); await p.waitForTimeout(300);
     const exact = new RegExp(`^${x.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
-    const li = p.locator('#main ul.list li').filter({ has: p.locator('.item > .t').filter({ hasText: exact }) }).filter({ has: p.locator('button', { hasText: '가격 근거' }) }).first();
+    // the line's evidence is its ⓘ (위계 점검 47: one ⓘ per price line, aria-label '… 가격 근거 보기')
+    const li = p.locator('#main ul.list li').filter({ has: p.locator('.item > .t').filter({ hasText: exact }) }).filter({ has: p.locator(':scope > .infob') }).first();
     if (!await li.count()) return null;
     const badge = await li.locator('.k', { hasText: /^추가 옵션$/ }).count() > 0;
-    await li.locator('button', { hasText: '가격 근거' }).click(); await p.waitForTimeout(300);
+    await li.locator(':scope > .infob').click(); await p.waitForTimeout(300);
     const sh = await p.locator('.sheet').innerText(), cls = (await p.locator('.sheet .clsb').first().textContent()).trim();
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     return { badge, cls, cond: sh.includes(COND) };

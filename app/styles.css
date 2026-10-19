@@ -159,6 +159,12 @@ h3 { font-size: 16px; font-weight: 680; line-height: 1.4; }
 .btn.line { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 .btn.sm { min-height: 36px; padding: 7px 12px; font-size: 13.5px; border-radius: 11px; }
 .btn.block { width: 100%; }
+/* a row of actions as equal halves (위계 점검 35 · BTN-1: 지점 머리, 견적 펼침 끝) — no button wider than its neighbour, none
+   left alone on a line; a long label wraps inside its half */
+.bbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+.bbtns > .btn { width: 100%; min-width: 0; padding: 7px 8px; text-align: center; }
+.btn.out > svg.i.xs { color: var(--muted); }   /* ↗: leaves the app */
+@media (max-width: 359px) { .bbtns > .btn > svg.i.sm:first-child { display: none; } }   /* a 320px half keeps its words on one line */
 .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: 13px; font-weight: 620; display: inline-flex; align-items: center; gap: 3px; position: relative; text-decoration: none; }
 /* text-sized buttons keep a 24×24 px touch area (WCAG 2.2 target size) */
 .linkbtn::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 26px); height: max(100%, 26px); transform: translate(-50%, -50%); }
@@ -277,6 +283,8 @@ select.mini { border: 1px solid var(--line); background: var(--surface); border-
 button.item:hover { background: var(--sunken); }
 button.item:active { background: var(--fill); }
 .item .t { font-weight: 620; line-height: 1.45; min-width: 0; }
+/* a name of several lines keeps its price on its first line (위계 점검 33: the price sat at the middle of a 3-line name) */
+.item > .t, .item > .p { align-self: baseline; }
 .item .p { font-weight: 720; font-size: 16px; text-align: right; white-space: nowrap; letter-spacing: -0.02em; }
 .item .m { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-size: 13px; color: var(--muted); }
 /* 내 견적 브랜드·지역별 합계: a total range in won ('2,708,640~3,891,580원') breaks at '~' (rangeEl) before it squeezes the name */
@@ -294,8 +302,10 @@ button.item:active { background: var(--fill); }
 @media (max-width: 335px) { .item.ra > .m { grid-column: 1 / -1; }
   .item.ra > .m::after { content: ""; flex: none; width: 72px; height: 34px; margin-left: auto; }
   .item.ra > .addbtn { grid-column: 1 / -1; align-self: end; width: 72px; height: 34px; justify-content: center; } }
+/* one inside padding for every kind of line (위계 점검 52 · ROW-3): .rank (비교·견적) and .item (지점·검색·견적 펼침) both start
+   their words 14px in, so a list's left edge is one line; the hairlines between lines start there too */
 .rank { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 3px 10px; align-items: center; width: 100%; text-align: left; border: 0; background: none;
-  padding: 14px 12px; border-radius: 14px; transition: background var(--fast); }
+  padding: 14px 14px; border-radius: 14px; transition: background var(--fast); }
 .rank:hover { background: var(--sunken); }
 .rank .n { font-weight: 700; color: var(--muted); text-align: center; font-size: 14px; }
 .rank.top .n { color: var(--ink); }
@@ -306,10 +316,29 @@ button.item:active { background: var(--fill); }
 .rank .m { grid-column: 2 / -1; font-size: 13px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
 .rank .gap { font-size: 13px; color: var(--muted); font-weight: 600; }
 li.rk { display: flex; align-items: stretch; }
+/* 검색·전체 가격표 in 지역·이름순: a clinic named once over its first line (위계 점검 33 · SEARCH-2) */
+li.rk.sgs { flex-wrap: wrap; }
+/* the head belongs to the lines under it: 24px above it (from the clinic before), 8px to its first line (검토: 16 / 16 read as
+   one more line, not the name over a group) */
+li.rk > .sgh { flex: 0 0 100%; display: flex; align-items: center; gap: 8px; padding: 24px 14px 0; }
+li.rk > .sgh + .item { padding-top: 8px; }
+.list > li.rk.sgs:first-child > .sgh { padding-top: 8px; }
+.sgh .sgname { font-size: 15px; font-weight: 650; color: var(--ink); gap: 8px; min-width: 0; }
+.sgh .sgname svg.i { color: var(--muted); }
+.sgh .sgkm { margin-left: auto; font-size: 13px; color: var(--muted); font-weight: 600; }
 li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .infob { flex: none; width: 44px; border: 0; background: none; color: var(--muted); display: grid; place-items: center; border-radius: 12px; }
+/* a list line's ⓘ column (가격 근거 on every price line, 위계 점검 47): 36px to see — the line's own words keep the width — and
+   44px to press: the press area reaches 8px further right, over the card's own padding (검토: the compare list's ⓘ was 44 before),
+   never toward 담기 (the 4px between them stay 4px) */
+li.rk > .infob { width: 36px; position: relative; }
+li.rk > .infob::after { content: ""; position: absolute; top: 0; bottom: 0; left: 0; right: -8px; }
+/* the ⓘ column is the right margin of a line that has one; a line with none (검색 '종류' without a note) keeps its 14px, so its
+   price ends where the hairlines end (검토) */
+li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 4px; }
 .infob:hover { background: var(--sunken); color: var(--ink); }
 .chev { margin-left: auto; color: var(--ink-2); font-weight: 650; display: inline-flex; align-items: center; gap: 2px; }
+.rank .chev::after { margin-left: 8px; }   /* the folds' chevron (위계 점검 30), after '견적' / '접기' */
 .bdot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; flex: none; }
 
 /* badges (kinds of price, states): three tones only — neutral, notice (butter), warning (coral). Butter = a condition on the
@@ -342,6 +371,7 @@ li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .entry small { display: block; font-size: 13px; color: var(--ink-2); margin-top: 3px; line-height: 1.45; }
 .entry .go { position: absolute; top: 16px; right: 14px; color: var(--ink-2); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.grid + .btn.hall { margin-top: -8px; }   /* 홈 '전체 비교': 8px under the cards it continues (위계 점검 50) */
 @media (min-width: 640px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pwrap { position: relative; display: grid; min-width: 0; }
 .pc { display: grid; align-content: start; gap: 2px; text-align: left; border: 1px solid var(--line-soft); background: var(--surface); border-radius: 18px; padding: 16px 14px 14px;
@@ -423,9 +453,11 @@ li.rk > .rank, li.rk > .item { flex: 1; min-width: 0; }
 .qstats div + div { border-left: 1px solid var(--line-soft); padding-left: 12px; }
 .qstats span { font-size: 13px; color: var(--muted); font-weight: 600; }
 .qstats b { font-size: 15.5px; font-weight: 720; letter-spacing: -0.02em; }
-.condlow { margin-top: 12px; padding: 12px 14px; border-radius: 14px; background: var(--butter-soft); color: var(--butter-ink); }
-.condlow .sub { color: inherit; margin-top: 2px; }
-.condlow .linkbtn { color: var(--butter-ink); text-decoration: underline; }
+/* 조건부 가격 · 확인 필요 초저가 in the price card (위계 점검 31 · CARD-1): a hairline above and the line's badges — the
+   butter of a condition is on its badge, not a filled box inside the card */
+.condlow { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line-soft); }   /* 8px steps (검토) */
+.condlow .row { flex-wrap: wrap; row-gap: 4px; }
+.condlow .sub { margin-top: 4px; }
 .actions { position: sticky; bottom: calc(var(--nav-h) + 10px + env(safe-area-inset-bottom, 0px)); z-index: 30; display: flex; gap: 8px; padding: 8px;
   background: color-mix(in srgb, var(--surface) 94%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
   border: 1px solid var(--line-soft); border-radius: 20px; box-shadow: var(--shadow-2); }
@@ -540,7 +572,16 @@ ul.plain { margin: 6px 0 0; padding-left: 18px; font-size: 14px; color: var(--in
 .policy p { margin: 10px 0 0; font-size: 14px; line-height: 1.65; color: var(--ink-2); }
 pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 12px; padding: 12px 14px; margin: 0; color: var(--ink-2); }
 .unitp { color: var(--ink-2); font-weight: 600; }
-.searchstat { font-size: 14px; font-weight: 650; background: var(--surface); border: 1px solid var(--line-soft); color: var(--ink); border-radius: 14px; padding: 12px 16px; }
+/* the search / 전체 가격표 results (위계 점검 32): filters and results are two blocks 24px apart; the results card opens on its
+   count line (.searchstat, role=status), then the notes about the results, 8px apart — no boxes between the two blocks */
+.view.ptable { gap: 24px; }
+.reshead { display: grid; gap: 8px; }
+.reshead > * { margin: 0; }
+.results > .reshead { padding: 16px 14px 8px; }   /* 14 at the sides: the lines' own start (52) */
+.searchstat { font-size: 15px; font-weight: 650; color: var(--ink); }
+.qcard { margin-top: 8px; }
+.qcard:first-child { margin-top: 0; }
+.qfix { margin: 8px 0 0; }
 .fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 8px; margin-bottom: 10px; }
 @media (min-width: 640px) { .fgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .fgrid .pick { padding: 10px 12px; font-size: 14px; min-height: 44px; }
@@ -549,21 +590,28 @@ pre.preview { white-space: pre-wrap; font-family: inherit; font-size: 13px; back
 .range .pick { width: 100%; min-width: 0; }
 .sibs { display: inline-flex; align-items: center; gap: 2px; flex: none; }
 .sibs button { border: 1px solid var(--line); background: var(--surface); width: 34px; height: 34px; border-radius: 10px; color: var(--ink-2); display: grid; place-items: center; }
-details.fold > summary { cursor: pointer; padding: 14px; font-weight: 650; list-style: none; display: flex; align-items: center; gap: 6px; }
-details.fold > summary::-webkit-details-marker, details.advset > summary::-webkit-details-marker { display: none; }
-details.fold > summary::after, details.advset > summary::after { content: ""; width: 8px; height: 8px; margin-left: auto; border-right: 1.75px solid var(--muted); border-bottom: 1.75px solid var(--muted);
+/* ---------- folds: one summary line everywhere (위계 점검 30 · FOLD-1 — 8 looks, 3 of them on the compare screen): the words
+   (an icon before them when they have one), then one chevron at the line's right end that turns over when open. Two sizes for
+   two levels: a fold that is a block of its own is a card with a 15/650 ink line (비교 '가격 종류별…'·'뭐예요? · 규격 확인',
+   검색 '비슷한 종류', 내 견적 '고급 비교 설정', 마이 '지점 전체 목록'; the rows 상세 필터 · 더 좁히기 · 내 설정 are 15 too); a
+   fold inside a block is a 13/650 ink-2 line (fold.small, minifold — 견적 줄 '자세히' · 합계 계산 방법 · 데이터 안내 —, 검색 팁,
+   제품 안내). No card in a card: what a block fold holds is parted by hairlines (.cmpfold) */
+details.fold > summary, details.advset > summary, details.minifold > summary, details.fmore > summary, details.stips > summary, details.mixnote > summary { cursor: pointer; list-style: none; }
+details.fold > summary::-webkit-details-marker, details.advset > summary::-webkit-details-marker, details.minifold > summary::-webkit-details-marker,
+  details.fmore > summary::-webkit-details-marker, details.stips > summary::-webkit-details-marker, details.mixnote > summary::-webkit-details-marker { display: none; }
+details.fold > summary::after, details.advset > summary::after, details.minifold > summary::after, details.fmore > summary::after, details.stips > summary::after,
+  details.mixnote > summary::after, .chev::after { content: ""; width: 8px; height: 8px; margin-left: auto; border-right: 1.75px solid var(--muted); border-bottom: 1.75px solid var(--muted);
   transform: rotate(45deg) translateY(-2px); transition: transform var(--mid) var(--ease); flex: none; }
-details.fold[open] > summary::after, details.advset[open] > summary::after { transform: rotate(-135deg) translateY(-2px); }
-details.fold.small > summary { padding: 12px 2px 8px; font-size: 13.5px; color: var(--ink-2); }
-/* a small fold inside a block (견적 줄 '자세히', 합계 계산 방법, 마이 데이터 안내): a 13px link-coloured summary with a chevron */
-details.minifold > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 4px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--accent); }
-details.minifold > summary::-webkit-details-marker { display: none; }
-details.minifold > summary svg.i { transition: transform var(--mid) var(--ease); }
-details.minifold[open] > summary svg.i { transform: rotate(180deg); }
+details.fold[open] > summary::after, details.advset[open] > summary::after, details.minifold[open] > summary::after, details.fmore[open] > summary::after,
+  details.stips[open] > summary::after, details.mixnote[open] > summary::after, [aria-expanded="true"] .chev::after { transform: rotate(-135deg) translateY(-2px); }
+details.fold > summary { padding: 14px; font-weight: 650; display: flex; align-items: center; gap: 6px; }
+details.fold.small > summary { padding: 12px 2px 8px; font-size: 13px; color: var(--ink-2); }
+details.minifold > summary { display: flex; align-items: center; gap: 4px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
 .note ul.dots { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
 .note .minifold > ul.dots { margin-top: 8px; }
 .note.cmpwarn { margin: 0; }   /* 견적 병원별 비교: the caution between the tabs and the list (the view's own gap around it) */
-details.advset > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 28px; }
+details.advset > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 28px; font-weight: 650; }
+details.advset > summary b { font-weight: inherit; }
 .advgrid { display: grid; gap: 18px; margin-top: 14px; }
 .advgrid .flabel { margin-top: 0; margin-bottom: 6px; }
 
@@ -644,6 +692,7 @@ details.advset > summary { cursor: pointer; list-style: none; display: flex; fle
 .qline .m { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; font-size: 13px; color: var(--muted); margin-top: 3px; }
 .qline .m .lat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }   /* '2회째부터' and its badges wrap as one */
 .qline .m .lat > b { font-weight: 650; color: var(--ink-2); }
+.qline .m .qbr { flex: 0 0 100%; height: 0; margin-top: -4px; }   /* '2회째부터' starts its own line (위계 점검 34) */
 /* the line's '자세히' sits at the right end, at least 24px (gap + padding) from '출처' or the later sessions' badges — it is
    about the whole line, not the link or badge before it; when that does not fit it takes the next line, still on the right */
 .qline details.qmore { flex: 0 0 auto; min-width: 0; max-width: 100%; margin-left: auto; padding-left: 16px; }
@@ -941,18 +990,14 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .fbtn { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
 .fbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 details.fmore { margin-top: 8px; border-top: 1px solid var(--line-soft); padding-top: 6px; }
-details.fmore > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; font-weight: 680; color: var(--ink); }
-details.fmore > summary::-webkit-details-marker, details.stips > summary::-webkit-details-marker { display: none; }
-details.fmore > summary::after { content: "▾"; margin-left: auto; color: var(--muted); font-size: 13px; }
-details.fmore[open] > summary::after { content: "▴"; }
+details.fmore > summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; font-weight: 650; color: var(--ink); }
 .pcgrp .opts { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
 .pctog input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 2px; }
 .pctog { align-items: flex-start; min-height: 32px; cursor: pointer; }
-.qcard { padding-top: 12px; padding-bottom: 12px; }
 .qcard .chip { min-height: 30px; }
 .qk-not { text-decoration: line-through; text-decoration-thickness: 1px; }
 details.stips { margin: 8px 4px 0; }
-details.stips > summary { cursor: pointer; list-style: none; display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--accent); }
+details.stips > summary { display: flex; align-items: center; gap: 6px; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
 .tiplist { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 10px; }
 .tiplist li { display: grid; gap: 4px; justify-items: start; font-size: 13.5px; }
 .tiplist code { font-family: inherit; font-weight: 700; }
@@ -985,9 +1030,11 @@ ol.steps { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 4px; font-si
 .guide.gtop .fold { margin-top: 6px; }
 .note.recl { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; }
 /* 4.0 product layer: mixed products note + chips, per-row product tag, comparability box (docs/TREATMENT_TAXONOMY.md) */
-.note.mixnote { margin-top: 10px; }
-.note.mixnote summary { cursor: pointer; display: flex; gap: 6px; align-items: center; list-style: none; }
-.note.mixnote[open] summary { margin-bottom: 6px; }
+/* 제품 안내 above the price range (C: TREATMENT_TAXONOMY §4): one line with no frame of its own inside the price card (위계
+   점검 31 · CARD-1), the in-block fold's look; its sentence under it when opened */
+.note.mixnote { margin-top: 8px; padding: 0; background: none; border: 0; border-radius: 0; }
+.note.mixnote > summary { display: flex; gap: 6px; align-items: center; min-height: 32px; font-size: 13px; font-weight: 650; color: var(--ink-2); }
+.note.mixnote[open] > summary { margin-bottom: 4px; }
 .prodmix { margin-top: 10px; }
 .prodmix .chips { margin-top: 4px; }
 .k.prodk { background: var(--sunken); color: var(--ink-2); }
@@ -1108,9 +1155,9 @@ html.br-on { scroll-padding-top: calc(var(--top-h) + 64px); }
 .rangebar { position: relative; height: 8px; margin: 14px 2px 22px; border-radius: 4px; background: var(--fill-2); }
 .rangebar .mid { position: absolute; top: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--s1); border: 3px solid var(--surface); transform: translateX(-50%); }
 .rangebar .midl { position: absolute; top: 16px; transform: translateX(-50%); font-size: 13px; color: var(--muted); white-space: nowrap; }
-.cmpfold { margin-top: 12px; }
-.cmpfold > summary { font-size: 15px; }
-.cmpfold .card { box-shadow: none; }
+/* the compare screen's two block folds are cards (위계 점검 30); the cards they hold become parts parted by a hairline */
+.card.cmpfold { padding: 6px; }
+.cmpfold > .card, .cmpfold > .guide { margin: 0; padding: 16px 14px; border: 0; border-top: 1px solid var(--line-soft); border-radius: 0; background: none; box-shadow: none; }
 .actsheet { display: grid; gap: 4px; }
 .actsheet button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: inherit; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 /* the header's path jumps and focus moving up the list land below the sticky top bar + compare header (WCAG 2.4.11): the

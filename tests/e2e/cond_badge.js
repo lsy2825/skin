@@ -64,10 +64,10 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
       return it ? [...it.querySelectorAll('.k')].map((k) => [k.textContent, k.getAttribute('title') || '']) : null;
     }, [name_, label]);
   };
-  // the price sheet of that line ('가격 근거' button): its whole text
+  // the price sheet of that line (its ⓘ — 위계 점검 47): its whole text
   const sheetOf = async (name_, label) => {
-    await p.locator('#main .card.flush li .item', { hasText: name_ }).filter({ has: p.locator('.k.kt', { hasText: label }) }).first()
-      .locator('button.linkbtn').first().click();
+    await p.locator('#main .card.flush li', { has: p.locator('.item .k.kt', { hasText: label }) }).filter({ has: p.locator('.item > .t', { hasText: name_ }) }).first()
+      .locator(':scope > .infob').click();
     await p.waitForSelector('.sheet[aria-label="가격 확인"]');
     const t = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
@@ -80,8 +80,8 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   ok('화면 어디에도 옛 배지 \'평일 낮\'·태그 이름 \'시간대\' 없음', await p.$$eval('.k', (ks) => !ks.some((k) => k.textContent === '평일 낮' || k.textContent === '시간대')));
 
   // price sheet: the condition line is '요일·시간 조건' (not '평일 낮 조건')
-  await p.locator('#main .card.flush li .item', { hasText: name }).filter({ has: p.locator('.k.kt', { hasText: LABEL }) }).first()
-    .locator('button.linkbtn').first().click();
+  await p.locator('#main .card.flush li', { has: p.locator('.item .k.kt', { hasText: LABEL }) }).filter({ has: p.locator('.item > .t', { hasText: name }) }).first()
+    .locator(':scope > .infob').click();
   await p.waitForSelector('.sheet[aria-label="가격 확인"]');
   const sheetTxt = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
   ok('가격 확인: 조건에 \'요일·시간 조건\'', sheetTxt.includes('요일·시간 조건') && !sheetTxt.includes('평일 낮 조건'));

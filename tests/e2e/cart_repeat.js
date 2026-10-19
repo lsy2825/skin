@@ -573,7 +573,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       const item = p.locator('#main .card.flush li .item', { hasText: n }).filter({ has: p.locator('.k.kt', { hasText: '재방문만' }) }).first();
       const title = (await item.count()) ? await item.locator('.k.kt', { hasText: '재방문만' }).first().getAttribute('title') : '';
       ok(`G10d 지점 가격표: '재방문만' 배지, 설명에 '${RV_CART}'`, !!title && title.includes(RV_CART) && !title.includes(DONE), title || '(줄 없음)');
-      if (await tap(item.locator('button.linkbtn'), 'G10e 가격 근거')) {
+      if (await tap(item.locator('xpath=..').locator(':scope > .infob'), 'G10e 가격 근거')) {   // the line's ⓘ (위계 점검 47)
         await p.waitForSelector('.sheet[aria-label="가격 확인"]');
         const st_ = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
         ok(`G10e 가격 확인: 조건 '재방문(다시 오는 손님)만', 가격 종류에 '${RV_CART}', 적용 조건 '다시 오는 손님만'`, st_.includes('재방문(다시 오는 손님)만') && st_.includes(`다시 오는 손님(재방문)만 받는 행사 가격 · ${RV_CART}`)

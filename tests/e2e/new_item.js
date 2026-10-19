@@ -35,9 +35,9 @@ const FIRST = '첫 방문(신규) 조건';
     const name = S[r[2]];
     await p.goto(BASE + `#branch/${r[0]}`); await p.waitForSelector('input[aria-label="이 지점에서 시술 찾기"]');
     await p.fill('input[aria-label="이 지점에서 시술 찾기"]', name); await p.waitForTimeout(300);
-    const item = p.locator('#main .card.flush li .item').filter({ has: p.locator('.t', { hasText: name }) }).first();
+    const item = p.locator('#main .card.flush li').filter({ has: p.locator('.item > .t', { hasText: name }) }).first();
     if (!(await item.count())) return null;
-    await item.locator('button.linkbtn').first().click();
+    await item.locator(':scope > .infob').click();   // the line's ⓘ (위계 점검 47)
     await p.waitForSelector('.sheet[aria-label="가격 확인"]');
     const t = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
