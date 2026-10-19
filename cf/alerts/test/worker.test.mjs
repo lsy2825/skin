@@ -6,7 +6,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { webcrypto as wc } from "node:crypto";
-import worker, { send, SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, PAIR_CAP, COMPUTES_PER_DAY, NIGHT_END_HOUR, CATCHUP_ROLL_HOUR } from "../src/worker.js";
+import worker, { send, SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, PAIR_CAP, COMPUTES_PER_DAY, NIGHT_END_HOUR, CATCHUP_ROLL_HOUR, LEASE_MS, PLANS, limits, planOf, RESERVE_FROM_UTC_HOUR } from "../src/worker.js";
 import { dueKinds, unb64u, addDays, daysBetween, inWindow, clientKey, REFUSED_DROP, RETRY_DROP, NEVER_DROP, FAIL_SLOTS, REFUSING_GRACE_DAYS, HOLD_MINUTES,
   SLOW_HOLD_MINUTES, PROBES, PROBE_SLOTS, PROBE_ORIGINS, PAIR_KEEP_DAYS, END_DAYS, EXPIRING_DAYS, validEnd } from "../src/rules.js";
 import { watchMoved, vapidJwt } from "../src/push.js";
@@ -1027,7 +1027,7 @@ test("health: GET /health → 200 {ok:true,…} (what the monitor counts as aliv
   for (const path of ["/health", "/v1/health"]) {
     const h = await call(worker, env, "GET", path, undefined, { headers: { origin: null }, now: kst("2026-10-19T10:00:00") });
     assert.equal(h.status, 200);
-    assert.deepEqual(h.body, { ok: true, window: "08-21 KST", sending: true, key: k.pub, finished: "2026-10-19", stale: false, refusing: false, capacity: "ok", pairs: "ok" });
+    assert.deepEqual(h.body, { ok: true, window: "08-21 KST", sending: true, key: k.pub, finished: "2026-10-19", stale: false, refusing: false, capacity: "ok", pairs: "ok", compute: "ok", plan: "free" });
     assert.equal(h.headers.get("content-type"), "application/json; charset=utf-8");
     assert.equal(h.headers.get("cache-control"), "no-store");
   }
@@ -1038,7 +1038,8 @@ test("health: GET /health → 200 {ok:true,…} (what the monitor counts as aliv
   await mark(env, "2026-10-21", []);
   assert.equal((await call(worker, env, "GET", "/health", undefined, { now: kst("2026-10-21T10:00:00") })).body.finished, "2026-10-21");
   const { env: blank, k: kb } = await setup();
-  assert.deepEqual((await call(worker, blank, "GET", "/health")).body, { ok: true, window: "08-21 KST", sending: true, key: kb.pub, finished: null, stale: false, refusing: false, capacity: "ok", pairs: "ok" });
+  assert.deepEqual((await call(worker, blank, "GET", "/health")).body, { ok: true, window: "08-21 KST", sending: true, key: kb.pub, finished: null, stale: false, refusing: false, capacity: "ok", pairs: "ok", compute: "ok", plan: "free" });
+  assert.equal((await call(worker, { ...blank, PLAN: "paid" }, "GET", "/health")).body.plan, "paid", "PLAN paid: the paid limits");
   const down = { ...env, DB: { prepare: () => ({ bind() { return this; }, first: async () => { throw new Error("D1_ERROR: unavailable"); } }) } };
   const logs = await spyConsole(async () => {
     const h = await call(worker, down, "GET", "/health", undefined, { headers: { origin: null } });
@@ -1124,12 +1125,15 @@ test("index-friendly send queries (EXPLAIN QUERY PLAN) and capacity: MAX_SUBS fi
   for (const h of [23, ...Array.from({ length: 12 }, (_, i) => i)])
     for (let m = 0; m < 60; m += 10) if (inWindow(Date.UTC(2026, 9, h === 23 ? 18 : 19, h, m))) runs++;
   assert.equal(runs, 77);
-  const perWeek = runs * SEND_LIMIT * 7;
-  assert.equal(perWeek, 21560);
-  assert.ok(MAX_SUBS * 2 <= perWeek * 0.8, "≈ 2 pushes per phone a week with ≥ 20% headroom");
-  assert.match(cfg, new RegExp(`"MAX_SUBS": "${MAX_SUBS}"`));
-  assert.match(cfg, new RegExp(`"NEW_PER_DAY": "${NEW_PER_DAY}"`));
-  assert.match(cfg, new RegExp(`"COMPUTES_PER_DAY": "${COMPUTES_PER_DAY}"`), "wrangler.jsonc vars.COMPUTES_PER_DAY = the code's default");
+  // both profiles (10th review): ≈ 2 pushes per phone a week with ≥ 20% headroom, and a day's runs can push every phone
+  // once (the worst day: every phone due — the expiring ones first)
+  for (const [plan, p] of Object.entries(PLANS)) {
+    const perDay = runs * p.SEND_LIMIT, perWeek = perDay * 7;
+    assert.equal(perWeek, plan === "free" ? 21560 : 107800, plan);
+    assert.ok(p.MAX_SUBS * 2 <= perWeek * 0.8, `${plan}: ≈ 2 pushes per phone a week with ≥ 20% headroom`);
+    assert.ok(p.MAX_SUBS <= perDay, `${plan}: every phone can be pushed in one day`);
+  }
+  assert.match(cfg, /"PLAN": "paid"/, "wrangler.jsonc picks the paid profile (the limits come from src/worker.js PLANS)");
 });
 
 test("planted failing expiring rows (the earliest end dates) cannot hold the queue: real phones are sent, planted rows go after 3 failures", T, async () => {
@@ -1183,10 +1187,12 @@ test("finish: dates come from the Worker's clock; the factory's today must be a 
   }
   assert.equal(count(), 2);
   assert.equal((await call(worker, env, "GET", "/health")).body.finished, null, "no finish went through");
-  // a day of slack either way (the factory's clock vs ours), the Worker's own day is what gets stored and used
+  // a day of slack either way (the factory's clock vs ours). The day noted as finished is the earlier of the two (10th
+  // review: the day the entries were computed for — a run that crossed midnight) and never ahead of the Worker's
   assert.equal((await fin("2026-10-19|2026-10-20", "2026-10-20")).status, 200);
+  assert.equal((await call(worker, env, "GET", "/health")).body.finished, "2026-10-19", "a body day ahead of the Worker's is not noted: the Worker's");
   assert.equal((await fin("2026-10-19|2026-10-18", "2026-10-18")).status, 200);
-  assert.equal((await call(worker, env, "GET", "/health")).body.finished, "2026-10-19", "the Worker's day, not the body's");
+  assert.equal((await call(worker, env, "GET", "/health")).body.finished, "2026-10-18", "a body day behind (a run that crossed midnight): that day");
   assert.equal(count(), 2);
   // the Worker's own clock a year on: still no subscription is removed (no retention rule), and the day-old budgets go
   assert.equal((await fin("2027-01-11|2027-01-11", "2027-01-11", kst("2027-01-11T06:00:00"))).status, 200);
@@ -1375,7 +1381,7 @@ test("health capacity: ok → nearly_full (≥ 80% of MAX_SUBS) → full (at the
   const refused = await call(worker, env, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }] });
   assert.deepEqual([refused.status, refused.body], [503, { error: "FULL" }]);
   h = await cap();
-  assert.deepEqual(Object.keys(h).sort(), ["capacity", "finished", "key", "ok", "pairs", "refusing", "sending", "stale", "window"], "exactly these fields");
+  assert.deepEqual(Object.keys(h).sort(), ["capacity", "compute", "finished", "key", "ok", "pairs", "plan", "refusing", "sending", "stale", "window"], "exactly these fields");
   assert.match(h.key, /^[A-Za-z0-9_-]{87}$/, "the VAPID public key (public information)");
   assert.equal(JSON.stringify(h).replace(h.key, "").replace(/2026-\d\d-\d\d|08-21/g, "").match(/\d/g), null, "no numbers in the body (counts, limits)");
   await call(worker, env, "PUT", `/v1/push/rules/${ids[0]}`, { rules: [] });          // a delete-on-empty makes a seat
@@ -2585,7 +2591,7 @@ test("5th/6th review (flood + new real pair): a flood of unknown-key pairs (more
 
 // 9th review (alerts within 2 hours of new prices, a user decision of 2026-10-16): every factory run that deployed data and
 // every hourly catch-up run asks POST /v1/internal/start {fp} first (src/worker.js start, sql.js START_STATE …).
-test("9th review (start): done for the prices finished today (or, any day, before 06:00 KST — a catch-up: 07:00) — nothing written; one computation at a time (busy, a lease the finish frees or that runs out after 15 minutes); at most COMPUTES_PER_DAY a UTC day (deferred, again from 09:00 KST); bad bodies are 400", T, async () => {
+test("9th/10th review (start): done for the prices finished today (or, any day, before 06:00 KST — a catch-up: 08:00) — nothing written; one computation at a time (busy, a lease the finish frees or that runs out after 15 minutes); at most COMPUTES_PER_DAY a UTC day (deferred, again from 09:00 KST); bad bodies are 400", T, async () => {
   const { env, db } = await setup();
   await sub(env, [{ kind: "watch", key: "X24" }]);
   const [A, B, C, D, E] = ["a", "b", "c", "d", "e"].map((x) => x.repeat(64));
@@ -2603,7 +2609,7 @@ test("9th review (start): done for the prices finished today (or, any day, befor
   // nothing finished yet: compute — the lease is the start's own time, the computation counted for the UTC day
   const g = await start(A, t0);
   assert.deepEqual(g, { go: "compute", lease: t0 });
-  assert.deepEqual([stat("lease"), stat("fc")], [t0, 2026101901]);
+  assert.deepEqual([stat("lease"), stat("fc"), stat("lf")], [t0, 2026101901, parseInt(A.slice(0, 13), 16)]);
   // while it runs: any start is busy (the same prices too — nothing is finished yet), and writes nothing
   let w = written(db);
   for (const fp of [A, B]) assert.deepEqual(await start(fp, t0 + 14 * 60e3), { go: "busy" });
@@ -2615,13 +2621,20 @@ test("9th review (start): done for the prices finished today (or, any day, befor
   w = written(db);
   assert.deepEqual(await start(A, kst("2026-10-19T20:00:00")), { go: "done" });
   assert.equal(written(db) - w, 0, "done writes nothing");
-  // other prices: computed — the second and third computations of this UTC day; a fourth is deferred and writes nothing
+  // other prices: computed — the second computation of this UTC day at noon; a third before 06:00 KST (21:00 UTC) is
+  // deferred: the D1 day's last one is kept for the 06:00 computation (10th review) — until 06:00 KST
   await compute(B, kst("2026-10-19T12:00:00"), "2026-10-19");
+  assert.deepEqual(await start(C, kst("2026-10-20T05:59:00")), { go: "deferred", why: "reserve", until: "06:00", first: true });
   await compute(C, kst("2026-10-20T06:30:00"), "2026-10-20");            // the next KST morning: still UTC day 10-19
   assert.equal(stat("fc"), 2026101903);
+  // a fourth: deferred (until 09:00 KST); the D1 day is noted once (stat 'fd', ≤ 2 rows), the next deferral writes nothing
+  // and is no longer the first (one Telegram line a D1 day)
   w = written(db);
-  assert.deepEqual(await start(D, kst("2026-10-20T08:59:00")), { go: "deferred" });
-  assert.equal(written(db) - w, 0);
+  assert.deepEqual(await start(D, kst("2026-10-20T08:40:00")), { go: "deferred", why: "cap", until: "09:00", first: false }, "a factory run was told at 05:59 already");
+  assert.equal(written(db) - w, 0, "the D1 day was noted at the first deferral");
+  assert.equal(stat("fd"), 20261019 * 10 + 1);
+  // the last 15 minutes of the D1 day (08:45–09:00 KST): no computation starts whatever the count — nothing written
+  assert.deepEqual(await start(D, kst("2026-10-20T08:45:00")), { go: "deferred", why: "edge", until: "09:00", first: false });
   // the prices just finished are done whatever the cap; from 09:00 KST (a new UTC day) D is computed, counted from 1
   assert.deepEqual(await start(C, kst("2026-10-20T08:59:00")), { go: "done" });
   await compute(D, kst("2026-10-20T09:37:00"), "2026-10-20");
@@ -2631,17 +2644,20 @@ test("9th review (start): done for the prices finished today (or, any day, befor
   assert.deepEqual(await start(D, kst("2026-10-21T05:59:00")), { go: "done" });
   const morning = kst("2026-10-21T06:00:00");
   assert.deepEqual(await start(D, morning), { go: "compute", lease: morning });
-  // that run dies before its finish: busy until the lease runs out (15 minutes), then computed again (and counted)
+  // that run dies before its finish: busy until the lease runs out (15 minutes), then other prices are computed (and
+  // counted — not a retry: other prices) and the dead computation is noted (stat 'cfail', GET /health "compute": "failed")
   assert.deepEqual(await start(E, morning + 14 * 60e3), { go: "busy" });
   assert.deepEqual(await start(E, morning + 15 * 60e3 + 1), { go: "compute", lease: morning + 15 * 60e3 + 1 });
+  assert.deepEqual([stat("fc"), stat("cfail")], [2026102003, 20261020]);
   // a finish naming another lease (a run whose lease ran out) frees nothing of the run that holds it now
   assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-21|2026-10-21", today: "2026-10-21", fp: D, lease: morning }, morning + 16 * 60e3)).status, 200);
   assert.equal(stat("lease"), morning + 15 * 60e3 + 1);
   assert.deepEqual(await start(B, morning + 17 * 60e3), { go: "busy" });
-  // the catch-up (start {catchup: true}, alerts-catchup.yml): until CATCHUP_ROLL_HOUR (07:00 KST) the same prices of an
-  // earlier day are done — the 06:37 run may come while the 06:00 factory run collects, and leaves the day's computation
-  // to it; changed prices it computes at any hour, and from 07:00 it does the day's computation when no run did
-  assert.deepEqual([NIGHT_END_HOUR, CATCHUP_ROLL_HOUR], [6, 7]);
+  // the catch-up (start {catchup: true}, alerts-catchup.yml): until CATCHUP_ROLL_HOUR (08:00 KST — 10th review: a
+  // collection takes ~40–45 minutes) the same prices of an earlier day are done — a catch-up between 06:00 and 08:00 may
+  // come while the 06:00 factory run collects, and leaves the day's computation to it; changed prices it computes at any
+  // hour, and from 08:00 it does the day's computation when no run did
+  assert.deepEqual([NIGHT_END_HOUR, CATCHUP_ROLL_HOUR], [6, 8]);
   {
     const { env: e3 } = await setup();
     const go = async (fp, at, catchup) => (await internal(e3, "POST", "/v1/internal/start", catchup ? { fp, catchup: true } : { fp }, at)).body;
@@ -2649,28 +2665,30 @@ test("9th review (start): done for the prices finished today (or, any day, befor
     const t1 = kst("2026-10-20T10:00:00");
     assert.deepEqual(await go(A, t1, true), { go: "compute", lease: t1 }, "nothing finished yet: a catch-up computes");
     await fin(A, t1, "2026-10-20", t1 + 60e3);
-    for (const when of ["2026-10-21T05:00:00", "2026-10-21T06:37:00", "2026-10-21T06:59:59"]) assert.deepEqual(await go(A, kst(when), true), { go: "done" }, `catch-up at ${when}: the 06:00 run's day`);
-    const t2 = kst("2026-10-21T06:40:00");
-    assert.deepEqual(await go(B, t2, true), { go: "compute", lease: t2 }, "changed prices: a catch-up computes them before 07:00 too");
+    for (const when of ["2026-10-21T05:00:00", "2026-10-21T06:37:00", "2026-10-21T07:07:00", "2026-10-21T07:59:59"]) assert.deepEqual(await go(A, kst(when), true), { go: "done" }, `catch-up at ${when}: the 06:00 run's day`);
+    const t2 = kst("2026-10-21T07:10:00");
+    assert.deepEqual(await go(B, t2, true), { go: "compute", lease: t2 }, "changed prices: a catch-up computes them before 08:00 too");
     await fin(B, t2, "2026-10-21", t2 + 60e3);
-    assert.deepEqual(await go(B, kst("2026-10-21T07:37:00"), true), { go: "done" }, "finished today");
-    // the next day: the factory run computes from 06:00, a catch-up from 07:00
-    assert.deepEqual(await go(B, kst("2026-10-22T06:37:00"), true), { go: "done" });
-    const t3 = kst("2026-10-22T06:38:00");
+    assert.deepEqual(await go(B, kst("2026-10-21T08:07:00"), true), { go: "done" }, "finished today");
+    // the next day: the factory run computes from 06:00, a catch-up from 08:00
+    assert.deepEqual(await go(B, kst("2026-10-22T07:37:00"), true), { go: "done" });
+    const t3 = kst("2026-10-22T07:38:00");
     assert.deepEqual(await go(B, t3), { go: "compute", lease: t3 }, "the 06:00 factory run (late) does the day's computation");
     await fin(B, t3, "2026-10-22", t3 + 60e3);
-    assert.deepEqual(await go(B, kst("2026-10-22T07:37:00"), true), { go: "done" });
-    const t4 = kst("2026-10-23T07:37:00");
-    assert.deepEqual(await go(B, t4, true), { go: "compute", lease: t4 }, "no run computed the day by 07:00: the catch-up does");
+    assert.deepEqual(await go(B, kst("2026-10-22T08:07:00"), true), { go: "done" });
+    const t4 = kst("2026-10-23T08:07:00");
+    assert.deepEqual(await go(B, t4, true), { go: "compute", lease: t4 }, "no run computed the day by 08:00: the catch-up does");
     for (const catchup of [false, 1, "true", null]) assert.deepEqual((await internal(e3, "POST", "/v1/internal/start", { fp: A, catchup }, t4)).body, { error: "BAD_START" }, JSON.stringify(catchup));
   }
   // COMPUTES_PER_DAY is a var (at most 99)
   const { env: e2 } = await setup({ COMPUTES_PER_DAY: "1" });
-  assert.equal((await internal(e2, "POST", "/v1/internal/start", { fp: A }, t0)).body.go, "compute");
-  assert.equal((await internal(e2, "POST", "/v1/internal/start", { fp: B }, t0 + 16 * 60e3)).body.go, "deferred");
+  const late = kst("2026-10-20T06:10:00");                               // after 21:00 UTC: the one computation may start
+  assert.equal((await internal(e2, "POST", "/v1/internal/start", { fp: A }, late)).body.go, "compute");
+  assert.equal((await internal(e2, "POST", "/v1/internal/start", { fp: B }, late + 16 * 60e3)).body.go, "deferred");
   // bad bodies: 400, nothing written
   w = written(db);
-  for (const body of [{}, { fp: "A".repeat(64) }, { fp: "a".repeat(63) }, { fp: 5 }, null, []]) assert.deepEqual((await internal(env, "POST", "/v1/internal/start", body, t0)).body, { error: "BAD_START" }, JSON.stringify(body));
+  for (const body of [{}, { fp: "A".repeat(64) }, { fp: "a".repeat(63) }, { fp: 5 }, null, [], { fp: A, nonce: "0".repeat(12) }, { fp: A, nonce: "0".repeat(16) }, { fp: A, nonce: "G".repeat(13) }, { fp: A, nonce: 7 }, { fp: A, nonce: null }])
+    assert.deepEqual((await internal(env, "POST", "/v1/internal/start", body, t0)).body, { error: "BAD_START" }, JSON.stringify(body));
   for (const extra of [{ fp: "g".repeat(64) }, { lease: -1 }, { lease: 1.5 }, { lease: "1" }, { data: undefined, fp: "" }])
     assert.deepEqual((await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-19|2026-10-19", today: "2026-10-19", ...extra }, t0)).body, { error: "BAD_FINISH" }, JSON.stringify(extra));
   assert.equal(written(db) - w, 0);
@@ -2684,4 +2702,185 @@ test("9th review (start): done for the prices finished today (or, any day, befor
   assert.equal(stat("data"), undefined);
   // watched itself no longer answers done (whether to compute is start's answer)
   assert.deepEqual((await internal(env, "GET", `/v1/internal/watched?at=0&data=${A}`, undefined, later)).body, { pairs: [{ k: "X24", r: "" }], next: null });
+});
+
+
+// ---- 10th review (a user decision of 2026-10-19: launch on Workers Paid) and the 9th-review verification findings
+const utcAt = (iso) => Date.parse(iso + "Z");
+const startAt = async (env, body, at) => { const r = await internal(env, "POST", "/v1/internal/start", body, at); assert.equal(r.status, 200, JSON.stringify(r.body)); return r.body; };
+const statOf = (db, k) => (db.rows("SELECT n FROM stat WHERE k = ?", k)[0] || {}).n;
+
+test("10th review (KST midnight): a computation that starts at 23:59:30 and finishes at 00:00:30 notes the day it computed — the next morning's computation of the same prices runs, and that day's ending prices go out", T, async () => {
+  const { env, db } = await setup();
+  const phone = await sub(env, [{ kind: "expiring", key: "X24" }, { kind: "expiring", key: "X01" }]);
+  const FP = "f".repeat(64), D = "2026-10-20", D1 = "2026-10-21";
+  const base = [st("X24", 50000, 3, 60000), st("X01", 30000, 3, 60000)];
+  // a baseline the day before
+  const b0 = kst("2026-10-19T10:00:00");
+  assert.equal((await startAt(env, { fp: "e".repeat(64) }, b0)).go, "compute");
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: "2026-10-19|2026-10-19", entries: base }, b0)).status, 200);
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-19|2026-10-19", today: "2026-10-19", fp: "e".repeat(64), lease: b0 }, b0)).status, 200);
+  // 23:59:30 D: start (the runner's today is D: its entries are D's — X24 ends D, X01 ends D + 1)
+  const t = kst(`${D}T23:59:30`);
+  const g = await startAt(env, { fp: FP }, t);
+  assert.deepEqual(g, { go: "compute", lease: t });
+  const runD = `2026-10-19|${D}`;
+  const ending = (k, e, u) => ({ ...st(k, e, 3, 60000), e, s: null, u });
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runD, entries: [ending("X24", 50000, D), ending("X01", 30000, D1)] }, t + 10e3)).status, 200);
+  // the finish arrives 40 seconds after midnight (today D in its body)
+  const f = await internal(env, "POST", "/v1/internal/finish", { run: runD, today: D, fp: FP, lease: g.lease }, kst(`${D1}T00:00:30`));
+  assert.equal(f.status, 200, JSON.stringify(f.body));
+  assert.equal(statOf(db, "finish"), 20261020, "the day the entries were computed for — not the Worker's new day");
+  // D + 1, 06:25: the same prices are computed again (the day's computation), not 'done'
+  const m = kst(`${D1}T06:25:00`);
+  const g2 = await startAt(env, { fp: FP }, m);
+  assert.deepEqual(g2, { go: "compute", lease: m }, "the 06:25 run of D + 1 computes its day");
+  const runD1 = `2026-10-19|${D1}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runD1, entries: [st("X24", 50000, 3, 60000), ending("X01", 30000, D1)] }, m)).status, 200);
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: runD1, today: D1, fp: FP, lease: g2.lease }, m + 60e3)).status, 200);
+  assert.equal(statOf(db, "finish"), 20261021);
+  assert.equal(db.rows("SELECT pend_x FROM subs WHERE id = ?", phone.id)[0].pend_x, D1, "the item ending D + 1 is pending for D + 1");
+  // D + 1 09:00: the expiring push goes out
+  const push = pushService();
+  const r = await send(env, kst(`${D1}T09:00:00`), { fetch: push.f });
+  assert.equal(r.sent, 1);
+  assert.equal(db.rows("SELECT last_x FROM subs WHERE id = ?", phone.id)[0].last_x, D1);
+  assert.match(db.rows("SELECT exp_sent FROM subs WHERE id = ?", phone.id)[0].exp_sent, new RegExp(`"${D1}\\|X01\\|"`));
+});
+
+test("10th review (start nonce): a start sent again with the same nonce (its answer was lost) gets the same lease, counted once and writing nothing; another nonce is busy; a start without a nonce works as before", T, async () => {
+  const { env, db } = await setup();
+  const A = "a".repeat(64), B = "b".repeat(64), N1 = "0123456789abc", N2 = "0123456789abd";
+  const t = kst("2026-10-20T10:00:00");
+  assert.deepEqual(await startAt(env, { fp: A, nonce: N1 }, t), { go: "compute", lease: t });
+  assert.deepEqual([statOf(db, "fc"), statOf(db, "ln")], [2026102001, parseInt(N1, 16)], "the whole nonce (52 bits)");
+  const w = written(db);
+  assert.deepEqual(await startAt(env, { fp: A, nonce: N1 }, t + 3e3), { go: "compute", lease: t }, "the same run's start again: its own lease");
+  assert.equal(written(db) - w, 0, "nothing written, not counted again");
+  assert.equal(statOf(db, "fc"), 2026102001);
+  assert.deepEqual(await startAt(env, { fp: A, nonce: N2 }, t + 5e3), { go: "busy" }, "another run: busy");
+  assert.deepEqual(await startAt(env, { fp: B }, t + 5e3), { go: "busy" }, "no nonce: busy");
+  // after the lease ran out the nonce no longer finds it (a run's own start is retried within seconds, never 15 minutes)
+  assert.equal((await startAt(env, { fp: B, nonce: N1 }, t + LEASE_MS + 1)).go, "compute");
+});
+
+test("10th review (failed computation): a retry of the same prices after a computation that started this D1 day and died is not counted — once a D1 day; the dead one shows on GET /health compute: failed", T, async () => {
+  const { env, db } = await setup({ COMPUTES_PER_DAY: "4" });           // three by day (one kept for 06:00 KST)
+  const A = "a".repeat(64), B = "b".repeat(64);
+  const health = async (at) => (await call(worker, env, "GET", "/health", undefined, { now: at })).body.compute;
+  const t = kst("2026-10-20T10:00:00");                                  // UTC 01:00 of 2026-10-20
+  assert.equal(await health(t), "ok");
+  assert.equal((await startAt(env, { fp: A }, t)).go, "compute");          // counted 1, dies before its finish
+  assert.equal(await health(t + LEASE_MS - 1), "ok", "still running");
+  assert.equal(await health(t + LEASE_MS + 1), "failed", "its lease ran out without a finish");
+  const r1 = t + 30 * 60e3;                                               // the next catch-up: the same prices
+  assert.deepEqual(await startAt(env, { fp: A, catchup: true }, r1), { go: "compute", lease: r1 });
+  assert.deepEqual([statOf(db, "fc"), statOf(db, "fr"), statOf(db, "cfail")], [2026102001, 20261020, 20261020], "not counted; the retry and the dead computation noted");
+  const r2 = r1 + 30 * 60e3;                                              // it dies too: the next retry IS counted
+  assert.equal((await startAt(env, { fp: A, catchup: true }, r2)).go, "compute");
+  assert.equal(statOf(db, "fc"), 2026102002);
+  // other prices after a dead computation: counted (a retry is of the SAME prices only)
+  const r3 = r2 + 30 * 60e3;
+  assert.equal((await startAt(env, { fp: B }, r3)).go, "compute");
+  assert.equal(statOf(db, "fc"), 2026102003, "B counted");
+  assert.equal(await health(r3 + 60e3), "failed", "the day of a dead computation (stat cfail) — the monitor warns");
+  // the cap: COMPUTES_PER_DAY 1 after 21:00 UTC; the one computation dies; the same prices are retried past the cap, once
+  const { env: e2, db: d2 } = await setup({ COMPUTES_PER_DAY: "1" });
+  const n = utcAt("2026-10-20T21:30:00");
+  assert.equal((await startAt(e2, { fp: A }, n)).go, "compute");
+  assert.equal((await startAt(e2, { fp: A }, n + 30 * 60e3)).go, "compute", "the retry is not held by the cap");
+  assert.equal((await startAt(e2, { fp: A }, n + 60 * 60e3)).go, "deferred", "a second retry is counted — over the cap");
+  assert.equal(statOf(d2, "fc"), 2026102001);
+  // a computation that started the D1 day before (23:40 UTC) and died: its retry after 00:00 UTC is counted (its writes
+  // landed in the day before; the cap of the new day counts its own)
+  const { env: e3, db: d3 } = await setup();
+  const y = utcAt("2026-10-20T23:40:00");
+  assert.equal((await startAt(e3, { fp: A }, y)).go, "compute");
+  assert.equal((await startAt(e3, { fp: A }, utcAt("2026-10-21T00:10:00"))).go, "compute");
+  assert.deepEqual([statOf(d3, "fc"), statOf(d3, "fr")], [2026102101, undefined]);
+  // the next UTC day: health 'failed' still (the day before), two days on: ok
+  assert.equal(await health(utcAt("2026-10-21T00:30:00")), "failed", "the monitor at 09:30 KST sees the D1 day before");
+  await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-22|2026-10-22", today: "2026-10-22", fp: B, lease: r3 }, utcAt("2026-10-22T03:00:00"));
+  assert.equal(await health(utcAt("2026-10-22T03:00:00")), "ok", "two UTC days on, no lease left: ok");
+});
+
+test("10th review (the 06:00 share and the D1 day's edge): before 21:00 UTC one computation is kept for the 06:00 KST run; no computation starts in the last 15 minutes of a D1 day; the boundaries to the second", T, async () => {
+  const run = async (extra, steps) => {
+    const { env, db } = await setup(extra);
+    let i = 0;
+    for (const [iso, want] of steps) {
+      const fp = String(i++ % 10).repeat(64);
+      const at = utcAt(iso);
+      const g = await startAt(env, { fp, nonce: String(i).padStart(13, "0") }, at);
+      assert.equal(g.go === "deferred" ? `deferred:${g.why}` : g.go, want, `${JSON.stringify(extra)} ${iso}`);
+      if (g.go === "compute") await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-20|2026-10-20", today: "2026-10-20", fp, lease: g.lease }, at + 1e3);
+    }
+    return db;
+  };
+  assert.equal(RESERVE_FROM_UTC_HOUR, 21);
+  // free (K = 3): two by day, the third waits for 21:00 UTC (06:00 KST) to the second; the edge from 23:45:00 UTC
+  await run({}, [["2026-10-20T01:00:00", "compute"], ["2026-10-20T05:00:00", "compute"], ["2026-10-20T20:59:59", "deferred:reserve"],
+    ["2026-10-20T21:00:00", "compute"], ["2026-10-20T22:00:00", "deferred:cap"]]);
+  await run({}, [["2026-10-20T23:44:59", "compute"], ["2026-10-20T23:45:00", "deferred:edge"], ["2026-10-20T23:59:59", "deferred:edge"], ["2026-10-21T00:00:00", "compute"]]);
+  // paid (K = 12): eleven by day, the twelfth from 21:00 UTC
+  const day = Array.from({ length: 11 }, (_, h) => [`2026-10-20T${String(h + 1).padStart(2, "0")}:00:00`, "compute"]);
+  await run({ PLAN: "paid" }, [...day, ["2026-10-20T20:00:00", "deferred:reserve"], ["2026-10-20T21:30:00", "compute"], ["2026-10-20T22:30:00", "deferred:cap"],
+    ["2026-10-20T23:50:00", "deferred:edge"], ["2026-10-21T00:05:00", "compute"]]);
+});
+
+test("10th review (deferral notes): one Telegram line a D1 day — first: true only for the first FACTORY run deferred in it (a catch-up is told first: false); GET /health compute: deferred that UTC day and the next", T, async () => {
+  const { env, db } = await setup({ COMPUTES_PER_DAY: "1" });
+  const A = "a".repeat(64), B = "b".repeat(64), C = "c".repeat(64);
+  const at = utcAt("2026-10-20T21:10:00");
+  assert.equal((await startAt(env, { fp: A }, at)).go, "compute");
+  await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-21|2026-10-21", today: "2026-10-21", fp: A, lease: at }, at + 1e3);
+  const h = async (iso) => (await call(worker, env, "GET", "/health", undefined, { now: utcAt(iso) })).body.compute;
+  assert.equal(await h("2026-10-20T21:20:00"), "ok");
+  assert.deepEqual(await startAt(env, { fp: B, catchup: true }, utcAt("2026-10-20T21:30:00")), { go: "deferred", why: "cap", until: "09:00", first: false }, "a catch-up has no Telegram");
+  assert.equal(statOf(db, "fd"), 202610200);
+  assert.deepEqual(await startAt(env, { fp: B }, utcAt("2026-10-20T21:40:00")), { go: "deferred", why: "cap", until: "09:00", first: true }, "the first factory run deferred this D1 day");
+  assert.equal(statOf(db, "fd"), 202610201);
+  const w = written(db);
+  assert.deepEqual(await startAt(env, { fp: C }, utcAt("2026-10-20T22:00:00")), { go: "deferred", why: "cap", until: "09:00", first: false });
+  assert.deepEqual(await startAt(env, { fp: C, catchup: true }, utcAt("2026-10-20T22:30:00")), { go: "deferred", why: "cap", until: "09:00", first: false });
+  assert.equal(written(db) - w, 0, "noted once a D1 day");
+  assert.equal(await h("2026-10-20T22:40:00"), "deferred");
+  assert.equal(await h("2026-10-21T00:30:00"), "deferred", "the monitor at 09:30 KST sees the D1 day before");
+  assert.equal(await h("2026-10-22T00:30:00"), "ok");
+});
+
+test("10th review (plan profile): PLAN picks the limits — paid by default in wrangler.jsonc, free when PLAN is missing or anything else; each var still overrides within the platform's own limits; no wrangler limits block", T, async () => {
+  assert.deepEqual(PLANS.free, { SEND_LIMIT: 40, MAX_SUBS: 2000, NEW_PER_DAY: 500, COMPUTES_PER_DAY: 3 }, "the 9th review's free values");
+  assert.deepEqual({ SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, COMPUTES_PER_DAY }, PLANS.free, "the old names = the free profile");
+  assert.deepEqual(PLANS.paid, { SEND_LIMIT: 200, MAX_SUBS: 15000, NEW_PER_DAY: 1500, COMPUTES_PER_DAY: 12 });
+  for (const v of [undefined, "", "Paid", "PAID", "pro", "free"]) assert.equal(planOf({ PLAN: v }), "free", JSON.stringify(v));
+  assert.equal(planOf({ PLAN: "paid" }), "paid");
+  assert.deepEqual(limits({ PLAN: "paid", MAX_SUBS: "9000", COMPUTES_PER_DAY: "500", SEND_LIMIT: "100000" }), { plan: "paid", SEND_LIMIT: 500, MAX_SUBS: 9000, NEW_PER_DAY: 1500, COMPUTES_PER_DAY: 99 });
+  assert.deepEqual(limits({ SEND_LIMIT: "60", NEW_PER_DAY: "x" }), { plan: "free", SEND_LIMIT: 45, MAX_SUBS: 2000, NEW_PER_DAY: 500, COMPUTES_PER_DAY: 3 }, "free: ≤ 45 pushes a run (50 outside requests)");
+  // the deployed config: PLAN "paid", and no per-limit var (a set one would beat the profile), no "limits" block, the same
+  // ten-minute cron for both profiles
+  const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
+  const code = cfg.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+  assert.match(code, /\n {4}"PLAN": "paid",?\n/);
+  for (const v of ["SEND_LIMIT", "MAX_SUBS", "NEW_PER_DAY", "COMPUTES_PER_DAY"]) assert.equal(new RegExp(`"${v}"\\s*:`).test(code), false, `wrangler.jsonc sets no ${v}: the profile decides`);
+  assert.equal(/"limits"\s*:/.test(code), false, "no limits block (a Free account refuses it at deploy)");
+  assert.match(code, /"crons": \["\*\/10 23,0-11 \* \* \*"\]/);
+  // paid in action: 205 phones due → one run sends 200 (free: 40); MAX_SUBS and NEW_PER_DAY follow the profile
+  const { env } = await setup({ PLAN: "paid", MAX_SUBS: undefined });
+  for (let i = 0; i < 205; i++) await sub(env, [{ kind: "watch", key: "X24" }]);
+  await news(env, "2026-10-19");
+  const push = pushService();
+  assert.equal((await send(env, kst("2026-10-19T09:00:00"), { fetch: push.f })).sent, 200);
+  assert.equal((await send({ ...env, PLAN: undefined }, kst("2026-10-19T09:10:00"), { fetch: push.f })).sent, 5);
+  const { env: f1 } = await setup({ MAX_SUBS: undefined });
+  for (let i = 0; i < 205; i++) await sub(f1, [{ kind: "watch", key: "X24" }]);
+  await news(f1, "2026-10-19");
+  assert.equal((await send(f1, kst("2026-10-19T09:00:00"), { fetch: pushService().f })).sent, 40);
+  // the new-subscription budget: free 500 a KST day, paid 1,500 (the counter is checked, not counted rows)
+  const { env: p2, db: pd } = await setup({ PLAN: "paid", MAX_SUBS: undefined });
+  pd.raw.prepare("INSERT INTO stat (k, n) VALUES ('new:2026-10-20', 1499)").run();
+  const day = { now: kst("2026-10-20T12:00:00") };
+  assert.equal((await call(worker, p2, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }] }, day)).status, 201);
+  assert.equal((await call(worker, p2, "POST", "/v1/push/subscribe", { subscription: subscription(), rules: [{ kind: "watch", key: "X24" }] }, day)).status, 429);
+  assert.equal((await call(worker, { ...p2, PLAN: "free" }, "GET", "/health")).body.plan, "free");
 });

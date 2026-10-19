@@ -113,29 +113,65 @@ import { ID_RE, validDay, validRun, FINISH_SLACK_DAYS, daysBetween, newId, kstDa
 import { checkSubscription, vapidJwt, vapidKey, pushRequest } from "./push.js";
 import * as Q from "./sql.js";
 
-export const SEND_LIMIT = 40;          // pushes per run: free plan allows 50 outside requests per invocation
-// subscriptions (wrangler.jsonc vars.MAX_SUBS; nothing evicts: full = 503 FULL) and new ones per KST day (vars.NEW_PER_DAY):
-// what COMPUTES_PER_DAY full computations a D1 day leave of the 100,000 rows written (arithmetic above — 9th review: 8,000
-// and 2,000 fitted ONE computation a day; a user decision, 2026-10-16: alerts within 2 hours of new prices, a lower ceiling)
-export const MAX_SUBS = 2000;
-export const NEW_PER_DAY = 500;
-// full computations (start → keys → watched → digest → finish) that may START in one D1 day (00:00–24:00 UTC = 09:00–09:00
-// KST), counted in D1 (stat 'fc'); one more is answered 'deferred' and waits for the first alerts-catchup run after 09:00
-// KST. wrangler.jsonc vars.COMPUTES_PER_DAY (≤ 99); the write arithmetic above holds for this many
-export const COMPUTES_PER_DAY = 3;
+// ---- the plan profile (10th review — a user decision of 2026-10-19: the app launches on Cloudflare Workers PAID; the account
+// is switched before PUBLIC_DEPLOY goes on). wrangler.jsonc vars.PLAN = "paid" | "free" picks the limits below; each one can
+// still be set on its own (vars SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, COMPUTES_PER_DAY — a var beats the profile). PLAN missing
+// or anything else = "free": the profile that fits either account. No wrangler "limits" block (a Free account would refuse
+// it at deploy): every limit is kept here, in code. The arithmetic above holds for both profiles.
+//   SEND_LIMIT        pushes per send run. Free: 40 of the 50 outside requests a Free invocation may make. Paid: 200 —
+//                     10,000 subrequests (≤ 200 pushes + ≤ 3 × (34 + 2) D1 calls), 6 connections at a time (34 groups of
+//                     6 × the 8 s push timeout = 4.5 min at worst, inside the 10-minute cron step and the 15-minute cron
+//                     wall time; measured CPU per push in the arithmetic above), 77 runs × 200 = 15,400 a day ≥ MAX_SUBS
+//   MAX_SUBS          subscriptions (nothing evicts: full = 503 FULL, GET /health "capacity")
+//   NEW_PER_DAY       new subscriptions per KST day (one ≈ 5 rows written; a D1 day spans two KST days)
+//   COMPUTES_PER_DAY  full computations (start → keys → watched → digest → finish) that may START in one D1 day (00:00–24:00
+//                     UTC = 09:00–09:00 KST), counted in D1 (stat 'fc'); before 21:00 UTC (06:00 KST) one of them is kept
+//                     for the day's 06:00 computation (RESERVE_FROM_UTC_HOUR). Past it: 'deferred' (start below). ≤ 99
+// Free = the 9th review's values (D1 Free: 100,000 rows written a day for the whole account). Paid = what keeps the WORST
+// month (31 days, every cap hit every day, cf/metrics at its own cap) inside the 50 million rows written and 25 billion rows
+// read a month the $5 plan includes (arithmetic above): the bill stays $5.
+export const PLANS = Object.freeze({
+  free: Object.freeze({ SEND_LIMIT: 40, MAX_SUBS: 2000, NEW_PER_DAY: 500, COMPUTES_PER_DAY: 3 }),
+  paid: Object.freeze({ SEND_LIMIT: 200, MAX_SUBS: 15000, NEW_PER_DAY: 1500, COMPUTES_PER_DAY: 12 }),
+});
+// a var may move a limit, never past what the platform itself allows: pushes per run ≤ 45 on Free (50 outside requests an
+// invocation), ≤ 500 on Paid (84 groups × 8 s = 11 minutes at worst, inside the 15-minute cron wall time); computations ≤ 99
+// (stat 'fc' keeps the count in two digits)
+const SEND_MAX = { free: 45, paid: 500 };
+export const planOf = (env) => (env && env.PLAN === "paid" ? "paid" : "free");
+export function limits(env) {
+  const plan = planOf(env), p = PLANS[plan];
+  return {
+    plan,
+    SEND_LIMIT: Math.min(SEND_MAX[plan], Math.floor(num(env.SEND_LIMIT, p.SEND_LIMIT))),
+    MAX_SUBS: Math.floor(num(env.MAX_SUBS, p.MAX_SUBS)),
+    NEW_PER_DAY: Math.floor(num(env.NEW_PER_DAY, p.NEW_PER_DAY)),
+    COMPUTES_PER_DAY: Math.min(99, Math.floor(num(env.COMPUTES_PER_DAY, p.COMPUTES_PER_DAY))),
+  };
+}
+// the free profile's values under their old names (node tests and test/d1_reads.mjs run without PLAN, i.e. the free profile)
+export const { SEND_LIMIT, MAX_SUBS, NEW_PER_DAY, COMPUTES_PER_DAY } = PLANS.free;
+// before this UTC hour (21:00 UTC = 06:00 KST) a start may take only COMPUTES_PER_DAY − 1 computations of the D1 day: the
+// last one is kept for the day's computation of the 06:00 KST factory run (or the 08:00 catch-up) — 9th-review finding: a
+// day of data PRs used all three by the afternoon, and the next morning's collection and ending prices waited until 09:37
+export const RESERVE_FROM_UTC_HOUR = 21;
 // one computation at a time (stat 'lease'): a start while another one started less than this ago and did not finish is
-// answered 'busy'. Longer than notify's step limit in both workflows (10 minutes), so a live run never loses it
+// answered 'busy'. Longer than notify's step limit in both workflows (10 minutes), so a live run never loses it — and so
+// no start is taken in the last LEASE_MS of a D1 day (23:45–24:00 UTC = 08:45–09:00 KST, start: 'deferred' why 'edge'):
+// every write of a computation lands in the D1 day that counted it (9th-review finding: a start at 08:59:30 KST wrote its
+// rows into the next D1 day, which then took three more — four in one D1 day)
 export const LEASE_MS = 15 * 60e3;
 // KST hour before which unchanged prices are not computed again just because the day changed (start: 'done' with a finish
 // of an earlier day): the day's computation is the 06:00 factory run's (no push goes out before 08:00), so a night of
-// hourly catch-up runs costs no computation. Changed prices are computed at any hour
+// catch-up runs (every 30 minutes) costs no computation. Changed prices are computed at any hour
 export const NIGHT_END_HOUR = 6;
-// the same for a catch-up run (start {catchup: true}, alerts-catchup.yml) until 07:00 KST: the 06:37 catch-up runs while the
-// 06:00 factory run may still be collecting (GitHub starts it 20–25 minutes late, a collection takes ~20 more), so it
-// computes changed prices only and leaves the day's computation to that run — computing yesterday's prices again there
-// would spend one of COMPUTES_PER_DAY right before the new collection needs it. From 07:00 a catch-up computes the day if
-// no run did (the 06:00 run failed, or built nothing and its alerts job did not finish)
-export const CATCHUP_ROLL_HOUR = 7;
+// the same for a catch-up run (start {catchup: true}, alerts-catchup.yml) until 08:00 KST: the catch-ups between 06:00 and
+// 08:00 may come while the 06:00 factory run is still collecting (GitHub starts it 20–25 minutes late and a collection takes
+// ~40–45 minutes — 'Weekly prices 2026-10-17' was saved at 07:06 KST; the job may take up to 90), so they compute changed
+// prices only and leave the day's computation to that run — computing yesterday's prices again there would spend one of
+// COMPUTES_PER_DAY right before the new collection needs it. From 08:00 (the first push goes out at 08:00 anyway) a
+// catch-up computes the day if no run did (the 06:00 run failed, or built nothing and its alerts job did not finish)
+export const CATCHUP_ROLL_HOUR = 8;
 // (key, region) pairs the factory digests per run, and the most rows snap holds (+ one digest chunk) — its D1 writes are
 // ≤ 2 × (PAIR_CAP + 500) rows per full computation, ≤ COMPUTES_PER_DAY a D1 day (arithmetic above). A user decision;
 // wrangler.jsonc vars.PAIR_CAP. Only
@@ -238,7 +274,7 @@ async function subscribe(request, env, now) {
     const key = clientKey(request.headers.get("cf-connecting-ip"));
     if (!(await env.SUBS_RL.limit({ key })).success) throw new Bad(429, "RATE_LIMITED");
   }
-  const today = kstDay(now), max = num(env.MAX_SUBS, MAX_SUBS), perDay = num(env.NEW_PER_DAY, NEW_PER_DAY);
+  const L = limits(env), today = kstDay(now), max = L.MAX_SUBS, perDay = L.NEW_PER_DAY;
   const rules = JSON.stringify(v.rules);
   // one batch: the Worker's own KST day first (the subs_ins trigger names today's 'new:' counter from it), then the INSERT
   const res = await env.DB.batch([
@@ -288,32 +324,68 @@ async function storeKeys(request, env) {
   return { keys: body.keys.length, changed: ((res && res.meta && res.meta.changes) || 0) > 0 };
 }
 
-// POST /v1/internal/start {fp, catchup?: true} → {go: "done" | "busy" | "deferred"} | {go: "compute", lease}. The first
-// call of every factory run that deployed data and of every alerts-catchup run (catchup: true) — 9th review: alerts within 2
-// hours of new prices, a user decision of 2026-10-16. fp = the data's fingerprint (notify.mjs fingerprint: the numbers a
-// digest can be computed from, not the file's bytes or timestamps). In this order (sql.js START_STATE: 4 rows read, 0
-// written):
+// POST /v1/internal/start {fp, nonce?, catchup?: true} → {go: "done" | "busy"} | {go: "deferred", why, until, first} |
+// {go: "compute", lease}. The first call of every factory run that deployed data and of every alerts-catchup run (catchup:
+// true) — 9th review: alerts within 2 hours of new prices, a user decision of 2026-10-16. fp = the data's fingerprint
+// (notify.mjs fingerprint: the numbers a digest can be computed from, not the file's bytes or timestamps); nonce = 13
+// lower-case hex characters (52 random bits, kept whole in stat 'ln' — exact in JS and SQLite) notify.mjs draws once per run
+// (10th review: a start whose answer was lost and that notify sends again gets the SAME answer — the same lease, counted
+// once). In this order (sql.js START_STATE: ≤ 12 rows read, 0 written):
 //   done      the last finish was from these same prices, today (KST) — or, any day, before NIGHT_END_HOUR (a catch-up:
 //             CATCHUP_ROLL_HOUR): a code-only rebuild, a re-run, a catch-up with nothing new costs nothing
+//   compute   (again) this run's own computation holds the lease (the same nonce): its first answer was lost
 //   busy      another computation started less than LEASE_MS ago and did not finish (one at a time: two at once could prune
 //             each other's pairs — sql.js PRUNE_SNAP)
-//   deferred  COMPUTES_PER_DAY computations already started this UTC day (D1's day): the D1 write budget (arithmetic above)
-//             holds no more — the first alerts-catchup run after 09:00 KST computes these prices
-//   compute   the lease is taken and the computation counted (sql.js TAKE_LEASE, COUNT_COMPUTE: ≤ 4 rows written); the
-//             factory goes on with keys, watched, digest and finish {…, lease} (which frees it)
-// keys, watched, digest and finish do not check the lease: the cap keeps the D1 budget against our own runs, which all ask
-// start first (notify.mjs is the only caller — tests check its order), not against someone holding ALERTS_SECRET, who could
-// write rows with digest anyway (docs/SECURITY_ARCHITECTURE.md §4: rotate the secret)
+//   deferred  why 'edge': the last LEASE_MS of the D1 day (23:45–24:00 UTC = 08:45–09:00 KST) — no computation starts there,
+//             so all of its writes land in the D1 day that counted it; the next catch-up (after 09:00 KST) computes.
+//             why 'cap': COMPUTES_PER_DAY computations already started this D1 day (until 09:00 KST); why 'reserve': before
+//             21:00 UTC (06:00 KST) and COMPUTES_PER_DAY − 1 started — the last one is kept for the day's 06:00 computation
+//             (until 06:00 KST). Both note the D1 day (stat 'fd': GET /health "compute": "deferred") and say first: true
+//             to the first factory run deferred that D1 day only (its workflow sends ONE Telegram line a D1 day — 9th-review
+//             finding: 30 lines in four days). Nothing else is written
+//   compute   the lease is taken (stat 'lease' = now, 'ln' = the nonce, 'lf' = the fingerprint's tag) and the computation
+//             counted (stat 'fc') — except a RETRY: the same prices again after a computation of them that started this D1
+//             day and died (its lease ran out without a finish) is not counted, once a D1 day (stat 'fr'; 9th-review finding:
+//             a failed computation silently burned one of the day's three). A lease found run out is a failed computation:
+//             stat 'cfail' = the D1 day (GET /health "compute": "failed", the monitor warns). ≤ 12 rows written. The factory
+//             goes on with keys, watched, digest and finish {…, lease} (which frees it)
+// So a D1 day takes at most COMPUTES_PER_DAY counted computations + one uncounted retry whose first try died before its
+// finish (the write arithmetic above counts both). keys, watched, digest and finish do not check the lease: the cap keeps
+// the D1 budget against our own runs, which all ask start first (notify.mjs is the only caller — tests check its order),
+// not against someone holding ALERTS_SECRET, who could write rows with digest anyway (docs/SECURITY_ARCHITECTURE.md §4:
+// rotate the secret)
+const NONCE_RE = /^[0-9a-f]{13}$/;
+const DAY_MS = 86400e3;
+// GET /health "compute" looks back this many UTC days (like REFUSING_DAYS / CAPPED_DAYS: the daily monitor sees the day before)
+const COMPUTE_DAYS = 1;
 async function start(request, env, now) {
   const body = await readJson(request, INTERNAL_MAX);
-  if (!body || typeof body.fp !== "string" || !SHA_RE.test(body.fp) || (body.catchup !== undefined && body.catchup !== true)) throw new Bad(400, "BAD_START");
-  const today = dayNum(kstDay(now)), utc = utcDayNum(now), k = Math.min(99, num(env.COMPUTES_PER_DAY, COMPUTES_PER_DAY));
-  const s = (await env.DB.prepare(Q.START_STATE).bind(today, dataTag(body.fp), now, LEASE_MS, utc).first()) || {};
+  if (!body || typeof body.fp !== "string" || !SHA_RE.test(body.fp) || (body.catchup !== undefined && body.catchup !== true) ||
+    (body.nonce !== undefined && !(typeof body.nonce === "string" && NONCE_RE.test(body.nonce)))) throw new Bad(400, "BAD_START");
+  const k = limits(env).COMPUTES_PER_DAY, today = dayNum(kstDay(now)), utc = utcDayNum(now), tag = dataTag(body.fp);
+  const nonce = body.nonce ? parseInt(body.nonce, 16) : null, dayStart = now - (now % DAY_MS);
+  const s = (await env.DB.prepare(Q.START_STATE).bind(today, tag, now, LEASE_MS, utc, nonce, dayStart).first()) || {};
   if (s.same && (s.today || kstHour(now) < (body.catchup ? CATCHUP_ROLL_HOUR : NIGHT_END_HOUR))) return { go: "done" };
+  if (s.mine) return { go: "compute", lease: s.lease };
   if (s.busy) return { go: "busy" };
-  if (s.computes >= k) { console.log("alerts start: deferred — COMPUTES_PER_DAY computations started this UTC day"); return { go: "deferred" }; }
-  const [took] = await env.DB.batch([env.DB.prepare(Q.TAKE_LEASE).bind(now, LEASE_MS, utc, k), env.DB.prepare(Q.COUNT_COMPUTE).bind(now, utc)]);
+  if (now - dayStart >= DAY_MS - LEASE_MS) return { go: "deferred", why: "edge", until: "09:00", first: false };
+  const retry = s.retry ? 1 : 0;
+  const cap = new Date(now).getUTCHours() < RESERVE_FROM_UTC_HOUR ? k - 1 : k;
+  if (!retry && s.computes >= cap) {
+    const why = s.computes >= k ? "cap" : "reserve";
+    await env.DB.prepare(Q.STAT_DEFERRED).bind(utc, body.catchup ? 0 : 1).run();
+    if (why === "cap") console.log("alerts start: deferred — COMPUTES_PER_DAY computations started this D1 day");
+    else console.log("alerts start: deferred — the D1 day's last computation is kept for the 06:00 KST run");
+    return { go: "deferred", why, until: why === "cap" ? "09:00" : "06:00", first: !body.catchup && !s.told };
+  }
+  const [took] = await env.DB.batch([
+    env.DB.prepare(Q.TAKE_LEASE).bind(now, LEASE_MS, utc, cap, retry),
+    env.DB.prepare(Q.LEASE_OF).bind(now, nonce === null ? -1 : nonce, tag),
+    retry ? env.DB.prepare(Q.MARK_RETRY).bind(now, utc) : env.DB.prepare(Q.COUNT_COMPUTE).bind(now, utc),
+    ...(s.stale ? [env.DB.prepare(Q.STAT_CFAIL).bind(now, utc)] : []),
+  ]);
   if (!(took && took.results && took.results.length)) return { go: "busy" };   // another run started in between
+  if (s.stale) console.log("alerts start: a computation that started before did not finish (its lease ran out)");
   return { go: "compute", lease: now };
 }
 
@@ -370,7 +442,11 @@ async function digest(request, env, now) {
 // fingerprint; stat 'finish' + 'data': start answers done to the same prices the same day) and free the start's lease.
 // Every date here comes from the Worker's own clock (today = kstDay(now)): the body's `today` and the run's day part only
 // have to agree with it (calendar dates within FINISH_SLACK_DAYS, else 400 BAD_FINISH and nothing is touched), so the
-// factory token can neither wipe past days' budgets with a far-future day nor pin /health "finished".
+// factory token can neither wipe past days' budgets with a far-future day nor pin /health "finished". The day noted as
+// 'finished' (stat 'finish': start's done, the send runs' DROP_ENDED gate, /health) is the EARLIER of the body's today and
+// the Worker's: the day the entries were computed for (10th review — a computation that started at 23:59 KST and finished
+// after midnight noted the next day as computed, so that day's own computation and its ending prices never came; never
+// later than the Worker's day, so it cannot pin /health "finished" ahead).
 async function finish(request, env, now) {
   const body = await readJson(request, INTERNAL_MAX);
   const today = kstDay(now);
@@ -385,7 +461,7 @@ async function finish(request, env, now) {
     env.DB.prepare(Q.PRUNE_SNAP).bind(body.run),
     env.DB.prepare(Q.PRUNE_STAT).bind(today),
     env.DB.prepare(Q.ROLL_BU),
-    env.DB.prepare(Q.STAT_FINISH).bind(Number(today.replace(/-/g, ""))),
+    env.DB.prepare(Q.STAT_FINISH).bind(Math.min(dayNum(body.today), dayNum(today))),
     body.fp ? env.DB.prepare(Q.STAT_DATA).bind(dataTag(body.fp)) : env.DB.prepare(Q.CLEAR_DATA),
     ...(body.lease != null ? [env.DB.prepare(Q.FREE_LEASE).bind(body.lease)] : []),
   ]);
@@ -419,7 +495,7 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
   }
   const pub = v.key, priv = env.VAPID_PRIVATE_JWK;
   const today = kstDay(nowMs), todayN = dayNum(today), minute = Math.floor(nowMs / 60e3), nowS = Math.floor(nowMs / 1000);
-  const limit = num(env.SEND_LIMIT, SEND_LIMIT), weekAgo = addDays(today, -7);
+  const limit = limits(env).SEND_LIMIT, weekAgo = addDays(today, -7);
   // the key's tag (a new key never uses an old token, nor an old key's per-origin records)
   const tag = pub.slice(0, 12);
   // the probes (held rows whose minute has come, a few per push origin: sql.js CLAIM_P) first, then the queue in what is left
@@ -631,6 +707,12 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
 //   capacity  'ok' | 'nearly_full' (≥ 80% of MAX_SUBS) | 'full' — nothing is evicted, a person must purge or raise MAX_SUBS
 //   pairs     'ok' | 'capped': the factory's watched list was cut at PAIR_CAP today or yesterday (CAPPED_DAYS) — some pairs
 //             were not computed (planted subscriptions, or more real ones than the cap: purge or raise PAIR_CAP)
+//   compute   'ok' | 'deferred' | 'failed' (10th review — what a catch-up run cannot say itself: it has no Telegram):
+//             'failed' = a computation started this UTC day or the one before and never finished (its lease ran out — stat
+//             'cfail', or the lease still left), 'deferred' = a start was deferred this UTC day or the one before
+//             (COMPUTES_PER_DAY used up, or its last computation kept for 06:00 KST — stat 'fd'). The monitor (09:30 KST =
+//             00:30 UTC) sees anything from the D1 day before
+//   plan      'paid' | 'free': the limits in effect (PLAN; limits() above)
 async function health(env, now) {
   const h = { "cache-control": "no-store" };
   let row;
@@ -644,9 +726,15 @@ async function health(env, now) {
   const stale = finished ? daysBetween(today, finished) > STALE_DAYS
     : Number(row && row.subs) > 0 && !!firstNew && daysBetween(today, firstNew) > STALE_DAYS;
   const refusing = within(refusedOn, REFUSING_DAYS);
-  const capacity = capacityOf(row && row.subs, num(env.MAX_SUBS, MAX_SUBS));
+  const L = limits(env);
+  const capacity = capacityOf(row && row.subs, L.MAX_SUBS);
   const pairs = within(cappedOn, CAPPED_DAYS) ? "capped" : "ok";
-  return json({ ok: true, window: "08-21 KST", sending: !!v.key, key: v.key || null, finished, stale, refusing, capacity, pairs }, 200, h);
+  // UTC days (D1's): this one or the one before
+  const utcToday = dayOfNum(utcDayNum(now));
+  const withinUtc = (n) => { const d = dayOfNum(n); return !!d && daysBetween(utcToday, d) >= 0 && daysBetween(utcToday, d) <= COMPUTE_DAYS; };
+  const failed = withinUtc(row && row.cf) || (Number.isSafeInteger(row && row.lease) && row.lease <= now - LEASE_MS);
+  const compute = failed ? "failed" : withinUtc(row && row.fd ? Math.floor(row.fd / 10) : null) ? "deferred" : "ok";
+  return json({ ok: true, window: "08-21 KST", sending: !!v.key, key: v.key || null, finished, stale, refusing, capacity, pairs, compute, plan: L.plan }, 200, h);
 }
 
 async function route(request, env, now) {

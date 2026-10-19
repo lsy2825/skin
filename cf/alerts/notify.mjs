@@ -1,22 +1,25 @@
 // Price alerts, factory side (가격 알림 — 공장 쪽): node cf/alerts/notify.mjs [app/data.json]
 // Run by .github/workflows/weekly.yml in its own job ('price_alerts', a fresh runner after the deploy job deployed the app
 // in that run, or on the daily schedule's 'nothing to build' days with the copy already deployed) and by
-// .github/workflows/alerts-catchup.yml every hour on main's deployed copy, with ALERTS_CATCHUP=1 (9th review: alerts within
-// 2 hours of new prices — a user decision of 2026-10-16). Both run the CODE of ONE reviewed commit named by the repository Variable
+// .github/workflows/alerts-catchup.yml every 30 minutes on main's deployed copy, with ALERTS_CATCHUP=1 (9th review: alerts
+// within 2 hours of new prices — a user decision of 2026-10-16; 10th review: every 30 minutes). Both run the CODE of ONE reviewed commit named by the repository Variable
 // ALERTS_CODE_SHA (a human sets it when alerts code is merged; the factory's GITHUB_TOKEN cannot change variables) and read
 // only the DATA: an app/data.json used only when its sha256 is the one its data-meta.json names and the public app serves
 // that same data-meta.json — what the phones were given — parsed as JSON, never run. Only those jobs get ALERTS_URL and
 // ALERTS_SECRET; the factory job (tools/factory.sh, scrapers, pip packages) never runs on their machine. Plain node, no
 // npm packages.
 //   1. POST /v1/internal/start     fp = this data's FINGERPRINT (fingerprint() below: every number a digest can be computed
-//      from — not the file's bytes, not meta timestamps), and catchup: true from the catch-up. The Worker answers
-//        done      these prices were finished today (or before 06:00 KST — a catch-up: 07:00 — any day): a code-only
-//                  rebuild, a re-run or a catch-up with nothing new stops here — one D1 request, ≤ 4 rows read, nothing
+//      from — not the file's bytes, not meta timestamps), nonce = 13 random hex characters drawn once per run (a start sent
+//      again after a lost answer gets the same answer — 10th review), and catchup: true from the catch-up. The Worker answers
+//        done      these prices were finished today (or before 06:00 KST — a catch-up: 08:00 — any day): a code-only
+//                  rebuild, a re-run or a catch-up with nothing new stops here — one D1 request, ≤ 12 rows read, nothing
 //                  written
 //        busy      another run is computing right now (one at a time) — a ::notice; the next catch-up run checks again
-//        deferred  the D1 day's computations (the Worker's COMPUTES_PER_DAY) are used up — a ::warning and `deferred=true`
-//                  in $GITHUB_OUTPUT (weekly.yml's alert job sends one Telegram line); the first catch-up after 09:00 KST
-//                  computes it
+//        deferred  why 'cap': the D1 day's computations (the Worker's COMPUTES_PER_DAY) are used up (until 09:00 KST); why
+//                  'reserve': its last one is kept for the 06:00 KST run (until 06:00 KST) — a ::warning, and when the
+//                  Worker says first: true (the first factory run deferred that D1 day) `deferred=true` and `until=…` in
+//                  $GITHUB_OUTPUT (weekly.yml's alert job sends ONE Telegram line a D1 day); why 'edge': the last 15 minutes
+//                  before 09:00 KST start nothing (a ::notice; the next catch-up computes)
 //        compute   go on (the Worker took a lease, freed by the finish):
 //   2. POST /v1/internal/keys      the compare keys of this data.json (ascending, each once): the Worker keeps them as one
 //      row (rewritten only when they change) and ranks only pairs of these keys in (3) — a key the data does not have can
@@ -32,9 +35,11 @@
 //      under PAIR_CAP: one left out waits for a row the finish frees — {skipped});   6. POST /v1/internal/finish   the
 //      Worker marks who has news, notes the fingerprint and frees the lease
 // Prints counts only (never keys, ids or endpoints). A failure prints a ::warning and exits 0: alerts never fail the price
-// build. News waits in D1 until a finish consumes it, and the next alerts-catchup run (every hour) computes again once the
-// lease (15 minutes) is free.
-import { createHash } from "node:crypto";
+// build. News waits in D1 until a finish consumes it, and the next alerts-catchup run (every 30 minutes) computes again once
+// the lease (15 minutes) runs out — a retry of the same prices is not counted, once a D1 day (the Worker's start). A failure
+// AFTER the Worker answered compute also writes `failed=true` to $GITHUB_OUTPUT (weekly.yml's alert job sends a Telegram line;
+// a catch-up's shows on GET /health "compute": "failed", which the daily monitor warns about).
+import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -178,11 +183,12 @@ async function call(f, url, secret, path, body, { tries = 3, timeoutMs = 20000, 
   throw err;
 }
 
-// → {go: 'done' | 'busy' | 'deferred'} or, after a computation, {go: 'compute', pairs, entries, weekly, expiring, cleared,
-// changed}; {skipped: 'shape'} when the Worker would refuse this data.json. catchup: the hourly catch-up's run (the Worker
-// leaves the day's computation of unchanged prices to the 06:00 factory run until 07:00 KST — src/worker.js
-// CATCHUP_ROLL_HOUR)
-export async function notify({ data, today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs, catchup = false }) {
+// → {go: 'done' | 'busy'}, {go: 'deferred', why, until, first} or, after a computation, {go: 'compute', pairs, entries, weekly,
+// expiring, cleared, changed}; {skipped: 'shape'} when the Worker would refuse this data.json. catchup: the catch-up's run
+// (the Worker leaves the day's computation of unchanged prices to the 06:00 factory run until 08:00 KST — src/worker.js
+// CATCHUP_ROLL_HOUR). An error thrown after the Worker answered compute carries afterStart: true (the CLI's failed=true).
+// nonce: drawn here once per run unless given (tests)
+export async function notify({ data, today = kstDay(Date.now()), url, secret, fetch: f = fetch, log = console.log, waitMs, catchup = false, nonce = randomBytes(7).toString("hex").slice(0, 13) }) {
   checkUrl(url);
   url = url.replace(/\/+$/, "");
   // a data.json the Worker would refuse: say so and call nothing — no finish, so GET /health "finished" stops advancing and
@@ -195,20 +201,36 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   }
   const opt = waitMs === undefined ? {} : { waitMs };
   const fp = fingerprint(data);
-  const g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, catchup: true } : { fp }, opt);
+  // the same body on every try of call(): a start D1 committed whose answer was lost gets this run's own lease back
+  const g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, nonce, catchup: true } : { fp, nonce }, opt);
   if (g && g.go === "done") {
     log("price alerts: these prices were already computed (same fingerprint) — nothing to do");
     return { go: "done" };
   }
   if (g && g.go === "busy") {
-    log("::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again");
+    log("::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run (every 30 minutes) checks these prices again");
     return { go: "busy" };
   }
   if (g && g.go === "deferred") {
-    log("::warning title=price alerts::today's full computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST");
-    return { go: "deferred" };
+    const why = ["cap", "reserve", "edge"].includes(g.why) ? g.why : "cap", until = g.until === "06:00" ? "06:00" : "09:00";
+    if (why === "edge") log("::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST (a new D1 day) — the next alerts-catchup run computes these prices");
+    else if (why === "reserve") log("::warning title=price alerts::the D1 day's last computation (the Worker's COMPUTES_PER_DAY) is kept for the 06:00 KST run — these prices are computed from 06:00 KST");
+    else log("::warning title=price alerts::this D1 day's computations (the Worker's COMPUTES_PER_DAY, the D1 write budget) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST");
+    return { go: "deferred", why, until, first: why !== "edge" && g.first !== false };
   }
   if (!g || g.go !== "compute" || !Number.isSafeInteger(g.lease)) throw new Error("/v1/internal/start answered no known decision");
+  try {
+    return await compute({ data, today, url, secret, f, log, opt, fp, lease: g.lease });
+  } catch (e) {
+    // the Worker counted this computation and holds its lease: say so (CLI failed=true; the next catch-up retries these
+    // prices once the lease runs out, not counted once a D1 day)
+    if (e && typeof e === "object") e.afterStart = true;
+    throw e;
+  }
+}
+
+// keys → watched → digest → finish, after start answered compute
+async function compute({ data, today, url, secret, f, log, opt, fp, lease }) {
   const run = `${data.meta.updated}|${today}`;
   // the keys this data.json has, sent first: the Worker ranks only pairs of these keys (a key it cannot compute never takes
   // a place in the list); a rule naming another key is stored and waits. Ascending, each once (rules.js keySetJson)
@@ -242,7 +264,7 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   }
   // finish even with no pairs: it also clears yesterday's marks, records the day for GET /health "finished" and the
   // fingerprint for start, and frees the lease
-  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, fp, lease: g.lease }, opt);
+  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, fp, lease }, opt);
   const ending = entries.filter((e) => e.e != null).length;
   const skipped = watched.length - pairs.length;
   log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring (${done.cleared} stale expiring cleared)`);
@@ -269,11 +291,14 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     checkUrl(url);
     // ALERTS_CATCHUP=1: alerts-catchup.yml's run (anything else: a factory run)
     const r = await notify({ data: readData(), url, secret, catchup: process.env.ALERTS_CATCHUP === "1" });
-    // a deferred computation: the workflow's alert job sends one Telegram line (weekly.yml price_alerts outputs.deferred)
-    if (r.go === "deferred" && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "deferred=true\n");
+    // the first deferred factory run of a D1 day: the workflow's alert job sends one Telegram line (weekly.yml price_alerts
+    // outputs.deferred / until)
+    if (r.go === "deferred" && r.first && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `deferred=true\nuntil=${r.until === "06:00" ? "06:00" : "09:00"}\n`);
   })().catch((e) => {
-    // never fail the price build; the message is a path + status or a network error (no secret, no ids)
-    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next alerts-catchup run (every hour) computes again`);
+    // never fail the price build; the message is a path + status or a network error (no secret, no ids). A failure after
+    // the Worker answered compute: failed=true for the workflow's alert job (weekly.yml price_alerts outputs.failed)
+    console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — the next alerts-catchup run (every 30 minutes) computes again`);
+    if (e && e.afterStart === true && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "failed=true\n");
     process.exit(0);
   });
 }

@@ -53,10 +53,13 @@ export const DELETE_SUB_RETURNING = "DELETE FROM subs WHERE id = ?1 RETURNING id
 // in FINISH), so while fin is empty it is the day of the first subscription (GET /health "stale" when that is more than
 // STALE_DAYS old: the factory → Worker link never worked); ref = the last KST day (yyyymmdd) a send run found phones that
 // took our pushes refusing our VAPID token at a push service that took nothing else (STAT_REFUSING; GET /health
-// "refusing"); cap = the last KST day the factory's watched list was cut at PAIR_CAP (STAT_CAPPED; GET /health "pairs")
+// "refusing"); cap = the last KST day the factory's watched list was cut at PAIR_CAP (STAT_CAPPED; GET /health "pairs");
+// fd / cf / lease = the last deferral, the last failed computation (UTC days) and a lease left (STAT_DEFERRED, STAT_CFAIL,
+// TAKE_LEASE; GET /health "compute")
 export const HEALTH = `SELECT (SELECT n FROM stat WHERE k = 'subs') AS subs, (SELECT n FROM stat WHERE k = 'finish') AS fin,
   (SELECT substr(min(k), 5) FROM stat WHERE k >= 'new:' AND k < 'new;') AS first_new, (SELECT n FROM stat WHERE k = 'refusing') AS ref,
-  (SELECT n FROM stat WHERE k = 'capped') AS cap`;
+  (SELECT n FROM stat WHERE k = 'capped') AS cap, (SELECT n FROM stat WHERE k = 'fd') AS fd, (SELECT n FROM stat WHERE k = 'cfail') AS cf,
+  (SELECT n FROM stat WHERE k = 'lease') AS lease`;
 
 // ?1 page size ?2 offset ?3 today − PAIR_KEEP_DAYS (the Worker's clock). Pairs only — never ids, endpoints or numbers (they
 // would leave Cloudflare for the runner). The factory digests every pair it gets, and every digested pair is D1 rows written
@@ -239,24 +242,57 @@ export const STAT_FINISH = "INSERT INTO stat (k, n) VALUES ('finish', ?1) ON CON
 export const STAT_DATA = "INSERT INTO stat (k, n) VALUES ('data', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 export const CLEAR_DATA = "DELETE FROM stat WHERE k = 'data'";
 // ---- the start of a factory computation (POST /v1/internal/start, src/worker.js start — 9th review: every run that
-// deployed data, and the hourly catch-up, asks first; only an answer 'compute' goes on to keys, watched, digest, finish).
-// ?1 today (KST yyyymmdd) ?2 the fingerprint's tag ?3 now (epoch ms) ?4 the lease (ms) ?5 the UTC day (yyyymmdd: D1's day).
-// today = the last finish was today; same = from these same prices; busy = a computation started less than the lease ago
-// and has not finished (stat 'lease' = its start, epoch ms; FINISH deletes its own); computes = how many computations
-// started this UTC day (stat 'fc' = UTC day × 100 + count). Four stat rows read by primary key, nothing written.
+// deployed data, and the catch-up every 30 minutes, asks first; only an answer 'compute' goes on to keys, watched, digest,
+// finish). ?1 today (KST yyyymmdd) ?2 the fingerprint's tag ?3 now (epoch ms) ?4 the lease (ms) ?5 the UTC day (yyyymmdd:
+// D1's day) ?6 the nonce (52 bits as a number; NULL when the run sent none) ?7 the start of this UTC day (epoch ms).
+//   today     the last finish was today          same     from these same prices
+//   busy      a computation started less than the lease ago and has not finished (stat 'lease' = its start, epoch ms;
+//             FINISH deletes its own)
+//   lease     that start (the token a lost answer gets again)
+//   mine      busy, and the lease was taken with this nonce (stat 'ln'): this run's own start, sent again
+//   stale     a lease is there and ran out: a computation that started and never finished
+//   retry     stale, it started this UTC day, it was for these same prices (stat 'lf') and no retry was taken this UTC day
+//             (stat 'fr'): taken without being counted (src/worker.js start)
+//   computes  computations counted this UTC day (stat 'fc' = UTC day × 100 + count)
+//   told      a factory run was already told it was deferred this UTC day (stat 'fd' = UTC day × 10 + 1; × 10 + 0 when
+//             only a catch-up was)
+// Stat rows read by primary key only, nothing written.
 export const START_STATE = `SELECT coalesce((SELECT n FROM stat WHERE k = 'finish') = ?1, 0) AS today,
   coalesce((SELECT n FROM stat WHERE k = 'data') = ?2, 0) AS same,
   coalesce((SELECT n FROM stat WHERE k = 'lease') > ?3 - ?4, 0) AS busy,
-  coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?5), 0) AS computes`;
+  (SELECT n FROM stat WHERE k = 'lease') AS lease,
+  coalesce((SELECT n FROM stat WHERE k = 'lease') > ?3 - ?4 AND (SELECT n FROM stat WHERE k = 'ln') = ?6, 0) AS mine,
+  coalesce((SELECT n FROM stat WHERE k = 'lease') <= ?3 - ?4, 0) AS stale,
+  coalesce((SELECT n FROM stat WHERE k = 'lease') <= ?3 - ?4 AND (SELECT n FROM stat WHERE k = 'lease') >= ?7
+    AND (SELECT n FROM stat WHERE k = 'lf') = ?2 AND coalesce((SELECT n FROM stat WHERE k = 'fr'), 0) <> ?5, 0) AS retry,
+  coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?5), 0) AS computes,
+  coalesce((SELECT n % 10 FROM stat WHERE k = 'fd' AND n / 10 = ?5), 0) AS told`;
 // one batch (D1 runs a batch as one transaction): take the lease ?1 (now, epoch ms — the token FINISH gives back) only while
-// none is live (?2 the lease in ms) and fewer than ?4 (COMPUTES_PER_DAY) computations started this UTC day ?3; then count
-// it — only when the lease row now holds this token. No row back from TAKE_LEASE = another run took it in between (busy).
-// 1–2 rows written each (the row; a new row also its primary-key entry).
+// none is live (?2 the lease in ms) and — unless ?5 = 1 (a retry, src/worker.js start) — fewer than ?4 computations were
+// counted this UTC day ?3 (?4 = COMPUTES_PER_DAY, or one less before 21:00 UTC). Then, only when the lease row now holds
+// this token: the run's nonce ('ln') and fingerprint tag ('lf'), and either the count or the retry mark. No row back from
+// TAKE_LEASE = another run took it in between (busy). Each row: 1 written, 2 the first time (its primary-key entry).
 export const TAKE_LEASE = `INSERT INTO stat (k, n) SELECT 'lease', ?1 WHERE coalesce((SELECT n FROM stat WHERE k = 'lease'), 0) <= ?1 - ?2
-    AND coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?3), 0) < ?4
+    AND (?5 = 1 OR coalesce((SELECT n % 100 FROM stat WHERE k = 'fc' AND n / 100 = ?3), 0) < ?4)
   ON CONFLICT(k) DO UPDATE SET n = excluded.n RETURNING n`;
+// ?1 the lease token ?2 the nonce (−1: none sent — never equal to a nonce, which is ≥ 0) ?3 the fingerprint's tag
+export const LEASE_OF = `INSERT INTO stat (k, n) SELECT v.k, v.n FROM (SELECT 'ln' AS k, ?2 AS n UNION ALL SELECT 'lf', ?3) v
+    WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n`;
 export const COUNT_COMPUTE = `INSERT INTO stat (k, n) SELECT 'fc', ?2 * 100 + 1 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
   ON CONFLICT(k) DO UPDATE SET n = CASE WHEN n / 100 = excluded.n / 100 THEN n + 1 ELSE excluded.n END`;
+// ?1 the lease token ?2 the UTC day: this UTC day's one uncounted retry is taken
+export const MARK_RETRY = `INSERT INTO stat (k, n) SELECT 'fr', ?2 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n`;
+// ?1 the lease token ?2 the UTC day: the lease this start replaced had run out — a computation that did not finish (GET
+// /health "compute": "failed" that UTC day and the next; the monitor warns)
+export const STAT_CFAIL = `INSERT INTO stat (k, n) SELECT 'cfail', ?2 WHERE (SELECT n FROM stat WHERE k = 'lease') = ?1
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n`;
+// ?1 the UTC day ?2 1 = a factory run was deferred, 0 = a catch-up: stat 'fd' = UTC day × 10 + (1 once a factory run was
+// told that UTC day). Written only when it changes (≤ 2 rows a UTC day). GET /health "compute": "deferred" that UTC day and
+// the next; start's `told` (one Telegram line a D1 day)
+export const STAT_DEFERRED = `INSERT INTO stat (k, n) VALUES ('fd', ?1 * 10 + ?2)
+  ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n / 10 <> ?1 OR (n % 10 = 0 AND ?2 = 1)`;
 // ?1 the lease token the start gave this computation: FINISH frees it (a lease another run took after it expired stays)
 export const FREE_LEASE = "DELETE FROM stat WHERE k = 'lease' AND n = ?1";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
