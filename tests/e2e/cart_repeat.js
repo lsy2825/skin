@@ -323,6 +323,8 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
   const vswQ = () => p.locator('li.qrow .qbody > .visit');                                  // the switch above an opened quote
   const lineOf = async (b) => ((await quote(b)) || { lines: [] }).lines[0];
   const ovBtn = () => p.locator('.ci button', { hasText: '지점별로 바꾼 옵션' });
+  // the '일부만 되는 곳 N곳 보기 / 접기' toggle: the shared '더 보기' button (button.morelist, hierarchy audit 8) with aria-expanded
+  const partBtn = (t = '일부만 되는 곳') => p.locator('button.morelist[aria-expanded]', { hasText: t });
   const qIdx = (b) => p.$$eval('li.qrow', (lis, nm) => lis.findIndex((li) => { const s = li.querySelector('.rank .b span:last-child'); return s && s.textContent === nm; }), bname(b));
   const swH = async (loc) => { const bx = (await loc.count()) ? await loc.first().boundingBox() : null; return bx ? Math.round(bx.height) : 0; };   // the switch's touch height
   const notesTxt = () => p.evaluate(() => JSON.parse(localStorage.getItem('pc:notes') || '[]').map((n) => n.text));
@@ -363,8 +365,12 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
         await p.waitForTimeout(500);
         q = await quote(b); ln = q && q.lines[0];
         ok('G3 켬: 재방문 가격은 첫 1회만 — 재방문가 + 2 × 일반가', !!ln && ln.total === won(f + 2 * g) && ln.total !== won(3 * f), ln ? `${ln.total} · 기대 ${won(f + 2 * g)}` : '(견적 없음)');
-        ok('G3a 목록을 옮기지 않으면 \'일부만 되는 곳\'을 열지 않고 옮김 알림도 없음', (await p.locator('button.more-link', { hasText: '일부만 되는 곳 접기' }).count()) === 0 && !(await text('#toast')).includes('옮겼어요'), await text('#toast'));
-        ok('G3b 견적 줄: 재방문 가격 이름 + \'재방문만\' 배지 + \'2회째부터 <일반가 이름>\'', !!ln && ln.m.startsWith(rvName) && ln.m.includes('재방문만') && ln.m.includes(`2회째부터 ${plName}`) && !ln.m.includes(REPEAT_TXT), ln ? ln.m.slice(0, 220) : '');
+        // one item: no clinic has only part of it, so there is no '일부만 되는 곳' to open — that the list stays closed when a clinic
+        // does not move is G14c's (a 2-item cart that has the list)
+        ok('G3a 시술 1개 견적: 켜도 목록을 옮기지 않아 옮김 알림 없음(\'일부만 되는 곳\' 목록 자체가 없음 — 닫힌 채인지는 G14c)', (await partBtn().count()) === 0 && !(await text('#toast')).includes('옮겼어요'), await text('#toast'));
+        // the clinic's product names fold into the line's '자세히' (hierarchy audit 48): the badge and how the total was made stay in view
+        ok('G3b 견적 줄: 보이는 줄에 \'재방문만\' 배지와 \'첫 회 <재방문가> + 2회 × <일반가>\', 자세히에 재방문 가격 이름 + \'2회째부터 <일반가 이름>\'', !!ln && ln.m.includes('재방문만') && ln.m.includes(`첫 회 ${won(f)} + 2회 × ${won(g)}`)
+          && ln.more.startsWith(rvName) && ln.more.includes(`2회째부터 ${plName}`) && !ln.all.includes(REPEAT_TXT), ln ? `${ln.m.slice(0, 160)} | ${ln.more.slice(0, 120)}` : '');
         ok(`G3c 경고 '${RV_WARN.slice(0, 30)}…' 와 '${LATER}'`, !!q && q.warns.some((w) => w.startsWith(RV_WARN)) && q.warns.some((w) => w.startsWith(LATER)), q ? q.warns.join(' / ') : '');
         ok(`G3d 스위치 켜짐, 안내 '${RV_DO} 계산해요'(켜면 없이), 이 기기에 저장(pc:visited)`, (await vswQ().locator('input').isChecked()) && (await vswQ().innerText()).includes(`${RV_DO} 계산해요`)
           && !(await vswQ().innerText()).includes('켜면') && JSON.stringify(await visited()) === JSON.stringify([bkey(b)]), `${await vswQ().innerText()} | ${JSON.stringify(await visited())}`);
@@ -409,9 +415,9 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       for (const [nm, item] of [['G6b 다녀옴 켬', { t: 'k', k, q: 3, ov: { [bkey(b)]: rvName } }], ['G6c 이 시술만 특가 빼기 + 다녀옴 켬', { t: 'k', k, q: 3, sp: false, ov: { [bkey(b)]: rvName } }]]) {
         await seed([item], { ...where(b), visited: [bkey(b)] });
         const q_ = await quote(b); l = q_ && q_.lines[0];
-        ok(`${nm}: 직접 고른 재방문 가격은 첫 1회만(재방문가 + 2 × 일반가), '지점별로 바꾼 옵션 1곳', 경고, 스위치 켜짐`, !!l && l.total === won(fo + 2 * g) && l.m.startsWith(rvName)
+        ok(`${nm}: 직접 고른 재방문 가격은 첫 1회만(재방문가 + 2 × 일반가), '지점별로 바꾼 옵션 1곳', 경고, 스위치 켜짐`, !!l && l.total === won(fo + 2 * g) && l.more.startsWith(rvName) && l.m.includes('재방문만') && l.m.includes('직접 고름')
           && (await ovBtn().count()) === 1 && (await ovBtn().innerText()).includes('1곳') && q_.warns.some((w) => w.startsWith(RV_WARN)) && (await vswQ().locator('input').isChecked()),
-          `${l ? l.total : '(견적 없음)'} · 기대 ${won(fo + 2 * g)} · 버튼 ${await ovBtn().count()}`);
+          `${l ? l.total : '(견적 없음)'} · 기대 ${won(fo + 2 * g)} · 버튼 ${await ovBtn().count()} | ${l ? `${l.m.slice(0, 80)} | ${l.more.slice(0, 60)}` : ''}`);
       }
       // G15: a 내 견적 합계 alert made before the clinic was marked: turning the switch is not a price change — no notice on the next
       // start (its base is the new total), while a real drop below its base still notices
@@ -440,6 +446,50 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
           const nt = await text('#main .card .note');
           ok('G16b 받는 쪽(같은 병원을 다녀옴으로 켠 기기)도 보낸 때와 같은 기준: \'같은 가격이에요\'', nt.includes('같은 가격이에요') && nt.includes(won(lowOff)), nt);
         } }
+      // G19: '받았어요 · 기록' in the quote of a clinic not marked yet (user decision 2026-10-19): the records are saved first, then
+      // the toast asks whether to turn '이 병원에 다녀왔어요' on (켜기 / 아니요). 켜기 does what the quote's switch does (stored, the
+      // 내 견적 합계 alert takes the new total as its base, undo); 아니요 changes nothing; a clinic marked already is not asked
+      const recs = () => p.evaluate(() => JSON.parse(localStorage.getItem('pc:recs') || '[]'));
+      const recBtn = () => p.locator('li.qrow .qbody button', { hasText: '받았어요 · 기록' }), tBtn = (t) => p.locator('#toast.on button', { hasText: t });
+      const ASK_V = `'${VISIT}'를 켤까요?`;
+      await seed([{ t: 'k', k, q: 3 }], { ...where(b), alerts: [{ id: 'cd2', created: '2026-10-01', type: 'cartdrop', cart: '시험 견적', base: lowOff, target: null }], notes: [] });
+      await quote(b);
+      if (await tap(recBtn(), 'G19 받았어요 · 기록')) {
+        await p.waitForTimeout(300);
+        const tt = await text('#toast'), rs = await recs();
+        ok(`G19 기록하면 먼저 저장하고(이 지점 1개), 알림 한 줄 '${ASK_V}' + 켜기·아니요`, rs.length === 1 && rs[0].br === bkey(b) && tt.includes('기록했어요') && tt.includes(ASK_V)
+          && (await tBtn('켜기').count()) === 1 && (await tBtn('아니요').count()) === 1 && (await visited()).length === 0, `${tt} | 기록 ${rs.length}`);
+        const tb = await p.locator('#toast').boundingBox().catch(() => null), bs = await p.$$eval('#toast.on button', (xs) => xs.map((x) => { const r = x.getBoundingClientRect(); return [r.left, r.right, r.height]; }));
+        ok('G19e 묻는 알림: 켜기·아니요 둘 다 알림 상자 안·화면 안(잘리지 않음), 누르는 곳 24px 이상', !!tb && bs.length === 2 && tb.x >= 0 && tb.x + tb.width <= p.viewportSize().width && bs.every(([l, r, hh]) => l >= tb.x && r <= tb.x + tb.width + 0.5 && hh >= 24),
+          tb ? `상자 ${Math.round(tb.x)}~${Math.round(tb.x + tb.width)} · 버튼 ${bs.map(([l, r, hh]) => `${Math.round(l)}~${Math.round(r)}/${Math.round(hh)}px`).join(', ')}` : '(없음)');
+        if (await tap(tBtn('켜기'), 'G19b 켜기')) {
+          await p.waitForTimeout(500);
+          const tt2 = await text('#toast'), undo = await tBtn('되돌리기').count();
+          const lowOn = +((await text('.cartsum .hp')).match(/[\d,]+원/) || ['0'])[0].replace(/[^\d]/g, '');
+          const al = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]')[0]);
+          const l19 = await lineOf(b);
+          ok('G19b 켜기 = 견적 스위치: 저장, 스위치 켜짐, 재방문가 + 2 × 일반가, 합계 알림 기준은 새 합계, 알림 \'…켰어요\' + 되돌리기', JSON.stringify(await visited()) === JSON.stringify([bkey(b)]) && (await vswQ().locator('input').isChecked())
+            && !!l19 && l19.total === won(f + 2 * g) && !!al && al.base === lowOn && lowOn < lowOff && tt2.includes(`'${VISIT}'를 켰어요`) && undo === 1,
+            `${l19 ? l19.total : '(견적 없음)'} · 기준 ${al && al.base} · 켬 ${lowOn} · 끔 ${lowOff} | ${tt2}`);
+          await p.waitForTimeout(6500);   // that toast's 6 s
+          if (await tap(recBtn(), 'G19c 받았어요 · 기록')) {
+            await p.waitForTimeout(300);
+            ok('G19c 다녀온 병원으로 켠 뒤 다시 기록: 묻지 않음(버튼 없는 알림), 기록은 2개', !(await text('#toast')).includes(ASK_V) && (await text('#toast')).includes('기록했어요') && (await p.locator('#toast.on button').count()) === 0 && (await recs()).length === 2,
+              await text('#toast'));
+          }
+        }
+      }
+      await seed([{ t: 'k', k, q: 3 }], where(b));
+      await quote(b);
+      if (await tap(recBtn(), 'G19d 받았어요 · 기록')) {
+        await p.waitForTimeout(300);
+        if (await tap(tBtn('아니요'), 'G19d 아니요')) {
+          await p.waitForTimeout(400);
+          const l19 = await lineOf(b);
+          ok('G19d 아니요: 다녀옴은 그대로 꺼짐(3 × 일반가), 기록은 남고 알림은 닫힘', (await visited()).length === 0 && (await recs()).length === 1 && !(await vswQ().locator('input').isChecked())
+            && !!l19 && l19.total === won(3 * g) && (await p.locator('#toast.on').count()) === 0, `${l19 ? l19.total : '(견적 없음)'} · 기록 ${(await recs()).length}`);
+        }
+      }
       // G7: a name only this clinic sells, at a first-visit price only (쁨 천안 on 2026-10-19 has 8): with the revisit item, not
       // visited both are priced; visited → its revisit price in, the first-visit one out (no price there: '일부만 되는 곳')
       const fvName = names.find((xs) => xs[0].r[0] === b && xs.every((x) => firstTag(x.r) && cls(x.r) === 'once'));
@@ -530,6 +580,62 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
           && (r[5] !== 2 || st_.includes('한정가(기간·수량·첫 방문·재방문 등 조건)')) && st_.includes('다시 오는 손님만') && !st_.includes('재방문도 되는지 확인') && !st_.includes(DONE), st_.slice(0, 200));
         await p.keyboard.press('Escape'); await p.waitForTimeout(200);
       }
+      // G10f: a revisit 체험가 ('[재진] 1회 체험', user decision 2026-10-19) is priced only at a clinic marked visited AND for a
+      // treatment not had before: marked, the item has '전에 이 시술을 받아 봤어요'; on → no price, the clinic's switch stays on and
+      // says why; off → its price again. Had before and not marked: turning the clinic on changes nothing, so no clinic switch
+      if (r[5] !== 1) skip('G10f', `${n}: 체험가가 아닌 재방문 가격`);
+      else {
+        await seed([{ t: 'r', n, br: bkey(b), p: f, q: 1, ov: {} }], { visited: [bkey(b)] });
+        const dsw = p.locator('.ci .cdone label.switch', { hasText: DONE }), vsw = p.locator(`.ci .visit[data-vb="${b}"]`);
+        ok(`G10f 다녀옴 켬: 그 가격, 담은 시술 줄에 '${DONE}'(꺼짐)`, (await text('.ci .cp')).includes(won(f)) && (await dsw.count()) === 1 && !(await dsw.locator('input').isChecked()), `${await text('.ci .cp')} | ${await text('.ci')}`);
+        if (await tap(dsw, 'G10g 받아 봤어요 스위치')) {
+          await p.waitForTimeout(500);
+          const done = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts'))[0].items[0].done);
+          ok('G10g 받아 봤어요 켬: 재방문 체험가는 빠져 \'가능한 지점 없음\', 다녀왔어요 스위치는 켜진 채 \'전에 받아 본 시술이라 계산에서 뺐어요\', 저장(done)', (await text('.ci .cp')).includes('가능한 지점 없음') && !(await text('.ci .cp')).includes(won(f))
+            && (await vsw.count()) === 1 && (await vsw.locator('input').isChecked()) && (await vsw.innerText()).includes('전에 받아 본 시술이라 계산에서 뺐어요') && done === true && JSON.stringify(await visited()) === JSON.stringify([bkey(b)]),
+            `${await text('.ci .cp')} | ${(await vsw.count()) ? await vsw.innerText() : '(스위치 없음)'} | done ${done}`);
+          await tap(dsw, 'G10h 받아 봤어요 스위치'); await p.waitForTimeout(500);
+          ok('G10h 받아 봤어요 끄면 다시 그 가격(다녀옴은 켜진 채)', (await text('.ci .cp')).includes(won(f)) && (await vsw.locator('input').isChecked()), await text('.ci .cp'));
+        }
+        await seed([{ t: 'r', n, br: bkey(b), p: f, q: 1, ov: {}, done: true }]);
+        ok('G10i 받아 봤어요 켬 + 다녀옴 꺼짐: 가능한 지점 없음, 켜도 바뀌는 게 없어 다녀왔어요 스위치 없음(받아 봤어요는 켜진 채)', (await text('.ci .cp')).includes('가능한 지점 없음') && (await vsw.count()) === 0
+          && (await dsw.count()) === 1 && (await dsw.locator('input').isChecked()), await text('.ci'));
+      }
+    }
+    // G10j: a key whose only price at a clinic is a revisit 체험가 (볼링크 '[재진] 1회 체험' at 데이뷰 인천구월점 on 2026-10-19), with a
+    // second key the clinic sells at plain prices only (so the clinic is in '일부만 되는 곳'): the quote's '이 병원에 다녀왔어요' and the
+    // reason the option can't be picked follow '전에 이 시술을 받아 봤어요' (visitStake, Pricing.canTake) — off: '켜면 재방문 가격은
+    // 넣고…' and '(다녀왔어요를 켜면)'; on: no revisit words, the clinic marked or not (it would stay out), and '(받아 봤어요: 빠짐)'
+    const J = (() => { for (const [key, xs] of byKB) {
+      const [k, bs] = key.split('|'), b = +bs;
+      if (!xs.every((x) => cls(x.r) === 'revisit' && P.isTrial(x.r[5], S[x.r[6]]))) continue;
+      for (const [key2, ys] of byKB) { const [k2, b2] = key2.split('|');
+        if (+b2 === b && k2 !== k && ys.every((y) => cls(y.r) === '')) return { k, b, k2, rv: low(xs).r }; } }
+      return null; })();
+    if (!J) skip('G10j', '한 지점에서 재방문 체험가만 있는 비교 시술 + 그 지점의 일반가 시술 — 이 자료엔 없음');
+    else {
+      const { k, b, k2 } = J, rn = S[J.rv[2]];
+      console.log(`G10j: ${k}(${rn} ${won(price(J.rv))}) + ${k2} @ ${bname(b)}`);
+      const quotePart = async () => {   // the clinic comparison, '일부만 되는 곳' opened, then the quote of b
+        if (await p.locator('.cartsum button[aria-expanded="false"]').count()) { await p.locator('.cartsum button[aria-expanded="false"]').click(); await p.waitForTimeout(400); }
+        const pb = p.locator('button.morelist[aria-expanded="false"]', { hasText: '일부만 되는 곳' });
+        if (await pb.count()) { await pb.first().click(); await p.waitForTimeout(300); }
+        return quote(b);
+      };
+      const optsJ = () => p.$$eval('li.qrow .qline select option', (os, n) => os.filter((o) => o.textContent.startsWith(n)).map((o) => [o.disabled, o.textContent]), rn);
+      const swTxt = async () => ((await vswQ().count()) ? vswQ().innerText() : '');
+      for (const [nm, done, vis, why] of [['G10j 받아 봤어요 꺼짐 · 다녀옴 꺼짐', false, false, '(다녀왔어요를 켜면)'], ['G10k 받아 봤어요 켬 · 다녀옴 꺼짐', true, false, '(받아 봤어요: 빠짐)'],
+        ['G10l 받아 봤어요 켬 · 다녀옴 켬', true, true, '(받아 봤어요: 빠짐)']]) {
+        await seed([{ t: 'k', k, q: 1, ...(done ? { done: true } : {}) }, { t: 'k', k: k2, q: 1 }], { ...where(b), ...(vis ? { visited: [bkey(b)] } : {}) });
+        const q = await quotePart(), sw = await swTxt(), opt = await optsJ();
+        const swOk = done ? !sw.includes('재방문') : sw.includes(`켜면 ${RV_DO}`);
+        ok(`${nm}: 견적 스위치 ${done ? '문구에 재방문 없음(켜도 들어가지 않음)' : `'켜면 ${RV_DO}…'`}, 체험가 옵션은 고를 수 없고 '${why}'`, !!q && swOk && opt.length > 0 && opt.every(([d, t]) => d && t.includes('· 재방문') && t.endsWith(why)),
+          `${q ? '' : '(견적 없음) '}스위치 '${sw.replace(/\s+/g, ' ')}' | ${JSON.stringify(opt).slice(0, 160)}`);
+      }
+      await seed([{ t: 'k', k, q: 1 }, { t: 'k', k: k2, q: 1 }], { ...where(b), visited: [bkey(b)] });
+      const qm = await quotePart(), lm = qm && qm.lines[0];
+      ok('G10m 받아 봤어요 꺼짐 · 다녀옴 켬: 체험가로 계산, 견적 스위치 켜짐 \'재방문 가격은 넣고…\'', !!lm && lm.total === won(price(J.rv)) && (await swTxt()).includes(RV_DO) && !(await swTxt()).includes('켜면')
+        && (await vswQ().locator('input').isChecked()), lm ? `${lm.total} · 기대 ${won(price(J.rv))} | ${(await swTxt()).replace(/\s+/g, ' ')}` : '(견적 없음)');
     }
     // G12: the same name ×2 — one revisit price can't price the 2nd session (round-2 R14: the line is incomplete, no total), so the
     // item has no price either way: the switch stays when on (so it can be turned off), its words say what is missing; by keyboard
@@ -592,14 +698,14 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       await seed([{ t: 'k', k: T.k1, q: 1 }, { t: 'k', k: T.k, q: 1 }], where(B));
       await quote(B);
       const inPart = () => p.evaluate((b) => { const v = document.querySelector(`li.qrow .qbody > .visit[data-vb="${b}"]`); const ul = v && v.closest('ul');
-        return !!ul && !!ul.previousElementSibling && ul.previousElementSibling.matches('button.more-link'); }, B);
+        return !!ul && !!ul.previousElementSibling && ul.previousElementSibling.matches('button.morelist[aria-expanded]'); }, B);
       if (await swQ().count()) {
         await swQ().evaluate((v) => v.scrollIntoView({ block: 'center' })); await p.waitForTimeout(200);
         const y0 = (await swQ().boundingBox()).y, part0 = await inPart();
         await tap(swQ().locator('label.switch'), 'G14 스위치'); await p.waitForTimeout(600);
         const y1 = (await swQ().count()) ? (await swQ().boundingBox()).y : null;
         ok('G14 켜면 \'일부만 되는 곳\'으로 옮겨 그 목록이 열리고, 스위치는 손가락 밑 그대로(±2px), 알림 \'일부만 되는 곳으로 옮겼어요\'', !part0 && (await inPart()) && y1 != null && Math.abs(y1 - y0) <= 2
-          && (await p.locator('button.more-link', { hasText: '일부만 되는 곳 접기' }).count()) === 1 && (await text('#toast')).includes('일부만 되는 곳으로 옮겼어요'), `y ${Math.round(y0)} → ${y1 && Math.round(y1)} · ${await text('#toast')}`);
+          && (await partBtn('일부만 되는 곳 접기').count()) === 1 && (await text('#toast')).includes('일부만 되는 곳으로 옮겼어요'), `y ${Math.round(y0)} → ${y1 && Math.round(y1)} · ${await text('#toast')}`);
         await tap(swQ().locator('label.switch'), 'G14b 스위치'); await p.waitForTimeout(600);
         const y2 = (await swQ().count()) ? (await swQ().boundingBox()).y : null;
         ok('G14b 끄면 \'모두 받을 수 있는 곳\'으로 돌아오고 스위치는 그대로(±2px)', !(await inPart()) && y2 != null && Math.abs(y2 - y0) <= 2 && (await text('#toast')).includes('모두 받을 수 있는 곳으로 옮겼어요'),
@@ -635,7 +741,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       console.log(`G14c: ${kx} + ${ky} @ ${bname(C)}`);
       await seed([{ t: 'k', k: kx, q: 1 }, { t: 'k', k: ky, q: 1 }], where(C));
       await quote(C);
-      const more = p.locator('button.more-link', { hasText: '일부만 되는 곳' });
+      const more = partBtn();
       if (await tap(sw.locator('label.switch'), 'G14c 스위치')) {
         await p.waitForTimeout(500);
         ok('G14c 목록을 옮기지 않으면 \'일부만 되는 곳\'은 닫힌 채, 옮김 알림 없음', (await more.count()) === 1 && (await more.innerText()).includes('보기') && (await sw.locator('input').isChecked())

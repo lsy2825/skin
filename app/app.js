@@ -1070,8 +1070,10 @@
   }
   // a day/time price whose event ends before the chosen visit (r[22]) is not repeated: first session only (user decision 2026-10-16)
   // a revisit price (C #111) is a once price for the one who may take it (Pricing.canTake): never repeated on a guess;
-  // first: the tag '첫 방문' (신규·첫 방문가), not for one who has been to that clinic
-  const asC = (i) => { const c = condClassOf(ROWS[i]); return { i, p: ROWS[i][3], special: isSpecial(ROWS[i]), repeat: c === "repeat" && ROWS[i][22] !== 1, revisit: c === "revisit", first: isFirstVisit(ROWS[i]) }; };
+  // first: the tag '첫 방문' (신규·첫 방문가), not for one who has been to that clinic; trial: a revisit 체험가 ('[재진] 1회 체험 …',
+  // Pricing.isTrial), not for one who had the treatment before either (user decision 2026-10-19)
+  const asC = (i) => { const c = condClassOf(ROWS[i]); return { i, p: ROWS[i][3], special: isSpecial(ROWS[i]), repeat: c === "repeat" && ROWS[i][22] !== 1, revisit: c === "revisit",
+    trial: c === "revisit" && !!Pricing.isTrial && Pricing.isTrial(ROWS[i][5], S[ROWS[i][6]]), first: isFirstVisit(ROWS[i]) }; };
   // '이 병원에 다녀왔어요' (user decision 2026-10-19): the clinics this phone's person has been to, by branch key (bkey: the same
   // clinic whatever this week's file numbers it). Their own history like it.done: never in a shared link or the total it carries.
   let visMemo = null, visAnchor = null;
@@ -1109,8 +1111,8 @@
     return Pricing.lineCost(cands(itemRows(it, b, sp)), cands(itemRows(it, b, false)), it.q || 1, ov);
   }
   // the item has a once price at some branch in view, so '전에 이 시술을 받아 봤어요' changes something (a revisit price is not
-  // "once": that switch has nothing to do with it)
-  const itemHasOnce = (it) => BR.some((x) => branchOk(x.i) && itemRows(it, x.i, true).some((i) => condClassOf(ROWS[i]) === "once"));
+  // "once": that switch has nothing to do with it — except a revisit trial at a clinic marked visited, asC trial)
+  const itemHasOnce = (it) => BR.some((x) => branchOk(x.i) && itemRows(it, x.i, true).some((i) => condClassOf(ROWS[i]) === "once" || (visitedAt(x.i) && asC(i).trial)));
   // what '이 병원에 다녀왔어요' changes at branch b for these items: a revisit price it lets in (rv) or a first-visit one it leaves
   // out (fv), among a line's candidates (with 특가 포함 for the line, as lineAt) or picked for the branch
   function visitStake(items, b) {
@@ -1118,7 +1120,8 @@
     for (const it of items) {
       const oi = ovRow(it, b);
       // (a first-visit price is a once price: with '전에 이 시술을 받아 봤어요' on it is out already)
-      for (const i of [...itemRows(it, b, it.sp ?? st.special), ...(oi == null ? [] : [oi])]) { if (isRevisitRow(ROWS[i])) rv = true; else if (isFirstVisit(ROWS[i]) && !it.done) fv = true; }
+      // (a revisit trial with that switch on stays out once marked too: Pricing.canTake)
+      for (const i of [...itemRows(it, b, it.sp ?? st.special), ...(oi == null ? [] : [oi])]) { if (isRevisitRow(ROWS[i])) { if (Pricing.canTake(asC(i), !!it.done, true)) rv = true; } else if (isFirstVisit(ROWS[i]) && !it.done) fv = true; }
     }
     return { rv, fv };
   }
@@ -1138,6 +1141,7 @@
   // the quote's switch (review 2026-10-19): turned, the clinic may move to the other list, or out of both (its every price of the
   // cart a first-visit one). '일부만 되는 곳' opens only when it moves there, the redraw keeps the switch where the finger was
   // (renderNow, visAnchor: the item line's copy when the clinic left both lists, itemVisitSw) and a toast says where it went
+  // Returns whether it moved (then a toast has said where)
   function flipVisit(x, items, v) {
     const sw = document.querySelector(`#main .visit[data-vb="${x.b}"][data-vw="q"]`);
     visAnchor = sw ? { b: x.b, top: sw.getBoundingClientRect().top } : null;
@@ -1148,12 +1152,13 @@
     render();
     if (now !== was) undoToast(`${bname(x.b)}: ${now === "full" ? "모두 받을 수 있는 곳으로 옮겼어요" : now === "part" ? "일부만 되는 곳으로 옮겼어요" : "견적 비교에서 빠졌어요(담은 시술 줄에서 끌 수 있어요)"}`,
       () => setVisited(x.b, !v));
+    return now !== was;
   }
   // the same switch on a cart line, where it decides whether the item has a price at a clinic at all: there its every price is a
   // revisit one (none until marked — shown while no clinic prices the item, and while marked: with q ≥ 2 it is still a once price,
   // so the words say what is missing) or a first-visit one (none once marked — the clinic may have left the comparison, so its
   // switch stays here). A pick for the clinic (it.ov) counts as one of its prices.
-  const VIS_GONE = "다녀온 병원이라 첫 방문가를 뺐어요";
+  const VIS_GONE = "다녀온 병원이라 첫 방문가를 뺐어요", TRIAL_GONE = "재방문 체험가만 있어요 — 전에 받아 본 시술이라 계산에서 뺐어요";
   function itemVisitSw(it, best) {
     const sp = it.sp ?? st.special, out = [];
     let off = null;
@@ -1161,14 +1166,16 @@
       if (!branchOk(x.i)) continue;
       const oi = ovRow(it, x.i), rs = [...itemRows(it, x.i, sp), ...(oi == null ? [] : [oi])];
       if (!rs.length) continue;
+      // gone: its every revisit price is a trial and the item's '전에 이 시술을 받아 봤어요' is on — marking it lets nothing in
       const on = visitedAt(x.i), rv = rs.every((i) => isRevisitRow(ROWS[i])), fv = !it.done && rs.every((i) => isFirstVisit(ROWS[i]) && !isRevisitRow(ROWS[i]));
-      if (on && (rv || fv)) out.push({ b: x.i, rv, on });
-      else if (!on && rv && !best && !off) off = { b: x.i, rv, on };
+      const gone = rv && !rs.some((i) => Pricing.canTake(asC(i), !!it.done, true));
+      if (on && (rv || fv)) out.push({ b: x.i, rv, on, gone });
+      else if (!on && rv && !gone && !best && !off) off = { b: x.i, rv, on, gone };
     }
     if (!out.length && off) out.push(off);
-    return out.map(({ b, rv, on }) => { const l = on && rv ? lineAt(it, b) : null;
+    return out.map(({ b, rv, on, gone }) => { const l = on && rv && !gone ? lineAt(it, b) : null;
       return h("div", { class: "cdone visit", "data-vb": b, "data-vw": "item" }, switchEl(`${VISIT_SW} · ${bname(b)}`, on, (v) => setVisited(b, v), `${VISIT_SW} · ${bname(b)}`),
-        h("span", { class: "sub" }, !rv ? "첫 방문가만 있어요 — 다녀온 병원이라 계산에서 뺐어요" : !on ? "재방문 가격만 있어요 — 켜면 계산해요" : l && l.incomplete ? incTxt(l) : "재방문 가격으로 계산해요(첫 1회만)")); });
+        h("span", { class: "sub" }, !rv ? "첫 방문가만 있어요 — 다녀온 병원이라 계산에서 뺐어요" : gone ? TRIAL_GONE : !on ? "재방문 가격만 있어요 — 켜면 계산해요" : l && l.incomplete ? incTxt(l) : "재방문 가격으로 계산해요(첫 1회만)")); });
   }
   // a line that keeps a visit day / time price for its sessions (Pricing.lineCost repeat): the words under it
   const REPEAT_TXT = "방문일·시간 조건이 맞을 때 매번 이 가격";
@@ -4849,7 +4856,8 @@
             ok && st.cartAdv ? h("button", { class: "chip mini-chip", type: "button", "aria-pressed": (it.sp ?? st.special) ? "true" : "false", title: "이 시술만 체험가·한정가 포함/제외",
               onclick: () => { it.sp = !(it.sp ?? st.special); saveCarts(); render(); } }, (it.sp ?? st.special) ? "특가 포함" : "특가 빼기") : null),
           // had it before: the once prices (체험가·한정가·첫 방문·1인 1회) are not theirs — shown where the item has one (or it is on).
-          // A revisit price is about the clinic: '이 병원에 다녀왔어요' in the clinic's quote (visitSwitch)
+          // A revisit price is about the clinic: '이 병원에 다녀왔어요' in the clinic's quote (visitSwitch) — a revisit 체험가 is about
+          // both (shown here once its clinic is marked: itemHasOnce)
           ok && (it.done || ((it.sp ?? st.special) && itemHasOnce(it))) ? h("div", { class: "cdone" },
             switchEl("전에 이 시술을 받아 봤어요", !!it.done, (v) => { if (v) it.done = true; else delete it.done; saveCarts(); render(); }),
             it.done ? h("span", { class: "sub" }, "체험가·첫 방문가 같은 1회 가격은 빼고 계산해요") : null) : null,
@@ -4968,7 +4976,7 @@
         // a price the switches leave out (ovDropped) can't be picked: a revisit one until the clinic is marked visited, a first-visit
         // one once it is, a once price with '전에 이 시술을 받아 봤어요' on
         alts.map((i) => { const r = ROWS[i], ss = sessOf(i), c = asC(i), no = !Pricing.canTake(c, !!it.done, vis);
-          const why = !no ? "" : c.revisit ? " (다녀왔어요를 켜면)" : vis && c.first ? " (다녀온 병원: 빠짐)" : " (받아 봤어요: 빠짐)";
+          const why = !no ? "" : c.revisit && !vis && Pricing.canTake(c, !!it.done, true) ? " (다녀왔어요를 켜면)" : vis && c.first ? " (다녀온 병원: 빠짐)" : " (받아 봤어요: 빠짐)";
           return h("option", { value: i, selected: l && l.ov && l.rows[0] === i, disabled: no }, `${S[r[2]]} · ${won(r[3])}${ss > 1 ? (ss >= 99 ? " (이용권)" : ` (${ss}회)`) : ""}${isSpecial(r) ? " · 특가" : ""}${c.revisit ? " · 재방문" : ""}${why}`); }));
       if (!l) {
         // the clinic sells it, at first-visit prices only: marked visited, it says so (not just '없음')
@@ -5391,10 +5399,15 @@
     });
   }
   // a cart quote → records for every line at that branch (today)
+  // '받았어요 · 기록' in a clinic's quote: the records are saved first; then, at a clinic not marked '이 병원에 다녀왔어요' yet,
+  // the same toast asks whether to mark it (user decision 2026-10-19) — '켜기' turns the quote's own switch (flipVisit: the
+  // 내 견적 합계 alerts take the new totals as their base, a move to the other list is said with undo), '아니요' just closes
   function recordQuote(x, items) {
     const add = items.map((it, j) => okL(x.lines[j]) ? { id: uid(), date: today(), n: `${itemLabel(it)}${(it.q || 1) > 1 ? ` ×${it.q}` : ""}`, br: bkey(x.b), p: x.lines[j].total, memo: S[ROWS[x.lines[j].rows[0]][2]], at: Date.now() } : null).filter(Boolean);
     st.recs.push(...add); saveRecs(add);
-    toast(`받은 시술 ${add.length}개를 내정보에 기록했어요`);
+    const said = `받은 시술 ${add.length}개를 내정보에 기록했어요`;
+    if (!add.length || visitedAt(x.b)) { toast(said); return; }
+    actToast(`${said}. '${VISIT_SW}'를 켤까요?`, ["켜기", () => { if (!flipVisit(x, items, true)) undoToast(`${bname(x.b)}: '${VISIT_SW}'를 켰어요`, () => setVisited(x.b, false)); }], ["아니요", () => {}]);
   }
 
   views.me = () => {

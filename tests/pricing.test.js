@@ -418,6 +418,41 @@ test("who may take a price (user decision 2026-10-19): visited (the clinic) deci
   assert.deepEqual(P.forVisitor([], true, true), []);
 });
 
+// a revisit trial ('[재진] 1회 체험 …', user decision 2026-10-19): app.js asC sets trial from Pricing.isTrial(kind, tags)
+const tv = (i, p) => ({ ...rv(i, p), trial: true });
+test("revisit trial (user decision 2026-10-19): a visited clinic AND a treatment not had before; a revisit 한정가 stays as before", () => {
+  // which revisit rows are trials: 체험가 (kind 1) or the tag '1인 1회' — the real rows: 데이뷰 [재진] 1회 체험 (kind 1), 쁨 ★재방문 이벤트★ (kind 2, no tag)
+  assert.equal(P.isTrial(1, ""), true, "'[재진] 1회 체험 …': 체험가");
+  assert.equal(P.isTrial(2, ""), false, "'★재방문 이벤트★ …': 한정가, no tag — a price for coming back, not a first try");
+  assert.equal(P.isTrial(2, "1인 1회"), true); assert.equal(P.isTrial(0, "평일 낮·1인 1회"), true);
+  assert.equal(P.isTrial(2, "평일 낮"), false); assert.equal(P.isTrial(0, "첫 방문"), false);
+  assert.equal(P.isTrial(2, undefined), false); assert.equal(P.isTrial(2, null), false); assert.equal(P.isTrial(undefined, ""), false);
+  // [done, visited] → may take
+  for (const [x, want] of [[tv(6, 166000), { ff: false, tf: false, ft: true, tt: false }], [rv(1, 65000), { ff: false, tf: false, ft: true, tt: true }]])
+    for (const [k, ok] of Object.entries(want)) assert.equal(P.canTake(x, k[0] === "t", k[1] === "t"), ok, `${x.i} done ${k[0]} visited ${k[1]}`);
+  assert.equal(P.canTake({ ...rv(1, 65000), trial: false }, true, true), true, "trial false: as a revisit 한정가");
+  // a trial flag on a row that is not a revisit one changes nothing (done already decides once prices)
+  assert.equal(P.canTake({ ...row(5, 40000, true), trial: true }, false, true), true);
+  assert.equal(P.canTake({ ...row(5, 40000, true), trial: true }, true, false), false);
+  assert.equal(P.canTake({ ...row(3, 110000), trial: true }, true, true), true);
+  // in a line: the trial alone ×1 — priced only for a visited clinic and a treatment not done; ×3 still no firm total (R14)
+  const one = (done, vis, q = 1, more = []) => P.lineCost(P.forVisitor([tv(6, 166000), ...more], done, vis), P.forVisitor(more, done, vis), q, null);
+  assert.equal(one(false, true).total, 166000);
+  assert.equal(one(true, true), null, "visited but had it before: no price");
+  assert.equal(one(false, false), null); assert.equal(one(true, false), null);
+  assert.equal(one(false, true, 3).incomplete, true);
+  // with a regular price there: done falls back to it for every session, not done takes the trial for the first one
+  const reg = [row(3, 200000)];
+  assert.deepEqual(one(false, true, 2, reg).rows, [6, 3]); assert.equal(one(false, true, 2, reg).total, 166000 + 200000);
+  assert.deepEqual(one(true, true, 2, reg).rows, [3]); assert.equal(one(true, true, 2, reg).total, 400000);
+  // picked by hand for the branch (it.ov): the app drops a pick canTake refuses (ovDropped), so the line is the automatic one
+  assert.equal(P.canTake({ ...tv(6, 166000), sess: 1 }, true, true), false);
+  const all = [tv(6, 166000), rv(1, 65000), fv(2, 30000), row(5, 40000, true), row(3, 110000)];
+  assert.deepEqual(P.forVisitor(all, false, true).map((x) => x.i), [6, 1, 5, 3]);
+  assert.deepEqual(P.forVisitor(all, true, true).map((x) => x.i), [1, 3], "visited and done: the revisit 한정가 stays, the trial goes");
+  assert.deepEqual(P.forVisitor(all, true, false).map((x) => x.i), [3]);
+});
+
 test("revisit price in a line: only at a visited clinic, counted once; a visited clinic's first-visit price is left out", () => {
   // C #111's example, X03 국산 얼굴전체 스킨보톡스 ×3 at 쁨 천안 (listed prices): revisit 65,000, regular 110,000
   const c = [rv(1, 65000), row(3, 110000)], reg = [row(3, 110000)];

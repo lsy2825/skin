@@ -149,7 +149,8 @@
   // - "repeat": a visit day / time only — the tags '평일 낮', '시간대', '일요일', or days / hours the site wrote with no tag
   //   ('토요일이벤트'). The visit date (condState) decides whether it applies, and when it does it is the same price every visit.
   // - "revisit": a conditional row (either of the above) only for people coming back to that clinic — isRevisit(name) below. The
-  //   cart uses it only at a branch marked '이 병원에 다녀왔어요' (canTake, user decision 2026-10-19), and then as a once price:
+  //   cart uses it only at a branch marked '이 병원에 다녀왔어요' (canTake, user decision 2026-10-19; a revisit 체험가 also only
+  //   for a treatment not had before — isTrial), and then as a once price:
   //   whether it repeats on every later visit is not written anywhere (no tag, no '매회' words), so on a guess it is never repeated.
   // kind = row field 5, tags = '평일 낮·첫 방문' (field 6), days / hours as in whenLimited, name = the option name (field 2; leave
   // it out and no row is "revisit", as before C #111).
@@ -204,9 +205,15 @@
   //   condClass "revisit" — a special with x.repeat false, so lineCost counts it once) and its first-visit ones (x.first: the tag
   //   '첫 방문', 신규·첫 방문가) are not. Not visited: no revisit price.
   // - done: they had this treatment before (the item's '전에 이 시술을 받아 봤어요') → no once price (체험가·한정가·1인 1회 …), as
-  //   before C #111. It has nothing to do with revisit prices: those follow visited only.
-  const canTake = (x, done, visited) => (x.revisit ? !!visited : !(visited && x.first) && !(done && isOnce(x)));
+  //   before C #111. A revisit price follows visited, and done takes out only a revisit trial (x.trial, isTrial below: '[재진] 1회
+  //   체험 …' — user decision 2026-10-19: a visited clinic and a treatment not had before); a revisit 한정가 stays.
+  const canTake = (x, done, visited) => (x.revisit ? !!visited && !(done && x.trial) : !(visited && x.first) && !(done && isOnce(x)));
   const forVisitor = (list, done, visited) => list.filter((x) => canTake(x, done, visited));
+  // a revisit price that is a first try of the treatment (user decision 2026-10-19), so 'had it before' (done) leaves it out like
+  // any other once price: a 체험가 (kind 1 — '[재진] 1회 체험 …' at 데이뷰 인천구월점, 4 rows on 2026-10-19) or one tagged '1인 1회'.
+  // A revisit 한정가 with no such tag ('★재방문 이벤트★ 국산 얼굴전체 스킨보톡스' at 쁨 천안: a price for coming back, not a
+  // first try) is not one: the clinic alone decides it, as before. kind = row field 5, tags = field 6 ('평일 낮·1인 1회').
+  const isTrial = (kind, tags) => kind === 1 || (typeof tags === "string" && tags.split("·").includes("1인 1회"));
   // a once price counts once; later sessions use the cheapest price that repeats: a regular one, or one whose only condition
   // is the visit day / time (repeat — the visit date filter checks that condition, and it holds on every such visit, so
   // a repeat price alone is q × its price). Whether a once price can be repeated is not known from the clinic page, so with
@@ -361,5 +368,5 @@
   const rangeText = (lo, hi, opts) => rangeParts(lo, hi, opts).text;
 
   return { weekdayHoliday, weekendOnly, periodOver, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
-    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, isRevisit, cheapest, isOnce, withoutOnce, canTake, forVisitor, lineCost, compareClinics, limitOnce, matchPackage, rangeParts, rangeText };
+    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, isRevisit, cheapest, isOnce, withoutOnce, canTake, forVisitor, isTrial, lineCost, compareClinics, limitOnce, matchPackage, rangeParts, rangeText };
 });
