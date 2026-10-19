@@ -69,9 +69,12 @@ test("the ids the home screen can show are all shipped (app.js rules read again 
   for (const c of FULL.changes || []) want.add(FULL.keys[c[0]][0]);                                                 // 가격 변동
   assert.deepEqual([...new Set(HOME.keys.map((k) => k[0]))].sort(), [...want].sort());
   assert.deepEqual(HOME.meta.partial.cats, cats);
-  // the family counts the app takes from meta.partial.fn are the full file's
-  const nOf = new Map(FAM.map((f) => [f.name, f.n]));
-  HOME.meta.fam.forEach((f, i) => assert.equal(HOME.meta.partial.fn[i], nOf.get(f[0]), f[0]));
+  // the family counts the app takes from meta.partial.fn are the full file's. Families are matched by their place in the
+  // file, not by name: several families share a name (2026-10-19: three '에어녹스' families — 윤곽·필러, 리프팅, 기타 — and 21
+  // more names twice or three times), and the app keeps them apart by index too (applyData FAM, f.idx)
+  const shipped = FAM.filter((f) => want.has(f.main));
+  assert.deepEqual(HOME.meta.fam.map((f) => f[0]), shipped.map((f) => f.name), "shipped families, in file order");
+  HOME.meta.fam.forEach((f, i) => assert.equal(HOME.meta.partial.fn[i], shipped[i].n, `${f[0]} (${i})`));
 });
 
 test("price changes, auto-group changes and source re-checks point at the same things", () => {
