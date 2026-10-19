@@ -176,9 +176,24 @@ a.src { font-size: 13px; }
 .favbtn:active { transform: scale(.85); }
 .back { display: inline-flex; align-items: center; gap: 4px; border: 0; background: none; padding: 8px 12px 8px 4px; font-weight: 620; color: var(--ink-2); justify-self: start; border-radius: 999px; }
 .back:hover { background: var(--fill); }
-.more-link { display: flex; align-items: center; justify-content: center; gap: 4px; padding: 14px; border: 0; background: none; width: 100%; color: var(--ink-2);
-  font-weight: 620; font-size: 14px; border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-md) var(--r-md); }
-.more-link:hover { background: var(--sunken); }
+/* one '더 보기' for every list (hierarchy audit 11 · MORE-1, 6.0 규칙 4): full width under its list, a hairline above, 15/650
+   accent, '20곳 더 보기 (165곳 남음)'. The same look for a list's way to another screen ('가격 변동 전체 ›') and a fold of
+   more rows ('일부만 되는 곳 84곳 보기') */
+.morelist { display: flex; align-items: center; justify-content: center; gap: 4px; width: 100%; min-height: 48px; padding: 8px 16px; border: 0;
+  border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-md) var(--r-md); background: none; color: var(--accent); font: inherit;
+  font-size: 15px; font-weight: 650; text-align: center; cursor: pointer; }
+.morelist:hover { background: var(--sunken); }
+.near5 { margin-top: 8px; }
+/* 지점 가격표 by 분야 (hierarchy audit 6): each 분야's name and count over its first lines, its '모두 보기' under them; one end
+   date for the whole list said once above it */
+.list > li.bgh { display: flex; align-items: baseline; gap: 8px; padding: 24px 14px 8px; }
+.list > li.bgh:first-child { padding-top: 16px; }
+.list > li.bgh + li::before, .list > li.bgmore::before { display: none; }
+.bgh h4 { font-size: 15px; font-weight: 700; color: var(--ink); }
+.bdate .k { margin-right: 4px; }
+/* the search page's folded specs or kinds (hierarchy audit 5): a card that is only its summary line until opened */
+.card.sfold { padding: 6px; }
+.sfold .fambody { padding: 0 14px 14px; }
 
 /* ---------- chips, segmented, switch */
 .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; scroll-padding: 16px; }
@@ -885,7 +900,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .fbtn { display: flex; align-items: center; justify-content: space-between; gap: 6px; text-align: left; cursor: pointer; }
 .fbtn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 details.fmore { margin-top: 8px; border-top: 1px solid var(--line-soft); padding-top: 6px; }
-details.fmore > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 40px; font-size: 14px; font-weight: 680; color: var(--ink); }
+details.fmore > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 44px; font-size: 15px; font-weight: 680; color: var(--ink); }
 details.fmore > summary::-webkit-details-marker, details.stips > summary::-webkit-details-marker { display: none; }
 details.fmore > summary::after { content: "▾"; margin-left: auto; color: var(--muted); font-size: 13px; }
 details.fmore[open] > summary::after { content: "▴"; }
@@ -1009,7 +1024,6 @@ html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-of
 .cmpfold { margin-top: 12px; }
 .cmpfold > summary { font-size: 15px; }
 .cmpfold .card { box-shadow: none; }
-.morelist { width: 100%; min-height: 48px; border: 0; border-top: 1px solid var(--line-soft); background: none; color: var(--accent); font: inherit; font-size: 15px; font-weight: 650; cursor: pointer; }
 .actsheet { display: grid; gap: 4px; }
 .actsheet button { display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 6px; border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: inherit; font: inherit; font-size: 15px; text-align: left; cursor: pointer; }
 /* the header's path jumps and focus moving up the list land below the sticky top bar + compare header (WCAG 2.4.11): the

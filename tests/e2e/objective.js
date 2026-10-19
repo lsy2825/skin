@@ -107,7 +107,9 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     // the search cards and the 담기 sheet follow the flag too (B1-1): the lowest with '~' and its clinic, '최저가' in the heads;
     // the sheet's numbers are read once per sheet (repaint on '+' keeps them)
     await p.goto(BASE + `#search/${encodeURIComponent('보톡스')}?nl=0`); await p.waitForTimeout(900);
-    const sheads = await p.$$eval('#main .card > .row .sub', (xs) => xs.map((x) => x.textContent).filter((t) => /최저가|중간값/.test(t)));
+    // (a card the search page folds — '보톡스' opens on its kinds, the specs folded under them — keeps its head in the fold)
+    const sheads = await p.$$eval('#main .card > .row .sub, #main .card > .fambody > .row .sub', (xs) => xs.map((x) => x.textContent).filter((t) => /최저가|중간값/.test(t)));
+    { const fold = p.locator('#main details.keys:not([open]) > summary'); if (await fold.count()) { await fold.first().click(); await p.waitForTimeout(150); } }   // opened as a person would
     const srow = await p.locator('#main .card', { hasText: '같은 조건 가격 비교 바로가기' }).locator('li .item').first().innerText().catch(() => '');
     ok('플래그 켜면: 검색 종류·바로가기 카드는 최저가(원~·지점)', sheads.length >= 2 && sheads.every((t) => /최저가/.test(t)) && /원~/.test(srow) && /최저 /.test(srow), `${sheads.join(' / ')} · ${srow.replace(/\n/g, ' | ')}`);
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);
