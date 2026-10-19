@@ -73,6 +73,40 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
       await p.goto(BASE + '#' + r); await p.waitForTimeout(500);
       const sw = await p.evaluate(() => document.documentElement.scrollWidth); if (sw > w + 1) bad.push(`${r}:${sw}`); }
     ok(`가로 넘침 없음 (${w}px, 19개 화면)`, !bad.length, bad.join(' ')); await ctx.close(); }
+  // 4b) 320px 부산 내 견적 (사용자 결정 2026-10-20): nothing in a cart line runs past it — '가능한 지점 없음' (an item no 부산
+  // branch sells) and a 7-digit range went 7px past the line — and 병원별 비교's four tabs stay inside the screen and their cards
+  // ('병원 패키지': a badge naming a long item, '…: 용량·부위·제품 다름', made the page 8px wider). A sideways chip row scrolls on
+  // purpose; a line's × leans 8px into the card's padding on purpose (its glyph ends at the line's edge — measured by the glyph)
+  { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 320, height: 800 } }); const p = await ctx.newPage();
+    const full = () => p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 90000 });
+    await p.goto(BASE); await unlock(p); await p.waitForSelector('.pc');
+    await p.evaluate(() => { localStorage.clear(); localStorage.setItem('pc:region', JSON.stringify('부산')); }); await p.reload(); await full();
+    // an item sold at 3 or more rows somewhere and at no 부산 branch: its line says '가능한 지점 없음'
+    const none = await p.evaluate(() => { const { D, BR, ROWS } = App.state(), inR = new Set(), n = new Map();
+      for (const r of ROWS) { const ks = D.s[r[7]]; if (!ks) continue; for (const id of ks.split(' ')) { n.set(id, (n.get(id) || 0) + 1); if (BR[r[0]].region === '부산') inR.add(id); } }
+      return ([...n.entries()].find(([id, c]) => c >= 3 && !inR.has(id)) || [])[0] || null; });
+    await p.evaluate((ks) => localStorage.setItem('pc:carts', JSON.stringify([{ id: 'a', name: 't', items: ks.map((k) => ({ t: 'k', k, q: 1 })) }])), ['X14', 'X01', 'X12', none].filter(Boolean));
+    await p.goto(BASE + '#cart'); await p.reload(); await full(); await p.goto(BASE + '#cart'); await p.waitForTimeout(800);
+    const lines = await p.$$eval('#main .ci', (cs) => cs.map((c) => { const r = c.getBoundingClientRect();
+      const over = [...c.querySelectorAll('*')].filter((e) => !e.matches('.cx')).map((e) => [e, e.getBoundingClientRect()]).filter(([, x]) => x.width && x.right > r.right + 0.5)
+        .map(([e, x]) => `${e.tagName.toLowerCase()}.${typeof e.className === 'string' ? e.className : ''}«${(e.textContent || '').trim().slice(0, 12)}» +${Math.round(x.right - r.right)}`);
+      return { cp: ((c.querySelector('.cp') || {}).innerText || '').replace(/\s+/g, ' '), over }; }));
+    ok('320px 부산 내 견적: 담은 시술 줄의 가격·\'가능한 지점 없음\'이 줄 안(넘침 0)', !!none && lines.length >= 4 && lines.some((l) => l.cp.includes('가능한 지점 없음')) && lines.every((l) => !l.over.length),
+      `${none} · ${lines.map((l) => `${l.cp}${l.over.length ? ' ✗ ' + l.over.slice(0, 2).join(' ') : ''}`).join(' | ')}`);
+    const ex = p.locator('.cartsum button[aria-expanded="false"]'); if (await ex.count()) { await ex.first().click(); await p.waitForTimeout(500); }
+    const tabs = [], pk = [];
+    for (const t of ['한 곳에서', '나눠 받기', '병원 패키지', '브랜드·지역']) {
+      const tb = p.locator('.seg[role=tablist] button', { hasText: t }); if (!(await tb.count())) { tabs.push(`${t}: 탭 없음`); continue; }
+      await tb.click(); await p.waitForTimeout(700);
+      const r = await p.evaluate(() => { const out = [];
+        for (const card of document.querySelectorAll('#main .card')) { const cr = card.getBoundingClientRect();
+          for (const e of card.querySelectorAll('*')) { if (e.matches('.cx') || e.closest('.chips:not(.wrapc)')) continue; const x = e.getBoundingClientRect();
+            if (x.width && x.right > cr.right + 0.5) out.push(`${e.tagName.toLowerCase()}.${typeof e.className === 'string' ? e.className : ''}«${(e.textContent || '').trim().slice(0, 14)}» +${Math.round(x.right - cr.right)}`); } }
+        return { sw: document.documentElement.scrollWidth, out, rows: document.querySelectorAll('#main .card.flush ul.list > li .item.ra').length }; });
+      if (t === '병원 패키지') pk.push(r.rows);
+      if (r.sw > 320 || r.out.length) tabs.push(`${t}: 폭 ${r.sw} ${r.out.slice(0, 3).join(' ')}`); }
+    ok('320px 부산 병원별 비교 4개 탭: 가로 넘침 0, 카드 밖으로 나간 것 없음(병원 패키지의 긴 배지는 배지 안에서 줄바꿈)', !tabs.length && pk[0] > 0, tabs.join(' | ') || `병원 패키지 ${pk[0]}줄`);
+    await ctx.close(); }
   // 5) empty states
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
     await p.goto(BASE); await p.evaluate(() => localStorage.clear()); await p.reload(); await unlock(p); await p.waitForSelector('.pc');

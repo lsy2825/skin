@@ -23,9 +23,10 @@
      number per screen at 28 (비교 가격 범위, 견적 합계); form fields 16 (iOS zooms into a field under 16px). Nothing under 13.
      Three weights: body 400 · labels, chips, buttons, names 600 · titles, prices, emphasis 760
      Colour roles (2026-10-19 사용자 결정, docs/DESIGN_SYSTEM.md §2): words = ink / ink-2 / muted; one accent = charcoal (ink) — a
-     chosen control is filled with it, the tab bar's pill too; butter = a condition on a price, nothing else (and 죠미's own face
-     and bubble); coral = a price that cannot be had (기간 끝남, 방문일엔 안 됨, 가격표에 없음) and an input error, nothing else;
-     a data state (지난 자료, 급변·확인 중, 미확인 …) = grey with an icon (.kw); counts on the tabs = charcoal */
+     chosen control is filled with it, the tab bar's pill and a switch that is on too (2026-10-20); butter = a condition on a price,
+     nothing else (and 죠미's own face and bubble); coral = a price that cannot be had (기간 끝남, 방문일엔 안 됨, 가격표에 없음) and
+     an input error, nothing else; a data state (지난 자료, 급변·확인 중, 미확인 …) = grey with an icon (.kw); counts on the tabs =
+     charcoal, turned round inside the chosen tab's pill (2026-10-20); put in a list (담김, 비교함에 있음) = light green */
   --fs-title: 22px; --fs-sec: 17px; --fs-body: 15px; --fs-aux: 13px; --fs-num: 28px; --fs-input: 16px;
   --fw-reg: 400; --fw-semi: 600; --fw-bold: 760;
   /* spacing steps (2026-10-19 사용자 결정, docs/DESIGN_SYSTEM.md §2): 8px units — 8 inside a block, 16 inside a card (its padding
@@ -141,6 +142,9 @@ nav.tabs button[aria-current="page"] { color: var(--ink); }
 nav.tabs button[aria-current="page"] .ti { background: var(--ink); color: var(--on-primary); }   /* the one chosen look (위계 점검 43) */
 nav.tabs button[aria-current="page"] svg.i { stroke-width: 2.1; }
 nav.tabs .badge { top: -3px; right: 4px; }
+/* the count on the chosen tab (사용자 결정 2026-10-20): the pill's colours turned round — light with charcoal words in the charcoal
+   pill (dark with ivory words in the dark theme's ivory one), ringed in the pill's colour so it does not melt into it */
+nav.tabs button[aria-current="page"] .badge { background: var(--on-primary); color: var(--ink); box-shadow: 0 0 0 2px var(--ink); }
 @media (min-width: 900px) {
   body { padding-left: 88px; }
   nav.tabs { top: 0; right: auto; width: 88px; grid-template-columns: 1fr; grid-auto-rows: 72px; align-content: start; padding: calc(var(--top-h) + var(--sp-5)) var(--sp-2) var(--sp-3);
@@ -190,6 +194,8 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 .btn.soft { background: var(--sage-soft); color: var(--sage); }
 .btn.gray { background: var(--fill); color: var(--ink); }
 .btn.line { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+/* 비교함에 있음: a list the branch is in, like 담김 — the same light green (사용자 결정 2026-10-20: the same state, the same look) */
+.btn.shortbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); }
 .btn.sm { min-height: 36px; padding: var(--sp-2) 12px; font-size: var(--fs-aux); border-radius: 11px; }
 .btn.block { width: 100%; }
 /* a row of actions as equal halves (위계 점검 35 · BTN-1: 지점 머리, 견적 펼침 끝) — no button wider than its neighbour, none
@@ -277,10 +283,10 @@ a.src { font-size: var(--fs-aux); }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch .tr { width: 44px; height: 26px; border-radius: 13px; background: var(--track); position: relative; flex: none; transition: background var(--mid) var(--ease); }
 .switch .tr::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .2); transition: transform var(--mid) var(--ease); }
-.switch input:checked + .tr { background: var(--sage); }
-:root[data-theme="dark"] .switch input:checked + .tr { background: #5f9a72; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .switch input:checked + .tr { background: #5f9a72; } }
-.switch input:checked + .tr::after { transform: translateX(18px); }
+/* on = chosen: the charcoal fill of every chosen control, the knob in the colour on it (사용자 결정 2026-10-20 — it was sage).
+   In the dark both turn round like a chosen chip: an ivory track, a dark knob. No chosen control is green */
+.switch input:checked + .tr { background: var(--ink); }
+.switch input:checked + .tr::after { transform: translateX(18px); background: var(--on-primary); }
 .switch input:focus-visible + .tr { outline: 2px solid var(--ink); outline-offset: 2px; }
 /* 내 견적 '전에 이 시술을 받아 봤어요' (위계 점검 46 · T14): kept, lighter than the line's price — 36×22 to see, a 13/400 grey label;
    44px to press, laid over the line's own gaps (−6px above and below), so the line is no taller than with the 32px switch */
@@ -401,6 +407,9 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .kw { padding-left: var(--sp-1); }   /* its icon (14px) starts the badge */
 .kx { background: var(--coral-soft); color: var(--coral); }
 .k.ok { background: var(--sage-soft); color: var(--sage); }
+/* a badge wider than its whole line wraps inside itself instead of running past the card (320 부산 병원 패키지: '수입 필러 1cc
+   (…): 용량·부위·제품 다름' 86px, '추가 구성: …' 31px). The row moves a badge that fits to its next line first, so the others stay one line */
+.m > .k { max-width: 100%; white-space: normal; }
 
 /* ---------- home */
 .hero-home { padding: var(--sp-2) 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
@@ -717,7 +726,9 @@ details.advset > summary b { font-weight: inherit; }
 .ci .cx { border: 0; background: none; color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; margin: -8px -8px 0 0; }
 .ci .cx:hover { background: var(--fill); color: var(--ink); }
 .ci .cs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
-.ci .cf { grid-column: 2 / -1; display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
+/* the price beside the − / +: at its narrowest (a range broken at '~') it starts there and fills what is left. When even that is
+   wider than what is left (320: '가능한 지점 없음', '…~1,089,000원' ran 7px past the line) it goes under them, at the right */
+.ci .cf { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
 .ci .cdone { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 0 var(--sp-2); margin-top: var(--sp-2); }
 .ci .cdone .sub { font-size: var(--fs-aux); }
 /* '이 병원에 다녀왔어요' (a clinic's quote in 내 견적, the branch page's head): the switch, what it does under it */
@@ -726,7 +737,7 @@ details.advset > summary b { font-weight: inherit; }
 .visit .switch { min-height: 44px; }   /* a new switch: the 44px touch target (the older ones keep .switch's 32px) */
 .qbody > .visit { margin: 0; padding-bottom: var(--sp-2); border-bottom: 1px solid var(--line-soft); }
 .cartsum .whenask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); margin-top: var(--sp-2); }
-.ci .cp { margin-left: auto; text-align: right; font-weight: var(--fw-bold); letter-spacing: -0.02em; white-space: nowrap; }
+.ci .cp { margin-left: auto; width: min-content; flex-grow: 1; text-align: right; font-weight: var(--fw-bold); letter-spacing: -0.02em; white-space: nowrap; }
 .ci .cp small { display: block; font-size: var(--fs-aux); color: var(--muted); font-weight: var(--fw-semi); letter-spacing: 0; }
 .qty { display: inline-flex; align-items: center; gap: var(--sp-1); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: var(--sp-1); }
 .qty button { width: 32px; height: 32px; border: 0; border-radius: 9px; background: none; display: grid; place-items: center; color: var(--ink); transition: background var(--fast); }

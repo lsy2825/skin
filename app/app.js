@@ -3815,7 +3815,8 @@
   // it opens elsewhere (위계 점검 35)
   const outLink = (href, ic, label) => h("a", { class: "btn sm gray out", href, target: "_blank", rel: "noopener" }, icon(ic, "sm"), label,
     icon("arrow-up-right", "xs"), h("span", { class: "sr" }, " — 새 창에서 열려요"));
-  // 비교함에 있음 is a list the branch is in (like 담김), not one choice among others: the icon and words change, the grey stays
+  // 비교함에 있음 is a list the branch is in (like 담김), not one choice among others: the icon and words change and it turns 담김's
+  // light green (.shortbtn[aria-pressed=true], 사용자 결정 2026-10-20 — the same state, the same look)
   const shortBtn = (b, cls = "btn sm gray") => { const el = h("button", { class: `${cls} shortbtn`, type: "button" });
     const paint = () => { const on = inShort(b); el.setAttribute("aria-pressed", on ? "true" : "false"); fill(el, icon(on ? "check" : "circle-plus", "sm"), on ? "비교함에 있음" : "비교함"); };
     el.addEventListener("click", (e) => { e.stopPropagation(); toggleShort(b); paint(); }); paint(); return el; };
