@@ -29,7 +29,7 @@ const badW = weights.filter((v) => !/^(var\(--fw-(reg|semi|bold)\)|inherit)$/.te
 ok('styles.css의 font-weight는 모두 --fw-* 토큰(400·600·760)', !badW.length, badW.length ? badW.slice(0, 8).join(', ') : `${weights.length}곳`);
 const shorts = [...css.matchAll(/(?:^|[;{\s])font:\s*([^;}]+)/g)].map((m) => m[1].trim()).filter((v) => v !== 'inherit' && !/^var\(--fs-[a-z]+\)\//.test(v));
 ok('font 줄임 표기도 토큰만', !shorts.length, shorts.join(', '));
-const js = ['app/app.js', 'app/commerce.js'].filter((f) => fs.existsSync(path.join(ROOT, f))).map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
+const js = ['app/app.js', 'app/screens/about.js', 'app/commerce.js'].filter((f) => fs.existsSync(path.join(ROOT, f))).map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
 const inl = js.flatMap(([f, s]) => s.split('\n').map((l, i) => [f, i + 1, l]).filter(([, , l]) => /font-(size|weight)\s*:|fontSize|fontWeight/.test(l)).map(([f, n]) => `${f}:${n}`));
 ok('app.js에 직접 적은 글자 크기·굵기 없음(클래스로)', !inl.length, inl.slice(0, 6).join(', '));
 

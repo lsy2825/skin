@@ -49,9 +49,12 @@
 | 1 `app/core.js` | `39e1112` | `$ h safeUrl fill icon won km store toast undoToast actToast copyText` + 계정 공간(`App.scope/setScope`) | 단위 93 · ux_qa·xss·a11y·accounts_r2·jomi·data_sync·commerce50 |
 | 2 `app/state/data.js` | `b8442ba` | 가격 동기화(`App.Data`, 화면 훅 apply/paint, `io` 교체 가능), `App.data()/App.rows()` | 단위 93(R09를 data.js로) · ux_qa·xss·a11y·data_sync·pricenow·ops40·jomi |
 | 3-1 `app/screens/ops.js` | `0f66a26` | 운영 현황. 화면 파일은 `App.screens`에 등록 → app.js가 시작 직전 설치, 바뀌는 데이터는 `App.state()`로 그릴 때 읽음 | 단위 93 · ops40·admin51·commerce50·ux_qa·a11y·xss |
+| 3-2 `app/screens/about.js` | 이 커밋 | 데이터 안내 `#about`(`#data`)·운영 원칙 `#principles`·처리방침 `#privacy`·시술 사전 `#guide`·쉬운 용어 `#terms`와 그 화면만 쓰던 `dataStatusCard`·`installCard`·`deviceCard`·설치 안내 이벤트·`famTitle`. 다른 화면도 쓰는 `recheckQueue`·`coverageLine`·`PRIVACY`/`privacyParts`/`privacyLink`·`kbSheet`·`termBtn` 등은 app.js에 두고 `App`으로 넘김. `App.state()`에 `KEYS byKB kbFind WHEN_COL current` 더함. 사전·용어는 합쳐 62줄이라 `guide.js`로 나누지 않음. SW `pc-v31`. 정적 검사(type_steps·space_steps·color_roles·jomilines)가 about.js도 읽게 함 | 단위 245 · privacy·demo_features·v5_features·qa7·spec_notes·jomi·concern·o2_home·ux_qa·xss·a11y·clickable + type_steps·space_steps·color_roles·cond_badge·touch_targets·ops40 · pricenow 39개(데이터 상태·설치 포함) 통과 뒤 오프라인(서비스 워커) 단계에서 시간 초과 — main에서도 똑같음(로컬 서버가 127.0.0.1이라 SW 미등록) · main과 화면 HTML 비교(about·principles·guide 3가지·terms·compare·me·시술 설명 시트): 죠미 말 무작위 한 줄 말고 같음 |
 
 계획과 다른 점: `sheet`·`nav`는 아직 app.js 안에 있어요(렌더·기록과 얽혀 있어서). 화면 파일에는 `App.nav`로 넘겨요.
 
 측정(3-1 뒤, 같은 조건 3회): slow4g 첫 방문 중앙값 8,839ms · 재방문 2,140ms · 요청 42개(+3). **차이 없음(오차 범위).** 파일이 늘어 요청은 3개 늘었지만 시간 영향은 보이지 않아요. app.js 4,825줄 → 4,527줄.
 
-다음: 3-2(about·사전·용어)부터 같은 방식. 화면 하나 = 커밋 하나.
+app.js 줄 수(3-2 뒤): 3-1 뒤 4,527줄에서 그동안의 기능 작업으로 5,786줄이 됐고, 3-2로 5,786줄 → 5,585줄(−201). `screens/about.js` 233줄.
+
+다음: 3-3(피부 고민 `concern`)부터 같은 방식. 화면 하나 = 커밋 하나.
