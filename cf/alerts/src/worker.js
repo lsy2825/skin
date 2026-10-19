@@ -64,13 +64,16 @@
 //             deferred ones — or, if it does not compute, the 08:07 catch-up). Paid's 12 cover the worst day seen (11
 //             fingerprints deployed on 2026-10-14 UTC, most of them data PRs); free's 3 do not (merge data PRs together). The
 //             D1 day's edge (08:45–09:00 KST) waits for the 09:07 catch-up: ≤ ~50 minutes, inside 2 hours. UNTIL A PERSON
-//             FIXES IT (11th review): a start every retry gets the same 4xx (401/403: GitHub's ALERTS_SECRET is not the
-//             Worker's; 404: ALERTS_URL is not this Worker), an answer the pinned code does not know, a data.json shape the
-//             Worker would refuse, or ALERTS_CODE_SHA unset while public hosting is on and ALERTS_SECRET is set — nothing is
-//             computed; weekly.yml's alert job sends a Telegram line at every factory run that meets it (startfail — the next
-//             one that deploys, the daily 06:00 schedule at the latest; the catch-up has no Telegram). A Worker or D1 that does
-//             not answer (5xx, network): nothing computed until it is back — the 09:30 KST monitor reports GET /health down,
-//             and after 2 days 'stale'
+//             FIXES IT (11th review; 12th: 3xx, non-JSON and the address format too): a start every retry gets the same
+//             3xx/4xx (401/403: GitHub's ALERTS_SECRET is not the Worker's; 404 or a redirect: ALERTS_URL is not this Worker),
+//             a 2xx that is not JSON (ALERTS_URL is some other site), an ALERTS_URL that is not an https address, an answer
+//             the pinned code does not know, a data.json shape the Worker would refuse, or ALERTS_CODE_SHA unset while public
+//             hosting is on and ALERTS_SECRET is set — nothing is computed; weekly.yml's alert job sends a Telegram line at
+//             every factory run that meets it (startfail — the next one that deploys, the daily 06:00 schedule at the latest;
+//             the catch-up has no Telegram). A Worker or D1 that does not answer (5xx, network): nothing computed until it is
+//             back — the 09:30 KST monitor reports GET /health down, and after 2 days 'stale'. An ALERTS_URL naming a host
+//             that does not resolve fails the same way in notify, but the monitor checks the right address
+//             (MONITOR_WORKER_URLS): it shows as 'stale' only, never as down
 //   runs that may send: the cron fires 13 h × 6 = 78 times a day; inWindow() refuses 20:50 → 77 runs (08:00 … 20:40 KST).
 //         The same cron for both profiles (a cron cannot follow a var): free 77 × 40 = 3,080 pushes a day, paid 77 × 200 =
 //         15,400 — each ≥ MAX_SUBS, so every phone can be pushed on its worst day (a phone needs ≈ 2 a week: ≤ 1 weekly bundle
@@ -91,9 +94,16 @@
 //         measured on a local D1 (wrangler 4.145.0 / workerd; production is assumed to count the same way — a guess), deletes
 //         counted as 2 (row + primary-key entry, as the D1 docs describe). With R = 77 runs, S = SEND_LIMIT, M = MAX_SUBS,
 //         N = NEW_PER_DAY, K = COMPUTES_PER_DAY, a D1 day where everything peaks at once:
-//           pushes: claim 2 + its result (SENT 1; a hold 2; a counted failure up to 4 — the row and its subs_due, subs_x and
-//             subs_fail entries — and a delete 2 more) ≤ 8 → R × S × 8; a probe's claim 1 more → R × 10; held rows freed
-//             (RELEASE_HELD) ≤ R × S × 2
+//           pushes: claim 2 + its result (SENT ≤ 3 — 1 when both kinds go out, 2 when one kind stays pending, 3 when a
+//             finish moved pend_x after the claim; a hold 2; a counted failure up to 4 — the row and its subs_due, subs_x and
+//             subs_fail entries — and a delete 2 more) ≤ 8 → R × S × 8 (12th review, measured on workerd: a refused row
+//             that never took a push 8.00 a push — free 40 and paid 200 a run —, no answer 6.00); a probe's claim 1 more → R
+//             × 10; held rows freed (RELEASE_HELD) ≤ R × S × 2. A VAPID token is stored only for a push origin that answered
+//             2xx (send below — 12th-review finding: a planted row on a made-up origin wrote a vapid row each, 10 a push, and
+//             DROP_OLD_JWT 1–2 more the next day); what stays outside the bound is a REAL push service's own records — its
+//             token (2 new, 1 renewed every ~11 hours, 2 when it lapses) and its 'ok:' day (2, once a key): ≈ 6 rows a day
+//             per push service that answered 2xx (FCM, Apple, Mozilla, the WNS hosts phones are given — a few; not counted
+//             below)
 //           new subscriptions: 5 each (the KST day's first 8); a D1 day spans two KST budget days → 2 × N × 5 + 6
 //           the deferral notes (stat 'fd' ≤ 3 — a catch-up's, the 'reserve' line, the 'cap' line — and 'fn' ≤ 2; the first
 //             ever 2 more) ≤ 6
@@ -107,16 +117,23 @@
 //             only for the next computation); stat rows ≤ 20 (start ≤ 12 — measured 8 the first time ever, 5 after, 7 for a
 //             retry with its notes —, key set 1, capped 2, finish 4, lease freed 1) → 5M + 7,020 (free 15,770, paid 82,020).
 //             A digest chunk notify.mjs sends again after D1 committed it writes NOTHING (11th review: sql.js DIGEST leaves a
-//             row that already holds these numbers — measured 0 rows for 12 chunks sent again at each ceiling), and a PUT
-//             that resets a phone's marks cannot raise this ceiling (it already counts every phone marked again)
+//             row that already holds these numbers — measured 0 rows for 12 chunks sent again at each ceiling), nor does a
+//             finish sent again after its first try committed (12th review: its guard fails, D1 rolls the batch back —
+//             measured 0; 13th/14th: 200 finished "before" whoever holds the lease, 409 only when other prices are noted),
+//             and a PUT that resets a phone's marks cannot raise this ceiling (it already counts every phone marked again)
 //           the one uncounted retry's dead first try: start 12 + key set 1 + digest ≤ 7,000 + capped 2 = 7,015
 //         FREE (a day of 100,000): 24,640 + 770 + 6,160 + 5,006 + 6 + 3,500 + 3 × 15,770 + 7,015 = 94,407 (5.6% left).
 //           Measured (11th review, 1,750 phones × 20 rules on the 3,000 computed pairs, every phone sent and marked again
 //           between the computations, every expiring rule a new end date each time, the third the next KST morning; every
 //           phone fails = 0 and again every phone fails = 1 — the same): 14,758 + 13,007 + 14,758 (≤ 15,770 each); all rules
 //           expiring 11,258 + 9,507 + 11,258. Not counted: PUT/DELETE and a subscription sent again for the same endpoint
-//           (≈ 1–4 rows each, bounded only by the Workers request limit and SUBS_RL), and cf/metrics (src/rules.js there: up
-//           to 80,000 on a spammed day — the two together can still pass the day)
+//           (≈ 1–4 rows each, bounded only by the Workers request limit and SUBS_RL), a real push service's records (≈ 6 a
+//           day each, above), and cf/metrics (src/rules.js there: up to 80,000 on a spammed day — the two together can still
+//           pass the day). This day holds only while the table holds ≤ MAX_SUBS (1,750) rows: nothing is evicted, so a
+//           table filled under PLAN "paid" (up to 15,000) passes the Free day under "free" whatever COMPUTES_PER_DAY is (12th
+//           review: 15,000 rows → 319,657 with K = 3, 155,617 with K = 1; 3,250 rows → 119,907) — going back to a Free
+//           account means staying on Paid or first deleting subscriptions down to 1,750 (GET /health capacity 'full' under
+//           "free" is the sign)
 //         PAID (a month of 50,000,000): 123,200 + 770 + 30,800 + 15,006 + 6 + 30,000 + 12 × 82,020 + 7,015 = 1,191,037 a day;
 //           + cf/metrics at its cap 80,000 = 1,271,037 × 31 days = 39,402,147 (78.8%; 10.6M left for PUT/DELETE and
 //           same-endpoint subscriptions, which no cap bounds). Measured at the paid ceiling (15,000 phones × 20 rules, the
@@ -130,6 +147,24 @@
 //             watched 626,620 + digest 12,000 + finish ~1,674,100; mixed 1,457,651 — 1,711,145 for a first computation)
 //           the dead try: watched + digest + start (free 95,400, paid 638,650); digest chunks sent again: 3,000 each (DIGEST
 //             2,000 + DIGEST_HELD 1,000 — measured), 12 a computation → (K + 1) × 36,000
+//           the other tries notify.mjs may send (12th-review finding: only the digest's were counted) — call() sends watched
+//             and finish up to 3 times on a 5xx or a 20 s timeout. A watched try whose answer was lost was still read: 2 ×
+//             watched a computation, and 2 × watched for the dead try (free 166,740, paid 1,253,240 each; measured 12th review,
+//             a5r12/retry12.mjs: watched sent again reads the same 83,370 / 626,620). A finish: every computation has exactly
+//             ONE finish batch that commits (in full in 'one computation' above — FINISH_GUARD lets no second one commit) and
+//             the dead try none; every other finish try FAILED (D1 rolled its batch back at the guard — measured: 0 rows read
+//             reported — or D1 itself failed). The catch reads FINISH_STATE (≤ 3 rows) once for each failed try AND for the
+//             try that committed when D1 then answered an error (13th review's path; 14th-review finding: it was left out) —
+//             at most once for every try call() sends, 3 a computation: (3K + 3) × 3 a D1 day (two failed tries and the one
+//             that commits, three for the dead try).
+//           FAILED BATCHES (13th review — the 12th counted a full finish for each failed try of a counted computation and
+//             none for the dead try's three: one assumption on one side only): what a batch that FAILED read is not counted,
+//             in either place nor anywhere else in this arithmetic (D1's own retries of a failed read-only query included):
+//             D1 reports no rows for a failed batch and its documentation does not say what it bills for one — not known.
+//             The most a failed finish batch could read is one full finish; were each of the 2K + 3 failed tries (the try
+//             that commits is not one) billed so, free would read + 9 × 203,300 = 4,926,615 a day (98.5% — still under 5M,
+//             without the 5% margin) and paid + 27 × 1,674,100 a day = 3,031,071,376 a month (12.1% — the bill stays $5). With the guard, one computation measured 298,654
+//             free / 2,312,654 paid (≤ 298,700 / 2,312,750)
 //           a start ≤ 30 (≤ 120 a day: 48 catch-ups, the factory runs that deployed — 26–42 a day were counted on
 //             2026-10-13…16 — and retries); a subscribe 9; a PUT of 20 rules 65
 //           a send run: 35 with nothing pending; the rows with news waiting that are NOT due — weekly waiting (sent within 7
@@ -140,13 +175,16 @@
 //             a push with an expiring notice ≤ 241 more in SENT (rules.js END_DAYS: ≤ 100 announced + ≤ 20 pending, merged and
 //             sorted; measured 161, 201 and 241 a push with 60, 80 and 100 entries). Measured worst runs: free 13,459 (40
 //             pushes), paid 79,639 (200 pushes, before the day's first finish)
-//         FREE (a day of 5,000,000): 3 × 298,700 + 95,400 + 4 × 36,000 + 77 × (3,534 + 1,383 + 340) + 3,080 × 241 + 77 × 1,750
-//           + 2 × 500 × 9 + 120 × 30 = 2,429,919 (51.4% left)
-//         PAID (a month of 25,000,000,000): 12 × 2,312,750 + 638,650 + 13 × 36,000 + 77 × (30,034 + 1,383 + 1,400) + 15,400 ×
-//           241 + 77 × 15,000 + 2 × 1,500 × 9 + 120 × 30 = 36,283,559 a day × 31 = 1,124,790,329 (4.5%)
-//   THE BILL (paid, every cap hit every day of a 31-day month): writes 39.4M of 50M, reads 1.12B of 25B, storage ≤ ~0.1 GB
-//         of 5 GB (15,000 rows of ≤ ~4 KB + 3,500 snap rows), Workers requests ≤ ~0.3M of 10M, CPU ≤ ~3M ms of 30M → $0 over
-//         the $5. Outside every cap: PUT/DELETE and same-endpoint subscriptions (≤ 4 rows written + 65 read each): about
+//         FREE (a day of 5,000,000): 3 × (298,700 + 166,740) + (95,400 + 166,740) + 4 × 36,000 + 12 × 3 + 77 × (3,534 +
+//           1,383 + 340) + 3,080 × 241 + 77 × 1,750 + 2 × 500 × 9 + 120 × 30 = 3,096,915 (61.9%; 38.1% left)
+//         PAID (a month of 25,000,000,000): 12 × (2,312,750 + 1,253,240) + (638,650 + 1,253,240) + 13 × 36,000 + 39 × 3 + 77 ×
+//           (30,034 + 1,383 + 1,400) + 15,400 × 241 + 77 × 15,000 + 2 × 1,500 × 9 + 120 × 30 = 52,575,796 a day × 31 =
+//           1,629,849,676 (6.5%). Not counted: a real push service's records a send run reads (VAPID_CACHE, DROP_OLD_JWT,
+//           ORIGIN_STATS — ≈ 3 rows a run per push service that answered 2xx; made-up origins have none since the 12th
+//           review), and the failed batches above
+//   THE BILL (paid, every cap hit every day of a 31-day month): writes 39.4M of 50M, reads 1.63B of 25B (3.03B were every
+//         failed finish try billed as a full finish), storage ≤ ~0.1 GB of 5 GB (15,000 rows of ≤ ~4 KB + 3,500 snap rows),
+//         Workers requests ≤ ~0.3M of 10M, CPU ≤ ~3M ms of 30M → $0 over the $5. Outside every cap: PUT/DELETE and same-endpoint subscriptions (≤ 4 rows written + 65 read each): about
 //         $4.30 per million such requests once the 10.6M rows left are gone — a Cloudflare budget alert (Manage Account →
 //         Billing → Billable Usage → Set Budget Alert, informational, the day after) tells the owner. Raising a cap: one more
 //         computation a day ≈ 82,020 × 31 = 2.54M rows a month (up to three more keep 5% of the 50M: 47.0M; past 50M $1 a
@@ -410,10 +448,13 @@ async function storeKeys(request, env) {
 //             stat 'cfail' = the D1 day (GET /health "compute": "failed", the monitor warns). ≤ 12 rows written. The factory
 //             goes on with keys, watched, digest and finish {…, lease} (which frees it)
 // So a D1 day takes at most COMPUTES_PER_DAY counted computations + one uncounted retry whose first try died before its
-// finish (the write arithmetic above counts both). keys, watched, digest and finish do not check the lease: the cap keeps
-// the D1 budget against our own runs, which all ask start first (notify.mjs is the only caller — tests check its order),
-// not against someone holding ALERTS_SECRET, who could write rows with digest anyway (docs/SECURITY_ARCHITECTURE.md §4:
-// rotate the secret)
+// finish (the write arithmetic above counts both). keys, watched and digest do not check the lease: the cap keeps the D1
+// budget against our own runs, which all ask start first (notify.mjs is the only caller — tests check its order), not
+// against someone holding ALERTS_SECRET, who could write rows with digest anyway (docs/SECURITY_ARCHITECTURE.md §4: rotate
+// the secret). finish does (12th review): a finish naming a lease writes only while stat 'lease' holds that lease — else
+// nothing written: 200 finished "before" when these prices are already finished that day, whoever holds the lease now
+// (13th/14th review), else 409 (finish below: a resent finish must never prune the rows of a computation that started
+// after it)
 const NONCE_RE = /^[0-9a-f]{13}$/;
 const DAY_MS = 86400e3;
 // GET /health "compute" looks back this many UTC days (like REFUSING_DAYS / CAPPED_DAYS: the daily monitor sees the day before)
@@ -526,7 +567,11 @@ async function digest(request, env, now) {
   return { saved, skipped };
 }
 
-// POST /v1/internal/finish {run, today, fp?, lease?} → {weekly, expiring, cleared, changed}. One atomic batch: mark the
+// POST /v1/internal/finish {run, today, fp?, lease?} → {weekly, expiring, cleared, changed} | 200 {weekly: 0, expiring: 0,
+// cleared: 0, changed: 0, finished: "before"} (these prices are already finished on this finish's day, whoever holds the
+// lease now: this finish's batch — or an earlier try of it — committed and only its answer was lost; nothing written now —
+// 13th/14th review, below) | 409 {error: "LEASE_LOST"} (a finish naming a lease that stat 'lease' no longer holds, and
+// other prices or another day noted as finished: nothing written — 12th review, below). One atomic batch: mark the
 // phones (expiring = phones given an expiring notice to send, cleared = stale expiring marks removed — sql.js MARK_EXPIRING),
 // THEN promote the pending numbers to the baseline (a failure promotes nothing), note the day and the data (fp = its
 // fingerprint; stat 'finish' + 'data': start answers done to the same prices the same day) and free the start's lease.
@@ -543,20 +588,63 @@ async function finish(request, env, now) {
   if (!body || !validRun(body.run) || !validDay(body.today) || (body.fp != null && !SHA_RE.test(body.fp)) ||
     (body.lease != null && !(Number.isSafeInteger(body.lease) && body.lease > 0))) throw new Bad(400, "BAD_FINISH");
   if (Math.abs(daysBetween(body.today, today)) > FINISH_SLACK_DAYS || body.run.split("|")[1] !== body.today) throw new Bad(400, "BAD_FINISH");
-  const res = await env.DB.batch([
-    env.DB.prepare(Q.PRUNE_XSENT).bind(today),
-    env.DB.prepare(Q.MARK_WEEKLY),
-    env.DB.prepare(Q.MARK_EXPIRING).bind(body.run),
-    env.DB.prepare(Q.PROMOTE),
-    env.DB.prepare(Q.PRUNE_SNAP).bind(body.run),
-    env.DB.prepare(Q.PRUNE_STAT).bind(today),
-    env.DB.prepare(Q.ROLL_BU),
-    env.DB.prepare(Q.STAT_FINISH).bind(Math.min(dayNum(body.today), dayNum(today))),
-    body.fp ? env.DB.prepare(Q.STAT_DATA).bind(dataTag(body.fp)) : env.DB.prepare(Q.CLEAR_DATA),
-    ...(body.lease != null ? [env.DB.prepare(Q.FREE_LEASE).bind(body.lease)] : []),
-  ]);
-  const ch = (i) => (res[i] && res[i].meta && res[i].meta.changes) || 0;
-  const x = (res[2] && res[2].results) || [];
+  // a finish that names its lease (notify.mjs always does) is bound to it (12th review): sql.js FINISH_GUARD, the batch's
+  // first statement, fails while stat 'lease' is not this token — D1 rolls the batch back, nothing is written. Before, a
+  // finish sent again after its first try committed ran with its own run and PRUNE_SNAP deleted the rows of a computation
+  // digesting in between. A finish without a lease (none of our runs) is not checked
+  const guard = body.lease != null ? [env.DB.prepare(Q.FINISH_GUARD).bind(body.lease)] : [];
+  // the day noted as finished: the earlier of the body's today and the Worker's (above)
+  const finishedDay = Math.min(dayNum(body.today), dayNum(today));
+  let res;
+  try {
+    res = await env.DB.batch([
+      ...guard,
+      env.DB.prepare(Q.PRUNE_XSENT).bind(today),
+      env.DB.prepare(Q.MARK_WEEKLY),
+      env.DB.prepare(Q.MARK_EXPIRING).bind(body.run),
+      env.DB.prepare(Q.PROMOTE),
+      env.DB.prepare(Q.PRUNE_SNAP).bind(body.run),
+      env.DB.prepare(Q.PRUNE_STAT).bind(today),
+      env.DB.prepare(Q.ROLL_BU),
+      env.DB.prepare(Q.STAT_FINISH).bind(finishedDay),
+      body.fp ? env.DB.prepare(Q.STAT_DATA).bind(dataTag(body.fp)) : env.DB.prepare(Q.CLEAR_DATA),
+      ...(body.lease != null ? [env.DB.prepare(Q.FREE_LEASE).bind(body.lease)] : []),
+    ]);
+  } catch (e) {
+    // the batch failed: the guard (the lease is not this finish's) or D1 itself. One read (sql.js FINISH_STATE, ≤ 3 rows)
+    // tells which (13th review; 14th: whoever holds the lease now):
+    //   - the lease is still this finish's: D1 failed before committing — 500, as before (notify.mjs sends it again);
+    //   - the lease is not this finish's (none is held, or another computation's), and stat 'finish' is this finish's day
+    //     and stat 'data' the tag of its fp: these prices are in — D1 committed this very batch and only its answer was lost
+    //     (an error such as "Network connection lost." after the commit: the batch freed the lease, and a start may have
+    //     taken it before the error reached the Worker — 14th-review finding: that start made this a 409), or an earlier try
+    //     of this finish committed, or a retry of the same prices finished them (a start with these prices answers 'done'
+    //     once they are noted, so any other computation since then is of other prices, and stat 'data' is still this fp
+    //     only while none of them has finished). Not a failure: 200 finished "before", nothing written now — so the rows of
+    //     the computation that holds the lease are safe from this run's PRUNE_SNAP (13th-review finding: this answered 409
+    //     to the FIRST try, which notify.mjs counts as a lost lease — failed=true and a wrong 'computation failed' Telegram
+    //     line, though everything was written);
+    //   - otherwise (other prices, or another day, noted as finished — or none): the guard failed, D1 rolled this batch
+    //     back — 409 LEASE_LOST. (Were a whole computation of other prices to start AND finish between this batch's commit
+    //     and its error reaching the Worker, the first try would read 409 too — never seen; the newer prices then hold the
+    //     baseline anyway)
+    if (body.lease != null) {
+      const s = await env.DB.prepare(Q.FINISH_STATE).first();
+      const held = s && Number.isSafeInteger(s.lease) ? s.lease : null;
+      if (held !== body.lease) {
+        if (body.fp && s && s.finish === finishedDay && s.data === dataTag(body.fp)) {
+          console.log("alerts finish: these prices are already finished on this day (whoever holds the lease now) — this finish, an earlier try of it or a retry of the same prices committed and its answer was lost; nothing written now");
+          return { weekly: 0, expiring: 0, cleared: 0, changed: 0, finished: "before" };
+        }
+        console.log("alerts finish: its lease is not held and other prices (or another day) are noted as finished — this batch wrote nothing (rolled back): a computation that outlived its lease, or a finish sent again after a computation of other prices finished");
+        throw new Bad(409, "LEASE_LOST");
+      }
+    }
+    throw e;
+  }
+  const at = guard.length;
+  const ch = (i) => (res[at + i] && res[at + i].meta && res[at + i].meta.changes) || 0;
+  const x = (res[at + 2] && res[at + 2].results) || [];
   const marked = x.filter((r) => r.marked).length;
   const out = { weekly: ch(1), expiring: marked, cleared: x.length - marked, changed: ch(3) };
   console.log("alerts finish", JSON.stringify(out));
@@ -620,8 +708,17 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
     if (d && o.k.slice(3, 3 + tag.length) === tag) (kind === "ok:" ? okSince : kind === "rs:" ? stretchFrom : stretchLast).set(origin, d);
   }
   const took = (s) => !!(s.last_w || s.last_x);
-  // one JWT per push origin, cached in D1 (keyed with the public key, so a new key never uses an old token)
-  const jwts = new Map(), fresh = [];
+  // one JWT per push origin, cached in D1 (keyed with the public key, so a new key never uses an old token) — only for a
+  // push origin that answered a push of ours 2xx before (okEver) or in this run (12th review): PUSH_HOSTS lets a
+  // subscription name any one-label host under notify.windows.com / push.services.mozilla.com, so planted rows on made-up
+  // origins wrote a vapid row each (2 rows, and DROP_OLD_JWT 2 more 12 hours later) and grew the table every run reads.
+  // Another origin's token lives in this run's memory only (signed again by the next run that pushes there — a real push
+  // service's first 2xx stores it; Apple's wish of no more than one new token an hour holds from then on)
+  const jwts = new Map(), fresh = [], unsaved = new Map();
+  const keepJwt = (origin) => {
+    const t = unsaved.get(origin);
+    if (t) { unsaved.delete(origin); fresh.push(env.DB.prepare(Q.SAVE_JWT).bind(`${tag} ${origin}`, t.jwt, t.exp)); }
+  };
   for (const c of cache.results || []) if (c.aud.startsWith(tag + " ") && c.exp - nowS > 3600) jwts.set(c.aud.slice(tag.length + 1), c.jwt);
   const stmts = [], slowHosts = new Set(), refused = [], trouble = [], okOrigins = new Set();
   // queued: rows whose result statement is in stmts (or already written); waiting: rows decided after the loop (refused,
@@ -674,7 +771,8 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
       if (slowHosts.has(origin)) return result(s, "slowed", due);
       if (!jwts.has(origin))   // a promise, so parallel pushes to one origin sign once
         jwts.set(origin, vapidJwt(origin, priv, env.VAPID_SUBJECT || env.ALLOWED_ORIGIN, nowMs).then((t) => {
-          fresh.push(env.DB.prepare(Q.SAVE_JWT).bind(`${tag} ${origin}`, t.jwt, t.exp));
+          unsaved.set(origin, t);
+          if (okEver.has(origin)) keepJwt(origin);       // a push service that answered 2xx before: stored now
           return t.jwt;
         }));
       const jwt = await jwts.get(origin);
@@ -705,6 +803,7 @@ export async function send(env, nowMs = Date.now(), { fetch: f = fetch, clock, w
         // Its held rows are freed in the run's closing batch (below: sql.js RELEASE_HELD, a few a run)
         okOrigins.add(origin);
         stmts.push(env.DB.prepare(Q.STAT_OK_SINCE).bind(`${tag} ${origin}`, todayN), env.DB.prepare(Q.CLEAR_RS).bind(`${tag} ${origin}`));
+        keepJwt(origin);                                   // its token too, if this run signed it (12th review)
       }
       if (what === "slow") { slowHosts.add(origin); return result(s, "slowed", due); }
       // 401/403 and push-service trouble (5xx, redirect, timeout) are decided after the run (below), once every push of the

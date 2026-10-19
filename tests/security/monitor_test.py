@@ -284,6 +284,8 @@ check("workers: stale with finished null → 'never received' line naming the AL
       len(probs) == 1 and "한 번도" in probs[0] and "ALERTS_URL" in probs[0] and "price_alerts" in probs[0], str(probs))
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","finished":"2026-10-12","stale":true}')
 check("workers: stale with an old finished day → the '2일 넘게' line", len(probs) == 1 and "2일 넘게" in probs[0] and "한 번도" not in probs[0], str(probs))
+check("workers: the stale line names ALERTS_URL (12th review: a host that does not resolve shows as stale only, never as down)",
+      "ALERTS_URL" in probs[0] and "fetch failed" in probs[0], str(probs))
 # sending false: the VAPID secret is missing / cannot sign / VAPID_PUBLIC_KEY is another key — no push can go out
 probs, notes = cap_probs(b'{"ok":true,"capacity":"ok","sending":false,"key":null,"stale":false}')
 check("workers: sending false → one warning line (VAPID), still alive", len(probs) == 1 and "보낼 수 없어요" in probs[0]

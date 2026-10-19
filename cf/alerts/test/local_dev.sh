@@ -118,6 +118,14 @@ TODAY=$(TZ=Asia/Seoul date +%F)
 # (the run notify.mjs computed: app/data.json's collection date | today — a finish prunes the pairs of any other run)
 RUN="$(node -e 'console.log(JSON.parse(require("fs").readFileSync("app/data.json","utf8")).meta.updated)')|$TODAY"
 expect 200 "$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPB'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET")" "its finish frees the lease"
+# the same finish sent again (its first try committed, the answer was lost — 12th review): bound to its lease, which is gone
+# → the D1 batch's guard fails and the whole batch is rolled back (nothing written); these prices are noted as finished
+# today → 200 finished "before", whoever holds the lease (13th/14th review: notify.mjs takes it as finished on any try). The
+# same lease with other prices (not the ones noted) → 409 LEASE_LOST
+FA=$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPB'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET"); expect 200 "$FA" "the same finish sent again"
+case "$FA" in *'"finished":"before"'*) ;; *) fail "a finish sent again after it committed must answer finished \"before\": $FA";; esac
+FL=$(req POST /v1/internal/finish '{"run":"'$RUN'","today":"'$TODAY'","fp":"'$FPC'","lease":'$LEASE'}' -H "authorization: Bearer $SECRET"); expect 409 "$FL" "a finish whose lease is gone, other prices"
+case "$FL" in *LEASE_LOST*) ;; *) fail "a finish whose lease is gone and whose prices are not the ones finished must answer LEASE_LOST: $FL";; esac
 if [ "$(date -u +%H)" -ge 21 ]; then
   G=$(req POST /v1/internal/start '{"fp":"'$FPC'"}' -H "authorization: Bearer $SECRET"); expect 200 "$G" "a third computation this UTC day (after 21:00 UTC)"
   LEASE=$(node -e 'const g=JSON.parse(process.argv[1]);if(g.go!=="compute")process.exit(1);console.log(g.lease)' "${G#* }") || fail "the third start should answer compute: $G"
@@ -135,7 +143,7 @@ GITHUB_OUTPUT=$STATE/gh-output ALERTS_URL=$BASE ALERTS_SECRET=$SECRET node cf/al
 FC=$($WRANGLER d1 execute DB --local --config "$CONF" --persist-to "$STATE" --json --command "SELECT n % 100 AS c, (SELECT count(*) FROM stat WHERE k = 'lease') AS l FROM stat WHERE k = 'fc'" 2>/dev/null) || fail "could not read the local D1 computation count"
 case "$FC" in *'"c": '$WANT_FC*'"l": 0'*|*'"c":'$WANT_FC*'"l":0'*) ;; *) fail "$WANT_FC computations counted, no lease left: $FC";; esac
 H3=$(req GET /health); case "$H3" in *'"compute":"deferred"'*) ;; *) fail "health should say compute deferred: $H3";; esac
-echo "ok   start: the same lease for a resent start, busy while a computation holds the lease, deferred past the D1 day's share (deferred=true + until once a D1 day), /health compute deferred"
+echo "ok   start: the same lease for a resent start, busy while a computation holds the lease, a resent finish 200 finished \"before\" (13th), another fp 409 LEASE_LOST, deferred past the D1 day's share (deferred=true + until once a D1 day), /health compute deferred"
 # a start no retry can cure (11th review): another ALERTS_SECRET than the Worker's → 401 → startfail=true for the workflow's
 # Telegram line, and the ::warning does not promise a catch-up
 : >"$STATE/gh-output"

@@ -323,6 +323,20 @@ export const STAT_DEFERRED = `INSERT INTO stat (k, n) VALUES ('fd', ?1 * 10 + ?2
 export const STAT_TOLD = "INSERT INTO stat (k, n) VALUES ('fn', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 // ?1 the lease token the start gave this computation: FINISH frees it (a lease another run took after it expired stays)
 export const FREE_LEASE = "DELETE FROM stat WHERE k = 'lease' AND n = ?1";
+// ?1 the lease token a finish names — the FIRST statement of its batch (src/worker.js finish, 12th review): the finish is
+// bound to its own lease. While stat 'lease' holds this token it matches no row and writes nothing. While it holds another
+// one (a computation that took the lease after this one's ran out, or after this finish's first try freed it) or none (this
+// finish's first try committed and freed it — its answer was lost and notify sent the same body again), it inserts a NULL n:
+// stat.n is NOT NULL, the statement fails, and D1 rolls the whole batch back (a batch is one transaction) — nothing of the
+// finish is written, and the Worker answers 409 LEASE_LOST — or, when these prices are already noted as finished on this
+// finish's day, 200 finished "before" whoever holds the lease now (13th/14th review, FINISH_STATE below) (12th-review finding:
+// a resent finish ran PRUNE_SNAP with its own run while another computation was digesting and deleted that computation's
+// rows). One primary-key read, 0 written
+export const FINISH_GUARD = "INSERT INTO stat (k, n) SELECT 'lease', NULL WHERE coalesce((SELECT n FROM stat WHERE k = 'lease'), -1) <> ?1";
+// after a finish batch that failed (src/worker.js finish, 13th review): the lease held now (was it FINISH_GUARD — the lease is
+// not this finish's?), the day noted as finished and the noted data's tag (is this finish already in — D1 committed its batch,
+// or an earlier try of it, and only the answer was lost?). Three primary-key reads, 0 written
+export const FINISH_STATE = "SELECT (SELECT n FROM stat WHERE k = 'lease') AS lease, (SELECT n FROM stat WHERE k = 'finish') AS finish, (SELECT n FROM stat WHERE k = 'data') AS data";
 // pairs not in this run's digest: nobody watches them any more, their key left data.json, or the watched list was cut at
 // PAIR_CAP (src/worker.js watched; sql.js WATCHED says which pairs make way)
 export const PRUNE_SNAP = "DELETE FROM snap WHERE run <> ?1";
@@ -476,8 +490,9 @@ export const RELEASE_HELD = `UPDATE subs SET claim = NULL WHERE rowid IN (
     LIMIT ?2)`;
 // ?1 today as yyyymmdd: phones that took our pushes under this key refused it at a push service that took nothing else in the
 // run (worker.js send: `suspect`) — GET /health "refusing" for that day and the next, so the daily monitor (09:30 KST) sees
-// it from any run since the morning before. Within REFUSING_GRACE_DAYS nobody refused there was removed.
-export const STAT_REFUSING = "INSERT INTO stat (k, n) VALUES ('refusing', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n";
+// it from any run since the morning before. Within REFUSING_GRACE_DAYS nobody refused there was removed. Written only when
+// the day changes (12th review: every suspect run rewrote the same day — up to 77 rows a day)
+export const STAT_REFUSING = "INSERT INTO stat (k, n) VALUES ('refusing', ?1) ON CONFLICT(k) DO UPDATE SET n = excluded.n WHERE n <> excluded.n";
 // ?1 '<tag> <origin>' ?2 today as yyyymmdd (ORIGIN_STATS). STAT_OK_SINCE goes into the SAME results batch as that origin's
 // first SENT of the run (src/worker.js send), so a recorded push is never left without its day. STAT_OK_SINCE, STAT_RL and
 // CLEAR_RS write nothing when there is nothing to change.
@@ -490,5 +505,8 @@ export const CLEAR_RS = "DELETE FROM stat WHERE k IN ('rs:' || ?1, 'rl:' || ?1)"
 // with a wrong key must not erase the day the right key first went through — after going back, the phones it reached would
 // otherwise all look like old-key subscriptions
 export const DROP_OTHER_TAGS = "DELETE FROM stat WHERE ((k >= 'rl:' AND k < 'rl;') OR (k >= 'rs:' AND k < 'rs;')) AND substr(k, 4, 13) <> ?1";
+// ?1 '<tag> <origin>' ?2 the token ?3 its exp (epoch s): only for a push origin that answered 2xx — before (any key's 'ok:')
+// or in this run (src/worker.js send, 12th review) — so the table holds one row per real push service per key, never one per
+// made-up origin a planted subscription names; VAPID_CACHE and DROP_OLD_JWT read that small table once a send run
 export const SAVE_JWT = "INSERT INTO vapid (aud, jwt, exp) VALUES (?1, ?2, ?3) ON CONFLICT(aud) DO UPDATE SET jwt = excluded.jwt, exp = excluded.exp";
 export const DROP_OLD_JWT = "DELETE FROM vapid WHERE exp < ?1";

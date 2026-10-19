@@ -1970,6 +1970,15 @@ test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of p
   assert.ok(freeDay <= 95000, "≥ 5% left of the 100,000 rows");
   assert.ok(dayWrites({ ...PLANS.free, MAX_SUBS: 1800 }) > 95000, "the free MAX_SUBS is at its ceiling (1,800 would not leave 5%)");
   assert.ok(dayWrites({ ...PLANS.free, COMPUTES_PER_DAY: 4 }) > 100000, "a fourth free computation would pass the day");
+  // 12th/13th review (going back to a Free account): the free day holds only while the table holds ≤ MAX_SUBS (1,750) rows —
+  // nothing is evicted, so a table filled under "paid" passes D1 Free's 100,000 under "free" whatever COMPUTES_PER_DAY is
+  // (the numbers worker.js, ARCHITECTURE D19's turn-on order 9, SECURITY §4 and INCIDENT_RESPONSE_PLAN §9 quote)
+  for (const [m, k, want] of [[15000, 3, 319657], [15000, 1, 155617], [3250, 3, 119907]]) {
+    const day = dayWrites({ ...PLANS.free, MAX_SUBS: m, COMPUTES_PER_DAY: k });
+    assert.equal(day, want, `the free profile on ${m} rows, K = ${k}`);
+    assert.ok(day > 100000, `${m} rows, K = ${k}: past the Free day (${day})`);
+  }
+  assert.ok(dayWrites({ ...PLANS.free, MAX_SUBS: PLANS.free.MAX_SUBS }) <= 95000, "at 1,750 rows the free day leaves 5%");
   // the 10th review's free day with a failed phone's 7 rows (its subs_fail entry) — what the 11th-review finding measured
   assert.ok(RUNS * 40 * 8 + RUNS * PROBE_SLOTS + RUNS * 40 * 2 + 5006 + 2 + 3 * (2000 * 7 + 7020) + DEAD_TRY > 100000, "the old index and MAX_SUBS passed the free day");
   // PAID: a 31-day month of 50,000,000 rows written (then $1.00 a million) with cf/metrics at its own cap (80,000 a day) —
@@ -1993,33 +2002,77 @@ test("review finding (D1 write limit): watched is cut at PAIR_CAP — pairs of p
   // DIGEST_HELD 1,000 each) + 77 cron runs walking the partial indexes past rows that are not due (2 × MAX_SUBS + 34), each
   // with the probes at PROBE_ORIGINS origins (1,383) and a release (≤ 7 a freed row) + every push with an expiring notice
   // (SENT ≤ 241) + every run walking DROP_ENDED (sends before their KST day's first finish) + two KST days of subscriptions
-  // (9 each) + ≤ 120 starts (≤ 30 rows each)
-  const RESENT = 12 * 3000;
-  const reads = (p, compute, deadTry) => p.COMPUTES_PER_DAY * compute + deadTry + (p.COMPUTES_PER_DAY + 1) * RESENT + RUNS * (2 * p.MAX_SUBS + 34 + 1383 + Math.max(340, 7 * p.SEND_LIMIT)) +
+  // (9 each) + ≤ 120 starts (≤ 30 rows each) + (12th review) the other tries notify.mjs's call() may send: watched up to
+  // twice more a computation and twice more for the dead try (a watched try whose answer was lost was still read) + (13th
+  // review) a finish: ONE batch a computation commits (inside `compute` — FINISH_GUARD lets no second one commit), none for
+  // the dead try; every other finish try is a FAILED batch, not counted in either place (D1 reports no rows for a failed
+  // batch and does not document what it bills for one: not known), leaving its catch's FINISH_STATE read (≤ 3 rows): two
+  // failed tries a computation, three for the dead try — and (14th-review finding) the try that commits too, when D1 then
+  // answers an error (the 13th review's path): the catch reads once for every try call() sends, 3 a computation
+  const RESENT = 12 * 3000, CATCH = 3;
+  const failedTries = (p) => 2 * p.COMPUTES_PER_DAY + 3;
+  const catchReads = (p) => 3 * p.COMPUTES_PER_DAY + 3;
+  const reads = (p, compute, deadTry, watched) => p.COMPUTES_PER_DAY * (compute + 2 * watched) + deadTry + 2 * watched +
+    (p.COMPUTES_PER_DAY + 1) * RESENT + catchReads(p) * CATCH + RUNS * (2 * p.MAX_SUBS + 34 + 1383 + Math.max(340, 7 * p.SEND_LIMIT)) +
     RUNS * p.SEND_LIMIT * 241 + RUNS * p.MAX_SUBS + 2 * p.NEW_PER_DAY * 9 + 120 * 30;
   assert.equal(END_DAYS, 3, "SENT ≤ 2 × (4 dates × 25 + 20) + 1 = 241 holds because the Worker takes end dates up to its day + 3");
-  const freeReads = reads(PLANS.free, 298700, 83370 + 12000 + 30);
-  assert.equal(freeReads, 2429919, "the worst free D1 day of reads (≈ 2.43M; 51.4% left)");
+  const freeReads = reads(PLANS.free, 298700, 83370 + 12000 + 30, 83370);
+  assert.equal(freeReads, 3096915, "the worst free D1 day of reads (≈ 3.10M; 38.1% left)");
+  assert.equal(freeReads - (catchReads(PLANS.free) - failedTries(PLANS.free)) * CATCH, 3096906, "the 13th review's sum: no catch read for the try that commits");
   assert.ok(freeReads <= 4750000, "≥ 5% left of the 5,000,000 rows");
-  const paidReads = reads(PLANS.paid, 2312750, 626620 + 12000 + 30);
-  assert.equal(paidReads, 36283559);
-  assert.equal(paidReads * 31, 1124790329, "the worst paid month of reads (≈ 1.12B of the 25B included)");
-  for (const [m, ceiling] of [[298652, 298700], [2312652, 2312750]]) assert.ok(m <= ceiling, `measured ${m} ≤ ${ceiling}`);
+  // were every failed finish try billed as a full finish (not known — the most a failed one could read): the same count in
+  // both places (2 a computation and the dead try's 3 — 13th-review finding: the 12th counted only the first; the try that
+  // commits is in `compute` already) — free stays under its 5M (without the 5% margin), paid keeps 5% (the bill stays $5)
+  const freeFailedFull = freeReads + failedTries(PLANS.free) * 203300;
+  assert.equal(freeFailedFull, 4926615);
+  assert.ok(freeFailedFull < 5000000, "under the free day even then");
+  // the 12th review's sum: a full finish for each failed try of a counted computation only, no catch read; and the 11th's
+  // without the retries of watched and finish (12th-review finding)
+  const twelfth = freeReads - catchReads(PLANS.free) * CATCH + 3 * 2 * 203300;
+  assert.deepEqual([twelfth, twelfth - 3 * 2 * (83370 + 203300) - 2 * 83370], [4316679, 2429919]);
+  const paidReads = reads(PLANS.paid, 2312750, 626620 + 12000 + 30, 626620);
+  assert.equal(paidReads, 52575796);
+  assert.equal(paidReads * 31, 1629849676, "the worst paid month of reads (≈ 1.63B of the 25B included)");
+  assert.ok(paidReads * 31 <= 25e9 * 0.95, "≥ 5% of the included 25B left");
+  const paidFailedFull = (paidReads + failedTries(PLANS.paid) * 1674100) * 31;
+  assert.equal(paidFailedFull, 3031071376);
+  assert.ok(paidFailedFull <= 25e9 * 0.95, "≥ 5% of the 25B left even then: the bill stays $5");
+  // measured on workerd (12th review, scratch tool a5r12/retry12.mjs — the finish with its lease guard): one computation of
+  // the worst shape, its watched and its finish
+  for (const [m, ceiling] of [[298654, 298700], [2312654, 2312750], [83370, 83370], [626620, 626620], [203263, 203300], [1674013, 1674100]]) assert.ok(m <= ceiling, `measured ${m} ≤ ${ceiling}`);
   // the documents quote these same numbers, and the older ones (10th: 94,653 / 40,890,023 / 2,467,769 / 1,119,917,129 /
   // 2,312,650 / 336,650 / 1,239,033 / 36,126,359; 9th: 87,603 / 2,359,386 / 336,639; 8th: 98,600 / 3.76M) are gone outside
   // ARCHITECTURE's history line
-  const NEW = ["94,407", "39,402,147", "2,429,919", "1,124,790,329", "2,312,750", "298,700"];
+  // 11th: 2,429,919 / 1,124,790,329 / 36,283,559 — reads without the retries of watched and finish; MAX_SUBS 2,000 and '4
+  // days' — the free profile's 2,000 subscriptions before the 11th review)
+  // 12th: 4,316,679 / 2,875,376,449 / 92,754,079 (573,340 / 4,601,440 — a full finish for each failed try of a counted
+  // computation, none for the dead try's; 13th-review finding)
+  // 13th: 3,096,906 / 1,629,848,560 / 4,926,606 / 3,031,070,260 / 52,575,760 — no catch read for the try that commits and
+  // then answers an error (14th-review finding))
+  // the rollback numbers and their warning (12th review; tested since the 13th): every one of the four quotes 319,657 /
+  // 155,617 / 119,907 and that the free day holds only up to 1,750 subscriptions
+  const NEW = ["94,407", "39,402,147", "3,096,915", "1,629,849,676", "4,926,615", "3,031,071,376", "2,312,750", "298,700"];
+  const ROLLBACK = ["319,657", "155,617", "119,907"];
   for (const f of ["ARCHITECTURE.md", "SECURITY_ARCHITECTURE.md", "INCIDENT_RESPONSE_PLAN.md"]) {
     const text = readFileSync(new URL(`../../../docs/${f}`, import.meta.url), "utf8");
-    for (const n of f === "INCIDENT_RESPONSE_PLAN.md" ? ["94,407", "39,402,147"] : NEW) assert.ok(text.includes(n), `${f} quotes ${n}`);
+    for (const n of [...(f === "INCIDENT_RESPONSE_PLAN.md" ? NEW.slice(0, 6) : NEW), ...ROLLBACK]) assert.ok(text.includes(n), `${f} quotes ${n}`);
+    assert.ok(text.includes("구독이 1,750개 이하일 때뿐"), `${f}: the free day holds only up to 1,750 subscriptions`);
+    assert.match(text, /1,750개\s+아래로\s+정리/, `${f}: stay on Paid or delete down to 1,750 first`);
     const current = f === "ARCHITECTURE.md" ? text.replace(/예전 숫자\([^)]*\)[^.]*\./g, "") : text;
     for (const old of ["2.24M", "첫 번째는 161", "87,603", "2,359,386", "336,639", "98,600", "3.76M", "4.54M", "다음 06시 정기 실행이 계산", "key 목록만 보내", "다음 날에야", "한도를 넘을 때만", "매시 37분", "09:37 KST 예정",
-      "94,653", "40,890,023", "2,467,769", "1,119,917,129", "336,650", "1,239,033", "36,126,359", "5,347", "254만 줄(남는 몫에 3번", "\"plan\":\"paid\"`이고"])
+      "94,653", "40,890,023", "2,467,769", "1,119,917,129", "336,650", "1,239,033", "36,126,359", "5,347", "254만 줄(남는 몫에 3번", "\"plan\":\"paid\"`이고",
+      "2,429,919", "1,124,790,329", "36,283,559", "51.4% 남음", "11.2억", "MAX_SUBS`는 2,000", "MAX_SUBS`(2,000)", "전체 2,000개", "**4일**", "4일이면 차요", "4일이면 표가 차요",
+      "4,316,679", "2,875,376,449", "92,754,079", "573,340", "4,601,440", "13.7% 남음", "28.8억", "1~21초",
+      "3,096,906", "1,629,848,560", "4,926,606", "3,031,070,260", "52,575,760", "(2K + 3) × 3", "임대가 없고"])
       assert.equal(current.includes(old), false, `${f}: the old "${old}" is gone`);
   }
   const src = readFileSync(new URL("../src/worker.js", import.meta.url), "utf8");
-  for (const n of [...NEW, "1,191,037", "36,283,559", "15,770", "82,020"]) assert.ok(src.includes(n), `src/worker.js quotes ${n}`);
-  for (const old of ["87,603", "2,359,386", "the only way", "hourly", "94,653", "40,890,023", "1,239,033", "5,347", "17,020"]) assert.equal(src.includes(old), false, `src/worker.js: the old "${old}" is gone`);
+  for (const n of [...NEW, ...ROLLBACK, "1,191,037", "52,575,796", "15,770", "82,020"]) assert.ok(src.includes(n), `src/worker.js quotes ${n}`);
+  assert.ok(src.includes("This day holds only while the table holds ≤ MAX_SUBS (1,750) rows") && /deleting subscriptions down to 1,750/.test(src), "src/worker.js: the 1,750 warning");
+  for (const old of ["87,603", "2,359,386", "the only way", "hourly", "94,653", "40,890,023", "1,239,033", "5,347", "17,020", "2,429,919 (", "1,124,790,329", "36,283,559", "SENT 1;", "1.12B",
+    "4,316,679", "2,875,376,449", "92,754,079", "573,340", "4,601,440", "2.88B",
+    "3,096,906", "1,629,848,560", "4,926,606", "3,031,070,260", "52,575,760", "(2K + 3) × 3", "no lease is held"])
+    assert.equal(src.includes(old), false, `src/worker.js: the old "${old}" is gone`);
   const cfg = readFileSync(new URL("../wrangler.jsonc", import.meta.url), "utf8");
   assert.equal(/"PAIR_CAP":\s*"(\d+)"/.exec(cfg)[1], String(PAIR_CAP), "wrangler.jsonc vars.PAIR_CAP = the code's default");
 });
@@ -2685,8 +2738,12 @@ test("9th/10th review (start): done for the prices finished today (or, any day, 
   assert.deepEqual(await start(E, morning + 14 * 60e3), { go: "busy" });
   assert.deepEqual(await start(E, morning + 15 * 60e3 + 1), { go: "compute", lease: morning + 15 * 60e3 + 1 });
   assert.deepEqual([stat("fc"), stat("cfail")], [2026102003, 20261020]);
-  // a finish naming another lease (a run whose lease ran out) frees nothing of the run that holds it now
-  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-21|2026-10-21", today: "2026-10-21", fp: D, lease: morning }, morning + 16 * 60e3)).status, 200);
+  // a finish naming another lease (a run whose lease ran out) frees nothing of the run that holds it now — and, 12th review,
+  // writes nothing at all: 409 LEASE_LOST (its PRUNE_SNAP would delete the rows the computation holding the lease digests)
+  w = written(db);
+  const lost = await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-21|2026-10-21", today: "2026-10-21", fp: D, lease: morning }, morning + 16 * 60e3);
+  assert.deepEqual([lost.status, lost.body], [409, { error: "LEASE_LOST" }]);
+  assert.equal(written(db) - w, 0, "nothing written");
   assert.equal(stat("lease"), morning + 15 * 60e3 + 1);
   assert.deepEqual(await start(B, morning + 17 * 60e3), { go: "busy" });
   // the catch-up (start {catchup: true}, alerts-catchup.yml): until CATCHUP_ROLL_HOUR (08:00 KST — 10th review: a
@@ -3111,4 +3168,227 @@ test("11th review (the subrequest limit): a Free account running PLAN paid — t
   await news(e2, "2026-10-19");
   const r3 = await send(e2, kst("2026-10-19T09:00:00"), { fetch: async () => { throw new Error("network down"); }, waits: [0, 0] });
   assert.deepEqual([r3.sent, r3.limited, r3.retry], [0, undefined, 3], "a made-up host that never answered: counted (4th review)");
+});
+
+// ---- 12th review: what the 11th review left (a finish sent again, the VAPID token cache, STAT_REFUSING)
+test("12th review (a finish sent again): its first try committed (the answer was lost), another computation took the lease and digested — the same finish again writes nothing (14th review: 200 finished \"before\" — these prices are noted as finished that day, whoever holds the lease): the other computation's snap rows, its lease and its news survive", T, async () => {
+  const { env, db } = await setup();
+  const phone = await sub(env, [{ kind: "target", key: "X24", max: 90000 }, { kind: "watch", key: "X01" }]);
+  const D = "2026-10-20", t0 = kst(`${D}T10:00:00`);
+  const [A, B, C] = ["a", "b", "c"].map((x) => x.repeat(64));
+  // computation A (the factory run): its finish commits — say its answer was lost
+  const gA = await startAt(env, { fp: A, nonce: "000000000000a" }, t0);
+  assert.equal(gA.go, "compute");
+  const runA = `2026-10-19|${D}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runA, entries: [st("X24", 100000, 5, 120000), st("X01", 50000, 5, 60000)] }, t0 + 1e3)).status, 200);
+  const finA = { run: runA, today: D, fp: A, lease: gA.lease };
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", finA, t0 + 2e3)).status, 200);
+  // computation B (a catch-up with a new collection) starts in the seconds between: the lease is free
+  const t1 = t0 + 3e3, gB = await startAt(env, { fp: B, nonce: "000000000000b", catchup: true }, t1);
+  assert.deepEqual(gB, { go: "compute", lease: t1 });
+  const runB = `${D}|${D}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runB, entries: [st("X24", 100000, 5, 120000), st("X01", 50000, 6, 60000)] }, t1 + 1e3)).status, 200);
+  const snapB = db.rows("SELECT k, run, p, pn FROM snap ORDER BY k");
+  assert.deepEqual(snapB.map((x) => x.run), [runB, runB]);
+  // A's notify sends the same finish again (call()'s second try): nothing written — and, 14th review, 200 finished
+  // "before": A's prices are noted as finished on this day, whoever holds the lease now (13th: 409 while B held it)
+  const w = written(db);
+  const again = await internal(env, "POST", "/v1/internal/finish", finA, t1 + 2e3);
+  assert.deepEqual([again.status, again.body], [200, { weekly: 0, expiring: 0, cleared: 0, changed: 0, finished: "before" }]);
+  assert.equal(written(db) - w, 0, "nothing written");
+  assert.deepEqual(db.rows("SELECT k, run, p, pn FROM snap ORDER BY k"), snapB, "B's rows survive (before: PRUNE_SNAP with A's run deleted both)");
+  assert.deepEqual([statOf(db, "lease"), statOf(db, "data")], [t1, parseInt(A.slice(0, 13), 16)], "B still holds the lease; the noted data is A's until B finishes");
+  // B finishes: its numbers become the baseline
+  const fB = await internal(env, "POST", "/v1/internal/finish", { run: runB, today: D, fp: B, lease: gB.lease }, t1 + 3e3);
+  assert.equal(fB.status, 200, JSON.stringify(fB.body));
+  assert.deepEqual(db.rows("SELECT k, run, m FROM snap ORDER BY k"), [{ k: "X01", run: runB, m: 50000 }, { k: "X24", run: runB, m: 100000 }], "the baseline is kept");
+  // the next collection crosses the target (100,000 → 85,000 ≤ max 90,000): news — the baseline was not lost
+  const D2 = "2026-10-21", t2 = kst(`${D2}T06:10:00`), gC = await startAt(env, { fp: C, nonce: "000000000000c" }, t2);
+  const runC = `${D2}|${D2}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runC, entries: [st("X24", 85000, 5, 120000), st("X01", 50000, 6, 60000)] }, t2 + 1e3)).status, 200);
+  const fC = await internal(env, "POST", "/v1/internal/finish", { run: runC, today: D2, fp: C, lease: gC.lease }, t2 + 2e3);
+  assert.equal(fC.body.weekly, 1, "the target news is marked");
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phone.id)[0].pend_w, 1);
+  // a finish sent again when nobody took the lease after its first try: the guard fails — nothing written (a computation
+  // that ran completely in between would otherwise lose its rows to this run's PRUNE_SNAP) — and, 13th review, no lease is
+  // held and these prices are noted as finished on this day: 200 finished "before" (notify.mjs: finished, not a failure)
+  const w2 = written(db);
+  const late = await internal(env, "POST", "/v1/internal/finish", { run: runC, today: D2, fp: C, lease: gC.lease }, t2 + 23e3);
+  assert.deepEqual([late.status, late.body, written(db) - w2], [200, { weekly: 0, expiring: 0, cleared: 0, changed: 0, finished: "before" }, 0]);
+  // no lease held but these prices are NOT the ones noted (another fp), or not on this day: 409, nothing written
+  const w3 = written(db);
+  const otherFp = await internal(env, "POST", "/v1/internal/finish", { run: runC, today: D2, fp: B, lease: gC.lease }, t2 + 24e3);
+  assert.deepEqual([otherFp.status, otherFp.body, written(db) - w3], [409, { error: "LEASE_LOST" }, 0]);
+  const noFp = await internal(env, "POST", "/v1/internal/finish", { run: runC, today: D2, lease: gC.lease }, t2 + 25e3);
+  assert.deepEqual([noFp.status, noFp.body, written(db) - w3], [409, { error: "LEASE_LOST" }, 0]);
+  const nextDay = await internal(env, "POST", "/v1/internal/finish", { run: "2026-10-22|2026-10-22", today: "2026-10-22", fp: C, lease: gC.lease }, kst("2026-10-22T10:00:00"));
+  assert.deepEqual([nextDay.status, nextDay.body, written(db) - w3], [409, { error: "LEASE_LOST" }, 0]);
+  // a finish without a lease (none of our runs sends one) is not checked
+  assert.equal((await internal(env, "POST", "/v1/internal/finish", { run: runC, today: D2, fp: C }, t2 + 30e3)).status, 200);
+  // the guard is the batch's first statement and a D1 batch is one transaction: a failing guard rolls everything back
+  assert.match(Q.FINISH_GUARD, /^INSERT INTO stat \(k, n\) SELECT 'lease', NULL WHERE coalesce\(\(SELECT n FROM stat WHERE k = 'lease'\), -1\) <> \?1$/);
+  assert.equal(db.rows("SELECT sql FROM sqlite_master WHERE name = 'stat'")[0].sql.includes("n INTEGER NOT NULL"), true, "stat.n is NOT NULL: the guard's NULL fails");
+});
+
+test("13th review (D1 committed the finish, then answered an error — 'Network connection lost.' after the commit): the FIRST try answers 200 finished \"before\" (not 409 LEASE_LOST), everything is written once, and the same finish again is 200 finished \"before\" too", T, async () => {
+  const { env, db } = await setup();
+  await sub(env, [{ kind: "target", key: "X24", max: 90000 }]);
+  const D = "2026-10-20", t0 = kst(`${D}T10:00:00`), A = "a".repeat(64);
+  const g = await startAt(env, { fp: A, nonce: "000000000000a" }, t0);
+  const run = `2026-10-19|${D}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run, entries: [st("X24", 100000, 5, 120000)] }, t0 + 1e3)).status, 200);
+  // the batch that holds PROMOTE (the finish) commits — and then D1's answer is an error
+  const real = db.batch;
+  let lost = 0;
+  db.batch = async (list) => { const out = await real(list); if (list.some((x) => x.sql === Q.PROMOTE)) { lost++; throw new Error("D1_ERROR: Network connection lost."); } return out; };
+  const logs = await spyConsole(async () => {
+    const r = await internal(env, "POST", "/v1/internal/finish", { run, today: D, fp: A, lease: g.lease }, t0 + 2e3);
+    assert.deepEqual([r.status, r.body], [200, { weekly: 0, expiring: 0, cleared: 0, changed: 0, finished: "before" }]);
+  });
+  db.batch = real;
+  assert.equal(lost, 1, "the batch committed once and its answer was an error");
+  assert.match(logs, /alerts finish: these prices are already finished on this day \(whoever holds the lease now\)/);
+  assert.equal(/LEASE_LOST|rolled back/.test(logs), false, "not reported as a lost lease");
+  // it was all written: the day, the data, the lease freed, the baseline promoted
+  assert.deepEqual([statOf(db, "finish"), statOf(db, "data"), statOf(db, "lease")], [20261020, parseInt(A.slice(0, 13), 16), undefined]);
+  assert.deepEqual(db.rows("SELECT k, p, m FROM snap"), [{ k: "X24", p: 0, m: 100000 }]);
+  // notify.mjs sends it again (it got no usable answer): the guard fails, nothing written, 200 finished "before"
+  const w = written(db);
+  const again = await internal(env, "POST", "/v1/internal/finish", { run, today: D, fp: A, lease: g.lease }, t0 + 3e3);
+  assert.deepEqual([again.status, again.body.finished, written(db) - w], [200, "before", 0]);
+  // the same prices are done at start
+  assert.deepEqual(await startAt(env, { fp: A, nonce: "000000000000b" }, t0 + 4e3), { go: "done" });
+});
+
+// ---- 14th review: the 13th review's "finished: before" asked that no lease be held
+test("14th review (D1 committed the finish, a start of OTHER prices took the lease, then the error reached the Worker): the first try answers 200 finished \"before\" (13th: 409 LEASE_LOST — a wrong 'computation failed'), nothing more is written and the other computation's lease and rows are untouched; with other prices noted as finished the answer stays 409", T, async () => {
+  const { env, db } = await setup({ COMPUTES_PER_DAY: "4" });           // three by day (one kept for 06:00 KST)
+  const phone = await sub(env, [{ kind: "target", key: "X24", max: 90000 }]);
+  const D = "2026-10-20", t0 = kst(`${D}T10:00:00`);
+  const [A, B, C] = ["a", "b", "c"].map((x) => x.repeat(64));
+  const gA = await startAt(env, { fp: A, nonce: "000000000000a" }, t0);
+  const runA = `2026-10-19|${D}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runA, entries: [st("X24", 100000, 5, 120000)] }, t0 + 1e3)).status, 200);
+  // the batch that holds PROMOTE (A's finish) commits — it frees A's lease —, a catch-up of other prices (B) takes the lease
+  // in that moment, and only then does D1's error reach the Worker
+  const real = db.batch;
+  let lost = 0, gB = null, wB = 0;
+  const tB = t0 + 2500;
+  db.batch = async (list) => {
+    const out = await real(list);
+    if (list.some((x) => x.sql === Q.PROMOTE)) {
+      lost++;
+      db.batch = real;
+      gB = await startAt(env, { fp: B, nonce: "000000000000b", catchup: true }, tB);
+      wB = written(db);
+      throw new Error("D1_ERROR: Network connection lost.");
+    }
+    return out;
+  };
+  const logs = await spyConsole(async () => {
+    const r = await internal(env, "POST", "/v1/internal/finish", { run: runA, today: D, fp: A, lease: gA.lease }, t0 + 2e3);
+    assert.deepEqual([r.status, r.body], [200, { weekly: 0, expiring: 0, cleared: 0, changed: 0, finished: "before" }]);
+  });
+  db.batch = real;
+  assert.equal(lost, 1, "A's batch committed once and its answer was an error");
+  assert.deepEqual(gB, { go: "compute", lease: tB }, "B took the lease between the commit and the error");
+  assert.match(logs, /alerts finish: these prices are already finished on this day \(whoever holds the lease now\)/);
+  assert.equal(/LEASE_LOST|rolled back/.test(logs), false, "not reported as a lost lease");
+  assert.equal(written(db) - wB, 0, "the answer wrote nothing more");
+  // A was written once (the day, A's data, the baseline promoted); B still holds the lease
+  assert.deepEqual([statOf(db, "finish"), statOf(db, "data"), statOf(db, "lease")], [20261020, parseInt(A.slice(0, 13), 16), tB]);
+  assert.deepEqual(db.rows("SELECT k, p, m FROM snap"), [{ k: "X24", p: 0, m: 100000 }]);
+  // B digests (the target is crossed: 85,000 ≤ 90,000); A's notify sends its finish again: 200 "before", B's rows and lease
+  // are untouched (no PRUNE_SNAP with A's run)
+  const runB = `${D}|${D}`;
+  assert.equal((await internal(env, "POST", "/v1/internal/digest", { run: runB, entries: [st("X24", 85000, 5, 120000)] }, tB + 1e3)).status, 200);
+  const snapB = db.rows("SELECT k, run, p, pn, pm FROM snap ORDER BY k");
+  const w = written(db);
+  const again = await internal(env, "POST", "/v1/internal/finish", { run: runA, today: D, fp: A, lease: gA.lease }, tB + 2e3);
+  assert.deepEqual([again.status, again.body.finished, written(db) - w], [200, "before", 0]);
+  assert.deepEqual([db.rows("SELECT k, run, p, pn, pm FROM snap ORDER BY k"), statOf(db, "lease")], [snapB, tB], "B's rows and lease untouched");
+  // B finishes normally: its news is marked, the lease freed, B's prices noted
+  const fB = await internal(env, "POST", "/v1/internal/finish", { run: runB, today: D, fp: B, lease: gB.lease }, tB + 3e3);
+  assert.deepEqual([fB.status, fB.body.weekly, fB.body.finished], [200, 1, undefined]);
+  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phone.id)[0].pend_w, 1);
+  assert.deepEqual([statOf(db, "lease"), statOf(db, "data")], [undefined, parseInt(B.slice(0, 13), 16)]);
+  // another fp noted in stat 'data' while a lease is held: C starts and holds the lease; A's finish again → B's prices are
+  // the ones noted, not A's: 409 LEASE_LOST, nothing written, C's lease untouched. B's finish sent again → B's prices are
+  // noted on this day: 200 "before" (whoever holds the lease)
+  const tC = tB + 60e3, gC = await startAt(env, { fp: C, nonce: "000000000000c", catchup: true }, tC);
+  assert.deepEqual(gC, { go: "compute", lease: tC });
+  const w2 = written(db);
+  const lostA = await internal(env, "POST", "/v1/internal/finish", { run: runA, today: D, fp: A, lease: gA.lease }, tC + 1e3);
+  assert.deepEqual([lostA.status, lostA.body, written(db) - w2, statOf(db, "lease")], [409, { error: "LEASE_LOST" }, 0, tC]);
+  const againB = await internal(env, "POST", "/v1/internal/finish", { run: runB, today: D, fp: B, lease: gB.lease }, tC + 2e3);
+  assert.deepEqual([againB.status, againB.body.finished, written(db) - w2, statOf(db, "lease")], [200, "before", 0, tC]);
+});
+
+test("12th review (a finish whose own lease is still held but D1 fails): the error stays a 500 (not 409) and the next try writes", T, async () => {
+  const { env, db } = await setup();
+  await sub(env, [{ kind: "watch", key: "X24" }]);
+  const t0 = kst("2026-10-20T10:00:00"), g = await startAt(env, { fp: "a".repeat(64), nonce: "000000000000a" }, t0);
+  const run = "2026-10-19|2026-10-20";
+  await internal(env, "POST", "/v1/internal/digest", { run, entries: [st("X24", 100000, 5, 120000)] }, t0);
+  const real = db.batch;
+  let failOnce = true;
+  db.batch = async (list) => { if (failOnce && list.some((s) => s.sql === Q.PROMOTE)) { failOnce = false; throw new Error("D1_ERROR: Network connection lost."); } return real(list); };
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const r = await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-20", fp: "a".repeat(64), lease: g.lease }, t0 + 1e3);
+    assert.deepEqual([r.status, r.body], [500, { error: "INTERNAL" }]);
+  } finally { console.error = quiet; db.batch = real; }
+  assert.equal(statOf(db, "lease"), t0, "the lease is still this computation's");
+  const r2 = await internal(env, "POST", "/v1/internal/finish", { run, today: "2026-10-20", fp: "a".repeat(64), lease: g.lease }, t0 + 3e3);
+  assert.equal(r2.status, 200);
+  assert.equal(statOf(db, "lease"), undefined, "freed");
+});
+
+test("12th review (the VAPID token cache): a token is stored only for a push origin that answered 2xx — before (any key's 'ok:') or in this run; planted rows on made-up origins (one label under notify.windows.com) write no vapid row and no DROP_OLD_JWT later: ≤ 8 rows a push", T, async () => {
+  const { env, db, k } = await setup({ MAX_SUBS: undefined });
+  const N = 30, today = "2026-10-20";
+  db.raw.prepare("INSERT INTO stat (k, n) VALUES ('finish', 20261020)").run();
+  for (const [label, status, j] of [["401/403", 403, 0], ["no answer", "throw", 1]]) {
+    for (let i = 0; i < N; i++) await sub(env, [{ kind: "expiring", key: "X01" }, { kind: "watch", key: "X24" }], subscription(`u${j}x${i}.notify.windows.com`, `w/?token=t${i}`));
+    // every row due both ways (pend_w and an expiring notice), never pushed before — the most rows a refusal writes
+    db.raw.prepare("UPDATE subs SET pend_w = 1, pend_x = ?1, pend_xl = ?2 WHERE claim IS NULL").run(today, `["${today}|X01|"]`);
+    const before = written(db);
+    const r = await send(env, kst(`${today}T09:10:00`), { fetch: pushService(() => status).f, waits: [0, 0] });
+    const pushes = r.retry + r.refused + r.held + r.gone + r.sent;
+    assert.ok(pushes > 0, label);
+    assert.equal(db.rows("SELECT count(*) c FROM vapid")[0].c, 0, `${label}: no token stored for an origin that never answered 2xx`);
+    assert.ok((written(db) - before) / pushes <= 8, `${label}: ${(written(db) - before) / pushes} rows a push`);
+  }
+  // a real push service answers 2xx: its token is stored once (with the 'ok:' day) and reused by the next run
+  await sub(env, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/real1"));
+  await sub(env, [{ kind: "watch", key: "X24" }], subscription("fcm.googleapis.com", "fcm/send/real2"));
+  db.raw.prepare("UPDATE subs SET pend_w = 1 WHERE endpoint LIKE 'https://fcm.googleapis.com/%'").run();
+  const push = pushService((url) => (url.startsWith("https://fcm.googleapis.com/") ? 201 : 403));
+  await send(env, kst(`${today}T09:20:00`), { fetch: push.f, waits: [0, 0] });
+  assert.deepEqual(db.rows("SELECT aud FROM vapid").map((x) => x.aud), [`${k.pub.slice(0, 12)} https://fcm.googleapis.com`]);
+  const saved = db.rows("SELECT jwt FROM vapid")[0].jwt;
+  // an origin that answered 2xx before (an 'ok:' row of any key — here an older key's) is stored at once, whatever its
+  // push answers this time
+  okSince(db, "OLDKEYOLDKEY", "https://web.push.apple.com", "2026-10-01");
+  await sub(env, [{ kind: "watch", key: "X24" }], subscription("web.push.apple.com", "apple1"));
+  db.raw.prepare("UPDATE subs SET pend_w = 1, claim = NULL WHERE endpoint LIKE 'https://web.push.apple.com/%'").run();
+  await send(env, kst(`${today}T09:30:00`), { fetch: pushService(() => 503).f, waits: [0, 0] });
+  assert.deepEqual(db.rows("SELECT aud FROM vapid ORDER BY aud").map((x) => x.aud.split(" ")[1]), ["https://fcm.googleapis.com", "https://web.push.apple.com"]);
+  assert.equal(db.rows("SELECT jwt FROM vapid WHERE aud LIKE '% https://fcm.googleapis.com'")[0].jwt, saved, "the fcm token was not signed again");
+  // the made-up origins never got a row, so DROP_OLD_JWT has nothing of theirs to delete the next morning
+  await send(env, kst("2026-10-21T08:00:00"), { fetch: pushService(() => 403).f, waits: [0, 0] });
+  assert.equal(db.rows("SELECT count(*) c FROM vapid WHERE aud LIKE '%notify.windows.com'")[0].c, 0);
+});
+
+test("12th review (STAT_REFUSING): a suspect run writes stat 'refusing' once a day, not once a run", T, async () => {
+  const { db } = await setup();
+  const w0 = written(db);
+  db.raw.prepare(Q.STAT_REFUSING).run(20261020);
+  db.raw.prepare(Q.STAT_REFUSING).run(20261020);
+  db.raw.prepare(Q.STAT_REFUSING).run(20261020);
+  assert.equal(written(db) - w0, 1, "the same day again writes nothing");
+  db.raw.prepare(Q.STAT_REFUSING).run(20261021);
+  assert.equal(written(db) - w0, 2);
+  assert.match(Q.STAT_REFUSING, /DO UPDATE SET n = excluded\.n WHERE n <> excluded\.n$/);
 });

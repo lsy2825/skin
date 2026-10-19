@@ -42,11 +42,17 @@
 // the lease (15 minutes) runs out — a retry of the same prices is not counted, once a D1 day (the Worker's start). A failure
 // AFTER the Worker answered compute also writes `failed=true` to $GITHUB_OUTPUT (weekly.yml's alert job sends a Telegram line;
 // a catch-up's shows on GET /health "compute": "failed", which the daily monitor warns about). One that trying again cannot
-// cure — start answered a 4xx other than 408/429 (401/403: ALERTS_SECRET is not the Worker's; 404: ALERTS_URL is not the
-// alerts Worker), an answer this code does not know, or a data.json shape the Worker would refuse — writes `startfail=true`
-// (11th review: weekly.yml's alert job sends a Telegram line; before, only GET /health stale told, about 3 days later).
-// A Worker or D1 that does not answer (5xx, network) is retried here 3 times and by the next catch-up; the daily monitor's
-// GET /health check reports a Worker that stays down.
+// cure — start answered a 3xx or a 4xx other than 408/429 (401/403: ALERTS_SECRET is not the Worker's; 404 or a redirect:
+// ALERTS_URL is not the alerts Worker), a 2xx that is not JSON (ALERTS_URL is some other site), an answer this code does not
+// know, an ALERTS_URL that is not an https address, or a data.json shape the Worker would refuse — writes `startfail=true`
+// (11th review, 12th: 3xx, non-JSON and the address too; weekly.yml's alert job sends a Telegram line; before, only GET
+// /health stale told, about 3 days later). A Worker or D1 that does not answer (5xx, network) is retried here 3 times and by
+// the next catch-up; the daily monitor's GET /health check reports a Worker that stays down (it checks the address in
+// MONITOR_WORKER_URLS: an ALERTS_URL naming a host that does not resolve looks like this too, and only stale tells).
+// A finish answered 200 finished "before" (13th/14th review: D1 committed it and the answer was lost, on this try or one
+// before — whoever holds the lease now) and a finish sent again after its answer was lost and answered 409 (the Worker freed
+// this run's lease at the first try and a computation of other prices has finished since — 12th review) are finished
+// computations, not failures.
 import { createHash, randomBytes } from "node:crypto";
 import { readFileSync, appendFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -163,29 +169,45 @@ export function shapeProblems(data) {
 
 // the Worker address: https only — the first request carries Authorization: Bearer <ALERTS_SECRET>, which must never
 // travel in the clear (http is allowed for this machine only: wrangler dev in test/local_dev.sh)
+// A wrong address is not cured by trying again either: startFail (the CLI's startfail=true — 12th review; the message never
+// holds the address itself)
 export function checkUrl(url) {
   let u;
-  try { u = new URL(url); } catch { throw new Error("ALERTS_URL is not a URL"); }
+  try { u = new URL(url); } catch { throw Object.assign(new Error("ALERTS_URL is not a URL"), { startFail: true }); }
   if (u.protocol === "https:") return;
   if (u.protocol === "http:" && ["localhost", "127.0.0.1"].includes(u.hostname)) return;
-  throw new Error("ALERTS_URL must be https");
+  throw Object.assign(new Error("ALERTS_URL must be https"), { startFail: true });
 }
 
+// One request to the Worker, tried up to `tries` times on a network error, a timeout, a 5xx or a 429 (every other answer
+// will not get better by retrying). A thrown error carries `status` (the HTTP status, when one came) and `resent: true` when
+// an earlier try of the SAME body got no usable answer (a network error, a timeout, a 5xx/429) — that earlier try may have
+// been done by the Worker (finish below: a 409 to a resent finish means its first try committed). A 2xx whose body is not
+// JSON (an ALERTS_URL that is some other site answering an HTML page — 12th review) is `badBody`, not retried, and its
+// message is the path and status only: JSON.parse messages quote the body, which must not reach the public log
 async function call(f, url, secret, path, body, { tries = 3, timeoutMs = 20000, waitMs = 1000 } = {}) {
   let err;
+  const name = path.split("?")[0];
   for (let i = 0; i < tries; i++) {
+    let r, text;
     try {
-      const r = await f(url + path, {
+      r = await f(url + path, {
         method: body === undefined ? "GET" : "POST",
         headers: { authorization: `Bearer ${secret}`, ...(body === undefined ? {} : { "content-type": "application/json" }) },
         body: body === undefined ? undefined : JSON.stringify(body),
         redirect: "manual",
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (r.ok) return await r.json();
-      err = Object.assign(new Error(`${path.split("?")[0]} answered ${r.status}`), { status: r.status });
+      if (r.ok) text = await r.text();
+    } catch (e) { err = Object.assign(e && typeof e === "object" ? e : new Error(String(e)), { resent: i > 0 }); r = null; }
+    if (r && r.ok) {
+      try { return JSON.parse(text); }
+      catch { throw Object.assign(new Error(`${name} answered ${r.status} with a body that is not JSON`), { status: r.status, badBody: true, resent: i > 0 }); }
+    }
+    if (r) {
+      err = Object.assign(new Error(`${name} answered ${r.status}`), { status: r.status, resent: i > 0 });
       if (r.status < 500 && r.status !== 429) break;     // other answers will not get better by retrying
-    } catch (e) { err = e; }
+    }
     if (i + 1 < tries && waitMs) await new Promise((ok) => setTimeout(ok, waitMs * 2 ** i));
   }
   throw err;
@@ -210,13 +232,20 @@ export async function notify({ data, today = kstDay(Date.now()), url, secret, fe
   const opt = waitMs === undefined ? {} : { waitMs };
   const fp = fingerprint(data);
   // the same body on every try of call(): a start D1 committed whose answer was lost gets this run's own lease back.
-  // A 4xx other than 408/429 (401/403: ALERTS_SECRET is not the Worker's; 404: ALERTS_URL is not the alerts Worker; 400: a
-  // Worker that refuses this code's start) is not cured by trying again: startFail (the CLI's startfail=true — 11th review)
+  // Not cured by trying again: startFail (the CLI's startfail=true — 11th review; 12th: 3xx and a body that is not JSON too)
+  //   3xx               ALERTS_URL answers with a redirect (behind Cloudflare Access, an old address) — call() never follows one
+  //   4xx but 408/429   401/403: ALERTS_SECRET is not the Worker's; 404: ALERTS_URL is not the alerts Worker; 400: a Worker
+  //                     that refuses this code's start
+  //   2xx, not JSON     ALERTS_URL is some other site (an HTML page)
+  // A 5xx, 429, a timeout or a network error (also a host that does not resolve — a wrong ALERTS_URL looks like a Worker that
+  // is down here; the monitor checks the RIGHT address, so only GET /health stale tells, after 2 days) is retried here, and a
+  // 408 (not retried here) is not startFail either: the next catch-up tries again
   let g;
   try {
     g = await call(f, url, secret, "/v1/internal/start", catchup ? { fp, nonce, catchup: true } : { fp, nonce }, opt);
   } catch (e) {
-    if (e && typeof e === "object" && Number.isInteger(e.status) && e.status >= 400 && e.status < 500 && e.status !== 408 && e.status !== 429) e.startFail = true;
+    if (e && typeof e === "object" && (e.badBody === true ||
+      (Number.isInteger(e.status) && e.status >= 300 && e.status < 500 && e.status !== 408 && e.status !== 429))) e.startFail = true;
     throw e;
   }
   if (g && g.go === "done") {
@@ -280,8 +309,30 @@ async function compute({ data, today, url, secret, f, log, opt, fp, lease }) {
     if (waiting) log("::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today (GET /health pairs: capped)");
   }
   // finish even with no pairs: it also clears yesterday's marks, records the day for GET /health "finished" and the
-  // fingerprint for start, and frees the lease
-  const done = await call(f, url, secret, "/v1/internal/finish", { run, today, fp, lease }, opt);
+  // fingerprint for start, and frees the lease. The Worker writes it only while its lease is this run's (12th review).
+  // 200 with finished: "before" (13th review; 14th: whoever holds the lease now) = the lease is not this run's and these
+  // prices are already noted as finished on this day: this finish committed — D1 wrote the batch and lost only its answer,
+  // on this try or on one before it (call() then sent it again; a computation of other prices may have taken the lease
+  // since) — this computation is finished, its counts were in the lost answer; on any try, not a failure.
+  // 409 to a finish call() SENT AGAIN = the try before got no answer but committed and freed the lease, and a computation
+  // of other prices has taken it AND finished since (its prices are the ones noted) — finished too. Not a lease lost
+  // between the tries: they are 1–43 s apart (call(): the second try ≤ 21 s after the first, the third ≤ 43 s) and the
+  // Worker's LEASE_MS (15 minutes) outlives the job's 10-minute step limit. 409 to the first try = the lease was lost
+  // (this run outlived LEASE_MS — a step limit raised past it — and another computation took it) and these prices are
+  // not noted as finished: nothing written, a failure (unless a whole computation of other prices started and finished
+  // between this batch's commit and its error reaching the Worker — never seen; the newer prices hold the baseline then)
+  let done;
+  try {
+    done = await call(f, url, secret, "/v1/internal/finish", { run, today, fp, lease }, opt);
+  } catch (e) {
+    if (!(e && e.status === 409 && e.resent === true)) throw e;
+    log(`price alerts: ${pairs.length} watched pairs — the finish was sent again after its answer was lost and the Worker says the first try finished (409: its lease was already freed)`);
+    return { go: "compute", pairs: pairs.length, entries, finished: "before" };
+  }
+  if (done && done.finished === "before") {
+    log(`price alerts: ${pairs.length} watched pairs — the Worker says these prices are already finished (this finish committed and its answer was lost)`);
+    return { go: "compute", pairs: pairs.length, entries, finished: "before" };
+  }
   const ending = entries.filter((e) => e.e != null).length;
   const skipped = watched.length - pairs.length;
   log(`price alerts: ${pairs.length} watched pairs (${skipped} skipped, ${done.changed} changed, ${ending} ending soon), marked ${done.weekly} weekly + ${done.expiring} expiring (${done.cleared} stale expiring cleared)`);
@@ -315,10 +366,11 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     // alert job sends a Telegram line; 11th review: only GET /health stale told, about 3 days later)
     if (r.skipped === "shape" && process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "startfail=true\n");
   })().catch((e) => {
-    // never fail the price build; the message is a path + status or a network error (no secret, no ids). A failure after
-    // the Worker answered compute: failed=true for the workflow's alert job (weekly.yml price_alerts outputs.failed). A start
-    // that trying again cannot cure (startFail: a 4xx — ALERTS_SECRET, ALERTS_URL — or an answer this code does not know):
-    // startfail=true, and the line does not promise that the next catch-up computes (it gets the same answer)
+    // never fail the price build; the message is a path + status or a network error (no secret, no ids, never a body —
+    // call() drops it). A failure after the Worker answered compute: failed=true for the workflow's alert job (weekly.yml
+    // price_alerts outputs.failed). A start that trying again cannot cure (startFail: a 3xx/4xx — ALERTS_SECRET, ALERTS_URL —,
+    // a 2xx that is not JSON, an answer this code does not know, or an ALERTS_URL that checkUrl refuses): startfail=true, and
+    // the line does not promise that the next catch-up computes (it gets the same answer)
     if (e && e.startFail === true) {
       console.log(`::warning title=price alerts::price alert check failed (${e && e.message}) — trying again will not help: check ALERTS_SECRET (GitHub and the Worker — cf-alerts Run workflow sync_secret), ALERTS_URL and the alerts Worker; nothing is computed until then`);
       if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, "startfail=true\n");

@@ -1138,11 +1138,185 @@ test("11th review (the 06:00 share): a catch-up deferred 'reserve' is told 08:00
   assert.deepEqual(r, { go: "deferred", why: "cap", until: "09:00", first: true });
 });
 
+// ---- 12th review
+test("12th review (a finish sent again): its first try committed and the answer was lost — the second try is answered 200 finished \"before\" while a computation that started in between holds the lease (14th review; 13th: 409) and that computation keeps its rows; once it has also finished (other prices noted), the second try's 409 means finished too (no throw, nothing failed); a 409 to the FIRST try (the lease was lost) is a failure after start", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
+  const at = Date.parse("2026-10-20T10:00:00+09:00");
+  const B = "b".repeat(64), runB = "2026-10-20|2026-10-20";
+  let finishes = 0, other = null;
+  const f = async (url, init) => {
+    const res = await worker.fetch(new Request(url, init), env, { waitUntil() {} }, at);
+    if (new URL(url).pathname === "/v1/internal/finish" && ++finishes === 1) {
+      // the first finish committed; before its try is sent again, another computation (a catch-up of newer prices) starts
+      // and digests — then the answer is lost
+      other = (await call(worker, env, "POST", "/v1/internal/start", { fp: B, nonce: "000000000000b", catchup: true }, { headers: { authorization: `Bearer ${SECRET_VALUE}`, origin: null }, now: at + 1e3 })).body;
+      await call(worker, env, "POST", "/v1/internal/digest", { run: runB, entries: [{ k: "X24", r: "", m: 1, n: 1, med: 1 }] }, { headers: { authorization: `Bearer ${SECRET_VALUE}`, origin: null }, now: at + 2e3 });
+      throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    }
+    return res;
+  };
+  const lines = [];
+  const r = await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f, log: (l) => lines.push(l), waitMs: 0 });
+  assert.deepEqual([r.go, r.finished, r.pairs], ["compute", "before", 1]);
+  assert.equal(finishes, 2, "the finish was sent again");
+  // 14th review: these prices are noted as finished on this day — 200 finished "before" whoever holds the lease
+  assert.match(lines.at(-1), /^price alerts: 1 watched pairs — the Worker says these prices are already finished \(this finish committed and its answer was lost\)$/);
+  assert.equal(other.go, "compute");
+  assert.deepEqual(db.rows("SELECT k, run FROM snap"), [{ k: "X24", run: runB }], "the other computation's row survives the finish sent again");
+  assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = 'lease'"), [{ n: other.lease }], "and so does its lease");
+  // the other computation (other prices) also FINISHES before the try is sent again: its prices are the ones noted now —
+  // the Worker answers the resent finish 409 LEASE_LOST, which notify takes as finished (the first try committed)
+  const db3 = makeDb(), env3 = makeEnv(db3);
+  await phonesWith(env3, db3, { A: [{ kind: "watch", key: "X24" }] });
+  const hdr = { headers: { authorization: `Bearer ${SECRET_VALUE}`, origin: null } };
+  let finishes3 = 0, other3 = null;
+  const f3 = async (url, init) => {
+    const res = await worker.fetch(new Request(url, init), env3, { waitUntil() {} }, at);
+    if (new URL(url).pathname === "/v1/internal/finish" && ++finishes3 === 1) {
+      other3 = (await call(worker, env3, "POST", "/v1/internal/start", { fp: B, nonce: "000000000000b", catchup: true }, { ...hdr, now: at + 1e3 })).body;
+      await call(worker, env3, "POST", "/v1/internal/digest", { run: runB, entries: [{ k: "X24", r: "", m: 1, n: 1, med: 1 }] }, { ...hdr, now: at + 2e3 });
+      const fin = await call(worker, env3, "POST", "/v1/internal/finish", { run: runB, today: "2026-10-20", fp: B, lease: other3.lease }, { ...hdr, now: at + 3e3 });
+      assert.equal(fin.status, 200);
+      throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    }
+    return res;
+  };
+  const lines3 = [];
+  const r3 = await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f3, log: (l) => lines3.push(l), waitMs: 0 });
+  assert.deepEqual([r3.go, r3.finished, r3.pairs, finishes3, other3.go], ["compute", "before", 1, 2, "compute"]);
+  assert.match(lines3.at(-1), /^price alerts: 1 watched pairs — the finish was sent again after its answer was lost and the Worker says the first try finished \(409: its lease was already freed\)$/);
+  assert.deepEqual(db3.rows("SELECT k, run FROM snap"), [{ k: "X24", run: runB }], "the other computation's baseline survives");
+  // the first try itself answered 409: this run's lease is gone (it outlived LEASE_MS and another computation took it) —
+  // nothing was written: a failure after start (the CLI's failed=true)
+  const db2 = makeDb(), env2 = makeEnv(db2);
+  await phonesWith(env2, db2, { A: [{ kind: "watch", key: "X24" }] });
+  const f2 = async (url, init) => {
+    if (new URL(url).pathname === "/v1/internal/finish") db2.raw.prepare("UPDATE stat SET n = n + 1 WHERE k = 'lease'").run();
+    return worker.fetch(new Request(url, init), env2, { waitUntil() {} }, at);
+  };
+  const e = await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f2, log: () => {}, waitMs: 0 }).then(() => null, (x) => x);
+  assert.ok(e, "rejects");
+  assert.match(e.message, /^\/v1\/internal\/finish answered 409$/);
+  assert.deepEqual([e.status, e.resent, e.afterStart, e.startFail], [409, false, true, undefined]);
+  assert.deepEqual(db2.rows("SELECT k FROM stat WHERE k IN ('finish', 'data')"), [], "the finish wrote nothing (no day, no data noted)");
+});
+
+test("13th review (D1 committed the finish, then answered an error): the FIRST finish try gets 200 finished \"before\" — notify resolves as finished (no throw, no afterStart), and the CLI writes no failed=true", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
+  // the batch that holds the finish commits, then D1 answers "Network connection lost." (the Worker's catch reads the state)
+  const real = db.batch;
+  let lost = 0;
+  db.batch = async (list) => { const out = await real(list); if (list.some((x) => /^UPDATE snap SET m = pm/.test(x.sql))) { lost++; throw new Error("D1_ERROR: Network connection lost."); } return out; };
+  const at = Date.parse("2026-10-20T10:00:00+09:00");
+  let finishes = 0;
+  const f = async (url, init) => { if (new URL(url).pathname === "/v1/internal/finish") finishes++; return worker.fetch(new Request(url, init), env, { waitUntil() {} }, at); };
+  const lines = [];
+  const r = await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f, log: (l) => lines.push(l), waitMs: 0 });
+  assert.deepEqual([r.go, r.finished, r.pairs, finishes, lost], ["compute", "before", 1, 1, 1], "one finish try, answered 200 finished before");
+  assert.match(lines.at(-1), /^price alerts: 1 watched pairs — the Worker says these prices are already finished \(this finish committed and its answer was lost\)$/);
+  assert.deepEqual(db.rows("SELECT k FROM stat WHERE k IN ('finish', 'data', 'lease') ORDER BY k").map((x) => x.k), ["data", "finish"], "written once, the lease freed");
+  // the CLI against the same kind of Worker: no failed=true, no ::warning
+  const db2 = makeDb(), env2 = makeEnv(db2);
+  await phonesWith(env2, db2, { A: [{ kind: "watch", key: "X24" }] });
+  const real2 = db2.batch;
+  db2.batch = async (list) => { const out = await real2(list); if (list.some((x) => /^UPDATE snap SET m = pm/.test(x.sql))) throw new Error("D1_ERROR: Network connection lost."); return out; };
+  const noon = () => Date.parse(`${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)}T12:00:00+09:00`);
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const w = await worker.fetch(new Request(`https://alerts.local${req.url}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? undefined : Buffer.concat(chunks) }), env2, { waitUntil() {} }, noon());
+    res.writeHead(w.status, { "content-type": "application/json" });
+    res.end(await w.text());
+  });
+  await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
+  const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), "notify-cli13-"));
+  const out = join(dir, "github-output");
+  try {
+    writeFileSync(join(dir, "w1.json"), JSON.stringify(WEEK1));
+    writeFileSync(out, "");
+    const run = await new Promise((ok) => {
+      const child = spawn(process.execPath, [cli, join(dir, "w1.json")], { env: { PATH: process.env.PATH, ALERTS_URL: `http://127.0.0.1:${server.address().port}`, ALERTS_SECRET: SECRET_VALUE, GITHUB_OUTPUT: out } });
+      let text = "";
+      child.stdout.on("data", (d) => { text += d; });
+      child.on("close", (code) => ok({ code, out: text, output: readFileSync(out, "utf8") }));
+    });
+    assert.equal(run.code, 0);
+    assert.equal(run.output, "", "no failed=true (nor anything else) for the workflow");
+    assert.match(run.out, /^price alerts: \d+ watched pairs — the Worker says these prices are already finished \(this finish committed and its answer was lost\)$/m);
+    assert.equal(/::warning/.test(run.out), false, run.out);
+  } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("12th review (start that trying again cannot cure): a 3xx (Cloudflare Access, a moved address — never followed), a 2xx that is not JSON (some other site) and an ALERTS_URL that is not an https address are startFail like a 401 — one request, no body in the message; the CLI writes startfail=true and says retrying will not help", T, async () => {
+  for (const [label, mk, calls, msg] of [
+    ["302", () => new Response(null, { status: 302, headers: { location: "https://x.cloudflareaccess.com/" } }), 1, "/v1/internal/start answered 302"],
+    ["301", () => new Response(null, { status: 301, headers: { location: "https://elsewhere.example/" } }), 1, "/v1/internal/start answered 301"],
+    ["HTML 200", () => new Response("<html>a login page with a secret-looking token abc</html>", { status: 200, headers: { "content-type": "text/html" } }), 1, "/v1/internal/start answered 200 with a body that is not JSON"],
+    ["401", () => new Response("{}", { status: 401 }), 1, "/v1/internal/start answered 401"],
+    ["503", () => new Response("{}", { status: 503 }), 3, "/v1/internal/start answered 503"],
+  ]) {
+    let n = 0;
+    const e = await notify({ data: WEEK2, today: "2026-10-20", url: "https://wrong.example", secret: SECRET_VALUE, fetch: async () => { n++; return mk(); }, log: () => {}, waitMs: 0 }).then(() => null, (x) => x);
+    assert.ok(e, label);
+    assert.equal(e.message, msg, label);
+    assert.equal(e.startFail === true, label !== "503", `${label}: startFail`);
+    assert.equal(n, calls, `${label}: requests`);
+    assert.equal(/html|login|token|abc|</i.test(e.message), false, `${label}: no body in the message`);
+  }
+  // a body read that breaks midway is a network error: retried, not startFail
+  let n = 0;
+  const cut = await notify({ data: WEEK2, today: "2026-10-20", url: "https://x.example", secret: SECRET_VALUE, waitMs: 0, log: () => {},
+    fetch: async () => { n++; return new Response(new ReadableStream({ start(c) { c.error(new Error("socket hang up")); } }), { status: 200 }); } }).then(() => null, (x) => x);
+  assert.deepEqual([cut && cut.startFail, n], [undefined, 3]);
+  // checkUrl itself
+  for (const u of ["http://yoonsiljang-alerts.lsy2825.workers.dev", "yoonsiljang-alerts.lsy2825.workers.dev", ""]) {
+    let thrown = null;
+    try { checkUrl(u); } catch (x) { thrown = x; }
+    assert.equal(thrown && thrown.startFail, true, u);
+  }
+  // the CLI: startfail=true, the 'will not help' line, the address never printed
+  const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
+  const dir = mkdtempSync(join(tmpdir(), "notify-cli12-"));
+  const out = join(dir, "github-output");
+  writeFileSync(join(dir, "w2.json"), JSON.stringify(WEEK2));
+  const runCli = (url) => new Promise((ok) => {
+    writeFileSync(out, "");
+    const child = spawn(process.execPath, [cli, join(dir, "w2.json")], { env: { PATH: process.env.PATH, ALERTS_URL: url, ALERTS_SECRET: SECRET_VALUE, GITHUB_OUTPUT: out } });
+    let text = "";
+    child.stdout.on("data", (d) => { text += d; });
+    child.on("close", (code) => ok({ code, out: text, output: readFileSync(out, "utf8") }));
+  });
+  const WILL_NOT = "— trying again will not help: check ALERTS_SECRET (GitHub and the Worker — cf-alerts Run workflow sync_secret), ALERTS_URL and the alerts Worker; nothing is computed until then";
+  try {
+    for (const [url, why] of [["http://yoonsiljang-alerts.lsy2825.workers.dev", "ALERTS_URL must be https"], ["yoonsiljang-alerts.lsy2825.workers.dev", "ALERTS_URL is not a URL"]]) {
+      const r = await runCli(url);
+      assert.equal(r.code, 0, url);
+      assert.equal(r.output, "startfail=true\n", url);
+      assert.equal(r.out.trim(), `::warning title=price alerts::price alert check failed (${why}) ${WILL_NOT}`, url);
+      assert.equal(r.out.includes("lsy2825"), false, "the address is not printed");
+    }
+    for (const [label, status, body, why] of [["302", 302, "", "/v1/internal/start answered 302"], ["HTML 200", 200, "<html><body>Sign in</body></html>", "/v1/internal/start answered 200 with a body that is not JSON"]]) {
+      const s2 = http.createServer((req, res) => { req.resume(); req.on("end", () => { res.writeHead(status, status === 302 ? { location: "https://team.cloudflareaccess.com/login" } : { "content-type": "text/html" }); res.end(body); }); });
+      await new Promise((ok) => s2.listen(0, "127.0.0.1", ok));
+      try {
+        const r = await runCli(`http://127.0.0.1:${s2.address().port}`);
+        assert.equal(r.code, 0, label);
+        assert.equal(r.output, "startfail=true\n", label);
+        assert.equal(r.out.trim(), `::warning title=price alerts::price alert check failed (${why}) ${WILL_NOT}`, label);
+        assert.equal(/Sign in|html|cloudflareaccess/.test(r.out), false, `${label}: no body or location printed`);
+      } finally { s2.close(); }
+    }
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
 test("everything notify.mjs logged in this file holds counts only: no secret, URL, host, id, endpoint, key or region name", () => {
   assert.ok(ALL_LOGS.length >= 8, `only ${ALL_LOGS.length} log lines were collected`);
   const text = ALL_LOGS.join("\n");
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run \(every 30 minutes\) checks these prices again|::warning title=price alerts::this D1 day's computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — that run computes these prices \(or the first alerts-catchup run after 08:00 KST\)|::notice title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST factory run — that run computes these prices, or the first alerts-catchup run after 08:00 KST|::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST \(a new D1 day\) — the next alerts-catchup run computes these prices|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run \(every 30 minutes\) checks these prices again|::warning title=price alerts::this D1 day's computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — that run computes these prices \(or the first alerts-catchup run after 08:00 KST\)|::notice title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST factory run — that run computes these prices, or the first alerts-catchup run after 08:00 KST|::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST \(a new D1 day\) — the next alerts-catchup run computes these prices|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|price alerts: \d+ watched pairs — the finish was sent again after its answer was lost and the Worker says the first try finished \(409: its lease was already freed\)|price alerts: \d+ watched pairs — the Worker says these prices are already finished \(this finish committed and its answer was lost\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });
