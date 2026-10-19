@@ -343,6 +343,84 @@ test("had it before (cart item switch): once prices leave the candidates, the ne
   assert.deepEqual(P.withoutOnce([]), []);
 });
 
+// ---- revisit prices (C #111, 2026-10-19): '★재방문 이벤트★ …' (쁨 천안, kind 2 한정가, no tag) is for people coming back. The data has
+// no field for it, so Pricing.isRevisit reads the name — narrowly: '재방문' in a decoration the name starts with.
+const REVISIT_NAMES = [   // the 8 rows in data.json 2026-10-19 (and the collected option name with its section title in front)
+  "★재방문 이벤트★ 국산 특수부위 보톡스", "★재방문 이벤트★ 국산 얼굴전체 스킨보톡스", "★재방문 이벤트★ 국산 프리미엄 주름보톡스 3부위",
+  "★재방문 이벤트★ 물톡스 1회", "★재방문 이벤트★ 듀얼토닝 + 아이스글로우 케어", "★재방문 이벤트★ 포텐자펌핑(팁포함) + 쥬베룩 스킨2CC",
+  "★재방문 이벤트★ 쥬베룩 볼륨 8cc 1회", "★재방문 이벤트★ 쥬베룩 스킨 2cc 3회 + 얼굴전체 스킨보톡스",
+  "[재방문 이벤트 ] ★재방문 이벤트★ 물톡스 1회",
+];
+// every other name in data.json / data2/accepted (2026-10-19) with 재방문·재진·재내원·기존 고객·재구매 in it, and names made up to
+// try the edges: none is a revisit price (false positives 0)
+const NOT_REVISIT = [
+  "(초진/재진SNS등록시)슈링크 300샷 이벤트", "[EVENT] (초진/재진SNS등록시)슈링크 300샷 이벤트", "인모드FX 1부위 (초재진가능)",
+  "인모드 FX모드 1부위 (1회체험가) (1회체험/초재진가능)", "세르프 300샷 + LDM관리 6분 + LED + 시트팩 (재진고객한정)",
+  "리투오 1회 (초진/재진 1회 한정)", "콜라겐 스킨부스터 고우리 1회 (초진/재진 1회 한정)",
+  "[재진] 1회 체험 · 리프팅/레이저 · 볼링크 1회 (카톡플친 적용가)", "[카톡플친대상/초진재진1회체험] 울쎄라피프라임 100샷",
+  "재진도 초진도 · [카톡플친대상/초진재진1회체험] 코레지 붓기 케어", "첫방문 이벤트 (초진/재진 모두가능, 조기종료될 수 있음) · 물톡스",
+  // made up: the decoration lets first visits in or keeps revisits out; '재방문' not in front; no decoration; nothing
+  "[초진/재방문 모두] 물톡스", "(재방문 불가) 물톡스", "[첫 방문·재방문 누구나] 물톡스", "【재방문 제외】 물톡스", "[신규·재방문] 물톡스",
+  "[재방문 상관없이] 물톡스", "물톡스 재방문 시 10% 할인", "물톡스 (재방문)", "재방문 이벤트 물톡스", "재방문 · 물톡스", "★BEST★ 물톡스 재방문 할인",
+  "기존 고객 감사 이벤트 물톡스", "[재내원] 물톡스", "[재구매] 물톡스", "", null, undefined, 3,
+];
+test("revisit rule: '재방문' in a leading decoration only — the 8 real names yes, every other real or edge name no", () => {
+  for (const n of REVISIT_NAMES) assert.equal(P.isRevisit(n), true, n);
+  for (const n of ["[EVENT] ★재방문 이벤트★ 물톡스", "(재방문 고객 전용) 물톡스", "【재방문】 물톡스", "<재방문 감사> 물톡스", " [재방문 이벤트] 물톡스"]) assert.equal(P.isRevisit(n), true, n);
+  for (const n of NOT_REVISIT) assert.equal(P.isRevisit(n), false, String(n));
+  assert.equal(P.isRevisit("[A] [B] [C] [재방문] 물톡스"), false, "three decorations at most");
+});
+
+test("revisit class: a conditional row with such a name is 'revisit'; a plain row, or no name given, is as before", () => {
+  const rv = REVISIT_NAMES[1];
+  assert.equal(P.condClass(2, "", 0, "", rv), "revisit", "the real rows: 한정가, no tag");
+  assert.equal(P.condClass(1, "", 0, "", rv), "revisit");
+  assert.equal(P.condClass(0, "1인 1회", 0, "", rv), "revisit");
+  assert.equal(P.condClass(0, "평일 낮", 31, "", rv), "revisit", "a day / time condition too: never repeated on a guess");
+  assert.equal(P.condClass(0, "", 0, "", rv), "", "a plain row stays plain (the build decides what is conditional)");
+  assert.equal(P.condClass(2, "", 0, ""), "once", "no name: as before C #111");
+  assert.equal(P.condClass(2, "", 0, "", NOT_REVISIT[0]), "once");
+  assert.equal(P.condClass(0, "평일 낮", 31, "", "평일 물톡스"), "repeat");
+  // still the app's special rule: conditional ⇔ not ""
+  for (const k of [0, 1, 2, 3, 4]) for (const t of ["", "평일 낮", "첫 방문"]) for (const d of [0, 32]) assert.equal(P.condClass(k, t, d, "", rv) !== "", k === 1 || k === 2 || t !== "" || d !== 0, `${k} ${t} ${d}`);
+});
+
+const rv = (i, p) => ({ i, p, special: true, repeat: false, revisit: true });
+test("revisit price: only for one who had it before (it.done), and then counted once like a once price", () => {
+  // who may take what (Pricing.canTake / forVisitor)
+  assert.equal(P.canTake(rv(1, 65000), false), false); assert.equal(P.canTake(rv(1, 65000), true), true);
+  assert.equal(P.canTake(row(2, 30000, true), false), true); assert.equal(P.canTake(row(2, 30000, true), true), false);
+  for (const x of [row(3, 110000), rep(4, 90000)]) for (const d of [false, true]) assert.equal(P.canTake(x, d), true);
+  const all = [rv(1, 65000), row(2, 30000, true), row(3, 110000), rep(4, 90000)];
+  assert.deepEqual(P.forVisitor(all, false).map((x) => x.i), [2, 3, 4]);
+  assert.deepEqual(P.forVisitor(all, true).map((x) => x.i), [1, 3, 4]);
+  assert.deepEqual(P.forVisitor([], true), []);
+  // C #111's example, X03 국산 얼굴전체 스킨보톡스 ×3 at 쁨 천안 (listed prices): revisit 65,000, regular 110,000
+  const c = [rv(1, 65000), row(3, 110000)], reg = [row(3, 110000)];
+  let l = P.lineCost(P.forVisitor(c, false), P.forVisitor(reg, false), 3, null);
+  assert.equal(l.total, 330000, "a first time: never the revisit price"); assert.deepEqual(l.rows, [3]); assert.equal(l.special, false);
+  l = P.lineCost(P.forVisitor(c, true), P.forVisitor(reg, true), 3, null);
+  assert.equal(l.total, 65000 + 2 * 110000, "had it before: the revisit price for the first session, then the regular one");
+  assert.deepEqual(l.rows, [1, 3]); assert.equal(l.laterOther, true); assert.equal(l.laterRegular, true); assert.equal(l.repeat, false);
+  l = P.lineCost(P.forVisitor(c, true), P.forVisitor(reg, true), 1, null);
+  assert.equal(l.total, 65000); assert.equal(l.special, true);
+  // a revisit price alone: nothing for a first time; had it before ×3 is no firm total (R14 — never 3 × 65,000)
+  assert.equal(P.lineCost(P.forVisitor([rv(1, 65000)], false), [], 1, null), null);
+  l = P.lineCost(P.forVisitor([rv(1, 65000)], true), [], 3, null);
+  assert.equal(l.incomplete, true); assert.equal(l.unpriced, 2); assert.notEqual(l.total, 195000);
+  // with a 체험가 at the branch too: a first time takes it, one who had it before the revisit price
+  const c2 = [rv(1, 65000), row(2, 30000, true), row(3, 110000)];
+  assert.equal(P.lineCost(P.forVisitor(c2, false), reg, 3, null).total, 30000 + 2 * 110000);
+  assert.equal(P.lineCost(P.forVisitor(c2, true), reg, 3, null).total, 65000 + 2 * 110000);
+  // later sessions: a repeat price below the regular one, never the revisit one again
+  assert.deepEqual(P.lineCost(P.forVisitor([rv(1, 65000), rep(4, 90000), row(3, 110000)], true), reg, 3, null).rows, [1, 4]);
+  // at the same price the regular price wins (no '재방문 첫 회 + …' line)
+  assert.deepEqual(P.lineCost(P.forVisitor([rv(1, 110000), row(3, 110000)], true), reg, 3, null).rows, [3]);
+  // picked by hand for the branch: still the first session only
+  l = P.lineCost(P.forVisitor(c, true), reg, 3, { ...rv(1, 65000), sess: 1 });
+  assert.equal(l.total, 65000 + 2 * 110000); assert.equal(l.ov, true);
+});
+
 test("line: a once price first says so for the later sessions (laterOther), whatever price they use", () => {
   let l = P.lineCost([row(1, 100, true), row(3, 500)], [row(3, 500)], 3, null);
   assert.equal(l.laterOther, true); assert.equal(l.laterRegular, true); assert.equal(l.repeat, false);

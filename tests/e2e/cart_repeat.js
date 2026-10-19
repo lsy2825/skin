@@ -9,6 +9,13 @@
 //  D. a once price picked for the branch (it.ov, '같은 시술로' in the add sheet) ×3 is still once: once + 2 × the next price
 //  E. a visit time the later sessions' price can't be checked at (state 2 on the second row only): '시간 확인 필요' and the warning
 //  F. a visit after the event's end date: a repeat price is not repeated (first session only), '기간 확인 필요' and a warning
+//  G. a revisit price (C #111: '★재방문 이벤트★ …', Pricing.isRevisit — condClass "revisit"): switch off → not used (3 × the
+//     regular price, the option can't be picked, a hint under the switch); on → the first session only (revisit + 2 × regular),
+//     '재방문만' badge, a warning and the copy say so; a revisit-only name has no price until the switch is on; the price sheet's
+//     conditions say '재방문(다시 오는 손님)만'. 특가 빼기 (the line's or the app's) with it on: no revisit price, nor words saying
+//     one is in. Picked for the branch by hand (it.ov): off → left out and not a changed option; on → once. The other cases leave
+//     out ids / branches with a revisit row.
+//  H. the home's note: '체험가·한정가는 보통 1인 1회예요'
 // Every case is picked from the data.json the app was served; a case the file has no rows for prints SKIP — but a file with the
 // days / hours fields that skips A, C or E, or a run that skips every case, fails.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/cart_repeat.js
@@ -26,12 +33,14 @@ const ymd = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOSt
 const bit = (dow) => 1 << ((dow + 6) % 7);   // data.json days bits: 월=1 … 일=64 (JS getDay: 일=0)
 const nextDay = (dow) => { const d = new Date(); for (let i = 1; i < 15; i++) { d.setDate(d.getDate() + 1); if (d.getDay() === dow && !P.KR_HOLIDAYS[ymd(d)]) return ymd(d); } return null; };
 const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', LATER = '1회 가격(체험가·첫 방문가 등)은 첫 1회만', ASK = '방문일을 정하면 그 요일·시간에 되는 가격만 계산해요', DONE = '전에 이 시술을 받아 봤어요';
+const RV_OFF = '재방문 가격(다시 오는 손님만)은 켜면 계산해요', RV_ON = '재방문 가격은 넣어(첫 1회만) 계산해요', ONCE_ON = '체험가·첫 방문가 같은 1회 가격은 빼고 계산해요', RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만 받는 가격이에요';
 
 (async () => {
   const D = asRows(await (await fetch(BASE + 'data.json')).json()), S = D.s, td = ymd(new Date());
   const WHEN = P.hasWhenFields(D);
   const days = (r) => (WHEN ? r[16] || 0 : 0), hours = (r) => (WHEN ? S[r[17]] || '' : '');
-  const cls = (r) => P.condClass(r[5], S[r[6]], days(r), hours(r));
+  const cls = (r) => P.condClass(r[5], S[r[6]], days(r), hours(r), S[r[2]]);
+  const noRv = (xs) => !xs.some((x) => cls(x.r) === 'revisit');   // cases A–F: no revisit price in the way (case G has them)
   const price = (r) => P.vatPrice(r[3], r[12], 'incl');          // the app's default basis: VAT 포함 예상가
   const live = (r) => !r[13] && !P.isExpired(S[r[10]] || '', td);
   const bname = (b) => `${D.meta.brands[D.branches[b][0]][0]} ${S[D.branches[b][1]]}`;
@@ -154,7 +163,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
   // ---- B. once prices as before
   // B1: a once price first, then the regular price (no repeat price at that branch): once + 2 × regular, never once × 3
   const B1 = [...byKB.entries()].map(([key, xs]) => ({ key, xs, first: low(xs), plain: low(xs.filter((x) => cls(x.r) === '')) }))
-    .find((o) => cls(o.first.r) === 'once' && o.plain && !o.xs.some((x) => cls(x.r) === 'repeat') && price(o.plain.r) > price(o.first.r));
+    .find((o) => cls(o.first.r) === 'once' && o.plain && !o.xs.some((x) => cls(x.r) === 'repeat') && noRv(o.xs) && price(o.plain.r) > price(o.first.r));
   if (!B1) skip('B1', '1회 가격 + 일반가 — 이 자료엔 없음');
   else {
     const [k] = B1.key.split('|'), b = B1.first.r[0], f = price(B1.first.r), g = price(B1.plain.r);
@@ -179,7 +188,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
 
   // ---- C. the item switch: a once price first and a cheaper-than-regular next price (a repeat one when the data has it)
   const sw = [...byKB.entries()].map(([key, xs]) => ({ key, xs, first: low(xs), next: low(xs.filter((x) => cls(x.r) !== 'once')) }))
-    .filter((o) => cls(o.first.r) === 'once' && o.next && price(o.next.r) > price(o.first.r));
+    .filter((o) => cls(o.first.r) === 'once' && o.next && noRv(o.xs) && price(o.next.r) > price(o.first.r));
   // (a plain price as low as the repeat one wins the tie: the next price is then a regular one)
   const C = sw.find((o) => cls(o.next.r) === 'repeat' && !o.xs.some((x) => cls(x.r) === '' && price(x.r) <= price(o.next.r))) || sw[0];
   if (!C) skip('C', '전에 받아 봤어요 — 이 자료엔 없음');
@@ -228,7 +237,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
   // ---- D. a once price picked for the branch by hand (it.ov) ×3: first session only, later sessions at the next price
   const firstOnly = (x) => all.filter((y) => y.r[0] === x.r[0] && y.r[2] === x.r[2]).length === 1;   // its name finds that one row
   const Dc = [...byKB.entries()].map(([key, xs]) => ({ key, xs, first: low(xs), plain: low(xs.filter((x) => cls(x.r) === '')) }))
-    .find((o) => cls(o.first.r) === 'once' && o.plain && !o.xs.some((x) => cls(x.r) === 'repeat') && price(o.plain.r) > price(o.first.r) && firstOnly(o.first));
+    .find((o) => cls(o.first.r) === 'once' && o.plain && !o.xs.some((x) => cls(x.r) === 'repeat') && noRv(o.xs) && price(o.plain.r) > price(o.first.r) && firstOnly(o.first));
   if (!Dc) skip('D', '직접 고른 1회 가격 — 이 자료엔 없음');
   else {
     const [k] = Dc.key.split('|'), b = Dc.first.r[0], f = price(Dc.first.r), g = price(Dc.plain.r);
@@ -245,6 +254,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     const vis = { date: tue, time: '14:00' };
     const stOf = (r) => (S[r[6]] || days(r) || hours(r) ? P.condState(S[r[6]], S[r[2]], vis, { days: days(r), hours: hours(r) }) : 0);
     for (const [key, xs] of byKB) {
+      if (!noRv(xs)) continue;
       // as the app: a repeat price whose event ends before the visit is not repeated (case F)
       const c = xs.filter((x) => stOf(x.r) !== 1).map((x) => ({ i: x.i, p: price(x.r), special: cls(x.r) !== '', repeat: cls(x.r) === 'repeat' && !P.periodOver(S[x.r[10]], vis) }));
       const l = P.lineCost(c, c.filter((x) => !x.special), 3, null);
@@ -273,6 +283,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
       if (!P.KR_HOLIDAYS[s_] && (ok_ & bit(d.getDay()))) return s_; } return null; };
   const F = (() => {
     for (const [key, xs] of byKB) {
+      if (!noRv(xs)) continue;
       const rep = low(xs.filter((x) => cls(x.r) === 'repeat' && !hours(x.r) && isoU(x.r)));
       const plain = low(xs.filter((x) => cls(x.r) === ''));
       if (!rep || !plain || price(rep.r) >= price(plain.r)) continue;
@@ -290,6 +301,98 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     ok('F2 견적 경고 \'방문일에는 행사가 끝났을 수 있는 가격\'', !!q && q.warns.some((w) => w.startsWith('방문일에는 행사가 끝났을 수 있는 가격')), q ? q.warns.join(' / ') : '(견적 없음)');
     ok('F3 견적 줄에 \'기간 확인 필요\'', !!ln && ln.m.includes('기간 확인 필요'), ln ? ln.m.slice(0, 200) : '');
   }
+
+  // ---- G. revisit prices (C #111). The name rule is narrow: in this file every row it reads is one the build made conditional
+  const rvAll = D.rows.filter((r) => P.isRevisit(S[r[2]]));
+  if (!rvAll.length) skip('G', '재방문 가격(이름 앞 ★재방문…★) — 이 자료엔 없음');
+  else {
+    ok(`G0 이름 규칙이 고른 줄 ${rvAll.length}개는 모두 조건부(체험가·한정가·태그) — 일반가로 읽은 줄 없음`, rvAll.every((r) => cls(r) === 'revisit'),
+      rvAll.filter((r) => cls(r) !== 'revisit').map((r) => S[r[2]]).join(' / ').slice(0, 200));
+    // G1: an id at a branch with a revisit price below its regular price and nothing else conditional
+    const G = [...byKB.entries()].map(([key, xs]) => ({ key, xs, rv: low(xs.filter((x) => cls(x.r) === 'revisit')), plain: low(xs.filter((x) => cls(x.r) === '')) }))
+      .find((o) => o.rv && o.plain && price(o.plain.r) > price(o.rv.r) && o.xs.every((x) => ['', 'revisit'].includes(cls(x.r))));
+    if (!G) skip('G1', '재방문 가격과 일반가가 함께 있는 시술 — 이 자료엔 없음');
+    else {
+      const [k, bs] = G.key.split('|'), b = +bs, f = price(G.rv.r), g = price(G.plain.r), rvName = S[G.rv.r[2]], plName = S[G.plain.r[2]];
+      console.log(`G1: ${k} @ ${bname(b)} · ${rvName} ${won(f)} · 일반가 ${plName} ${won(g)}`);
+      await seed([{ t: 'k', k, q: 3 }], where(b));
+      const swg = p.locator('.ci .cdone label.switch', { hasText: DONE });
+      ok(`G1 재방문 가격이 있으면 스위치(꺼짐)와 '${RV_OFF}'`, (await swg.count()) === 1 && !(await swg.locator('input').isChecked()) && (await text('.ci .cdone')).includes(RV_OFF), await text('.ci .cdone'));
+      let q = await quote(b), ln = q && q.lines[0];
+      ok('G2 꺼짐(처음 가는 사람): 재방문 가격을 쓰지 않음 — 3 × 일반가', !!ln && ln.total === won(3 * g) && !ln.m.includes(rvName), ln ? `${ln.total} · 기대 ${won(3 * g)} | ${ln.m.slice(0, 120)}` : '(견적 없음)');
+      ok('G2b 꺼짐: 경고에 재방문 없음', !!q && !q.warns.some((w) => w.startsWith('재방문 가격')), q ? q.warns.join(' / ') : '');
+      const opt = await p.$$eval('li.qrow .qline select option', (os, n) => os.filter((o) => o.textContent.startsWith(n)).map((o) => [o.disabled, o.textContent]), rvName);
+      ok('G2c 꺼짐: 지점 옵션에서 재방문 가격은 고를 수 없고 \'(받아 봤어요를 켜면)\'', opt.length > 0 && opt.every(([d, t]) => d && t.includes('· 재방문') && t.includes('(받아 봤어요를 켜면)')), JSON.stringify(opt).slice(0, 200));
+      if (await tap(swg, 'G3 스위치')) {
+        await p.waitForTimeout(500);
+        q = await quote(b); ln = q && q.lines[0];
+        ok('G3 켬(받아 봤어요): 재방문 가격은 첫 1회만 — 재방문가 + 2 × 일반가', !!ln && ln.total === won(f + 2 * g) && ln.total !== won(3 * f), ln ? `${ln.total} · 기대 ${won(f + 2 * g)}` : '(견적 없음)');
+        ok('G3b 견적 줄: 재방문 가격 이름 + \'재방문만\' 배지 + \'2회째부터 <일반가 이름>\'', !!ln && ln.m.startsWith(rvName) && ln.m.includes('재방문만') && ln.m.includes(`2회째부터 ${plName}`) && !ln.m.includes(REPEAT_TXT), ln ? ln.m.slice(0, 220) : '');
+        ok(`G3c 경고 '${RV_WARN}…' 과 '${LATER}'`, !!q && q.warns.some((w) => w.startsWith(RV_WARN)) && q.warns.some((w) => w.startsWith(LATER)), q ? q.warns.join(' / ') : '');
+        ok(`G3d 스위치 안내 '${RV_ON}'`, (await text('.ci .cdone')).includes(RV_ON), await text('.ci .cdone'));
+        const cp = await copied(b);
+        ok('G3e 견적 복사: ※ 재방문 가격', cp.includes(`※ ${RV_WARN}`) && cp.includes(rvName), cp.slice(0, 300).replace(/\n/g, ' / '));
+      }
+      const lineOf = async () => ((await quote(b)) || { lines: [] }).lines[0];
+      const ovBtn = () => p.locator('.ci button', { hasText: '지점별로 바꾼 옵션' });
+      // G8: 특가 빼기 for this line (it.sp false) or for the whole app (special false) with the switch on: the candidates have no
+      // special price, so no revisit one is in the total — and the words under the switch don't say there is
+      for (const [nm, item, extra] of [['G8 이 시술만 특가 빼기', { t: 'k', k, q: 3, done: true, sp: false }, {}], ['G8b 앱 전체 특가 포함 끔', { t: 'k', k, q: 3, done: true }, { special: false }]]) {
+        await seed([item], { ...where(b), ...extra });
+        const l = await lineOf(), sub = await text('.ci .cdone');
+        ok(`${nm} + 켬: 3 × 일반가, 안내는 '${ONCE_ON}'(재방문 말 없음)`, !!l && l.total === won(3 * g) && sub.includes(ONCE_ON) && !sub.includes(RV_ON),
+          `${l ? l.total : '(견적 없음)'} · 기대 ${won(3 * g)} | ${sub}`);
+      }
+      // G9: the revisit price picked for the branch by hand (it.ov — a shared link keeps it and drops the switch): off → left out
+      // (3 × regular) and not counted as a changed option; on → the first session only, the pick counted
+      const ovX = all.find((x) => x.r[0] === b && x.r[2] === G.rv.r[2]), fo = price(ovX.r);   // the row the app finds by that name
+      await seed([{ t: 'k', k, q: 3, ov: { [bkey(b)]: rvName } }], where(b));
+      let l = await lineOf();
+      ok(`G9 직접 고른 재방문 가격 + 꺼짐: 쓰지 않음(3 × 일반가), '지점별로 바꾼 옵션' 없음, 안내 '${RV_OFF}'`, !!l && l.total === won(3 * g) && (await ovBtn().count()) === 0
+        && (await text('.ci .cdone')).includes(RV_OFF), `${l ? l.total : '(견적 없음)'} · 기대 ${won(3 * g)} · 버튼 ${await ovBtn().count()} | ${await text('.ci .cdone')}`);
+      for (const [nm, item] of [['G9b 켬', { t: 'k', k, q: 3, done: true, ov: { [bkey(b)]: rvName } }], ['G9c 이 시술만 특가 빼기 + 켬', { t: 'k', k, q: 3, done: true, sp: false, ov: { [bkey(b)]: rvName } }]]) {
+        await seed([item], where(b));
+        const q_ = await quote(b); l = q_ && q_.lines[0];
+        ok(`${nm}: 직접 고른 재방문 가격은 첫 1회만(재방문가 + 2 × 일반가), '지점별로 바꾼 옵션 1곳', 경고, 안내 '${RV_ON}'`, !!l && l.total === won(fo + 2 * g) && l.m.startsWith(rvName)
+          && (await ovBtn().count()) === 1 && (await ovBtn().innerText()).includes('1곳') && q_.warns.some((w) => w.startsWith(RV_WARN)) && (await text('.ci .cdone')).includes(RV_ON),
+          `${l ? l.total : '(견적 없음)'} · 기대 ${won(fo + 2 * g)} · 버튼 ${await ovBtn().count()} | ${await text('.ci .cdone')}`);
+      }
+    }
+    // G4: a name only revisit rows have, at one branch: no price for a first time, its price once the switch is on
+    const G4 = names.find((xs) => xs.every((x) => cls(x.r) === 'revisit'));
+    if (!G4) skip('G4', '재방문 가격만 있는 이름 — 이 자료엔 없음');
+    else {
+      const r = low(G4).r, b = r[0], n = S[r[2]], f = price(r);
+      console.log(`G4: ${n} @ ${bname(b)} · ${won(f)}`);
+      await seed([{ t: 'r', n, br: bkey(b), p: f, q: 1, ov: {} }]);
+      ok('G4 재방문 가격만 있는 상품: 꺼짐이면 가격 없음(가능한 지점 없음)', (await text('.ci .cp')).includes('가능한 지점 없음') && !(await text('.ci .cp')).includes(won(f)), await text('.ci .cp'));
+      if (await tap(p.locator('.ci .cdone label.switch', { hasText: DONE }), 'G4 스위치')) {
+        await p.waitForTimeout(500);
+        ok('G4b 켜면 그 가격', (await text('.ci .cp')).includes(won(f)), await text('.ci .cp'));
+      }
+      // the price sheet of that row on its branch page: the badge, and '재방문(다시 오는 손님)만' in the conditions
+      await p.goto(BASE + `#branch/${b}`); await p.waitForSelector('input[aria-label="이 지점에서 시술 찾기"]');
+      await p.fill('input[aria-label="이 지점에서 시술 찾기"]', n); await p.waitForTimeout(400);
+      const item = p.locator('#main .card.flush li .item', { hasText: n }).filter({ has: p.locator('.k.kt', { hasText: '재방문만' }) }).first();
+      const title = (await item.count()) ? await item.locator('.k.kt', { hasText: '재방문만' }).first().getAttribute('title') : '';
+      ok('G5 지점 가격표: \'재방문만\' 배지, 설명에 \'전에 이 시술을 받아 봤어요\'', !!title && title.includes(DONE), title || '(줄 없음)');
+      if (await tap(item.locator('button.linkbtn'), 'G6 가격 근거')) {
+        await p.waitForSelector('.sheet[aria-label="가격 확인"]');
+        const st_ = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
+        ok('G6 가격 확인: 조건 \'재방문(다시 오는 손님)만\'·한정가 설명에 재방문, 적용 조건 \'재방문 — 다시 오는 손님만\'', st_.includes('재방문(다시 오는 손님)만')
+          && (r[5] !== 2 || st_.includes('한정가(기간·수량·첫 방문·재방문 등 조건)')) && st_.includes('다시 오는 손님만') && !st_.includes('재방문도 되는지 확인'), st_.slice(0, 200));
+        await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+      }
+    }
+    // the legend: '재방문만', and the 한정가 words (C to check them)
+    await p.goto(BASE + '#about'); await p.waitForTimeout(400);
+    ok('G7 가격 종류 설명: \'재방문만\', 한정가에 \'재방문(다시 오는 손님)\'', (await p.$$eval('#main dl.kv dt .k.kt', (ks) => ks.map((k) => k.textContent))).includes('재방문만')
+      && (await mainTxt()).includes('기간·수량·첫 방문·재방문(다시 오는 손님) 등 조건이 붙은 가격'));
+  }
+
+  // ---- H. the home's note says '보통 1인 1회', as 마이 설정 and the glossary do (C to check the words; any data)
+  await p.goto(BASE + '#home'); await p.waitForTimeout(400);
+  ok('H 홈 아래 문장: \'체험가·한정가는 보통 1인 1회예요\'', (await p.locator('#main p.foot', { hasText: '체험가·한정가는 보통 1인 1회예요' }).count()) === 1);
 
   ok('요일·시간 칸이 있는 자료에서 A·C·E를 건너뛰지 않음', !WHEN || !SK.some((n) => ['A', 'C', 'E'].includes(n)), SK.join(', '));
   ok('건너뛰지 않은 경우가 있음', SK.filter((n) => ['A', 'B1', 'B3', 'C', 'D', 'E'].includes(n)).length < 6, SK.join(', '));
