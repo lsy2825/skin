@@ -551,7 +551,7 @@
 제품군 패턴,잡티레이저,잡티레이저,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,잡티레이저얼굴전체,잡티레이저 얼굴전체,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,재생관리,재생관리,build2/taxonomy.py FAMILIES (data.json meta.fam)
-제품군 패턴,점빼기|점제거|^점(?![가-힣])|얼굴점|돌출점,점 빼기,build2/taxonomy.py FAMILIES (data.json meta.fam)
+제품군 패턴,점빼기|점제거|^점(?![가-힣])|얼굴점(?:빼기|제거)?|돌출점,점 빼기,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,점막아이라인,점막 아이라인,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,정맥주사,정맥주사,build2/taxonomy.py FAMILIES (data.json meta.fam)
 제품군 패턴,제네시스(?!토닝),제네시스,build2/taxonomy.py FAMILIES (data.json meta.fam)
