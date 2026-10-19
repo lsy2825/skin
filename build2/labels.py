@@ -22,6 +22,11 @@ Rules
 2026-10-15 (개선 보고서 E1): the clinics' own explanation in brackets is shown as '병원 설명' (taxonomy.build, family desc).
 desc_problems() keeps out what is a sales condition or a pitch rather than a description: '카톡플친 적용가', '리터치 불가',
 '자갈턱보톡스 병행 추천', '볼륨과 주름개선을 동시에 !'.
+
+2026-10-19: family names (meta.fam, the compare cards) — no two may read the same (name_clashes: letter case and word breaks aside).
+The 2026-10-18 build had 22 names twice or three times ('에어녹스' 윤곽·필러 / 리프팅 / 기타) and three more spelt apart only by a
+space ('리팟 레이저' / '리팟레이저'): taxonomy.build() now makes one family per name, checks it, and tests/labels_test.py checks
+the shipped data (RULES 3).
 """
 import re
 
@@ -35,7 +40,8 @@ LONG = 8
 # built with (meta.labelRules); tests/labels_test.py holds the shipped data to these rules only when the versions match — data the
 # factory built before a rule change is rebuilt by the next factory run (2026-10-15: the stricter '부위만' rule of C1 failed
 # the PR check on the old app/data.json, which only the factory may rewrite)
-RULES = 2
+# 3 (2026-10-19): family names are unique too (name_clashes)
+RULES = 3
 # words that name where or how much, never what: a label made only of these has lost its product (rule 부위만)
 AREA_ONLY = re.compile(r"(?:얼굴|페이스|바디|전신|전체|얼굴전체|부분|부위|\d*부위|특수부위|가운데부위|이마|미간|눈밑|눈가|눈썹|애교|팔자|관자|볼|앞볼|뒷볼|"
                        r"광대|앞광대|턱|턱끝|턱선|턱라인|이중턱|코|콧등|입술|입꼬리|인중|목|목주름|귀|귓볼|두피|헤어라인|구렛나루|가슴|등|배|복부|옆구리|"
@@ -89,3 +95,12 @@ def desc_problems(text):
     if PRICE.search(text or "") or DATE.search(text or ""):
         out.append("가격·날짜")
     return out
+
+
+def name_clashes(names):
+    """→ [[name, …], …] the names that read the same once letter case and word breaks are taken out ('에어녹스' twice,
+    '리팟 레이저' / '리팟레이저'); [] = every name is its own"""
+    seen = {}
+    for n in names:
+        seen.setdefault(re.sub(r"\s+", "", n or "").casefold(), []).append(n)
+    return [ns for ns in seen.values() if len(ns) > 1]
