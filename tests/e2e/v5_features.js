@@ -62,6 +62,7 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     const keys = () => p.evaluate(() => ['recent', 'recentQ', 'lastRoute'].map((k) => localStorage.getItem('pc:' + k) != null));
     ok('기록: 기본은 남김(최근 본 것·이어서 보기)', (await keys())[0] && (await keys())[2]);
     await p.goto(BASE + '#me'); await p.waitForTimeout(500);
+    { const s = p.locator('#main .settings details.setrow > summary', { hasText: '보기 기록' }); if (!(await s.evaluate((x) => x.parentElement.open))) { await s.click(); await p.waitForTimeout(150); } }   // 내 설정: one line per setting, opened
     await p.locator('button', { hasText: '기록 지우기' }).click(); await p.waitForTimeout(300);
     ok('기록 지우기: 키가 지워짐', (await keys()).every((x) => !x));
     await p.locator('.toast button', { hasText: '되돌리기' }).click(); await p.waitForTimeout(300);

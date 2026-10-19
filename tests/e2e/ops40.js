@@ -79,12 +79,14 @@ const REV = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'app', '
   await go('search/' + encodeURIComponent('리쥬란 2cc') + '?nl=0'); await go('compare?k=X24');
   ok('O10 기본값 꺼짐: 아무것도 남기지 않음', await p.evaluate(() => localStorage.getItem('pc:events')) === null);
   await go('me');
+  { const s = p.locator('#main .settings details.setrow > summary', { hasText: '보기 기록' }); if (!(await s.evaluate((x) => x.parentElement.open))) { await s.click(); await p.waitForTimeout(150); } }   // 내 설정: one line per setting, opened
   await p.locator('.switch', { hasText: '사용 통계 남기기' }).click(); await p.waitForTimeout(300);
   await go('search/' + encodeURIComponent('리쥬란 2cc') + '?nl=0'); await go('compare?k=X12');
   const ev = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:events') || '[]'));
   ok('O11 켜면 이 기기에 남김: 검색·비교 열기, 모두 demo 표시', ev.some((x) => x.e === 'search') && ev.some((x) => x.e === 'compare_view' && x.k === 'X12') && ev.every((x) => x.demo === true), JSON.stringify(ev.slice(0, 3)));
   ok('O12 검색어 원문은 남기지 않음', !JSON.stringify(ev).includes('리쥬란'));
   await go('me');
+  { const s = p.locator('#main .settings details.setrow > summary', { hasText: '보기 기록' }); if (!(await s.evaluate((x) => x.parentElement.open))) { await s.click(); await p.waitForTimeout(150); } }   // 내 설정: one line per setting, opened
   await p.locator('button', { hasText: '사용 통계 보기·지우기' }).click(); await p.waitForTimeout(400);
   ok('O13 보기: 이벤트별 횟수', /검색/.test(await p.locator('.sheet').innerText()) && /\d+번/.test(await p.locator('.sheet').innerText()));
   await p.locator('.sheet button', { hasText: '모두 지우기' }).click(); await p.waitForTimeout(300);

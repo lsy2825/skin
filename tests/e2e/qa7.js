@@ -153,7 +153,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     await p.goto(BASE + '#cart'); await p.reload(); await p.waitForSelector('.cartsum');
     await p.locator('.cartsum .btn').click(); await p.waitForTimeout(300);
     for (let i = 0; i < 3; i++) { await p.locator('.qrow > .rank').nth(i).click(); await p.waitForTimeout(250); }
-    const qn = await p.$$eval('.qline .m > span:first-child', (s) => s.map((x) => x.textContent));
+    const qn = await p.$$eval('.qline .qname', (s) => s.map((x) => x.textContent));   // the clinic's product name (in the line's '자세히')
     const allowed = namesOf('X12'), qbad = qn.filter((n) => !allowed.has(n));
     ok('Q2', '장바구니 지점별 견적도 같은 스펙 상품', qn.length >= 3 && !qbad.length, qbad.join(' / ') || `${qn.length}개 확인`);
     await ctx.close(); }
@@ -168,7 +168,8 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     await p.locator('#main .chips button[aria-pressed]').filter({ hasText: /^[가-힣A-Za-z]+$/ }).first().click().catch(() => {}); await p.waitForTimeout(200);
     await p.goto(BASE + '#table'); await p.waitForTimeout(400); await p.selectOption('label.flabel select >> nth=0', { index: 1 }); await p.waitForTimeout(300);
     await p.goto(BASE + '#me'); await p.waitForTimeout(300);
-    await p.locator('.setseg [role=radio]', { hasText: '병원 표시가' }).click().catch(() => {}); await p.waitForTimeout(200);
+    { const s = p.locator('#main .settings details.setrow > summary', { hasText: '가격 표시' }); if (!(await s.evaluate((x) => x.parentElement.open))) { await s.click(); await p.waitForTimeout(150); } }   // 내 설정: one line per setting, opened
+    await p.locator('.setseg [role=radio]', { hasText: '병원 표시가' }).click(); await p.waitForTimeout(200);
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400); await p.locator('details.advset summary').click(); await p.waitForTimeout(150);
     await p.locator('details.advset .switch', { hasText: '특가 포함' }).click(); await p.waitForTimeout(300);
     const after = JSON.stringify((await carts(p))[0].items), n2 = await p.locator('#cart-n').textContent();

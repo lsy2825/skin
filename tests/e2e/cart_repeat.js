@@ -67,7 +67,10 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
   };
   const text = (sel) => p.locator(sel).first().innerText().catch(() => '');
   const mainTxt = () => p.locator('#main').innerText();
-  // the clinic comparison, then the quote of branch b opened: its line texts [{head, total, m}]
+  // the clinic comparison, then the quote of branch b opened: its line texts [{total, m, more, all}] — m: the line's words in view
+  // (conditions, how the total was made, '2회째부터' + the later price's badges, the repeat words), more: the names its '자세히'
+  // folds (the clinic's product name, '2회째부터 <the later price's name>'; the option picker's list left out — hierarchy audit 48),
+  // all: both (what the line said before the fold)
   const quote = async (b) => {
     if ((await p.locator('.cartsum button[aria-expanded="false"]').count())) { await p.locator('.cartsum button[aria-expanded="false"]').click(); await p.waitForTimeout(400); }
     // the clinic list shows 40 and then '20곳 더 보기' (2026-10-16 hierarchy audit 8): tap it until the branch is listed
@@ -79,7 +82,10 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     const li = p.locator('li.qrow').nth(n);
     if (!(await li.locator('.qbody').count())) { await li.locator('button.rank').click(); await p.waitForTimeout(300); }
     const at = p.locator('li.qrow').nth(n);
-    return at.evaluate((x) => ({ lines: [...x.querySelectorAll('.qline')].map((q) => ({ total: (q.querySelector('.row b.num') || {}).textContent || '', m: (q.querySelector('.m') || {}).textContent || '' })),
+    return at.evaluate((x) => ({ lines: [...x.querySelectorAll('.qline')].map((q) => { const m = q.querySelector('.m'), c = m ? m.cloneNode(true) : null; if (c) c.querySelectorAll('.qmore').forEach((d) => d.remove());
+      const f = q.querySelector('.qmore .qmd'), fc = f ? f.cloneNode(true) : null; if (fc) fc.querySelectorAll('select').forEach((s) => s.remove());
+      const vis = c ? c.textContent : '', more = fc ? fc.textContent : '';
+      return { total: (q.querySelector('.row b.num') || {}).textContent || '', m: vis, more, all: vis + more }; }),
       warns: [...x.querySelectorAll('.warns li')].map((w) => w.textContent) }));
   };
   // '견적 복사' of the quote opened by quote(b): the text it put on the clipboard
@@ -157,7 +163,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     const q = await quote(b), ln = q && q.lines[0];
     ok('B1 1회 가격은 첫 회만: 1회 가격 + 2 × 일반가(예전 그대로)', !!ln && ln.total === won(f + 2 * g) && ln.total !== won(3 * f) && !ln.m.includes(REPEAT_TXT), ln ? `${ln.total} · 기대 ${won(f + 2 * g)} | ${ln.m}` : '(견적 없음)');
     ok(`B2 견적 경고: '${LATER}, 2회째부터는 이 지점의 다른 가격으로'`, !!q && q.warns.some((w) => w.startsWith(`${LATER}, 2회째부터는 이 지점의 다른 가격으로`)), q ? q.warns.join(' / ') : '');
-    ok('B2b 견적 줄에 2회째부터 쓰는 가격의 이름', !!ln && ln.m.includes(`2회째부터 ${S[B1.plain.r[2]]}`), ln ? ln.m.slice(0, 200) : '');
+    ok('B2b 견적 줄(자세히)에 2회째부터 쓰는 가격의 이름', !!ln && ln.more.includes(`2회째부터 ${S[B1.plain.r[2]]}`), ln ? ln.more.slice(0, 200) : '');
   }
   // B3: a once-only price ×3 is no firm total (round-2 R14), and with no repeat price there is no visit prompt
   const onceOnly = names.find((xs) => xs.every((x) => cls(x.r) === 'once' && !S[x.r[6]] && !days(x.r) && !hours(x.r)));
@@ -186,9 +192,10 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     ok('C1 1회 가격이 있는 시술엔 \'전에 이 시술을 받아 봤어요\'(꺼짐)', (await swc.count()) === 1 && !(await swc.locator('input').isChecked()));
     let q = await quote(b), ln = q && q.lines[0];
     ok(`C2 꺼짐: 1회 가격 + 2 × 다음 가격${repeat ? '(요일·시간 조건 가격)' : ''}`, !!ln && ln.total === won(f + 2 * g) && (!repeat || ln.m.includes(REPEAT_TXT)), ln ? `${ln.total} · 기대 ${won(f + 2 * g)}` : '(견적 없음)');
-    // the later sessions' price is named, and the repeat words come after it (they are about it, not the once price)
-    const nm2 = `2회째부터 ${S[C.next.r[2]]}`, m = ln ? ln.m : '';
-    ok('C2b 견적 줄: \'2회째부터 <다음 가격 이름>\'' + (repeat ? ' 뒤에 매번 문구' : ''), m.includes(nm2) && (!repeat || m.lastIndexOf(REPEAT_TXT) > m.indexOf(nm2)), m.slice(0, 220));
+    // the later sessions' price is named (in the line's '자세히'), and in view the repeat words come after '2회째부터' (they are
+    // about the later sessions, not the once price)
+    const nm2 = `2회째부터 ${S[C.next.r[2]]}`, m = ln ? ln.m : '', i2 = m.indexOf('2회째부터');
+    ok('C2b 견적 줄: 자세히에 \'2회째부터 <다음 가격 이름>\'' + (repeat ? ', 보이는 줄에 \'2회째부터\' 뒤 매번 문구' : ''), !!ln && ln.more.includes(nm2) && (!repeat || (i2 >= 0 && m.lastIndexOf(REPEAT_TXT) > i2)), `${m.slice(0, 160)} | ${ln ? ln.more.slice(0, 80) : ''}`);
     ok('C2c 경고: 1회 가격은 첫 1회만', !!q && q.warns.some((w) => w.startsWith(LATER)), q ? q.warns.join(' / ') : '');
     const cp = await copied(b), cl = cp.split('\n').find((x) => x.startsWith('- ')) || '';
     ok('C2d 견적 복사: 2회째부터 쓰는 가격 이름' + (repeat ? '과 \'2회째부터 방문일·시간 조건이 맞을 때 매번 이 가격\'' : '') + ', ※ 1회 가격은 첫 1회만',
@@ -196,7 +203,7 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     if (!(await tap(swc, 'C3 스위치'))) { ok('스크립트 오류 없음', !errs.length, errs.join(' ')); console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await br.close(); process.exitCode = 1; return; }
     await p.waitForTimeout(500);
     q = await quote(b); ln = q && q.lines[0];
-    ok('C3 켬: 1회 가격을 쓰지 않음 — 3 × 다음 가격', !!ln && ln.total === won(3 * g) && !ln.m.includes(S[C.first.r[2]]), ln ? `${ln.total} · 기대 ${won(3 * g)} | ${ln.m.slice(0, 80)}` : '(견적 없음)');
+    ok('C3 켬: 1회 가격을 쓰지 않음 — 3 × 다음 가격', !!ln && ln.total === won(3 * g) && !ln.all.includes(S[C.first.r[2]]), ln ? `${ln.total} · 기대 ${won(3 * g)} | ${ln.all.slice(0, 80)}` : '(견적 없음)');
     ok('C4 켬: 안내 \'체험가·첫 방문가 같은 1회 가격은 빼고 계산해요\'', (await text('.ci .cdone')).includes('체험가·첫 방문가 같은 1회 가격은 빼고 계산해요'));
     const saved = () => p.evaluate(() => JSON.parse(localStorage.getItem('pc:carts'))[0].items[0].done);
     ok('C5 담은 시술에 저장(done: true)', (await saved()) === true);
@@ -252,7 +259,8 @@ const REPEAT_TXT = '방문일·시간 조건이 맞을 때 매번 이 가격', L
     await seed([{ t: 'k', k, q: 3 }], { ...where(b), when: E.vis });
     const q = await quote(b), ln = q && q.lines[0];
     ok('E1 2회째 가격에만 시간 확인이 필요해도 경고 \'방문 시간에 되는 가격인지 병원에 확인하세요\'', !!q && q.warns.some((w) => w.startsWith('방문 시간에 되는 가격인지 병원에 확인하세요')), q ? q.warns.join(' / ') : '');
-    ok('E2 견적 줄: 2회째 가격 이름 뒤에 \'시간 확인 필요\'', !!ln && ln.m.indexOf('시간 확인 필요', ln.m.indexOf(`2회째부터 ${S[r2[2]]}`)) > 0, ln ? ln.m.slice(0, 220) : '');
+    const i2 = ln ? ln.m.indexOf('2회째부터') : -1;
+    ok('E2 견적 줄: 보이는 \'2회째부터\' 뒤에 \'시간 확인 필요\'(2회째 가격 이름은 자세히 안)', !!ln && ln.more.includes(`2회째부터 ${S[r2[2]]}`) && i2 >= 0 && ln.m.indexOf('시간 확인 필요', i2) > i2, ln ? `${ln.m.slice(0, 200)} | ${ln.more.slice(0, 80)}` : '');
   }
 
   // ---- F. a visit after the event's end date (user decision 2026-10-16: mark it '기간 확인 필요', do not drop it): at a branch whose
