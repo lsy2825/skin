@@ -483,7 +483,7 @@ test("CLI: a data file that is not JSON is reported without echoing its content 
     writeFileSync(file, "ALERTS_SECRET=hunter2-super-secret\nPATH=/usr/bin\n");
     const r = spawnSync(process.execPath, [cli, file], { env: { PATH: process.env.PATH, ALERTS_URL: "https://alerts.example.workers.dev", ALERTS_SECRET: "hunter2-super-secret" }, encoding: "utf8" });
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\) — the next alerts-catchup run \(every hour\) computes again$/m);
+    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\) — the next alerts-catchup run \(every 30 minutes\) computes again$/m);
     assert.equal((r.stdout + r.stderr).includes("hunter2"), false, "neither the file's content nor the secret is printed");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -871,13 +871,13 @@ test("review finding (D1 budget): a pair new to the Worker waits for a row the f
 });
 
 // ---- 6th → 9th review (D1 budget): weekly.yml runs on every push to main (26–29 runs a day were counted on 2026-10-15/16),
-// and alerts-catchup.yml every hour. Every run starts with the fingerprint: prices already finished today stop there; at
+// and alerts-catchup.yml every 30 minutes. Every run starts with the fingerprint: prices already finished today stop there; at
 // most COMPUTES_PER_DAY computations a D1 day. D1 rows written are counted with sqlite's total_changes() (row changes, not
 // index entries — the local workerd D1 measurement is in src/worker.js).
 const changes = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
 
 // 9th review (alerts within 2 hours of new prices, a user decision of 2026-10-16): every run that deployed data, and the
-// hourly catch-up, starts with POST /v1/internal/start {fp}. The fingerprint is of the numbers a digest can be computed
+// catch-up (every 30 minutes), starts with POST /v1/internal/start {fp, nonce}. The fingerprint is of the numbers a digest can be computed
 // from, so a rebuild that changes no price is 'done' — one request, nothing written — while changed prices are computed at
 // once, whatever started the run.
 test("9th review (start): the same prices → done (one request, nothing written) — also a rebuild with other bytes, row order, names or timestamps; changed prices → computed at once; the next KST day → computed; before 06:00 KST an earlier day's finish of the same prices is enough", T, async () => {
@@ -899,7 +899,10 @@ test("9th review (start): the same prices → done (one request, nothing written
     const again = await notify({ data: d, today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
     assert.deepEqual(again, { go: "done" });
     assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/start"], "one request");
-    assert.deepEqual(JSON.parse(w.sent[0].body), { fp: fingerprint(WEEK2) });
+    const body = JSON.parse(w.sent[0].body);
+    assert.deepEqual(Object.keys(body), ["fp", "nonce"]);
+    assert.equal(body.fp, fingerprint(WEEK2));
+    assert.match(body.nonce, /^[0-9a-f]{13}$/, "a nonce drawn for the run (10th review: 52 random bits)");
     assert.equal(changes(db) - c, 0, "nothing written: no key set, no pair, no finish, no lease");
     assert.deepEqual(logs, ["price alerts: these prices were already computed (same fingerprint) — nothing to do"]);
   }
@@ -928,7 +931,7 @@ test("9th review (start): the same prices → done (one request, nothing written
   assert.deepEqual(changed.sent.slice(0, 2), ["/v1/internal/start", "/v1/internal/keys"]);
 });
 
-test("9th review (catch-up): notify({catchup: true}) — the CLI with ALERTS_CATCHUP=1 — tells start it is the catch-up; a factory run does not; before 07:00 KST the catch-up leaves the day's computation of unchanged prices to the 06:00 run", T, async () => {
+test("9th/10th review (catch-up): notify({catchup: true}) — the CLI with ALERTS_CATCHUP=1 — tells start it is the catch-up; a factory run does not; before 08:00 KST the catch-up leaves the day's computation of unchanged prices to the 06:00 run", T, async () => {
   const db = makeDb(), env = makeEnv(db);
   await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
   const at = (iso) => {
@@ -936,18 +939,22 @@ test("9th review (catch-up): notify({catchup: true}) — the CLI with ALERTS_CAT
     const f = async (url, init) => { sent.push({ path: new URL(url).pathname, body: init.body ? JSON.parse(init.body) : null }); return worker.fetch(new Request(url, init), env, { waitUntil() {} }, Date.parse(iso + "+09:00")); };
     return { f, sent };
   };
+  const N = "0011223344556";
   const day1 = at("2026-10-19T06:30:00");
-  assert.equal((await notify({ data: WEEK1, today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: day1.f, log: () => {}, waitMs: 0 })).go, "compute");
-  assert.deepEqual(day1.sent[0], { path: "/v1/internal/start", body: { fp: fingerprint(WEEK1) } }, "a factory run sends the fingerprint only");
-  const early = at("2026-10-20T06:37:00");
-  assert.deepEqual(await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: early.f, log: () => {}, waitMs: 0, catchup: true }), { go: "done" });
-  assert.deepEqual(early.sent, [{ path: "/v1/internal/start", body: { fp: fingerprint(WEEK1), catchup: true } }]);
-  const later = at("2026-10-20T07:37:00");
-  assert.equal((await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: later.f, log: () => {}, waitMs: 0, catchup: true })).go, "compute", "from 07:00 the catch-up does the day's computation no run did");
+  assert.equal((await notify({ data: WEEK1, today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: day1.f, log: () => {}, waitMs: 0, nonce: N })).go, "compute");
+  assert.deepEqual(day1.sent[0], { path: "/v1/internal/start", body: { fp: fingerprint(WEEK1), nonce: N } }, "a factory run sends the fingerprint and its nonce only");
+  for (const when of ["2026-10-20T06:37:00", "2026-10-20T07:07:00", "2026-10-20T07:59:00"]) {
+    const early = at(when);
+    assert.deepEqual(await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: early.f, log: () => {}, waitMs: 0, catchup: true, nonce: N }), { go: "done" }, when);
+    assert.deepEqual(early.sent, [{ path: "/v1/internal/start", body: { fp: fingerprint(WEEK1), nonce: N, catchup: true } }]);
+  }
+  const later = at("2026-10-20T08:07:00");
+  assert.equal((await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: later.f, log: () => {}, waitMs: 0, catchup: true })).go, "compute", "from 08:00 the catch-up does the day's computation no run did");
   // the CLI reads ALERTS_CATCHUP (exactly "1")
   const src = readFileSync(new URL("../notify.mjs", import.meta.url), "utf8");
   assert.match(src, /catchup: process\.env\.ALERTS_CATCHUP === "1"/);
 });
+
 
 test("9th review (fingerprint): the same for every rebuild that changes no number; different for each change a digest could see — a listed price, a branch's region, a key's rows, an end date, a review flag, the collection date, a regroup day, the key set", () => {
   const base = fingerprint(WEEK2);
@@ -992,15 +999,20 @@ test("9th review (fingerprint): the same for every rebuild that changes no numbe
   assert.ok(Date.now() - t < 5000, `fingerprint of app/data.json took ${Date.now() - t} ms`);
 });
 
-test("9th review (CLI): start first — done calls nothing more; deferred writes deferred=true to $GITHUB_OUTPUT (the alert job's Telegram line); ALERTS_MODE is not read any more", T, async () => {
-  const db = makeDb(), env = makeEnv(db, { COMPUTES_PER_DAY: "1" });
+test("9th/10th review (CLI): start first — done calls nothing more; a deferred FIRST factory run writes deferred=true and until to $GITHUB_OUTPUT (the alert job's one Telegram line a D1 day); a failure after start answered compute writes failed=true; ALERTS_MODE is not read any more", T, async () => {
+  const db = makeDb(), env = makeEnv(db, { COMPUTES_PER_DAY: "2" });
   await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
   const seen = [];
+  let failPath = null;
+  // the Worker's clock: noon KST of the real day (the CLI's today is the real KST day; 03:00 UTC — before 21:00 UTC, so of
+  // COMPUTES_PER_DAY 2 one may start and the other is kept for 06:00 KST)
+  const noon = () => Date.parse(`${new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10)}T12:00:00+09:00`);
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     for await (const c of req) chunks.push(c);
     seen.push(req.url);
-    const r = await worker.fetch(new Request(`https://alerts.local${req.url}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? undefined : Buffer.concat(chunks) }), env, { waitUntil() {} });
+    if (failPath && req.url.startsWith(failPath)) { res.writeHead(500, { "content-type": "application/json" }); res.end("{}"); return; }
+    const r = await worker.fetch(new Request(`https://alerts.local${req.url}`, { method: req.method, headers: req.headers, body: req.method === "GET" ? undefined : Buffer.concat(chunks) }), env, { waitUntil() {} }, noon());
     res.writeHead(r.status, { "content-type": "application/json" });
     res.end(await r.text());
   });
@@ -1018,6 +1030,14 @@ test("9th review (CLI): start first — done calls nothing more; deferred writes
   try {
     writeFileSync(join(dir, "w1.json"), JSON.stringify(WEEK1, null, 1) + "\n");
     writeFileSync(join(dir, "w2.json"), JSON.stringify(WEEK2));
+    // a failure BEFORE the Worker answered compute (start itself 500): a ::warning, no failed=true (nothing was counted)
+    failPath = "/v1/internal/start";
+    const s0 = await runCli(join(dir, "w1.json"));
+    assert.equal(s0.code, 0);
+    assert.match(s0.out, /^::warning title=price alerts::price alert check failed \(\/v1\/internal\/start answered 500\) — the next alerts-catchup run \(every 30 minutes\) computes again$/m);
+    assert.equal(s0.output, "");
+    failPath = null;
+    seen.splice(0);
     // ALERTS_MODE=keys from an older weekly.yml changes nothing: the run starts and computes
     const f = await runCli(join(dir, "w1.json"), { ALERTS_MODE: "keys" });
     assert.equal(f.code, 0);
@@ -1029,13 +1049,45 @@ test("9th review (CLI): start first — done calls nothing more; deferred writes
     const again = await runCli(join(dir, "w1b.json"));
     assert.match(again.out, /^price alerts: these prices were already computed \(same fingerprint\) — nothing to do$/m);
     assert.deepEqual(seen.splice(0), ["/v1/internal/start"]);
-    // new prices past COMPUTES_PER_DAY (1 here) this UTC day: deferred — a ::warning and deferred=true for the workflow
+    // new prices with the D1 day's last computation kept for 06:00 KST: deferred — a ::warning, and for the first deferred
+    // factory run of the D1 day deferred=true + until for the workflow
     const later = await runCli(join(dir, "w2.json"));
     assert.equal(later.code, 0);
-    assert.match(later.out, /^::warning title=price alerts::today's full computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST$/m);
-    assert.equal(later.output, "deferred=true\n");
+    assert.match(later.out, /^::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — these prices are computed from 06:00 KST$/m);
+    assert.equal(later.output, "deferred=true\nuntil=06:00\n");
     assert.deepEqual(seen.splice(0), ["/v1/internal/start"]);
+    // the second deferred factory run of that D1 day: the same ::warning, nothing for the workflow (one Telegram line a day)
+    const second = await runCli(join(dir, "w2.json"));
+    assert.match(second.out, /^::warning title=price alerts::the D1 day's last computation/m);
+    assert.equal(second.output, "");
+    // a failure AFTER start answered compute (the digest answers 500 three times): failed=true — the Worker counted it and
+    // holds its lease (the alert job sends a Telegram line; the next catch-up retries the same prices uncounted)
+    const { env: e2 } = { env: makeEnv(makeDb()) };
+    Object.assign(env, { DB: e2.DB });
+    await phonesWith(env, env.DB, { B: [{ kind: "watch", key: "X24" }] });
+    failPath = "/v1/internal/digest";
+    const broke = await runCli(join(dir, "w2.json"));
+    assert.equal(broke.code, 0);
+    assert.match(broke.out, /^::warning title=price alerts::price alert check failed \(\/v1\/internal\/digest answered 500\) — the next alerts-catchup run \(every 30 minutes\) computes again$/m);
+    assert.equal(broke.output, "failed=true\n");
   } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+test("10th review (a lost start answer): the Worker took the lease but the answer never came back — notify sends the same start (same nonce) and gets ITS OWN lease: one computation, counted once, no busy against itself", T, async () => {
+  const db = makeDb(), env = makeEnv(db);
+  await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
+  const at = Date.parse("2026-10-20T10:00:00+09:00");
+  let starts = 0;
+  const f = async (url, init) => {
+    const res = await worker.fetch(new Request(url, init), env, { waitUntil() {} }, at);
+    if (new URL(url).pathname === "/v1/internal/start" && ++starts === 1) throw Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET" });
+    return res;
+  };
+  const r = await notify({ data: WEEK1, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: f, log: () => {}, waitMs: 0 });
+  assert.equal(r.go, "compute");
+  assert.equal(starts, 2, "the start was sent again");
+  assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('fc', 'lease') ORDER BY k"), [{ k: "fc", n: 2026102001 }], "counted once, the finish freed the lease");
 });
 
 test("everything notify.mjs logged in this file holds counts only: no secret, URL, host, id, endpoint, key or region name", () => {
@@ -1044,5 +1096,5 @@ test("everything notify.mjs logged in this file holds counts only: no secret, UR
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again|::warning title=price alerts::today's full computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the alerts-catchup run \(every 30 minutes\) checks these prices again|::warning title=price alerts::this D1 day's computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|::warning title=price alerts::the D1 day's last computation \(the Worker's COMPUTES_PER_DAY\) is kept for the 06:00 KST run — these prices are computed from 06:00 KST|::notice title=price alerts::no computation starts in the last 15 minutes before 09:00 KST \(a new D1 day\) — the next alerts-catchup run computes these prices|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });

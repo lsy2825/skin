@@ -1,13 +1,19 @@
 name: alerts-catchup
 
 # Price alerts within 2 hours of new prices (9th review — a user decision of 2026-10-16; docs/ARCHITECTURE.md D19).
-# weekly.yml's price_alerts job computes right after every deploy; this run, every hour, computes what that job could not:
-# its notify failed or timed out, the public app did not serve the new data-meta.json yet, the Worker answered 'busy'
-# (another run was computing) or 'deferred' (COMPUTES_PER_DAY computations already started this D1 day — the first run
-# after 09:00 KST computes them). When nothing changed it costs one D1 request: start answers 'done' (≤ 4 rows read,
-# nothing written — cf/alerts/src/worker.js start). It tells the Worker it is the catch-up (ALERTS_CATCHUP=1): until 07:00
-# KST it computes changed prices only and leaves the day's computation of unchanged prices to the 06:00 KST factory run
-# (the 06:37 run may come while that run is still collecting — worker.js CATCHUP_ROLL_HOUR); from 07:00 it also does that
+# weekly.yml's price_alerts job computes right after every deploy; this run, every 30 minutes (10th review: it was every
+# hour), computes what that job could not: its notify failed or timed out, the public app did not serve the new
+# data-meta.json yet, the Worker answered 'busy' (another run was computing) or 'deferred' (COMPUTES_PER_DAY computations
+# already started this D1 day — the first run after 09:00 KST computes them; or before 06:00 KST the D1 day's last one is
+# kept for the 06:00 factory run). When nothing changed it costs one D1 request: start answers 'done' (≤ 30 rows read —
+# measured 5 — nothing written: cf/alerts/src/worker.js start). Cost of every 30 minutes: GitHub Actions minutes are free for a public
+# repository (standard runners; about 1 minute a run — 48 runs a day), and the Worker sees 48 starts a day (≤ 30 rows read
+# each: ≤ 1,440 a day, ≤ 44,640 a 31-day month of the 25 billion the Workers Paid plan includes — nothing written when
+# there is nothing to compute; the free plan's 5 million a day the same way).
+# It tells the Worker it is the catch-up (ALERTS_CATCHUP=1): until 08:00 KST it computes changed prices only and leaves the
+# day's computation of unchanged prices to the 06:00 KST factory run (the 06:07–07:37 runs may come while that run is still
+# collecting — GitHub starts it 20–25 minutes late and a collection takes ~40–45 minutes: 'Weekly prices 2026-10-17' was
+# saved at 07:06 KST — worker.js CATCHUP_ROLL_HOUR); from 08:00 (the first push goes out at 08:00) it also does that
 # computation if no run did.
 # The same guards as weekly.yml's price_alerts job, step for step (tests/factory_worker.test.js compares them): the CODE is
 # the reviewed commit in the repository Variable ALERTS_CODE_SHA (never main, never github.sha); the DATA is main's
@@ -15,12 +21,14 @@ name: alerts-catchup
 # public app serves that same data-meta.json (what the phones were given) and only while public hosting is on
 # (PUBLIC_DEPLOY "on"); it is JSON.parse'd, never run. Only the ALERTS_* secrets; no Cloudflare token (no `environment:`),
 # no Telegram secret, installs nothing, reads the repository only. A run that fails or is skipped says so on its page
-# (::warning/::notice) and exits green: the next hour tries again, and a Worker link that stays broken shows on the daily
-# monitor (GET /health stale). GitHub may start a scheduled run late (21–25 minutes were seen for weekly.yml's 06:00
-# schedule) or, under load, drop one (then the next hour's run catches up).
+# (::warning/::notice) and exits green: the next run tries again 30 minutes later; a computation that failed after it
+# started or was deferred shows on GET /health "compute" (failed / deferred), which the daily monitor turns into a Telegram
+# line, and a Worker link that stays broken shows as /health stale. GitHub may start a scheduled run late (21–25 minutes
+# were seen for weekly.yml's 06:00 schedule; the :07/:37 delay is to be measured in the first week after the merge) or,
+# under load, drop one (then the next run catches up 30 minutes later).
 on:
   schedule:
-    - cron: "37 * * * *"     # every hour at :37 UTC (= :37 KST); 00:37 UTC = 09:37 KST, the first run of a D1 day
+    - cron: "7,37 * * * *"   # every 30 minutes at :07 and :37 (UTC = KST minutes); 00:07 UTC = 09:07 KST, the first run of a D1 day
   workflow_dispatch:         # "Run workflow" (branch main)
 
 permissions: {}       # nothing by default; the job asks for read only
@@ -95,7 +103,7 @@ jobs:
         run: |
           set -u
           export LC_ALL=C            # byte ranges in the patterns below
-          skip() { echo "::warning title=price alerts::$1 — nothing sent (the hourly alerts-catchup run checks again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          skip() { echo "::warning title=price alerts::$1 — nothing sent (the alerts-catchup run, every 30 minutes, checks again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
           # (1) regular files (a symlink could point at a file of this machine), and the checksums of data-meta.json
           for f in app/data.json app/data-meta.json; do
             mode=$(git -C data ls-tree HEAD -- "$f" | cut -d' ' -f1)

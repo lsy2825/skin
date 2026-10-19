@@ -17,8 +17,9 @@ Checks (each returns problems as short Korean lines; no problem → no message, 
              nearly full / full), stale: true (no factory finish for 2+ days, or none ever since the first subscription),
              sending: false (VAPID key missing or unusable), refusing: true (phones that took our pushes refuse our VAPID
              token at a push service that took nothing else — kept for a few days, then counted), pairs: "capped" (the
-             factory's watched list was cut at PAIR_CAP, or a new pair waited for a free row under it) or a "key" that is
-             not app/config.js pushPublicKey (when that is set)
+             factory's watched list was cut at PAIR_CAP, or a new pair waited for a free row under it), compute: "failed" /
+             "deferred" (a price-alerts computation that never finished, or a deferred one, in this D1 day or the one
+             before) or a "key" that is not app/config.js pushPublicKey (when that is set)
 
 Messages hold brand names, dates, counts and the run link only — no personal data, no secrets. Standard library only.
 --send without the Telegram secrets prints a ::notice and sends nothing. Exit 0 unless the arguments are wrong.
@@ -192,7 +193,7 @@ def worker_warnings(host, data, app_key=""):
     capacity: the alerts Worker (cf/alerts) never evicts a subscription, so a full table needs a person: 'nearly_full'
     (>= 80% of MAX_SUBS) or 'full' (503 FULL for new phones). stale: the price factory has not finished a run into that
     Worker for more than 2 days, or never since the first phone subscribed more than 2 days ago (finished: null)
-    (cf/alerts/notify.mjs sends nothing when it fails, the job stays green; weekly.yml's price_alerts job and the hourly
+    (cf/alerts/notify.mjs sends nothing when it fails, the job stays green; weekly.yml's price_alerts job and the 30-minute
     alerts-catchup.yml both run it, so two days without a finish means both kept failing). sending: false = no push can go out (the
     VAPID_PRIVATE_JWK secret is missing or cannot sign, or VAPID_PUBLIC_KEY is set to another key). refusing: true = a send
     run today or yesterday found phones that took our pushes refusing our VAPID token at a push service that took nothing
@@ -206,7 +207,12 @@ def worker_warnings(host, data, app_key=""):
     subscribing again). The wide one also removes real phones that have not received a push yet (at launch, nearly all of
     them). Either needs a user decision then (docs/SECURITY_ARCHITECTURE.md §4).
     key: the VAPID public key the Worker pushes with; when app/config.js pushPublicKey is set and differs, every phone
-    subscribes with a key the Worker cannot push to (the push services refuse, the subscriptions end up removed)."""
+    subscribes with a key the Worker cannot push to (the push services refuse, the subscriptions end up removed).
+    compute (10th review — what the 30-minute alerts-catchup run cannot report itself: it has no Telegram secret):
+    "failed" = a price-alerts computation started in this D1 day or the one before (09:00-09:00 KST) and never finished
+    (its lease ran out; the same prices are retried once uncounted, then counted); "deferred" = a start was deferred in
+    that time (COMPUTES_PER_DAY used up, or its last one kept for the 06:00 KST run) — new prices waited up to 09:00 / 06:00
+    KST. A missing field (an older Worker) = no warning."""
     out = []
     cap = data.get("capacity")
     if cap == "nearly_full":
@@ -218,9 +224,9 @@ def worker_warnings(host, data, app_key=""):
     if data.get("stale") is True:
         if "finished" in data and data.get("finished") is None:
             out.append(f"알림 Worker가 공장에서 숫자를 한 번도 못 받았어요. 첫 구독 뒤 2일 넘게 지났어요 ({host}): "
-                       "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계, 매시 따라잡기(alerts-catchup)를 확인하세요")
+                       "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계, 30분마다 도는 따라잡기(alerts-catchup)를 확인하세요")
         else:
-            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 매시 따라잡기(alerts-catchup) 실행 기록을 확인하세요")
+            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 30분마다 도는 따라잡기(alerts-catchup) 실행 기록을 확인하세요")
     if data.get("sending") is False:
         out.append(f"알림 Worker가 푸시를 보낼 수 없어요 ({host}): VAPID_PRIVATE_JWK 비밀값이 없거나 쓸 수 없는 키예요 "
                    "(VAPID_PUBLIC_KEY를 넣었다면 그 키와 맞지 않아요)")
@@ -233,6 +239,17 @@ def worker_warnings(host, data, app_key=""):
                    "있는지 보고 좁은 정리 쿼리를 쓰거나 상한을 올리세요(D1 하루 쓰기 한도 때문에 둔 상한이에요). 좁은 정리 쿼리도 최근 재분류(key 변경)가 "
                    "있었으면 앱을 아직 안 연 진짜 휴대폰까지 지우므로 사용자 결정 뒤에만, 넓은 정리 쿼리는 아직 푸시를 못 받은 진짜 구독도 지우므로 "
                    "늘 사용자 결정 뒤에만 써요(docs/SECURITY_ARCHITECTURE.md §4)")
+    comp = data.get("compute")
+    if comp == "failed":
+        out.append(f"알림 Worker: 어제나 오늘(D1 하루, 09시 기준) 시작한 가격 알림 계산이 끝나지 못했어요 ({host}). 같은 가격은 30분마다 도는 "
+                   "따라잡기(alerts-catchup)가 한 번은 횟수에 세지 않고 다시 계산해요. 되풀이되면 weekly-prices의 price_alerts와 alerts-catchup "
+                   "실행 기록의 ::warning을 확인하세요")
+    elif comp == "deferred":
+        out.append(f"알림 Worker: 어제나 오늘(D1 하루, 09시 기준) 계산 횟수 상한(COMPUTES_PER_DAY)에 닿아 새 가격 계산을 미뤘어요 ({host}) — "
+                   "그 가격은 09시(또는 06시 정기 실행 몫이면 06시) 뒤에 계산돼요. 날마다 되풀이되면 데이터 PR을 묶어 합치거나 "
+                   "요금제 설정(PLAN)·상한을 검토하세요(cf/alerts/src/worker.js 계산)")
+    elif comp is not None and comp != "ok":
+        out.append(f"알림 Worker 계산 상태를 알 수 없어요 ({host}): compute={str(comp)[:20]}")
     key = data.get("key")
     if app_key and isinstance(key, str) and key and key != app_key:
         out.append(f"알림 Worker의 VAPID 공개키가 app/config.js pushPublicKey와 달라요 ({host}): 이대로면 휴대폰 구독이 "
