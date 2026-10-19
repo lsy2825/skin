@@ -178,6 +178,15 @@ def variant_keys():
 CATS_X = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디"]
 
 
+def check_family_names(fams):
+    """the build guard on meta.fam (2026-10-19): two compare cards of one name (letter case and word breaks aside, labels.name_clashes)
+    stop the build before app/data.json is written — weekly-prices run 39167274491 stopped a day later, on the shipped data, at
+    tests/homedata.test.js ('에어녹스' three times). weekly.py then builds last week's data, and a rule that still makes them fails the run"""
+    clash = labels.name_clashes([f[0] for f in fams])
+    if clash:
+        raise SystemExit(f"meta.fam: family names that read the same {clash[:5]} (build2/labels.py name_clashes, build2/taxonomy.py build)")
+
+
 def save_snapshot(hist, date, best):
     """hand-made keys → <date>.json (small, readable diff); variant keys (T…) → <date>.keys.json.gz (gzip, mtime 0 so
     the same prices give the same bytes)"""
@@ -854,6 +863,7 @@ def main():
         b[8] = S("VERIFIED" if b[7] and (datetime.date.fromisoformat(collected) - datetime.date.fromisoformat(b[7])).days <= 1 else "STALE")
         b[7] = S(b[7])
     ALLK, VFAM = variant_keys()
+    check_family_names(VFAM)
     prev_txt = open(a.out, encoding="utf-8").read() if os.path.exists(a.out) else None   # the version the app has now
     prev_data, prev_rows = load_prev(prev_txt)
     hist = os.path.join(ROOT, "data2", "history")

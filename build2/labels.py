@@ -25,8 +25,9 @@ desc_problems() keeps out what is a sales condition or a pitch rather than a des
 
 2026-10-19: family names (meta.fam, the compare cards) — no two may read the same (name_clashes: letter case and word breaks aside).
 The 2026-10-18 build had 22 names twice or three times ('에어녹스' 윤곽·필러 / 리프팅 / 기타) and three more spelt apart only by a
-space ('리팟 레이저' / '리팟레이저'): taxonomy.build() now makes one family per name, checks it, and tests/labels_test.py checks
-the shipped data (RULES 3).
+space ('리팟 레이저' / '리팟레이저'): taxonomy.build() now makes one family per name, appdata.check_family_names() stops a build whose
+meta.fam has two before app/data.json is written, and tests/labels_test.py checks the shipped data (RULES 3: names, and option names in
+each family).
 """
 import re
 

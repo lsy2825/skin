@@ -1663,9 +1663,12 @@ ok("... 키 id는 그대로(분류만 바뀜), stats.fam_joined에 남음", all(
 _, _ks, _fs, _st = taxonomy.build(rows_at([("쿨소닉 1회", "기타", "0점")] + [("쿨소닉 1회", "리프팅", f"{i}점") for i in range(1, 4)]))
 ok("시술군: 시술군이 하나여도 분류는 첫 줄의 칸이 아니라 지점이 많은 쪽(기타 1곳 → 리프팅 3곳), stats.fam_recat에 남음",
    [(f["name"], f["cat"]) for f in _fs] == [("쿨소닉", "리프팅")] and [x["name"] for x in _st["fam_recat"]] == ["쿨소닉"], [(f["name"], f["cat"]) for f in _fs])
-_, _ks, _fs, _ = taxonomy.build(rows_at([("비타민D 주사 1회", "기타", f"{i}점") for i in range(4)] + [("비타민D주사 1회", "바디", f"{i}점") for i in range(4, 7)]))
-ok("시술군: 띄어쓰기만 다른 이름('비타민D 주사' 4곳 / '비타민D주사' 3곳, 다른 칸)도 한 시술군·한 철자", [f["name"] for f in _fs] == ["비타민D 주사"]
-   and {k["label"] for k in _ks} == {"비타민D 주사"}, [(f["name"], f["cat"]) for f in _fs])
+# (two specs, as on 2026-10-18: '비타민D 주사' 1회 in 기타 and 'T7B5DF9F 비타민D주사 5회' in 바디 — one spec of both spellings was one
+# family before 2026-10-19 too, 검수 2026-10-19)
+_, _ks, _fs, _ = taxonomy.build(rows_at([("비타민D 주사 1회", "기타", f"{i}점") for i in range(4)] + [("비타민D주사 5회", "바디", f"{i}점") for i in range(4, 7)]))
+ok("시술군: 띄어쓰기만 다른 이름('비타민D 주사' 1회 4곳 / '비타민D주사' 5회 3곳, 다른 칸·다른 규격)도 한 시술군·한 철자",
+   [f["name"] for f in _fs] == ["비타민D 주사"] and len(_ks) == 2 and sorted(k["label"] for k in _ks) == ["비타민D 주사", "비타민D 주사 5회"],
+   [(f["name"], f["cat"]) for f in _fs])
 _, _ks, _fs, _ = taxonomy.build(rows_at([("리팟 레이저 - 5mm 이하", "피부·레이저", f"{i}점") for i in range(3)] + [("리팟레이저 3mm", "피부·레이저", f"{i}점") for i in range(5)]))
 ok("시술군: '이하'를 뗀 이름('리팟 레이저 - 이하' → '리팟 레이저')과 '리팟레이저'도 한 시술군", len(_fs) == 1 and len(_ks) == 2, [(f["name"], f["keys"]) for f in _fs])
 # the clinic's explanation in brackets is no part of the product (에어녹스 at 블리비 is written two ways, elsewhere without one)
@@ -1701,6 +1704,57 @@ ok("쁨 '바디레이저' 칸 이름은 상품을 바꾸지 않음('바디레이
    _a and _b and _a["sig"] == _b["sig"] and _c and _d and _c["sig"] != _d["sig"], (_a and _a["sig"], _b and _b["sig"], _c and _c["sig"], _d and _d["sig"]))
 ok("모델 번호를 띄어 쓴 이름의 양('울트라콜 200 4cc' → 4cc, 2004cc 아님)", taxonomy.variant("울트라콜 200 4cc")[0]["label"] == "울트라콜 200 4cc",
    taxonomy.variant("울트라콜 200 4cc")[0]["label"])
+# 검수 2026-10-19
+# a page listing one name twice at different prices: those rows join nothing new (밴스 마포공덕 '제로팻주사 (1부위)' 300,000 / 500,000)
+_zp = ([("제로팻주사 (1부위)", "바디", b, p) for b in ("마포", "명동2") for p in ("300000", "500000")]
+       + [("제로팻주사 1부위", "바디", "대치", "500000"), ("제로팻주사 1부위 (복부/허벅지 외)", "바디", "대치", "300000")])
+_rows = [dict(r, sale=p, url=f"u/{r['branch']}", group="제로팻주사") for r, (*_, p) in zip(rows_at([x[:3] for x in _zp]), _zp)]
+_rk, _ks, _, _st = taxonomy.build(_rows)
+ok("한 페이지에 같은 이름·다른 가격 두 줄('제로팻주사 (1부위)' 300,000 / 500,000)은 양만 든 괄호로 '제로팻주사 1부위'와 합쳐지지 않음(키 없음)",
+   not _ks and not any(_rk) and _st["twins_alone"] == 4, ([(k["label"], k["n"]) for k in _ks], _st["twins_alone"]))
+_, _ks, _, _ = taxonomy.build([dict(r, url=f"u/{r['branch']}") for r in rows_at([("제로팻주사 (1부위)", "바디", "마포"), ("제로팻주사 (1부위)", "바디", "명동2"),
+                                                                                  ("제로팻주사 1부위", "바디", "대치")])])
+ok("... 한 줄씩이면 합쳐짐('제로팻주사 (1부위)' = '제로팻주사 1부위')", [(k["label"], k["n"]) for k in _ks] == [("제로팻주사 1부위", 3)],
+   [(k["label"], k["n"]) for k in _ks])
+# a name and a kind word ('올타이트 리프팅' / '올타이트'): one family, and one spec where they sell one the same way
+_ot = ([("올타이트 600샷", "리프팅", f"{i}점") for i in range(4)] + [("올타이트 300샷", "리프팅", f"{i}점") for i in range(3)]
+       + [("올타이트 리프팅 600샷", "리프팅", f"r{i}") for i in range(2)] + [("올타이트 리프팅 900샷", "리프팅", f"r{i}") for i in range(3)])
+_rk, _ks, _fs, _st = taxonomy.build(rows_at(_ot))
+_id600 = taxonomy.key_id(taxonomy.variant("올타이트 600샷", cat="리프팅")[0]["sig"])
+ok("이름 + 시술 종류 낱말('올타이트 리프팅 600샷' 2곳)은 같은 규격('올타이트 600샷' 4곳)과 한 키(6곳, id 그대로), 시술군 하나 '올타이트'(찾기 규칙도 짧은 이름)",
+   [(f["name"], len(f["keys"]), f["rx"]) for f in _fs] == [("올타이트", 3, "올타이트")] and any(k["id"] == _id600 and k["n"] == 6 for k in _ks)
+   and sorted(k["label"] for k in _ks) == ["올타이트 300샷", "올타이트 600샷", "올타이트 900샷"] and [x["name"] for x in _st["fam_alias"]] == ["올타이트리프팅"],
+   ([(f["name"], len(f["keys"])) for f in _fs], [(k["label"], k["n"]) for k in _ks]))
+_, _ks, _fs, _ = taxonomy.build(rows_at([("아르기닌 주사 1회", "기타", f"{i}점") for i in range(5)] + [("아르기닌 · 아르기닌 1회", "기타", f"t{i}") for i in range(3)]))
+ok("... 긴 이름을 더 많이 써도('아르기닌 주사' 5곳 / '아르기닌' 3곳) 한 키·한 시술군, 찾기 규칙은 짧은 이름('아르기닌 1회' 줄도 찾음)",
+   [(f["name"], f["rx"]) for f in _fs] == [("아르기닌 주사", "아르기닌")] and [k["n"] for k in _ks] == [8], ([(f["name"], f["rx"]) for f in _fs], [k["n"] for k in _ks]))
+_, _ks, _fs, _st = taxonomy.build(rows_at([("바디 1부위", "바디", f"{i}점") for i in range(3)] + [("바디리프팅 1부위", "바디", f"{i}점") for i in range(3)]))
+ok("이름 + 시술 종류 낱말: 짧은 이름이 부위뿐('바디' / '바디리프팅')이면 따로('바디리프팅 1부위'가 부위만 남은 '바디 1부위'로 가서 키를 잃지 않음)",
+   [k["label"] for k in _ks] == ["바디리프팅 1부위"] and not _st["fam_alias"], ([k["label"] for k in _ks], _st["fam_alias"]))
+_, _ks, _fs, _st = taxonomy.build(rows_at([("크라이오 1회", "피부·레이저", f"{i}점") for i in range(3)] + [("크라이오관리 5회", "피부·레이저", f"{i}점") for i in range(3)]))
+ok("이름 + 시술 종류 낱말: 같이 파는 규격이 없으면 따로('크라이오 1회' / '크라이오관리 5회')", len(_fs) == 2 and not _st["fam_alias"], [f["name"] for f in _fs])
+ok("설명 괄호: 조건·종류는 설명이 아님('금식 불필요', '붉은 잔흔', '갓성비 버전'), 상품 설명은 그대로('비수면 통증제어 시스템')",
+   not any(taxonomy.only_explains(t, n) for t, n in [("금식 불필요", "웃음가스마취"), ("붉은 잔흔", "반영구 눈썹문신"), ("갓성비 버전", "젠틀맥스")])
+   and taxonomy.only_explains("비수면 통증제어 시스템", "에어녹스"))
+_, _ks, _, _ = taxonomy.build(rows_at([("웃음가스마취 1회", "리프팅", f"{i}점") for i in range(2)] + [("웃음 가스 마취 (금식 불필요)", "리프팅", "s")]))
+ok("... '웃음 가스 마취 (금식 불필요)'는 '웃음가스마취'와 합쳐지지 않음(2곳 + 1곳, 키 없음)", not _ks, [(k["label"], k["n"]) for k in _ks])
+# one option name once in a family: '리팟레이저 - 5mm 이하' / '리팟레이저 5mm' were both '5mm'; labels that read alike are one spec
+_, _ks, _fs, _ = taxonomy.build(rows_at([("리팟 레이저 - 5mm 이하", "피부·레이저", f"{i}점") for i in range(3)] + [("리팟레이저 5mm", "피부·레이저", f"{i}점") for i in range(3, 6)]))
+ok("시술군 안 옵션 이름은 하나에 하나('5mm 이하' / '5mm')", len(_fs) == 1 and sorted(k["sub"] for k in _ks) == ["5mm", "5mm 이하"], [(k["label"], k["sub"]) for k in _ks])
+_, _ks, _, _ = taxonomy.build(rows_at([("리팟레이저 단한번의시술로 흑자제거! · 10mm 이내 1개 (1회 체험가)", "피부·레이저", f"{i}점") for i in range(5)]
+                                      + [("리팟레이저 10mm 이내 1개 (1회체험가)", "피부·레이저", f"{i}점") for i in range(5, 8)]))
+ok("... 띄어쓰기만 다른 이름이 된 두 규격은 한 규격(지점이 많은 쪽 id)", [k["n"] for k in _ks] == [8], [(k["label"], k["sub"], k["n"]) for k in _ks])
+_v = taxonomy.variant("태반추출물 주사 (통칭 태반주사) (1회 체험가)", cat="기타")[0]
+ok("'태반추출물 주사 (통칭 태반주사)'는 태반주사 시술군(밴스 4곳이 카드를 따로 만들었음)", _v["fam"] == "placenta" and _v["label"] == "태반주사", (_v["fam"], _v["label"]))
+# the build guard on what ships (appdata.check_family_names, before app/data.json is written)
+import appdata  # noqa: E402
+try:
+    appdata.check_family_names([["에어녹스", "", [], "리프팅"], ["리팟 레이저", "", [], "피부"], ["리팟레이저", "", [], "피부"]])
+    _stop = ""
+except SystemExit as e:
+    _stop = str(e)
+ok("빌드 가드: meta.fam에 이름이 같은 시술군이 있으면 data.json을 쓰기 전에 멈춤(appdata.check_family_names)", "리팟 레이저" in _stop, _stop)
+ok("... 다르면 그대로", appdata.check_family_names([["에어녹스", "", [], "리프팅"], ["리팟", "", [], "피부"]]) is None)
 
 # 4) the data that ships: every compare label passes
 D = json.load(open(os.path.join(ROOT, "app", "data.json"), encoding="utf-8"))
@@ -1720,6 +1774,13 @@ if built_with >= 3:
     ok(f"app/data.json: 시술군 {len(D['meta'].get('fam', [])):,}개 이름이 모두 다름", not _clash, _clash[:5])
 else:
     print(f"INFO | app/data.json(이름 규칙 판 {built_with})에 이름이 같은 시술군 {len(_clash)}가지 — 다음 공장 빌드에서 하나로 합쳐짐", _clash[:3])
+# … and in each family every option name once (letter case and word breaks aside: the card's option chips, 검수 2026-10-19)
+from collections import Counter as _Counter  # noqa: E402
+_twice = [(f[0], o) for f in D["meta"].get("fam", []) for o, n in _Counter(re.sub(r"\s+", "", x[1]).casefold() for x in f[2]).items() if n > 1]
+if built_with >= 3:
+    ok("app/data.json: 시술군마다 옵션 이름이 모두 다름", not _twice, _twice[:5])
+else:
+    print(f"INFO | app/data.json(이름 규칙 판 {built_with})에 옵션 이름이 겹치는 시술군 {len(_twice)}개", _twice[:3])
 vp = os.path.join(ROOT, "data2", "variants.json")
 if os.path.exists(vp):
     rej = json.load(open(vp, encoding="utf-8"))["stats"].get("label_rejected", [])

@@ -196,7 +196,8 @@ FAMILIES = [
     dict(id="baekok", cat="피부", name="백옥주사", rx=r"백옥주사", stop=r"주사", tags=[]),
     dict(id="cinderella", cat="피부", name="신데렐라주사", rx=r"신데렐라주사", stop=r"주사", tags=[]),
     dict(id="garlic", cat="피부", name="마늘주사", rx=r"마늘주사", stop=r"주사", tags=[]),
-    dict(id="placenta", cat="피부", name="태반주사", rx=r"태반주사", stop=r"주사", tags=[]),
+    # '태반추출물 주사 (통칭 태반주사)' (밴스 4곳) is 태반주사: it made a card of its own next to 태반주사 (검수 2026-10-19)
+    dict(id="placenta", cat="피부", name="태반주사", rx=r"태반주사|태반추출물", stop=r"주사|추출물", tags=[]),
     dict(id="gluta", cat="피부", name="글루타치온주사", rx=r"글루타치온", stop=r"주사|글루타치온", tags=[]),
     dict(id="thioctic", cat="피부", name="티옥트산주사", rx=r"티옥트산", stop=r"주사|티옥트산", tags=[]),
     dict(id="vitinj", cat="피부", name="비타민주사", rx=r"^비타민주사", stop=r"비타민주사", tags=[]),
@@ -842,13 +843,21 @@ def explains(text):
     return " " in t and "," not in t and not labels.desc_problems(t) and not NOT_EXPLAINING.search(t)
 
 
+# what a bracket says that is a condition, a version or a kind of the treatment, not what the product is (only_explains): '웃음 가스
+# 마취 (금식 불필요)' at 톡스앤필 삼성점 says how it is given — joined, it made a key of 압구정점's '웃음가스마취 1회 [보톡스 …]' 60,000 and
+# '[울쎄라,써마지]' 50,000 — and '반영구 눈썹문신 (붉은 잔흔)' 150,000 is another treatment than '(단색)' 109,000 at 닥터에버스 천호점
+# (검수 2026-10-19). '(갓성비 버전)', '(루비 주근깨 스팟모드)', '(개수 제한 없음)' the same way
+CONDITION = re.compile(r"필요|없음|제한|가능|불가|금식|잔흔|단색|컬러|색상|버전|모드|스팟|진료비|다를")
+
+
 def only_explains(text, name):
     """explains(), and the bracket narrows nothing down: no body area or sex the name itself doesn't say (GROUP_MEANS: '바이리즌
     (팔자 부위) 1cc' is another price than '바이리즌 1cc' at 쁨 하남미사점, '리니어지 (바디 윤곽 리프팅)' is the body one; '울트라인
-    바디 (바디 전용)' says its own name again), and not where it is used ('에어녹스 (리프팅 시술 시 적용)' 80,000 / '(주사 시술 시 적용)'
-    50,000 at 유앤아이 의정부점)"""
+    바디 (바디 전용)' says its own name again), not where it is used ('에어녹스 (리프팅 시술 시 적용)' 80,000 / '(주사 시술 시 적용)'
+    50,000 at 유앤아이 의정부점) and no condition or version (CONDITION)"""
     t = comp(text)
-    return explains(text) and not re.search(r"시술시|적용", t) and all(w in comp(name) for w in GROUP_MEANS.findall(t))
+    return (explains(text) and not re.search(r"시술시|적용", t) and not CONDITION.search(t)
+            and all(w in comp(name) for w in GROUP_MEANS.findall(t)))
 
 
 def loose_sig(sig, said=None):
@@ -868,6 +877,57 @@ def loose_sig(sig, said=None):
         # brackets move only within their part: '이마필러5cc(국산)＋이마보톡스' ≠ '이마필러5cc＋이마보톡스(국산)' (2026-10-15)
         parts[2] = "＋".join(re.sub(r"\([^()]*\)", "", p) + "".join(sorted(re.findall(r"\([^()]*\)", p))) for p in parts[2].split("＋"))
     return "|".join(loose_text(p) for p in parts)
+
+
+# a name no family rule covers, written as another such name and the kind of treatment ('올타이트 리프팅' / '올타이트', '고우리
+# 스킨부스터' / '고우리', '크라이오관리' / '크라이오', '세르프리프팅' / '세르프', '아르기닌 주사' / '아르기닌') — name_alias()
+KIND_WORD = re.compile(r"(.{2,}?)(스킨부스터|부스터|리프팅|레이저|관리|케어|주사)")
+
+
+def realias(lk, alias):
+    """a loose signature (loose_sig) with its family name read through alias: 'x|올타이트리프팅|올타이트리프팅600샷|1' →
+    'x|올타이트|올타이트600샷|1'"""
+    p = lk.split("|")
+    a = alias.get(p[1]) if len(p) > 2 else None
+    if a:
+        p[2] = p[2].replace(p[1], a, 1)
+        p[1] = a
+    return "|".join(p)
+
+
+def name_alias(sigs, lk0, lk1, by_sig, rows, min_branches):
+    """{loose family name: loose family name} for the names no family rule covers that are another such name and one word for the
+    kind of treatment (KIND_WORD), the same product (2026-10-19, 검수: '올타이트 리프팅 600샷' 3곳 was a card of its own next to
+    '올타이트 600샷' 10곳 at the same 830,000 / 890,000, and 2026-10-18 had 12 such pairs already — '세르프' / '세르프리프팅' 300샷
+    60곳 and 29곳). Only when
+    - the shorter name is a product sold for comparison (one of its specs at min_branches branches or more) and not only areas
+      ('바디' / '바디리프팅', '얼굴 전체' / '얼굴전체리프팅' stay apart: labels.AREA_ONLY), and
+    - the two names sell one spec the same way: a spec of the longer name, the word taken out, is a spec of the shorter one
+      ('올타이트 리프팅 600샷' = '올타이트 600샷'; a name that shares no spec stays apart).
+    One step only: a name whose shorter name is joined to a third one is not joined. → (alias, [(name, into, spec)])"""
+    fam = {s: lk0[s].split("|")[1] for s in sigs}
+    by_fam = defaultdict(list)
+    for s in sigs:
+        by_fam[fam[s]].append(s)
+    at = defaultdict(set)
+    for s in sigs:
+        at[lk1[s]] |= {(rows[i]["brand"], rows[i]["branch"]) for i in by_sig[s]}
+    sold = {n for n, ss in by_fam.items() if any(len(at[lk1[s]]) >= min_branches for s in ss)}
+    area = re.compile(f"(?:{labels.AREA_ONLY.pattern})+")
+    out, seen = {}, []
+    for n, ss in sorted(by_fam.items()):
+        m = KIND_WORD.fullmatch(n)
+        a = m.group(1) if m else ""
+        if not a or a not in sold or area.fullmatch(a):
+            continue
+        theirs = {lk0[t] for t in by_fam[a]} | {lk1[t] for t in by_fam[a]}
+        same = next((x for s in ss for x in (realias(lk0[s], {n: a}), realias(lk1[s], {n: a})) if x in theirs), None)
+        if same:
+            out[n] = a
+            seen.append((n, a, same))
+    for n in [n for n, a in out.items() if a in out]:
+        del out[n]
+    return out, [x for x in seen if x[0] in out]
 
 
 def key_id(sig):
@@ -957,22 +1017,51 @@ def build(rows, min_branches=3):
     # '아르기닌 주사'/'아르기닌주사', '줄기세포 페이스 (손주사) 3cc'/'… 3cc (손주사)') are one spec (2026-10-15, 개선 보고서 E2·E10).
     # They join the one sold at the most branches, which keeps its id; the ids that go away are followed by appdata's keymap.
     merged = []
+    # first the specs written the same apart from letter case, word breaks and bracket order (as before 2026-10-19)
+    by_old = defaultdict(list)
+    for sig in by_sig:
+        by_old[loose_sig(sig)].append(sig)
+    brs = lambda sigs: len({(rows[i]["brand"], rows[i]["branch"]) for s in sigs for i in by_sig[s]})
+    # A page listing one name twice at different prices (one price kind) lists two products we can't tell apart — 밴스 마포공덕·명동2호
+    # '제로팻주사 (1부위)' 300,000 and 500,000 (the '복부/허벅지 외' and '복부/허벅지' prices that 대치점 lists by name). Such rows, when
+    # their spec is no comparison of its own (sold at fewer than min_branches branches), take no part in the joins of 2026-10-19
+    # below (an amount in brackets, a bracket that only explains, a name and a kind word): they made the new key '제로팻주사 1부위' of
+    # two price levels (검수 2026-10-19). A spec compared already keeps them and joins as the rest (rows like these stand in 55 keys,
+    # 172 rows, of the 2026-10-18 build: docs/TREATMENT_TAXONOMY.md §6)
+    page_prices = defaultdict(set)
+    for r in rows:
+        page_prices[page(r) + (loose_text(r["name"]), r.get("kind", ""))].add(r.get("sale"))
+    is_twin = lambda i: len(page_prices[page(rows[i]) + (loose_text(rows[i]["name"]), rows[i].get("kind", ""))]) > 1
+    alone = {old for old, sigs in by_old.items() if vs[by_sig[sigs[0]][0]]["fam"] == "generic" and brs(sigs) < min_branches
+             and any(is_twin(i) for s in sigs for i in by_sig[s])}
+    twin_rows = sum(len(by_sig[s]) for old in alone for s in by_old[old])
+    gen = [s for old, sigs in by_old.items() if old not in alone for s in sigs if vs[by_sig[s][0]]["fam"] == "generic"]
+    # what only explains a generic spec's product (only_explains), and its loose signatures without (lk0) and without that (lk1)
+    said_of = {s: [t for t in vs[by_sig[s][0]].get("details") or [] if only_explains(t, vs[by_sig[s][0]]["famname"])] for s in gen}
+    lk0 = {s: loose_sig(s, []) for s in gen}
+    lk1 = {s: loose_sig(s, said_of[s]) for s in gen}
+    alias, alias_seen = name_alias(gen, lk0, lk1, by_sig, rows, min_branches)
+    # the family each joined spec goes to (by_name below: the shorter name's family, by its shown name)
+    shown = {}
+    for s in gen:
+        shown.setdefault(lk0[s].split("|")[1], (loose_text(vs[by_sig[s][0]]["famname"]), vs[by_sig[s][0]]["rx"]))
+    join_to = {s: shown[alias[lk0[s].split("|")[1]]] for s in gen if lk0[s].split("|")[1] in alias}
+    # then those groups by the newer joins: an amount in brackets and a name with a kind word first (lk0, realias), a page twin's
+    # group on its own
     by_loose = defaultdict(list)
-    for sig, idx in by_sig.items():
-        by_loose[loose_sig(sig, [] if vs[idx[0]]["fam"] == "generic" else None)].append(sig)
+    for old, sigs in by_old.items():
+        by_loose[("alone", old) if sigs[0] not in lk0 else realias(lk0[sigs[0]], alias)].extend(sigs)
     # A name no family covers, written with or without a bracket that only explains it (only_explains, 2026-10-19): '에어녹스
     # (비수면 통증제어 시스템)' (블리비 쁘띠성형 tab), '에어녹스 (비수면 통증제어 마취 시스템)' (its 리프팅·부스터 tabs — the same
     # branch lists both at one price) and '에어녹스 1회' (유앤아이·톡스앤필·밴스) were three keys of one add-on, '쥬브아셀 8%(동종진피 ECM
     # 부스터) 1시린지' and '쥬브아셀 8% 1시린지' two. One key when the explanations agree — the words of one are all in the other, or
     # there is none: '플라듀오 레이저 (듀얼 / 아르곤 / 질소 플라즈마)' and '트리필 프로 (프리미엄 / 하이브리드 솔루션 주입술)' are
     # different products of one 블리비 branch (250,000 / 150,000) and stay apart. The bigger spec comes first (it keeps its id).
-    brs = lambda sigs: len({(rows[i]["brand"], rows[i]["branch"]) for s in sigs for i in by_sig[s]})
     by_said = defaultdict(list)
     for lk, sigs in by_loose.items():
-        v = vs[by_sig[sigs[0]][0]]
-        if v["fam"] == "generic":
-            said = [t for t in v.get("details") or [] if only_explains(t, v["famname"])]
-            by_said[loose_sig(sigs[0], said)].append((lk, {w.casefold() for t in said for w in t.split()}))
+        if sigs[0] in lk1:
+            said = said_of[sigs[0]]
+            by_said[realias(lk1[sigs[0]], alias)].append((lk, {w.casefold() for t in said for w in t.split()}))
     for group in by_said.values():
         if len(group) < 2:
             continue
@@ -1055,11 +1144,13 @@ def build(rows, min_branches=3):
     # '비타민D 주사' / '비타민D주사' were two families as well) now take the name's most used spelling and the category whose rows
     # stand at the most branches — then the most rows, then (a name that was one family already) the category it had, then CATS
     # order. A name with one family gets the same rule (stats.fam_recat: '가다실 9가' 피부 → 기타, 33 of 36 branches). Ids don't change.
+    # A name joined to a shorter one (name_alias: '올타이트 리프팅' → '올타이트') is that name's family, and the family's pattern for
+    # related rows is the shorter name's ('아르기닌' finds the '아르기닌 1회' rows too, '아르기닌주사' doesn't)
     by_name = defaultdict(list)
     for sig, k in keys.items():
-        by_name[loose_text(k["famname"])].append(sig)
-    joined, recat = [], []
-    for sigs in by_name.values():
+        by_name[join_to[sig][0] if sig in join_to else loose_text(k["famname"])].append(sig)
+    joined, recat, fam_key = [], [], {}
+    for g, sigs in by_name.items():
         was = sorted({(keys[s]["famname"], keys[s]["cat"]) for s in sigs})
         if len(was) < 2 and keys[sigs[0]]["fam"] != "generic":
             continue
@@ -1075,11 +1166,15 @@ def build(rows, min_branches=3):
         if len(was) > 1 or was[0][1] != cat:
             (joined if len(was) > 1 else recat).append(dict(name=name, cat=cat, was=was, branches={c: len(b) for c, b in sorted(at.items())},
                                                             keys=len(sigs)))
+        own_rx = next((join_to[s][1] for s in sigs if s in join_to), None)
+        fam_key[g] = loose_text(name)
         for s in sigs:
             k = keys[s]
             if k["famname"] != name and k["famname"] in k["label"]:
                 k["label"] = k["label"].replace(k["famname"], name, 1)
             k["famname"], k["cat"] = name, cat
+            if own_rx:
+                k["rx"] = own_rx
     # a put-back label that is another spec's label: 'THE 미희주사 꺼진 눈밑 … · 팔자 1회' rows and '미희주사 팔자 1회' rows are one
     # product at one price, not '미희주사 팔자 (표기 1)' and '(표기 2)' (2026-10-15). The spec sold at more branches keeps its id.
     same_name = defaultdict(list)
@@ -1136,6 +1231,41 @@ def build(rows, min_branches=3):
                 k["label"], k["sub"] = f"{k['label']} ({extra})", f"{k['sub']} ({extra})"
     for k in keys.values():
         k["label"], k["sub"] = word_order(k["label"]), word_order(k["sub"])
+    # specs of one family that end up with labels reading the same (letter case, word breaks — same labels get '표기 n' above): one
+    # spec. '리팟레이저 10mm 이내 1개 (1회 체험가)' 5곳 and '… (1회체험가)' 3곳 were two option chips that read alike (밴스's rows carry
+    # their group title in the signature; the only such pair of the 2026-10-18 build, 검수 2026-10-19). The one sold at more branches
+    # keeps its id; appdata's keymap follows the other
+    alike = defaultdict(list)
+    for sig, k in keys.items():
+        alike[(loose_text(k["famname"]), loose_text(k["label"]))].append(sig)
+    for sigs in alike.values():
+        if len(sigs) < 2:
+            continue
+        sigs.sort(key=lambda x: (-keys[x]["n"], -len(by_sig[x]), x))
+        into = keys[sigs[0]]
+        for s2 in sigs[1:]:
+            merged.append(dict(into=into["label"], label=keys[s2]["label"], rows=len(by_sig[s2])))
+            for i in by_sig[s2]:
+                row_keys[i] = into["id"]
+            by_sig[sigs[0]].extend(by_sig.pop(s2))
+            del keys[s2]
+        into["n"] = len({(rows[i]["brand"], rows[i]["branch"]) for i in by_sig[sigs[0]]})
+    # one option name once in a family (the card's option chips): specs whose option reads the same show their label without the
+    # family's words — '리팟레이저 - 5mm 이하' and '리팟레이저 5mm' were both '5mm' once '리팟 레이저' and '리팟레이저' became one family,
+    # '리니어지 100샷' and '리니어지 100샷당' both '100샷' (검수 2026-10-19). tests/labels_test.py checks what ships
+    same_sub = defaultdict(list)
+    for k in keys.values():
+        same_sub[(loose_text(k["famname"]), loose_text(k["sub"]))].append(k)
+    for ks in same_sub.values():
+        if len(ks) < 2:
+            continue
+        for k in ks:
+            rest = k["label"]
+            for w in re.split(r"[\s·]+", k["famname"]):
+                rest = rest.replace(w, " ", 1) if w else rest
+            rest = re.sub(r"\s+", " ", rest).strip(" -·")
+            if rest:
+                k["sub"] = rest
     # families by name (written the same apart from word breaks): no two cards of one name, whatever a rule decides for the
     # category (2026-10-19, by_name above). A hand-made key filed under a name that has auto keys joins that family
     fams = {}
@@ -1169,8 +1299,9 @@ def build(rows, min_branches=3):
                     continue
                 if explains(t):
                     lt = loose_text(t)
-                    said[loose_text(v["famname"])][lt] += 1
-                    said_br[loose_text(v["famname"])][lt].add((rows[i]["brand"], rows[i]["branch"]))
+                    g = join_to[v["sig"]][0] if v["sig"] in join_to else loose_text(v["famname"])
+                    said[fam_key.get(g, g)][lt] += 1
+                    said_br[fam_key.get(g, g)][lt].add((rows[i]["brand"], rows[i]["branch"]))
                     spelt[lt][t] += 1
     for key, f in fams.items():
         top = [(lt, n) for lt, n in said[key].most_common(2) if n >= 3 and len(said_br[key][lt]) >= 2]
@@ -1179,14 +1310,13 @@ def build(rows, min_branches=3):
     covered = sum(1 for i, r in enumerate(rows) if row_keys[i] or any(k.startswith("X") for k in (r.get("keys") or "").split()))
     few = sum(1 for i, v in enumerate(vs) if v and not row_keys[i] and not any(k.startswith("X") for k in (rows[i].get("keys") or "").split()))
     why["판매 지점 3곳 미만(비교 대상 없음)"] = few
-    # the build guard (build2/labels.py name_clashes): fams is keyed by the name, so this only fails when that changes
-    clash = labels.name_clashes([f["name"] for f in fams.values()])
-    if clash:
-        raise ValueError(f"family names that read the same: {clash[:5]}")
+    # (no two families of one name: fams is keyed by the name. The guard on what ships is appdata.main, labels.name_clashes)
     stats = dict(rows=len(rows), covered=covered, auto_keys=len(keys), owned=len(owned), why=dict(why),
                  label_rejected=sorted(rejected, key=lambda x: -x["n"]), merged=sorted(merged, key=lambda x: -x["rows"]),
                  label_rescued=sorted(rescued, key=lambda x: -x["n"]), fam_joined=sorted(joined, key=lambda x: -x["keys"]),
-                 fam_recat=sorted(recat, key=lambda x: (-x["keys"], x["name"])))
+                 fam_recat=sorted(recat, key=lambda x: (-x["keys"], x["name"])),
+                 fam_alias=[dict(name=n, into=a, spec=x) for n, a, x in alias_seen],
+                 twins_alone=twin_rows)
     return row_keys, list(keys.values()), list(fams.values()), stats
 
 
