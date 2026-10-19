@@ -183,3 +183,35 @@ test("kbFinder: real data — every family's note is one that names it or its fi
     if (K.shared(f) && e.families.includes(f.name) && e.fids.length) assert.ok(e.fids.includes(f.fid), `${f.name} ${f.cat}`);
   }
 });
+
+test("shortLabel: a long name drops what it says in brackets (위계 점검 39 — '담기 · 리쥬베룩 패키지')", () => {
+  assert.equal(Spec.shortLabel("리쥬베룩 패키지(리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀)"), "리쥬베룩 패키지");
+  assert.equal(Spec.shortLabel("수입 1cc (벨로테로·쥬비덤·레스틸렌)"), "수입 1cc");
+  // a bracket in the middle: the spec after it stays
+  assert.equal(Spec.shortLabel("울쎄라피 프라임 리프팅(고강도 집속 초음파) 300샷 + 얼굴전체 스킨보톡스"), "울쎄라피 프라임 리프팅 300샷 + 얼굴전체 스킨보톡스");
+  assert.equal(Spec.shortLabel("포텐자(RF 니들 프락셔널) + 진정관리 + 팁 별도"), "포텐자 + 진정관리 + 팁 별도");
+  // nested brackets go as a whole
+  assert.equal(Spec.shortLabel("콜라겐 하이드로 콤플렉스(엘라비에 리투오(6cc) + 물광주사 2cc)"), "콜라겐 하이드로 콤플렉스");
+});
+
+test("shortLabel: short names, a bracket at the start and names left with nothing stay whole", () => {
+  assert.equal(Spec.shortLabel("독일산(제오민) 50U"), "독일산(제오민) 50U");          // 20 characters or fewer
+  assert.equal(Spec.shortLabel("국산 사각턱 보톡스 50U"), "국산 사각턱 보톡스 50U");
+  assert.equal(Spec.shortLabel("(여) 겨드랑이 제모 프리미엄 1회 (아포지 플러스)"), "(여) 겨드랑이 제모 프리미엄 1회");   // who it is for stays
+  assert.equal(Spec.shortLabel("(남성 전용 프리미엄 관리 프로그램 패키지 구성)"), "(남성 전용 프리미엄 관리 프로그램 패키지 구성)");
+  assert.equal(Spec.shortLabel("카복시·지방분해주사 제로팻 매월 천 명의 밴스어터가 찾는 베스트셀러"), "카복시·지방분해주사 제로팻 매월 천 명의 밴스어터가 찾는 베스트셀러");   // no brackets: C's name rule (부탁)
+  assert.equal(Spec.shortLabel("  리쥬란   2cc  "), "리쥬란 2cc");
+  assert.equal(Spec.shortLabel(null), "");
+  assert.equal(Spec.shortLabel("아주 긴 이름의 패키지 상품 하나(구성)", 40), "아주 긴 이름의 패키지 상품 하나(구성)");   // max
+});
+
+test("shortLabel: a bracket that gives the dose is the spec and stays (검토 — '(100U)' was lost)", () => {
+  assert.equal(Spec.shortLabel("엘러간 서울리프팅 풀패키지 (100U)"), "엘러간 서울리프팅 풀패키지 (100U)");
+  assert.equal(Spec.shortLabel("V 콜라겐 볼륨 부스터 (1병) 10cc 3회"), "V 콜라겐 볼륨 부스터 (1병) 10cc 3회");
+  // an amount with its words, not a list of parts: '반병/3cc' and '반병/4cc' stay apart
+  assert.equal(Spec.shortLabel("쥬베룩 스킨부스터(반병/3cc)+물광주사(1cc)+모델링팩 1회"), "쥬베룩 스킨부스터(반병/3cc)+물광주사(1cc)+모델링팩 1회");
+  assert.equal(Spec.shortLabel("입술+입꼬리필러(리터치 포함 2cc) 국산 (벨로테로)"), "입술+입꼬리필러(리터치 포함 2cc) 국산");
+  // the amount inside a package's parts goes with the parts
+  assert.equal(Spec.shortLabel("콜라겐 하이드로 콤플렉스(엘라비에 리투오(6cc) + 물광주사 2cc) 3회"), "콜라겐 하이드로 콤플렉스 3회");
+  assert.equal(Spec.shortLabel("리쥬란 HB 플러스 2cc + LDM 수분관리(6분) + 촉촉팩 (구성품 포함)"), "리쥬란 HB 플러스 2cc + LDM 수분관리(6분) + 촉촉팩");
+});

@@ -82,7 +82,8 @@ const CAPITAL = ['서울', '경기', '인천'];
 
   // 9) region + brand together (checked against data.json)
   await go(p, 'table?reg=' + encodeURIComponent('서울') + '&brand=0&q=' + encodeURIComponent('리쥬란'), 900);
-  const bn = await p.$$eval('#main .card.flush li .item .m .linkbtn:first-child', (ls) => ls.map((l) => l.textContent.trim()));
+  // the clinic of every line: in 지역·이름순 named once over its lines (.sgh, 위계 점검 33), in other orders on each line
+  const bn = await p.$$eval('#main .card.flush li .sgh .sgname, #main .card.flush li .item .m .linkbtn:first-child', (ls) => ls.map((l) => l.textContent.trim()));
   const regOf = new Map(BR.map((x, i) => [bname(i), x]));
   const badReg = bn.filter((n) => { const x = regOf.get(n); return !x || x.region !== '서울' || x.brand !== BRANDS[0]; });
   ok('S9 지역(서울)·브랜드 필터 조합: 모든 줄이 서울 + 그 브랜드', bn.length > 0 && !badReg.length, `${bn.length}줄 ${badReg.slice(0, 2).join(',')}`);

@@ -146,5 +146,33 @@
     return { of: (f) => viaName(f) || viaFid(f), viaName, viaFid, shared };
   }
 
-  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder };
+  // the short name a button can carry ('담기 · 리쥬베룩 패키지' — 위계 점검 39 · H13): a long name (over max characters) loses
+  // what it says in brackets — a package's parts, a list of products — and keeps the rest, so '울쎄라피 프라임 리프팅(고강도 집속
+  // 초음파) 300샷 + 얼굴전체 스킨보톡스' keeps its 300샷 and its '+ 스킨보톡스'. A bracket at the very start ('(여) …') says who it
+  // is for and stays, and so does a bracket that gives the dose — an amount, alone or with its words ('(100U)', '(반병/3cc)',
+  // '(리터치 포함 2cc)'), not a package's parts joined by '+' (검토: 146 names lost their 100U, 3cc …). A short name stays
+  // whole ('독일산(제오민) 50U'), and so does a name that would be left with almost nothing. The full name is still said (the
+  // button's screen-reader name, the title right above it). Only the name itself decides, never the other options of its family:
+  // home.json carries a family's options in part, and the home cards must read the same before and after data.json (O2)
+  const AMOUNT = /^\s*\d+(?:[.,]\d+)?\s*(?:cc|ml|u|샷|회|줄|병|분|개|부위|kj|j|시린지|바이알|앰플|mg|%)?\s*$/i;
+  const DOSE = /\d+(?:[.,]\d+)?\s*(?:cc|ml|u|샷|회|줄|병|분|개|부위|kj|j|시린지|바이알|앰플|mg|%)/i;
+  const keeps = (inner) => AMOUNT.test(inner) || (DOSE.test(inner) && !inner.includes("+"));
+  const oneLine = (x) => String(x == null ? "" : x).replace(/\s+/g, " ").trim();
+  const dropBrackets = (s) => {
+    let t = s;
+    for (let n = 0; n < 3; n++) {   // inner brackets first; a dose's brackets are marked so that the bracket around it can go
+      const u = t.replace(/(\S)(\s*)\(([^()]*)\)/g, (m, a, sp, inner) => (keeps(inner) ? `${a}${sp}\u0001${inner}\u0002` : `${a} `));
+      if (u === t) break;
+      t = u;
+    }
+    return t.replace(/\u0001/g, "(").replace(/\u0002/g, ")").replace(/\s+/g, " ").trim();
+  };
+  function shortLabel(label, max = 20) {
+    const s = oneLine(label);
+    if (s.length <= max) return s;
+    const t = dropBrackets(s);
+    return t.length >= 2 ? t : s;
+  }
+
+  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder, shortLabel };
 });
