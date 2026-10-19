@@ -192,7 +192,8 @@ def worker_warnings(host, data, app_key=""):
     capacity: the alerts Worker (cf/alerts) never evicts a subscription, so a full table needs a person: 'nearly_full'
     (>= 80% of MAX_SUBS) or 'full' (503 FULL for new phones). stale: the price factory has not finished a run into that
     Worker for more than 2 days, or never since the first phone subscribed more than 2 days ago (finished: null)
-    (cf/alerts/notify.mjs sends nothing when it fails, the job stays green). sending: false = no push can go out (the
+    (cf/alerts/notify.mjs sends nothing when it fails, the job stays green; weekly.yml's price_alerts job and the hourly
+    alerts-catchup.yml both run it, so two days without a finish means both kept failing). sending: false = no push can go out (the
     VAPID_PRIVATE_JWK secret is missing or cannot sign, or VAPID_PUBLIC_KEY is set to another key). refusing: true = a send
     run today or yesterday found phones that took our pushes refusing our VAPID token at a push service that took nothing
     else (kept, not counted, held back and tried again a few a run — cf/alerts rules.js PROBES — for up to
@@ -217,9 +218,9 @@ def worker_warnings(host, data, app_key=""):
     if data.get("stale") is True:
         if "finished" in data and data.get("finished") is None:
             out.append(f"알림 Worker가 공장에서 숫자를 한 번도 못 받았어요. 첫 구독 뒤 2일 넘게 지났어요 ({host}): "
-                       "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계를 확인하세요")
+                       "ALERTS_URL·ALERTS_SECRET·ALERTS_CODE_SHA와 가격 공장의 price_alerts 단계, 매시 따라잡기(alerts-catchup)를 확인하세요")
         else:
-            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계를 확인하세요")
+            out.append(f"알림 Worker가 2일 넘게 공장에서 숫자를 못 받았어요 ({host}): 가격 공장의 price_alerts 단계와 매시 따라잡기(alerts-catchup) 실행 기록을 확인하세요")
     if data.get("sending") is False:
         out.append(f"알림 Worker가 푸시를 보낼 수 없어요 ({host}): VAPID_PRIVATE_JWK 비밀값이 없거나 쓸 수 없는 키예요 "
                    "(VAPID_PUBLIC_KEY를 넣었다면 그 키와 맞지 않아요)")

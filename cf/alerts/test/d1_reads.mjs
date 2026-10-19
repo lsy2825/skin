@@ -6,12 +6,14 @@
 //   1. no finish statement reads more when exp_sent is long (E = 60 entries, one ended) than when it is empty — membership
 //      is a string search and the prune reads no list element (it was up to 6.5M rows in one finish at the ceiling);
 //   2. PRUNE_XSENT reads each subscription row once, MARK_WEEKLY ≤ 41 and MARK_EXPIRING ≤ 70 rows per phone with 20 rules
-//      (src/worker.js arithmetic at MAX_SUBS: 8,000 × (1 + 41 + 70) + 3 × PAIR_CAP ≈ 0.9M for a finish);
-//   3. a push with an expiring notice reads ≤ 2 × (E + X) + 2 rows in SENT (X = pending entries merged in);
+//      (src/worker.js arithmetic at MAX_SUBS: 2,000 × (1 + 41 + 70) + 3 × PAIR_CAP ≈ 0.23M for a finish);
+//   3. a push with an expiring notice reads ≤ 2 × (E + X) + 2 rows in SENT (X = pending entries merged in) — also with
+//      E2 = 80 entries, the most a day's second such push can find (9th review: several finishes a day; rules.js END_DAYS);
 //   4. (8th review) held rows (claim < 0): a send run's probes (CLAIM_P) read the same however many rows are held — about
 //      PROBE_CLAIM_PER_ORIGIN rows per push origin that holds rows, PROBE_ORIGINS origins at most — and the release after a
 //      2xx (RELEASE_HELD) frees SEND_LIMIT rows, reading ≤ RELEASE_PER_ROW per freed row, never the other held rows (it read
 //      and sorted every held row of every origin: ~4 rows per held row in each of 77 runs, unbounded below MAX_SUBS).
+//   5. (9th review) start: 'done' and 'deferred' read ≤ 4 rows and write none; 'compute' ≤ 10 rows read, ≤ 4 written.
 // Exit 1 with the numbers when one fails. Nothing leaves this machine; the D1 is a throw-away folder.
 import { readFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -29,7 +31,7 @@ const PROBE_CLAIM_PER_ORIGIN = 32, PROBE_CLAIM_BASE = 20, RELEASE_PER_ROW = 8;
 const Q = await import(new URL("../src/sql.js", import.meta.url).href);
 const H = await import(new URL("./helpers.mjs", import.meta.url).href);
 
-const N = 200, P = 150, E = 60, X = 20;
+const N = 200, P = 150, E = 60, E2 = 80, X = 20;
 const persist = mkdtempSync(join(tmpdir(), "alerts-d1-reads-"));
 const mf = await getPlatformProxy({ configPath: join(HERE, "../wrangler.jsonc"), persist: { path: persist } });
 const fails = [];
@@ -46,12 +48,12 @@ try {
   }
   // count rows read per statement (and per send-run statement) through a D1-shaped wrapper
   let log = [];
-  const add = (res, sql) => { if (res && res.meta) log.push([sql, res.meta.rows_read || 0]); return res; };
+  const add = (res, sql) => { if (res && res.meta) log.push([sql, res.meta.rows_read || 0, res.meta.rows_written || 0]); return res; };
   const wrap = (st, sql) => ({ bind: (...a) => wrap(st.bind(...a), sql), run: async () => add(await st.run(), sql), all: async () => add(await st.all(), sql),
     first: async (c) => { const r = add(await st.all(), sql).results[0]; return r === undefined ? null : c ? r[c] : r; }, __st: st, __sql: sql });
   const DB = { prepare: (sql) => wrap(raw.prepare(sql), sql), batch: async (list) => { const out = await raw.batch(list.map((s) => s.__st)); out.forEach((r, i) => add(r, list[i].__sql)); return out; } };
   const { jwk } = await H.vapidKeys();
-  const env = H.makeEnv(DB, { PAIR_CAP: "3000", MAX_SUBS: "8000", VAPID_PRIVATE_JWK: jwk });
+  const env = H.makeEnv(DB, { PAIR_CAP: "3000", MAX_SUBS: "2000", VAPID_PRIVATE_JWK: jwk });
   const key = (i) => "T" + String(i).padStart(7, "0");
   const keys = Array.from({ length: P }, (_, i) => key(i));
   // N phones × 20 expiring rules, all on the P computed pairs
@@ -109,6 +111,16 @@ try {
   if (sentReads > r.sent * (2 * (E + X) + 2)) fails.push(`SENT read ${sentReads} > ${r.sent} × ${2 * (E + X) + 2}`);
   const merged = JSON.parse((await raw.prepare("SELECT exp_sent FROM subs WHERE last_x = '2026-10-21' LIMIT 1").first()).exp_sent);
   if (merged.join() !== [...merged].sort().join() || merged.some((x) => x < "2026-10-21")) fails.push("SENT must keep exp_sent sorted and drop ended entries");
+  // the same with E2 entries (four end dates × 20: today's own entries too — the second push with an expiring notice of a
+  // day with several finishes)
+  const listOf2 = JSON.stringify(Array.from({ length: E2 }, (_, i) => `2026-10-${21 + (i % 4)}|${key(9000 + i)}|`).sort());
+  await raw.prepare("UPDATE subs SET pend_w = 1, last_w = '2026-10-01', pend_x = '2026-10-23', pend_xl = ?1, last_x = NULL, exp_sent = ?2, fails = 0, claim = NULL").bind(pend, listOf2).run();
+  log = [];
+  const r2 = await send(env, H.kst("2026-10-21T11:00:00"), { fetch: async () => new Response(null, { status: 201 }), waits: [0, 0] });
+  const sentReads2 = log.filter(([sql]) => sql === Q.SENT).reduce((a, [, n]) => a + n, 0);
+  console.log(`d1 reads: the same with exp_sent ${E2} + pend_xl ${X} (a day's second push with an expiring notice): SENT ${sentReads2} rows read for ${r2.sent} pushes`);
+  if (r2.sent !== 40) fails.push(`the second send run sent ${r2.sent}, not 40`);
+  if (sentReads2 > r2.sent * (2 * (E2 + X) + 2)) fails.push(`SENT read ${sentReads2} > ${r2.sent} × ${2 * (E2 + X) + 2}`);
 
   // 4. held rows. A send run at 12:00 where the first `h` rows are held (minute come) at `origins` push origins.
   //    waiting: every row had its weekly bundle yesterday (not due) — the probes are claimed, found not due and released;
@@ -139,6 +151,29 @@ try {
     if (freed !== SEND_LIMIT) fails.push(`${label}: a run freed ${freed} held rows, not SEND_LIMIT ${SEND_LIMIT}`);
     if (x.release > RELEASE_PER_ROW * SEND_LIMIT + 20) fails.push(`${label}: RELEASE_HELD read ${x.release} > ${RELEASE_PER_ROW} × ${SEND_LIMIT} + 20`);
   }
+
+  // 5. start (9th review): what a factory run or a catch-up costs before it computes anything
+  const startAt = async (fp, when) => {
+    log = [];
+    const res = await worker.fetch(new Request("https://alerts.local/v1/internal/start", { method: "POST", headers: { authorization: "Bearer " + H.SECRET_VALUE, "content-type": "application/json" }, body: JSON.stringify({ fp }) }), env, { waitUntil() {} }, H.kst(when));
+    const body = await res.json();
+    return { go: body.go, lease: body.lease, read: log.reduce((a, [, n]) => a + n, 0), written: log.reduce((a, [, , w]) => a + w, 0) };
+  };
+  const fpA = "a".repeat(64);
+  const first = await startAt(fpA, "2026-10-23T10:00:00");
+  at = "2026-10-23T10:01:00";
+  await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp: fpA, lease: first.lease });
+  const done = await startAt(fpA, "2026-10-23T12:00:00");
+  for (const [i, c] of ["b", "c"].entries()) {
+    const g = await startAt(c.repeat(64), `2026-10-23T1${3 + i}:00:00`);
+    at = `2026-10-23T1${3 + i}:01:00`;
+    await call("/v1/internal/finish", { run: "2026-10-23|2026-10-23", today: "2026-10-23", fp: c.repeat(64), lease: g.lease });
+  }
+  const deferred = await startAt("d".repeat(64), "2026-10-23T16:00:00");
+  console.log(`d1 reads: start — compute ${first.read} read / ${first.written} written, done ${done.read} / ${done.written}, deferred ${deferred.read} / ${deferred.written}`);
+  if (first.go !== "compute" || done.go !== "done" || deferred.go !== "deferred") fails.push(`start answered ${first.go}, ${done.go}, ${deferred.go} — not compute, done, deferred`);
+  for (const [label, x] of [["done", done], ["deferred", deferred]]) if (x.read > 4 || x.written > 0) fails.push(`start ${label} read ${x.read} > 4 or wrote ${x.written} > 0`);
+  if (first.read > 10 || first.written > 4) fails.push(`start compute read ${first.read} > 10 or wrote ${first.written} > 4`);
 } finally {
   await mf.dispose();
   rmSync(persist, { recursive: true, force: true });

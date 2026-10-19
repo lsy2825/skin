@@ -277,7 +277,17 @@ jobs:
           EVENT: ${{ github.event_name }}
         run: |
           case "$EVENT" in schedule) WHEN="정기 실행";; push) WHEN="코드 변경 뒤 다시 만들기";; workflow_dispatch) WHEN="수동 실행";; *) WHEN="기타";; esac
-          python3 .github/scripts/telegram.py "윤실장 가격 알림 계산(price_alerts)이 끝까지 돌지 못했어요 ($WHEN). 앱과 가격 자료는 영향이 없어요(배포는 이미 끝났어요). 내일 06시 정기 실행이 그날 것을 다시 계산해요 — 며칠 이어지면 감시의 알림 Worker 줄(/health stale)도 경고해요. 실행 기록: $RUN_URL"
+          python3 .github/scripts/telegram.py "윤실장 가격 알림 계산(price_alerts)이 끝까지 돌지 못했어요 ($WHEN). 앱과 가격 자료는 영향이 없어요(배포는 이미 끝났어요). 매시 37분의 따라잡기(alerts-catchup)가 이 가격을 다시 계산해요 — 며칠 이어지면 감시의 알림 Worker 줄(/health stale)도 경고해요. 실행 기록: $RUN_URL"
+      # The Worker deferred this computation: COMPUTES_PER_DAY (3) computations already started this D1 day (the D1 write
+      # budget). One line per run that was deferred; the first alerts-catchup run after 09:00 KST computes these prices.
+      - name: Alert on a deferred price-alerts computation (Telegram)
+        if: needs.price_alerts.outputs.deferred == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 .github/scripts/telegram.py "윤실장 가격 알림: 오늘(D1 하루, 09시~다음 날 09시) 계산 횟수 상한 3번을 다 써서 이 실행의 새 가격 계산을 미뤘어요. 09시 뒤 첫 따라잡기(alerts-catchup, 09:37 KST 예정)가 계산해요. 앱과 가격 자료는 영향이 없어요. 실행 기록: $RUN_URL"
       # what the data alerts read: the run's data2/report.md and app/data-meta.json from the latest main (a successful run
       # pushed them there) — regular files only (mode 100644), otherwise those alerts are skipped with a notice
       - name: Take the run's report from main (regular files only)
@@ -312,15 +322,15 @@ jobs:
   # done by the run that saved the newer build, or by the redeploy run); and on a daily schedule run with nothing to build
   # (run=false: no deploy job), on the copy already deployed — ending prices are checked every day. Never after a failed or
   # cancelled factory or deploy.
-  # WHAT (6th/7th review, D1 budget — this workflow runs on every push to main, 26–29 times a day were counted): the FIRST
-  # attempt of the daily SCHEDULE run computes everything (ALERTS_MODE=full: key set, watched pairs, digest, finish); a run
-  # started by a push (merged code, data rebuilt from saved prices), by Run workflow (a manual collection, price-check.yml's
-  # rebuild, the redeploy job's rebuild) or a Re-run of any run (run_attempt > 1 — GitHub re-runs this job with the deploy
-  # job it needs) sends only the key set of the data it deployed (ALERTS_MODE=keys: ≤ 1 D1 row written, and notify.mjs
-  # leaves a ::notice that this data is computed by the next 06:00 run — a user decision, see the PR / docs/ARCHITECTURE.md).
-  # The D1 arithmetic (cf/alerts/src/worker.js) fits ONE full computation per D1 day (00:00–24:00 UTC = 09:00–09:00 KST)
-  # at the documented ceiling — a second one does not fit the 100,000 rows written; tests/factory_worker.test.js checks this
-  # expression. A full run of a data.json the Worker already finished the same KST day stops at once (done).
+  # WHAT (9th review — alerts within 2 hours of new prices, a user decision of 2026-10-16): every run that gets here —
+  # the schedule, Run workflow (a manual collection, price-check.yml's rebuild, the redeploy job's rebuild), a push, a
+  # Re-run — runs notify.mjs the same way. It first sends the data's FINGERPRINT (the numbers a digest can be computed
+  # from, not the file's bytes) to the Worker's start: prices it already finished today (a code-only rebuild, a re-run)
+  # are 'done' after one D1 request that writes nothing; changed prices are computed at once (key set, watched pairs,
+  # digest, finish). The Worker allows COMPUTES_PER_DAY (3) computations per D1 day (00:00–24:00 UTC = 09:00–09:00 KST —
+  # the write arithmetic in cf/alerts/src/worker.js, with MAX_SUBS lowered to fit them); past it the answer is 'deferred'
+  # (a ::warning, and the alert job sends one Telegram line), and 'busy' while another run computes. Whatever this job
+  # cannot finish, alerts-catchup.yml (every hour, on main's deployed copy, the same pinned code and checks) computes.
   # CODE and DATA come from different places, and the code is PINNED: notify.mjs and the app/domain files it imports are the
   # commit named by the repository Variable ALERTS_CODE_SHA — a human sets it (Settings → Secrets and variables → Actions →
   # Variables) when alerts code has been reviewed and merged; the factory's GITHUB_TOKEN (contents: write) can push to main
@@ -355,6 +365,7 @@ jobs:
     continue-on-error: true
     outputs:
       done: ${{ steps.end.outputs.done }}   # "true" when every step ran (the alert job reports a job that did not)
+      deferred: ${{ steps.notify.outputs.deferred }}   # "true" when the Worker deferred the computation (COMPUTES_PER_DAY)
     steps:
       - name: Reviewed code commit (repository variable ALERTS_CODE_SHA)
         id: pin
@@ -439,7 +450,7 @@ jobs:
         run: |
           set -u
           export LC_ALL=C            # byte ranges in the patterns below
-          skip() { echo "::warning title=price alerts::$1 — nothing sent (the next daily run (06:00 KST) computes again; a push, Run workflow or Re-run only sends the key set)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
+          skip() { echo "::warning title=price alerts::$1 — nothing sent (the hourly alerts-catchup run checks again)"; echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0; }
           # (1) regular files (a symlink could point at a file of this machine), and the checksums of data-meta.json
           for f in app/data.json app/data-meta.json; do
             mode=$(git -C data ls-tree HEAD -- "$f" | cut -d' ' -f1)
@@ -492,13 +503,13 @@ jobs:
             [ "$i" = 3 ] || sleep 30
           done
           skip "the public app does not serve this data.json (a deploy that did not reach it, or a newer one)"
+      # start (the fingerprint) → done | busy | deferred | compute; deferred=true goes to this step's output
       - name: Price alerts (cf/alerts/notify.mjs)
+        id: notify
         if: steps.pin.outputs.ok == 'true' && steps.data.outputs.ok == 'true'
         timeout-minutes: 10
         run: node code/cf/alerts/notify.mjs "$RUNNER_TEMP/data.json"
         env:
-          # the daily schedule's first attempt: everything; a push, Run workflow or a Re-run: the key set only
-          ALERTS_MODE: ${{ github.event_name == 'schedule' && github.run_attempt == '1' && 'full' || 'keys' }}
           ALERTS_URL: ${{ secrets.ALERTS_URL || vars.ALERTS_URL || 'https://yoonsiljang-alerts.lsy2825.workers.dev' }}
           ALERTS_SECRET: ${{ secrets.ALERTS_SECRET }}
       - name: Reached the end (the alert job reports a price-alerts job that did not)

@@ -40,11 +40,13 @@ export const EXPIRING_DAYS = 3;
 // END_DAYS. The factory sends u ≤ its own day + EXPIRING_DAYS, and its day is the Worker's or the day before (a run that
 // crosses midnight) — never ahead (8th review: the upper bound was + 4, one day more than any honest factory sends, which
 // let exp_sent hold a fourth day of entries and a push read 201 rows in SENT instead of 161; a factory clock ahead of the
-// Worker's across midnight gets 400 BAD_DIGEST and the next daily run computes). So an announced entry still running on
+// Worker's across midnight gets 400 BAD_DIGEST and the next computation takes it). So an announced entry still running on
 // day T ends by T + END_DAYS — src/sql.js PRUNE_XSENT looks no further — and when a push is sent on day T, the entries
-// announced before (on an earlier day: at most one finish a KST day, and one push with an expiring notice a day after it)
-// end by T + END_DAYS − 1: ≤ END_DAYS days × MAX_RULES = 60 live entries, plus the ≤ 20 it announces (src/sql.js SENT:
-// ≤ 2 × 80 + 1 = 161 rows read), whatever the factory sends (src/worker.js digest refuses anything else)
+// announced before end by T + END_DAYS: one (pair, end date) each, so ≤ (END_DAYS + 1) days × MAX_RULES = 80 live
+// entries, plus the ≤ 20 it announces (src/sql.js SENT: ≤ 2 × 100 + 1 = 201 rows read), whatever the factory sends
+// (src/worker.js digest refuses anything else). Entries announced on earlier days end by T + END_DAYS − 1 (≤ 60): only
+// the second push with an expiring notice on a day — the weekly bundle after a later finish of that day (9th review: up
+// to COMPUTES_PER_DAY finishes a D1 day) — can find today's own entries there too (161 for the first)
 export const END_DAYS = EXPIRING_DAYS;
 export const validEnd = (u, today) => validDay(u) && u >= addDays(today, -FINISH_SLACK_DAYS) && u <= addDays(today, END_DAYS);
 export const LAST_SEND_MARGIN_MIN = 15;                    // never send a push closer than this to 21:00 KST

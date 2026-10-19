@@ -15,7 +15,7 @@ import { join, dirname } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import worker from "../src/worker.js";
-import { notify as notifyReal, listedPrice, reclDate, shapeProblems, checkUrl } from "../notify.mjs";
+import { notify as notifyReal, listedPrice, reclDate, shapeProblems, checkUrl, fingerprint } from "../notify.mjs";
 import { REGION_GROUPS } from "../src/rules.js";
 import { SKIP_SQL, makeDb, makeEnv, call, subscription, SECRET_VALUE } from "./helpers.mjs";
 
@@ -142,7 +142,7 @@ test("(ii) the same data twice → no second news; (iii) a no-scrape day with en
   assert.equal((await run(env, WEEK2, "2026-10-19")).weekly, 2, "target crossed + new low; X24 still has 3 branches");
   assert.deepEqual(state(), { A: "1|", B: "1|", C: "0|" });
   clear();
-  assert.equal((await run(env, WEEK2, "2026-10-19")).weekly, 0, "(ii) same data, same day");
+  assert.deepEqual(await run(env, WEEK2, "2026-10-19"), { go: "done" }, "(ii) same data, same day: not computed again");
   // (iii) days later, nothing scraped: data.json is unchanged but the 90,000 event (until 10-21) and the 10-01 row are over.
   // The baseline is not recomputed from 'today', so no price 'moves' and nobody is told anything.
   for (const day of ["2026-10-22", "2026-10-23", "2026-10-25"]) {
@@ -268,8 +268,8 @@ test("notify: nobody watching → no digest, finish still runs; wrong secret fai
   const w = wire(env, undefined, "2026-10-12");
   const r = await notify({ data: WEEK1, today: "2026-10-12", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {} });
   assert.equal(r.pairs, 0);
-  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/keys", "/v1/internal/watched", "/v1/internal/finish"]);
-  assert.deepEqual(JSON.parse(w.sent[0].body), { keys: ["X01", "X02", "X03", "X24"] }, "the data.json's keys, ascending, each once");
+  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/start", "/v1/internal/keys", "/v1/internal/watched", "/v1/internal/finish"]);
+  assert.deepEqual(JSON.parse(w.sent[1].body), { keys: ["X01", "X02", "X03", "X24"] }, "the data.json's keys, ascending, each once");
   assert.deepEqual(db.rows("SELECT keys FROM keyset"), [{ keys: '["X01","X02","X03","X24"]' }]);
   const bad = wire(env, undefined, "2026-10-12");
   await assert.rejects(notify({ data: WEEK1, today: "2026-10-12", url: URL_, secret: "nope", fetch: bad.f, log: () => {}, waitMs: 0 }), /401/);
@@ -483,8 +483,7 @@ test("CLI: a data file that is not JSON is reported without echoing its content 
     writeFileSync(file, "ALERTS_SECRET=hunter2-super-secret\nPATH=/usr/bin\n");
     const r = spawnSync(process.execPath, [cli, file], { env: { PATH: process.env.PATH, ALERTS_URL: "https://alerts.example.workers.dev", ALERTS_SECRET: "hunter2-super-secret" }, encoding: "utf8" });
     assert.equal(r.status, 0);
-    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\) — the next daily run \(06:00 KST\) computes again; a push, Run workflow or Re-run only sends the key set$/m);
-    assert.equal(/next run catches up|next run tries again/.test(r.stdout), false, "8th review: no run but the daily schedule's computes");
+    assert.match(r.stdout, /^::warning title=price alerts::price alert check failed \(the data file is not readable JSON\) — the next alerts-catchup run \(every hour\) computes again$/m);
     assert.equal((r.stdout + r.stderr).includes("hunter2"), false, "neither the file's content nor the secret is printed");
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -871,74 +870,109 @@ test("review finding (D1 budget): a pair new to the Worker waits for a row the f
   assert.equal(next.some((l) => l.startsWith("::warning")), false);
 });
 
-// ---- 6th review (D1 budget): weekly.yml runs on every push to main (26–29 runs a day were counted on 2026-10-15/16). A
-// run that is not the daily schedule's first attempt (push, Run workflow, Re-run — 7th review) sends only the key set; a full run of a data.json already finished today stops at its first watched
-// page. D1 rows written are counted with sqlite's total_changes() (row changes, not index entries — the local workerd D1
-// measurement is in src/worker.js).
-const sha = (d) => createHash("sha256").update(JSON.stringify(d)).digest("hex");
+// ---- 6th → 9th review (D1 budget): weekly.yml runs on every push to main (26–29 runs a day were counted on 2026-10-15/16),
+// and alerts-catchup.yml every hour. Every run starts with the fingerprint: prices already finished today stop there; at
+// most COMPUTES_PER_DAY computations a D1 day. D1 rows written are counted with sqlite's total_changes() (row changes, not
+// index entries — the local workerd D1 measurement is in src/worker.js).
 const changes = (db) => db.raw.prepare("SELECT total_changes() AS c").get().c;
 
-test("6th/7th review (push-started, Run workflow or Re-run): ALERTS_MODE keys sends ONLY the key set and says when this data is computed (a ::notice) — one request, at most one D1 row written, no watched/digest/finish; the phones keep their news for the next full run", T, async () => {
-  const db = makeDb(), env = makeEnv(db);
-  const { phones } = await phonesWith(env, db, { A: [{ kind: "target", key: "X24", max: 95000 }] });
-  await run(env, WEEK1, "2026-10-12", { sha: sha(WEEK1) });
-  const w = wire(env, undefined, "2026-10-19");
-  let c = changes(db);
-  const logs = [];
-  const r = await notify({ data: WEEK2, sha: sha(WEEK2), mode: "keys", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
-  assert.deepEqual(r, { mode: "keys", keys: 4, changed: false });
-  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/keys"], "the key set only");
-  assert.equal(changes(db) - c, 0, "an unchanged key set writes nothing");
-  assert.deepEqual(logs, ["price alerts: key set sent (4 keys, unchanged) — only the daily schedule run computes", "::notice title=price alerts::this run sent the key set only — the alerts for this data.json are computed by the next daily run (06:00 KST). A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day"]);
-  assert.equal(db.rows("SELECT pend_w FROM subs WHERE id = ?", phones.A.id)[0].pend_w, 0, "nothing marked by a key-set-only run");
-  // a changed key set: one row
-  const fewer = { ...WEEK2, keys: WEEK2.keys.slice(0, 3) };
-  c = changes(db);
-  assert.equal((await notify({ data: fewer, mode: "keys", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {}, waitMs: 0 })).changed, true);
-  assert.equal(changes(db) - c, 1, "one row (the keyset row)");
-  // the daily full run of that day computes WEEK2: A's target crossed
-  const full = await run(env, WEEK2, "2026-10-19", { sha: sha(WEEK2) });
-  assert.equal(full.weekly, 1);
-  await assert.rejects(notify({ data: WEEK2, mode: "push", today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: () => {} }), /ALERTS_MODE must be full or keys/);
-});
-
-test("6th review (same data, same day): a second full run of the same data.json on the same KST day stops at the first watched page — no digest, no finish, no D1 row written; another data.json that day is computed; the same data the next day is computed again (expiring is daily)", T, async () => {
+// 9th review (alerts within 2 hours of new prices, a user decision of 2026-10-16): every run that deployed data, and the
+// hourly catch-up, starts with POST /v1/internal/start {fp}. The fingerprint is of the numbers a digest can be computed
+// from, so a rebuild that changes no price is 'done' — one request, nothing written — while changed prices are computed at
+// once, whatever started the run.
+test("9th review (start): the same prices → done (one request, nothing written) — also a rebuild with other bytes, row order, names or timestamps; changed prices → computed at once; the next KST day → computed; before 06:00 KST an earlier day's finish of the same prices is enough", T, async () => {
   const db = makeDb(), env = makeEnv(db);
   const { phones } = await phonesWith(env, db, { A: [{ kind: "watch", key: "X01" }], D: [{ kind: "expiring", key: "X24", region: "서울" }] });
-  await run(env, WEEK1, "2026-10-12", { sha: sha(WEEK1) });
-  const first = await run(env, WEEK2, "2026-10-19", { sha: sha(WEEK2) });
-  assert.deepEqual([first.weekly, first.expiring], [1, 1]);
-  assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('finish', 'data') ORDER BY k"), [{ k: "data", n: parseInt(sha(WEEK2).slice(0, 13), 16) }, { k: "finish", n: 20261019 }]);
-  // the same file again that day (a key-set-only run would only send keys; this is a second full run of the same data)
-  const w = wire(env, undefined, "2026-10-19");
-  const c = changes(db), logs = [];
-  const again = await notify({ data: WEEK2, sha: sha(WEEK2), today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
-  assert.deepEqual(again, { mode: "full", pairs: 0, entries: [], done: true });
-  assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname + new URL(x.url).search), ["/v1/internal/keys", `/v1/internal/watched?at=0&data=${sha(WEEK2)}`]);
-  assert.equal(changes(db) - c, 0, "nothing written: no pair rewritten, no finish");
-  assert.deepEqual(logs, ["price alerts: this data.json was already finished today (same sha256, same KST day) — nothing more to do"]);
-  // another data.json the same day (a price check rebuilt it): computed — its finish is the one now noted
+  await run(env, WEEK1, "2026-10-12");
+  const first = await run(env, WEEK2, "2026-10-19");
+  assert.deepEqual([first.go, first.weekly, first.expiring], ["compute", 1, 1]);
+  assert.deepEqual(db.rows("SELECT k, n FROM stat WHERE k IN ('finish', 'data') ORDER BY k"), [{ k: "data", n: parseInt(fingerprint(WEEK2).slice(0, 13), 16) }, { k: "finish", n: 20261019 }]);
+  assert.deepEqual(db.rows("SELECT count(*) AS c FROM stat WHERE k = 'lease'"), [{ c: 0 }], "the finish freed the lease");
+  // a rebuild that changes no number: other row order, another name and condition text, a new build time — done
+  const rebuilt = structuredClone(WEEK2);
+  rebuilt.rows.reverse();
+  rebuilt.meta.built = "2026-10-19T09:00:00Z";
+  rebuilt.keys = rebuilt.keys.map(([id, g, l]) => [id, g, l + " (새 이름)"]);
+  for (const d of [WEEK2, rebuilt]) {
+    const w = wire(env, undefined, "2026-10-19");
+    const c = changes(db), logs = [];
+    const again = await notify({ data: d, today: "2026-10-19", url: URL_, secret: SECRET_VALUE, fetch: w.f, log: (l) => logs.push(l), waitMs: 0 });
+    assert.deepEqual(again, { go: "done" });
+    assert.deepEqual(w.sent.map((x) => new URL(x.url).pathname), ["/v1/internal/start"], "one request");
+    assert.deepEqual(JSON.parse(w.sent[0].body), { fp: fingerprint(WEEK2) });
+    assert.equal(changes(db) - c, 0, "nothing written: no key set, no pair, no finish, no lease");
+    assert.deepEqual(logs, ["price alerts: these prices were already computed (same fingerprint) — nothing to do"]);
+  }
+  // another price the same day (a price re-check rebuilt it): computed at once — its fingerprint is the one now noted
   const fixed = data("2026-10-19", [[0, 90000, 1, 6], [1, 120000, 1, 7], [2, 110000, 1, 8], [0, 50000, 2], [1, 30000, 2], [0, 200000, 3], [2, 210000, 3]]);
-  const other = await run(env, fixed, "2026-10-19", { sha: sha(fixed) });
-  assert.equal(other.done, undefined);
+  const other = await run(env, fixed, "2026-10-19");
+  assert.equal(other.go, "compute");
   assert.ok(other.pairs > 0);
-  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'data'")[0].n, parseInt(sha(fixed).slice(0, 13), 16));
-  // the next KST day, the same data: computed again (expiring counts days), and D's ending price is still pending
+  assert.equal(db.rows("SELECT n FROM stat WHERE k = 'data'")[0].n, parseInt(fingerprint(fixed).slice(0, 13), 16));
+  // the next KST day from 06:00, the same data: computed again (ending prices count days), D's ending price still pending
   const next = wire(env, undefined, "2026-10-20");
-  const r3 = await notify({ data: fixed, sha: sha(fixed), today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: next.f, log: () => {}, waitMs: 0 });
-  assert.equal(r3.done, undefined);
-  assert.ok(next.sent.some((x) => new URL(x.url).pathname === "/v1/internal/finish"));
+  const r3 = await notify({ data: fixed, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: next.f, log: () => {}, waitMs: 0 });
+  assert.equal(r3.go, "compute");
   assert.equal(db.rows("SELECT pend_x FROM subs WHERE id = ?", phones.D.id)[0].pend_x, "2026-10-21");
-  // without a sha (an older caller) a full run always computes, and its finish forgets the noted data
-  const nosha = wire(env, undefined, "2026-10-20");
-  await notify({ data: fixed, today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: nosha.f, log: () => {}, waitMs: 0 });
-  assert.ok(nosha.sent.some((x) => new URL(x.url).pathname === "/v1/internal/digest"));
-  assert.deepEqual(db.rows("SELECT count(*) c FROM stat WHERE k = 'data'"), [{ c: 0 }]);
-  await assert.rejects(notify({ data: fixed, sha: "ABC", today: "2026-10-20", url: URL_, secret: SECRET_VALUE, fetch: nosha.f, log: () => {} }), /64 hex/);
+  // the night after (00:00–06:00 KST): the same prices are done though the last finish was yesterday (the 06:00 run computes
+  // the day); changed prices are computed at night all the same
+  const night = (d) => {
+    const sent = [];
+    const f = async (url, init) => { sent.push(new URL(url).pathname); return worker.fetch(new Request(url, init), env, { waitUntil() {} }, Date.parse("2026-10-21T03:00:00+09:00")); };
+    return notify({ data: d, today: "2026-10-21", url: URL_, secret: SECRET_VALUE, fetch: f, log: () => {}, waitMs: 0 }).then((r) => ({ r, sent }));
+  };
+  const quiet = await night(fixed);
+  assert.deepEqual([quiet.r, quiet.sent], [{ go: "done" }, ["/v1/internal/start"]]);
+  const changed = await night(data("2026-10-19", [[0, 90000, 1, 6], [1, 120000, 1, 7], [2, 100000, 1, 8], [0, 50000, 2], [1, 30000, 2], [0, 200000, 3], [2, 210000, 3]]));
+  assert.equal(changed.r.go, "compute");
+  assert.deepEqual(changed.sent.slice(0, 2), ["/v1/internal/start", "/v1/internal/keys"]);
 });
 
-test("CLI: ALERTS_MODE picks the run (keys = the key set only; full or unset = all steps) and the sha256 sent is of the data file's bytes", T, async () => {
-  const db = makeDb(), env = makeEnv(db);
+test("9th review (fingerprint): the same for every rebuild that changes no number; different for each change a digest could see — a listed price, a branch's region, a key's rows, an end date, a review flag, the collection date, a regroup day, the key set", () => {
+  const base = fingerprint(WEEK2);
+  assert.match(base, /^[0-9a-f]{64}$/);
+  const same = [
+    (d) => { d.rows.reverse(); },                                                // row order
+    (d) => { d.meta.built = "x"; d.trend = { dates: ["2026-10-01"], k: {} }; },  // timestamps, trend
+    (d) => { d.keys = d.keys.map(([id, g, l]) => [id, g, `${l}!`]); },           // names
+  ];
+  for (const [i, f] of same.entries()) {
+    const d = structuredClone(WEEK2);
+    f(d);
+    assert.equal(fingerprint(d), base, `rebuild ${i}`);
+  }
+  // a dearer row at a branch that has a cheaper one moves no lowest price, but it is a row the ending-price numbers (e, s,
+  // u) read on some day: a new fingerprint — one computation more, never a change missed
+  const dearer = structuredClone(WEEK2);
+  dearer.rows.push([1, 0, 0, 125000, 0, 0, 0, 1, 0, 0, 7, 0, 1, 0]);
+  assert.notEqual(fingerprint(dearer), base);
+  const changed = {
+    price: (d) => { d.rows[0][3] = 91000; },
+    region: (d) => { d.branches[2][5] = 11; },
+    keyRows: (d) => { d.rows[4][7] = 3; },                                        // an X01 row now classified X02
+    until: (d) => { d.rows[0][10] = 10; },
+    review: (d) => { d.rows[3][13] = 0; },
+    updated: (d) => { d.meta.updated = "2026-10-20"; },
+    recl: (d) => { d.meta.recl = [["2026-10-19", ["X24"]]]; },
+    keySet: (d) => { d.keys = d.keys.slice(0, 3); },
+  };
+  const seen = new Set([base]);
+  for (const [name, f] of Object.entries(changed)) {
+    const d = structuredClone(WEEK2);
+    f(d);
+    const fp = fingerprint(d);
+    assert.ok(!seen.has(fp), name);
+    seen.add(fp);
+  }
+  // the real data.json: a fingerprint in well under a second (the factory runs it on every deploy and every catch-up)
+  const real = JSON.parse(readFileSync(new URL("../../../app/data.json", import.meta.url), "utf8"));
+  const t = Date.now();
+  assert.match(fingerprint(real), /^[0-9a-f]{64}$/);
+  assert.ok(Date.now() - t < 5000, `fingerprint of app/data.json took ${Date.now() - t} ms`);
+});
+
+test("9th review (CLI): start first — done calls nothing more; deferred writes deferred=true to $GITHUB_OUTPUT (the alert job's Telegram line); ALERTS_MODE is not read any more", T, async () => {
+  const db = makeDb(), env = makeEnv(db, { COMPUTES_PER_DAY: "1" });
   await phonesWith(env, db, { A: [{ kind: "watch", key: "X24" }] });
   const seen = [];
   const server = http.createServer(async (req, res) => {
@@ -951,35 +985,35 @@ test("CLI: ALERTS_MODE picks the run (keys = the key set only; full or unset = a
   });
   await new Promise((ok) => server.listen(0, "127.0.0.1", ok));
   const cli = fileURLToPath(new URL("../notify.mjs", import.meta.url));
-  const dir = mkdtempSync(join(tmpdir(), "notify-mode-"));
-  const runCli = (mode) => new Promise((ok) => {
-    const child = spawn(process.execPath, [cli, join(dir, "data.json")], { env: { PATH: process.env.PATH, ALERTS_URL: `http://127.0.0.1:${server.address().port}`, ALERTS_SECRET: SECRET_VALUE, ...(mode === undefined ? {} : { ALERTS_MODE: mode }) } });
-    let out = "";
-    child.stdout.on("data", (d) => { out += d; });
-    child.on("close", (code) => ok({ code, out }));
+  const dir = mkdtempSync(join(tmpdir(), "notify-cli9-"));
+  const out = join(dir, "github-output");
+  const runCli = (file, extra = {}) => new Promise((ok) => {
+    writeFileSync(out, "");
+    const child = spawn(process.execPath, [cli, file], { env: { PATH: process.env.PATH, ALERTS_URL: `http://127.0.0.1:${server.address().port}`, ALERTS_SECRET: SECRET_VALUE, GITHUB_OUTPUT: out, ...extra } });
+    let text = "";
+    child.stdout.on("data", (d) => { text += d; });
+    child.on("close", (code) => ok({ code, out: text, output: readFileSync(out, "utf8") }));
   });
   try {
-    const bytes = JSON.stringify(WEEK1, null, 1) + "\n";               // not the bytes JSON.stringify(data) would give
-    writeFileSync(join(dir, "data.json"), bytes);
-    const want = createHash("sha256").update(bytes).digest("hex");
-    const k = await runCli("keys");
-    assert.equal(k.code, 0);
-    assert.match(k.out, /^price alerts: key set sent \(4 keys, changed\)/m);
-    assert.match(k.out, /^::notice title=price alerts::this run sent the key set only — the alerts for this data\.json are computed by the next daily run \(06:00 KST\)/m);
-    assert.deepEqual(seen.splice(0), ["/v1/internal/keys"]);
-    const f = await runCli(undefined);
+    writeFileSync(join(dir, "w1.json"), JSON.stringify(WEEK1, null, 1) + "\n");
+    writeFileSync(join(dir, "w2.json"), JSON.stringify(WEEK2));
+    // ALERTS_MODE=keys from an older weekly.yml changes nothing: the run starts and computes
+    const f = await runCli(join(dir, "w1.json"), { ALERTS_MODE: "keys" });
     assert.equal(f.code, 0);
-    assert.deepEqual(seen.splice(0).map((u) => u.split("?")[0]), ["/v1/internal/keys", "/v1/internal/watched", "/v1/internal/digest", "/v1/internal/finish"]);
-    const today = Number(new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10).replace(/-/g, ""));
-    assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = 'data'"), [{ n: parseInt(want.slice(0, 13), 16) }], "the tag of the file's own bytes");
-    assert.equal(db.rows("SELECT n FROM stat WHERE k = 'finish'")[0].n, today);
-    const again = await runCli("full");
-    assert.match(again.out, /already finished today/);
-    assert.deepEqual(seen.splice(0), ["/v1/internal/keys", `/v1/internal/watched?at=0&data=${want}`]);
-    const bad = await runCli("everything");
-    assert.equal(bad.code, 0);
-    assert.match(bad.out, /^::warning title=price alerts::price alert check failed \(ALERTS_MODE must be full or keys\)/m);
-    assert.deepEqual(seen.splice(0), [], "an unknown mode calls nothing");
+    assert.deepEqual(seen.splice(0).map((u) => u.split("?")[0]), ["/v1/internal/start", "/v1/internal/keys", "/v1/internal/watched", "/v1/internal/digest", "/v1/internal/finish"]);
+    assert.equal(f.output, "");
+    assert.deepEqual(db.rows("SELECT n FROM stat WHERE k = 'data'"), [{ n: parseInt(fingerprint(WEEK1).slice(0, 13), 16) }], "the tag of the data's fingerprint");
+    // the same prices in other bytes: done after one request
+    writeFileSync(join(dir, "w1b.json"), JSON.stringify(WEEK1));
+    const again = await runCli(join(dir, "w1b.json"));
+    assert.match(again.out, /^price alerts: these prices were already computed \(same fingerprint\) — nothing to do$/m);
+    assert.deepEqual(seen.splice(0), ["/v1/internal/start"]);
+    // new prices past COMPUTES_PER_DAY (1 here) this UTC day: deferred — a ::warning and deferred=true for the workflow
+    const later = await runCli(join(dir, "w2.json"));
+    assert.equal(later.code, 0);
+    assert.match(later.out, /^::warning title=price alerts::today's full computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST$/m);
+    assert.equal(later.output, "deferred=true\n");
+    assert.deepEqual(seen.splice(0), ["/v1/internal/start"]);
   } finally { server.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
@@ -989,5 +1023,5 @@ test("everything notify.mjs logged in this file holds counts only: no secret, UR
   for (const v of [SECRET_VALUE, URL_, "yoonsiljang", "workers.dev", "https://", "fcm.googleapis", "fcm/send", "Bearer", "X24", "X01", "X02", "서울", "부산"])
     assert.equal(text.includes(v), false, `a log line shows ${v}`);
   assert.equal(/(?<![\w-])[A-Za-z0-9_-]{22}(?![\w-])/.test(text), false, "no id-shaped (22 characters) token in any log line");
-  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: key set sent \(\d+ keys, (changed|unchanged)\) — only the daily schedule run computes|::notice title=price alerts::this run sent the key set only — the alerts for this data\.json are computed by the next daily run \(06:00 KST\)\. A push, Run workflow or Re-run never computes: the D1 budget holds one computation a day|price alerts: this data\.json was already finished today \(same sha256, same KST day\) — nothing more to do|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
+  for (const l of ALL_LOGS) assert.match(l, /^(price alerts: these prices were already computed \(same fingerprint\) — nothing to do|::notice title=price alerts::another run is computing alerts right now — the hourly alerts-catchup run checks these prices again|::warning title=price alerts::today's full computations \(the Worker's COMPUTES_PER_DAY, the D1 write budget\) are used up — these prices are computed by the first alerts-catchup run after 09:00 KST|price alerts: \d+ watched pairs \(\d+ skipped, \d+ changed, \d+ ending soon\), marked \d+ weekly \+ \d+ expiring \(\d+ stale expiring cleared\)|::warning title=price alerts::the Worker cut the watched list at PAIR_CAP — some pairs were not computed \(GET \/health pairs: capped\)|::warning title=price alerts::new pairs wait for a free row under the Worker's PAIR_CAP — not computed today \(GET \/health pairs: capped\)|::warning title=price alerts::app\/data\.json shape changed \((\d+ of \d+ [^;()]*|meta\.recl is not \[\[day, \[keys\]\]\]|not a data\.json)(; [^()]*)*\) — nothing sent until cf\/alerts\/src\/rules\.js KEY_RE\/REGIONS follow)$/, `unexpected log line shape: ${l}`);
 });
