@@ -855,19 +855,27 @@ def shared_titles(raw, items):
     Such a line is one option of several products when (a) the branch sells it under two or more titles at two or more prices
     (one product shown on two pages has one price), and (b) two of its titles at one price — that the fold would join: no two
     different list prices — each add words the line lacks (title_own) and neither title's words hold the other's: a body area,
-    sex, device or amount of its own ('男) 팔전체' / '男) 다리전체', '클라리티Ⅱ' / '헐리우드 스펙트라'). Then its rows take their
-    title in front of the shown name (title_words; main keeps it out of mname): all of them when fewer than MIN_SOLD branches sell
-    the line under that name (광주점's tab text names no product anywhere), else only the products that met an earlier row of
-    their price: the rows the fold kept keep the line. A line other branches sell ('바디 착색토닝(…) 1부위 1회' at 60 블리비
-    branches, on their device pages too, at prices that never met) is a name the automatic groups compare (build2/groups.py, by
-    name): the branch's rows under it stay what they were, and the group still reads the branch's lowest price there (measured
-    2026-10-19 — every row titled: 포항·천안점 left 6 착색토닝 groups, achg listed 14 '없어짐' and 88 branches' price levels moved;
-    every row at a meeting price titled: 밴스 수원망포's '얼굴전체 스킨보톡스' went 139,000 → 159,000 in its group, a rise no
-    clinic made). A row at the price of an earlier row whose title words agree with its own takes that row's title: one product
-    on two pages (a title that is a part of the other, or names only the line's own product: 유앤아이 광명 '울쎄라피 프라임' ›
-    '울쎄라피프라임 600샷' also on '🏆인기TOP리프팅'), which still folds. Neither counts: an add-on, sold the same
+    sex, device or amount of its own ('男) 팔전체' / '男) 다리전체', '클라리티Ⅱ' / '헐리우드 스펙트라'), and (c) the two pages are no
+    copies: pages that list other lines too, each of them at one price on every page of the branch, are one price list shown on
+    several pages (셀린 다산점 lists its '메디컬 스킨케어 스페셜 4주 · 8주 · 12주' program on 8 skin-care pages — 4주 and 12주 at one
+    price everywhere, 8주 at 390,000 on 6 pages and other prices on 2: one program, not 8 products); a line whose price depends
+    on the page (블리비 포항점's 착색토닝 5회 · 10회 on its device pages) is no sign of copies. Then its rows take their title in
+    front of the shown name (title_words; main keeps it out of mname): all of them when fewer than MIN_SOLD branches (this one
+    counted) sell the line under that name (광주점's tab text names no product anywhere), else only the products that met an
+    earlier row of their price: the rows the fold kept keep the line. A line other branches sell ('바디 착색토닝(…) 1부위 1회' at
+    60 블리비 branches, on their device pages too, at prices that never met) is a name the automatic groups compare
+    (build2/groups.py, by name): the branch's rows under it stay what they were, and the group still reads the branch's lowest
+    price there (measured 2026-10-19 — every row titled: 포항·천안점 left 6 착색토닝 groups, achg listed 14 '없어짐' and 88
+    branches' price levels moved; every row at a meeting price titled: 밴스 수원망포's '얼굴전체 스킨보톡스' went 139,000 → 159,000
+    in its group, a rise no clinic made). A row at the price of an earlier row of the same product — title words that agree (a
+    title that is a part of the other, or names only the line's own product: 유앤아이 광명 '울쎄라피 프라임' › '울쎄라피프라임 600샷'
+    also on '🏆인기TOP리프팅') or a copy page — takes that row's title, and still folds. Neither counts: an add-on, sold the same
     on top of each product ('옵션5) 덴서티 하이 300샷 추가', '[추가] 포텐자 …' — the older rule folds it), nor a row of an event page
-    (EVENT_PAGE: the same product at an event price beside the price list's — no sign of two products)."""
+    (EVENT_PAGE: the same product at an event price beside the price list's — no sign of two products).
+    Known: the titles follow the prices — when the clinic's prices change so that no two products meet any more, the line's rows
+    go back to the line's name (and the next build's changes list them as gone and new). Titling every line of (a) and (b)
+    whether or not two products meet would hold the names, but renames 462 rows where nothing folded (데이뷰 수원점 300;
+    measured 2026-10-19), against 42 rows now."""
     sets, sold = defaultdict(list), defaultdict(set)
     for i, (r, it) in enumerate(zip(raw, items)):
         if it["why"]:
@@ -880,8 +888,21 @@ def shared_titles(raw, items):
             continue
         is_pass = r["brand"] != "리엔장" and pass_item(grp, opt)
         sets[(r["brand"], r["branch"], fold_name(mname, it["hair"]), is_pass)].append(i)
+    # the lines each product page (group title) lists, and the prices a line has on all pages of the branch
+    page = lambda i: (raw[i]["brand"], raw[i]["branch"], comp_name(items[i]["grp"]).casefold())
+    lines, sales = defaultdict(set), {}
+    for key, idx in sets.items():
+        sales[key] = {items[i]["sale"] for i in idx}
+        for i in idx:
+            lines[page(i)].add(key)
+
+    def copies(key, i, j):
+        """two pages that list other lines too, each at one price on every page of the branch: one price list on two pages"""
+        both = (lines[page(i)] & lines[page(j)]) - {key}
+        return bool(both) and all(len(sales[m]) == 1 for m in both)
+
     out = {}
-    for idx in sets.values():
+    for key, idx in sets.items():
         gkey = lambda i: comp_name(items[i]["grp"]).casefold()
         if len({gkey(i) for i in idx}) < 2 or len({items[i]["sale"] for i in idx}) < 2:
             continue
@@ -890,14 +911,16 @@ def shared_titles(raw, items):
         joins = lambda i, j: items[i]["sale"] == items[j]["sale"] \
             and not (items[i]["orig"] and items[j]["orig"] and items[i]["orig"] != items[j]["orig"])
         apart = lambda i, j: own[i] and own[j] and not (own[i] <= own[j] or own[j] <= own[i])
-        if not any(joins(i, j) and gkey(i) != gkey(j) and apart(i, j) for n, i in enumerate(idx) for j in idx[n + 1:]):
+        # one product on two pages: the titles' own words agree, or the pages are one price list (copies)
+        same = lambda i, j: not apart(i, j) or copies(key, i, j)
+        if not any(joins(i, j) and gkey(i) != gkey(j) and not same(i, j) for n, i in enumerate(idx) for j in idx[n + 1:]):
             continue
         # a line MIN_SOLD or more branches sell under that name (the name as the automatic groups key it, xkeys.comp) is a name
         # the comparisons read there too (build2/groups.py): it stays on the rows the fold kept
         shared = any(len(sold[comp(items[i]["name"])]) >= MIN_SOLD for i in idx)
         title = {}
         for n, i in enumerate(idx):
-            j = next((j for j in idx[:n] if joins(i, j) and not apart(i, j)), None)
+            j = next((j for j in idx[:n] if joins(i, j) and same(i, j)), None)
             if j is not None:
                 title[i] = title[j]                     # one product on two pages: one row, as before
             elif not shared or any(joins(i, x) for x in idx[:n]):
