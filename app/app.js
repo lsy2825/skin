@@ -1668,17 +1668,15 @@
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   // 푸시 알림 (6.0 약속 1, app/domain/push.js): only when config.js has alertsApi + pushPublicKey (chat A sends both). The
-  // permission prompt and the subscription happen only inside the tap on '가격 알림 받기'; the id the Worker gives back stays
-  // on this phone (device key 'push', not per account). The rules follow the phone's alerts (PUT when they change).
+  // permission prompt only inside the tap on '가격 알림 받기', and the first subscription with it; once the permission is
+  // given, a subscription is made again without a tap when it no longer works — at a start for a new public key, after a
+  // 404/410 on PUT (chat A's request #85 ②④). The id the Worker gives back stays on this phone (device key 'push', not per
+  // account). The rules follow the phone's alerts (PUT when they change).
   const CFG = window.APP_CONFIG || {};
   const PUSH = Push.enabled(CFG);
   const pushSupported = () => notifySupported() && "PushManager" in window;
   const pushState = () => Push.cleanState(store.get("push", null));
-  // a branch product → its comparison keys, in that branch's 시·도 ('이벤트 종료 3일 전' as a key rule)
-  const rowPushKeys = (row) => { const sid = SI.get(row.n), b = BK.get(row.br); if (sid == null || b == null) return [];
-    const i = (byName.get(sid) || []).find((x) => ROWS[x][0] === b);
-    return i == null ? [] : (S[ROWS[i][7]] || "").split(" ").filter(Boolean).map((key) => ({ key, region: BR[b].region })); };
-  const pushRules = () => Push.rulesOf(st.alerts, rowPushKeys, (k) => KI[k] != null);
+  const pushRules = () => Push.rulesOf(st.alerts, (k) => KI[k] != null);
   // ms: give up after that long (a DELETE must not hang the '끄기' button on a weak connection)
   const pushFetch = (req, ms) => {
     const c = ms && typeof AbortController === "function" ? new AbortController() : null, t = c ? setTimeout(() => c.abort(), ms) : null;
@@ -1687,12 +1685,32 @@
   };
   // the registration, or null: navigator.serviceWorker.ready never settles when registering failed
   const swReg = () => Promise.race([navigator.serviceWorker.getRegistration().catch(() => null), new Promise((ok) => setTimeout(() => ok(null), 4000))]);
-  async function pushSubscribe() {
+  // endpoints never sent again in this run of the app: one the Worker answered 404/410 for, or one taken back for a new key
+  // (chat A's request #85 ②④ — POSTed again it would be stored, dropped at the next send, and the screen would say on)
+  const pushGone = new Set();
+  // one at a time: a start's renewal, a 404's and a tap share the one on its way (two at once would each make a subscription)
+  let pushBusy = null;
+  function pushSubscribe(fresh) { return pushBusy || (pushBusy = pushSubscribeOnce(fresh).finally(() => { pushBusy = null; })); }
+  // fresh: take back the browser's subscription even when it looks fine (after a 404/410)
+  async function pushSubscribeOnce(fresh) {
     const reg = await swReg();
     if (!reg || !reg.pushManager) throw new Error("no service worker");
-    const had = await reg.pushManager.getSubscription();
+    const old = pushState();
+    let had = await reg.pushManager.getSubscription();
+    // dropped by the Worker, or made with another public key (the VAPID keys were replaced): taken back, and a new one is
+    // made with the key in config.js
+    if (had && (fresh || pushGone.has(had.endpoint) || Push.otherKey(had, CFG))) {
+      pushGone.add(had.endpoint);
+      // still on (a new key at start): marked first, so a next start that finds no subscription (the new one could not be
+      // made: offline) tries once more instead of turning off without a word (read now: a 404 on the way may have cleared it)
+      const on = pushState();
+      if (on) store.set("push", { ...on, re: 1 });
+      if (!(await had.unsubscribe())) throw new Error("unsubscribe refused");
+      had = null;
+    }
     const sub = had || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: Push.keyBytes(CFG.pushPublicKey) });
     try {
+      if (pushGone.has(sub.endpoint)) throw new Error("same endpoint");
       const { rules } = pushRules(), req = Push.subscribeReq(CFG, sub, rules);
       if (!req) throw new Error("unusable subscription");
       const res = await pushFetch(req);
@@ -1701,10 +1719,13 @@
       store.set("push", { id, ep: sub.endpoint, h: Push.hash(rules) });
       // an id the Worker hands out (again) is in use: it never waits for a retried DELETE
       store.set("pushDel", Push.cleanDel(store.get("pushDel", [])).filter((x) => x !== id));
+      // the id this one replaces (a renewed endpoint, a new key) goes only now that the new one is in (offline: next start)
+      if (old && old.id !== id) pushDelete(old.id).catch(() => {});
     } catch (e) {
-      // the Worker did not take it (or its answer was lost): the subscription made just now is taken back, so nothing can
-      // push to this phone while the screen says off (a row the Worker did keep gets 410 on its next send and goes)
-      if (!had) await sub.unsubscribe().catch(() => {});
+      // the Worker did not take it (or its answer was lost): a subscription made just now is taken back while the screen
+      // says off, so nothing can push to this phone then (a row the Worker did keep gets 410 on its next send and goes).
+      // Still on (a new key at start): it stays, and the next start sends it (its endpoint is not the one kept here).
+      if (!had && !pushState()) await sub.unsubscribe().catch(() => {});
       throw e;
     }
   }
@@ -1732,8 +1753,9 @@
     if (sub) await sub.unsubscribe().catch(() => {});
   }
   // after an alert is added or removed (and at start, with the full price file): PUT the rules when they differ from the
-  // last sent. A subscription the Worker no longer knows (404/410) is forgotten here too.
-  let pushT = null;
+  // last sent. A subscription the Worker no longer knows (404/410) is made again with a new browser subscription, once per
+  // run of the app; when that does not work it is forgotten (off).
+  let pushT = null, pushRenewed = false;
   function pushSync() {
     if (!PUSH || !pushState()) return;
     clearTimeout(pushT);
@@ -1757,7 +1779,14 @@
         const now = pushState();
         if (!now || now.id !== s.id) return;
         if (r.ok) store.set("push", { ...now, h });
-        else if (r.status === 404 || r.status === 410) { store.set("push", null); render(); }
+        else if (r.status === 404 || r.status === 410) {
+          // the Worker dropped it (a dead endpoint, an old key, a clean-up): the same endpoint is never POSTed again — the
+          // browser's subscription is taken back, a new one made with the key in config.js, and POSTed for a new id (chat A's
+          // request #85 ④). No permission, or that fails: off, as before.
+          store.set("push", null); pushGone.add(s.ep);
+          if (!pushRenewed && pushSupported() && Notification.permission === "granted") { pushRenewed = true; await pushSubscribe(true).catch(() => {}); }
+          render();
+        }
       } catch (e) { /* offline: the next change or the next start sends them */ }
     }, empty ? 6500 : 600);
   }
@@ -1779,12 +1808,19 @@
       const reg = await swReg();
       if (!reg || !reg.pushManager) return;   // not registered yet: next start
       const sub = await reg.pushManager.getSubscription();
-      if (!sub) { await pushUnsubscribe(); render(); return; }
+      if (!sub && !s.re) { await pushUnsubscribe(); render(); return; }
       if (!pushRules().rules.length) { await pushUnsubscribe(); render(); return; }   // nothing left to watch: no subscription
-      if (sub.endpoint !== s.ep) {
-        // renewed by the browser: POST the new one first; the old id goes only once that worked (offline: next start)
+      if (!sub) {
+        // an earlier start took back the old key's subscription and could not make the new one (s.re): once more now, and
+        // off when that does not work either ('받기' then asks with a tap)
+        try { await pushSubscribe(); } catch (e) { await pushUnsubscribe(); }
+        render();
+        return;
+      }
+      if (sub.endpoint !== s.ep || Push.otherKey(sub, CFG)) {
+        // renewed by the browser, or made with another public key (chat A's request #85 ②: pushSubscribe takes that one back
+        // and makes a new one): POST the new one first; the old id goes only once that worked (offline: next start)
         await pushSubscribe();
-        if ((pushState() || {}).id !== s.id) pushDelete(s.id).catch(() => {});
         return;
       }
       pushSync();
@@ -1832,7 +1868,7 @@
         s.type === "target" || s.type === "cartdrop" ? h("label", { class: "flabel" }, s.type === "cartdrop" ? "이 금액 이하가 되면 (비우면 지금보다 내리면)" : "이 금액 이하가 되면", tgt) : null,
         h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, "매주 실제로 모은 가격끼리 비교해서, 앱을 열 때 관심 탭과 위쪽 종 아이콘으로 알려요. 같은 변화는 다시 알리지 않아요. 값은 병원 표시가 기준이고, 화면의 부가세·지역 설정을 바꿔도 알림이 생기지 않아요."),
         h("div", { class: "tiny", style: "margin-top:var(--sp-2)" }, PUSH ? (base.k && watched.sp === false ? "'특가 포함'이 꺼져 있어 이 알림은 이 기기에서 앱을 열 때만 알려요(앱이 닫혀 있을 때 오는 알림은 특가까지 넣어 계산해요). 앱을 닫아도 받으려면 내 설정에서 '특가 포함'을 켜고 만들어 주세요."
-          : base.k || s.type === "expiring" ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
+          : base.k ? "관심 탭에서 '가격 알림 받기'를 켜 두면 앱이 닫혀 있어도 이 알림의 가격이 바뀔 때 알려요(일주일에 한 번 묶어서)."
           : "이 알림은 앱을 열 때만 알려요(앱이 닫혀 있을 때 오는 알림에는 이 종류가 없어요).")
           : "휴대폰 알림을 켜 두면 앱을 열 때 찾은 변화를 휴대폰 알림으로도 보여줘요. 앱이 닫혀 있을 때 오는 푸시는 서버가 필요해서 아직 없어요."),
         h("button", { class: "btn", type: "button", style: "width:100%;margin-top:var(--sp-3)", onclick: () => {
@@ -1891,7 +1927,7 @@
       else if (Notification.permission === "denied") kids.push(h("div", { class: "sub" }, "브라우저 설정에서 이 사이트의 알림이 꺼져 있어요. 켜려면 브라우저 설정에서 바꿔 주세요."));
       else if (PUSH) {
         const s = pushState(), { rules, local, cut } = pushRules();
-        const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·'특가 포함'을 끄고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
+        const note = [local ? `${local}개는 이 기기에서 앱을 열 때만 알려요(내 견적 합계·지점 상품 목표가·이벤트 종료 3일 전·'특가 포함'을 끄고 만든 알림)` : "", cut ? `조건이 20개를 넘어 ${cut}개는 빠졌어요` : ""].filter(Boolean).join(" · ");
         if (s && Notification.permission === "granted") {
           kids.push(h("div", { class: "sub" }, `켜짐 — 가격이 바뀌면 보통 일주일에 한 번 묶어서 와요(행사 마감 임박은 따로). 오전 8시~오후 9시에만 보내요. 보낸 조건 ${rules.length}개.`),
             privacyLink(), note ? h("div", { class: "tiny" }, note) : null);

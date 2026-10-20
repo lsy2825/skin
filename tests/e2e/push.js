@@ -7,6 +7,16 @@
 //     unsubscribes; a refused permission sends nothing; a Worker that fails takes back the subscription just made
 //  3. no rule left (user decision 2026-10-15): with no alert there is a hint instead of the button; removing the last
 //     alert DELETEs the subscription once the 6 s '되돌리기' is over; an undo inside it keeps the subscription
+//  4. a new public key (chat A's request #85 ②): a browser subscription made with another key is taken back and made again
+//     with the key in config.js — at start (the old id DELETEd once the new one is in) and on '받기'; the same key changes nothing
+//  5. 404/410 on PUT (#85 ④): the browser subscription is taken back, made again and POSTed for a new id, once per run; the
+//     same endpoint is never POSTed again; a failing POST (or a second 404 in the same run) turns it off
+//  6. a branch product's '이벤트 종료 3일 전' (#85 ①): no rule for it (the Worker's expiring is about a comparison key in a
+//     region), counted as 'only on this phone' in the panel
+//  7. the guards of 4·5 (review of #85 ②④): a push service that gives the same endpoint again after a 404 — not POSTed, off;
+//     a new key at start with the POST refused (429) — the new subscription stays and the next start POSTs that same one;
+//     a new key at start with the push service unreachable — the next start tries once more (on), or turns off; a slow
+//     POST at start overlapping a 404's renewal — one subscription, one POST (the browser's state kept across page loads)
 // The service worker's push and notificationclick handlers are unit-tested (tests/sw.test.js): headless Chromium has no
 // push service and cannot click a notification.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/push.js
@@ -17,26 +27,54 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 240)}`); };
 const API = 'https://alerts.example.test';   // a made-up address: answered by the test, never reaches the network
 const KEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 7)]).toString('base64url');   // a VAPID-shaped public key
+const OLDKEY = Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 9)]).toString('base64url');   // the key before a replacement
 const SUB_ID = 'sub_12345678';
+const FCM = 'https://fcm.googleapis.com/fcm/send/';
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, PUT, DELETE', 'access-control-allow-headers': 'content-type' };
 
 async function start(b, cfg, answer = 'granted', postStatus = 200, pre = null) {
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const hits = [];
   // the browser side faked: Notification (its prompt), the service worker registration and its push manager
   await ctx.addInitScript(([answer, pre]) => {
-    const log = window.__push = { perm: 0, subscribe: [], unsub: 0 };
-    let permission = pre ? pre.perm : 'default', sub = null;
+    // pre.persist: the fake's permission, subscription and log survive page loads (kept in localStorage '__fakepush'), as a
+    // real browser's do — without it each page starts from `pre` again
+    const LS = '__fakepush', persist = !!(pre && pre.persist);
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };   // about:blank has no storage
+    let saved = null;
+    if (persist) try { saved = JSON.parse(get(LS) || 'null'); } catch (e) { /* first load */ }
+    const log = window.__push = saved ? saved.log : { perm: 0, subscribe: [], subFail: 0, unsub: 0, unsubEp: [] };
+    let permission = saved ? saved.permission : pre ? pre.perm : 'default', sub = null, n = saved ? saved.n : 0;
+    const b64 = (u8) => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const unb64 = (s) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const save = () => { if (persist) try { localStorage.setItem(LS, JSON.stringify({ log, permission, n,
+      sub: sub && { ep: sub.endpoint, key: sub.options ? b64(new Uint8Array(sub.options.applicationServerKey)) : null } })); } catch (e) { /* about:blank */ } };
     function N() {}
     Object.defineProperty(N, 'permission', { get: () => permission });
-    N.requestPermission = async () => { log.perm++; permission = answer; return answer; };
+    N.requestPermission = async () => { log.perm++; permission = answer; save(); return answer; };
     Object.defineProperty(window, 'Notification', { value: N, configurable: true, writable: true });
-    const mk = () => ({ endpoint: 'https://fcm.googleapis.com/fcm/send/e2e-test', expirationTime: null,
+    // each new subscription gets its own endpoint (…/e2e-test, …/e2e-test-2, …) as a push service gives — or, with
+    // pre.sameEp, the same one again after an unsubscribe (a push service that does) — and shows the key it was made with
+    // (options.applicationServerKey, an ArrayBuffer) as browsers do
+    const mk = (key, ep) => ({ endpoint: ep || (pre && pre.sameEp ? 'https://fcm.googleapis.com/fcm/send/e2e-same'
+        : 'https://fcm.googleapis.com/fcm/send/e2e-test' + (++n > 1 ? '-' + n : '')), expirationTime: null,
+      options: key ? { userVisibleOnly: true, applicationServerKey: new Uint8Array(key).buffer } : undefined,
       toJSON() { return { endpoint: this.endpoint, expirationTime: null, keys: { p256dh: 'B'.repeat(87), auth: 'a'.repeat(22) } }; },
-      async unsubscribe() { log.unsub++; sub = null; return true; } });
+      async unsubscribe() { log.unsub++; log.unsubEp.push(this.endpoint); if (sub === this) sub = null; save(); return true; } });
     const reg = { pushManager: { getSubscription: async () => sub,
-      subscribe: async (o) => { log.subscribe.push({ uvo: o.userVisibleOnly, keyLen: o.applicationServerKey && o.applicationServerKey.length, key0: o.applicationServerKey && o.applicationServerKey[0] }); sub = mk(); return sub; } } };
-    // a phone that is already subscribed (the browser may have renewed the endpoint since)
-    if (pre && pre.endpoint) { sub = mk(); sub.endpoint = pre.endpoint; }
+      subscribe: async (o) => { const k = o.applicationServerKey;
+        // localStorage '__fakepush_fail' set by the test: the push service cannot be reached (offline at that moment)
+        if (get('__fakepush_fail')) { log.subFail++; save(); throw new Error('AbortError: push service error'); }
+        // a browser refuses another key while a subscription is there (InvalidStateError)
+        if (sub && sub.options && b64(new Uint8Array(sub.options.applicationServerKey)) !== b64(k)) throw new Error('InvalidStateError');
+        sub = sub || mk(k);
+        log.subscribe.push({ uvo: o.userVisibleOnly, keyLen: k && k.length, key0: k && k[0], key: k && b64(k), ep: sub.endpoint }); save(); return sub; } } };
+    // a phone that is already subscribed (the browser may have renewed the endpoint since; pre.key: the key it was made with —
+    // without it the subscription shows none, as some browsers)
+    if (saved) sub = saved.sub && mk(saved.sub.key ? unb64(saved.sub.key) : null, saved.sub.ep);
+    else if (pre && pre.endpoint) sub = mk(pre.key ? unb64(pre.key) : null, pre.endpoint);
+    save();
+    window.__pushSub = () => (sub ? sub.endpoint : null);   // the browser's subscription now (its endpoint)
     if (navigator.serviceWorker) navigator.serviceWorker.getRegistration = async () => reg;
   }, [answer, pre]);
   ctx.on('request', (r) => { const u = r.url(); if (u.startsWith(API) || /\/v1\/push\//.test(u)) hits.push({ m: r.method(), u: u.replace(API, ''), body: r.postData() }); });
@@ -46,7 +84,7 @@ async function start(b, cfg, answer = 'granted', postStatus = 200, pre = null) {
       await route.fulfill({ response: res, body: t }); });
     await ctx.route((u) => u.href === BASE || u.pathname.endsWith('/index.html'), async (route) => { const res = await route.fetch(); const t = await res.text();
       await route.fulfill({ response: res, body: t.replace("connect-src 'self'", `connect-src 'self' ${API}`) }); });
-    const cors = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST, PUT, DELETE', 'access-control-allow-headers': 'content-type' };
+    const cors = CORS;
     await ctx.route(`${API}/**`, (route) => { const m = route.request().method();
       if (m === 'OPTIONS') return route.fulfill({ status: 204, headers: cors, body: '' });
       if (m === 'POST') return route.fulfill({ status: postStatus, headers: { ...cors, 'content-type': 'application/json' }, body: postStatus === 200 ? JSON.stringify({ id: SUB_ID }) : '{"error":"down"}' });
@@ -68,6 +106,30 @@ async function watchX24(p, key = 'X24') {
 }
 const pushBtn = (p, t) => p.locator('#main .nfp button', { hasText: t });
 const log = (p) => p.evaluate(() => window.__push);
+const kept = (p) => p.evaluate(() => JSON.parse(localStorage.getItem('pc:push') || 'null'));
+const cur = (p) => p.evaluate(() => window.__pushSub());
+// a phone subscribed earlier (persisted fake, pre.persist): the browser's subscription {ep, key} and the app's pc:push, set
+// together for the next start (set at the first start, the app would take back a subscription it does not know)
+const seed = (p, id, ep, key) => p.evaluate(([id, ep, key]) => { localStorage.setItem('pc:push', JSON.stringify({ id, ep, h: '1:x' }));
+  const f = JSON.parse(localStorage.getItem('__fakepush')); f.sub = { ep, key }; localStorage.setItem('__fakepush', JSON.stringify(f)); }, [id, ep, key]);
+const H = (hits) => hits.map((x) => x.m + ' ' + x.u).join(',');
+const posted = (hits) => hits.filter((x) => x.m === 'POST').map((x) => { try { return JSON.parse(x.body).subscription.endpoint; } catch (e) { return null; } });
+// the next start of the app (from home)
+async function restart(p, hits) { hits.length = 0; await p.goto(BASE); await p.waitForSelector('.pc');
+  await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); await p.waitForTimeout(1500); }
+// the Worker answers PUT with `put` and each POST with the next of `ids` (an id: 201 with it; a number: that status; none
+// or null: 500); the rest as start() set it up. o.hold: each POST answered that many ms late; o.t: a timeline of
+// 'POST>' (arrived), 'PUT' and '<POST' (answered)
+function worker(put, ids, o = {}) {
+  return async (route) => { const m = route.request().method();
+    if (m === 'PUT') { if (o.t) o.t.push('PUT'); return route.fulfill({ status: put, headers: { ...CORS, 'content-type': 'application/json' }, body: put < 300 ? '{"ok":true}' : '{"error":"NOT_FOUND"}' }); }
+    if (m === 'POST') { const x = ids.shift(), id = typeof x === 'string' ? x : null;
+      if (o.t) o.t.push('POST>');
+      if (o.hold) await new Promise((ok) => setTimeout(ok, o.hold));
+      if (o.t) o.t.push('<POST');
+      return route.fulfill({ status: id ? 201 : x || 500, headers: { ...CORS, 'content-type': 'application/json' }, body: id ? JSON.stringify({ id }) : '{"error":"down"}' }); }
+    return route.fallback(); };
+}
 
 (async () => { const b = await chromium.launch();
   // 1) off: as shipped, and with only one of the two settings
@@ -231,5 +293,180 @@ const log = (p) => p.evaluate(() => window.__push);
     const st = await p.evaluate(() => ({ push: JSON.parse(localStorage.getItem('pc:push') || 'null'), del: JSON.parse(localStorage.getItem('pc:pushDel') || '[]') }));
     ok('쓰는 중인 id가 목록에 있어도 DELETE 없음, 목록에서만 빠지고 구독은 그대로', !hits.some((x) => x.m === 'DELETE') && st.del.length === 0 && st.push && st.push.id === SUB_ID, hits.map((x) => x.m + ' ' + x.u).join(',') + ' ' + JSON.stringify(st));
     ok('쓰는 중인 id: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 12) start: the public key was replaced (config.js has the new one, the browser's subscription was made with the old):
+  //     take it back, subscribe with the new key, POST the new endpoint, and DELETE the old id once the new one is in (#85 ②)
+  { const OLD_EP = FCM + 'oldkey';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: OLD_EP, key: OLDKEY });
+    await watchX24(p);
+    await p.evaluate((ep) => localStorage.setItem('pc:push', JSON.stringify({ id: 'sub_old12345', ep, h: '1:x' })), OLD_EP);
+    await restart(p, hits);
+    const l = await log(p), k = await kept(p), eps = posted(hits);
+    ok('키 바뀜(시작): 옛 키 구독 해지 → 새 키로 구독 → 새 endpoint POST → 새 id', l.unsubEp.join() === OLD_EP && l.subscribe.length === 1 && l.subscribe[0].key === KEY
+      && eps.length === 1 && eps[0] !== OLD_EP && k && k.id === SUB_ID && k.ep === eps[0], JSON.stringify({ l, k, eps }));
+    ok('키 바뀜(시작): 옛 id는 새 id를 받은 뒤 DELETE, 옛 endpoint는 다시 POST하지 않음', hits.some((x) => x.m === 'DELETE' && x.u === '/v1/push/subscribe/sub_old12345')
+      && hits.findIndex((x) => x.m === 'DELETE') > hits.findIndex((x) => x.m === 'POST') && !eps.includes(OLD_EP), hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('키 바뀜(시작): 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 13) start with the same key: nothing is made again (no unsubscribe, subscribe or POST)
+  { const EP = FCM + 'samekey';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: EP, key: KEY });
+    await watchX24(p);
+    await p.evaluate((ep) => localStorage.setItem('pc:push', JSON.stringify({ id: 'sub_same1234', ep, h: '1:x' })), EP);
+    await restart(p, hits);
+    const l = await log(p), k = await kept(p);
+    ok('같은 키(시작): 해지·새 구독·POST 없음, id 그대로', l.unsub === 0 && l.subscribe.length === 0 && !hits.some((x) => x.m === 'POST' || x.m === 'DELETE') && k && k.id === 'sub_same1234',
+      JSON.stringify({ l, k }) + ' ' + hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('같은 키: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 14) '받기' with a subscription left in the browser that was made with the old key (permission not given at start, so the
+  //     start left it): taken back first, then a new one with the key in config.js
+  { const OLD_EP = FCM + 'oldkey';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'default', endpoint: OLD_EP, key: OLDKEY });
+    await watchX24(p);
+    hits.length = 0;
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const l = await log(p), k = await kept(p), eps = posted(hits);
+    ok('키 바뀜(받기): 남은 옛 키 구독 해지 → 새 키로 구독 → 그 endpoint만 POST', l.unsubEp.join() === OLD_EP && l.subscribe.length === 1 && l.subscribe[0].key === KEY
+      && eps.length === 1 && eps[0] !== OLD_EP && k && k.ep === eps[0] && (await pushBtn(p, '가격 알림 끄기').count()) === 1, JSON.stringify({ l, k, eps }));
+    ok('키 바뀜(받기): 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 15) PUT 404 (the Worker dropped the row): a new browser subscription and a new id, once per run; a second 404 in the
+  //     same run turns it off; '받기' then makes another one — no endpoint is ever POSTed twice
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const first = (await kept(p) || {}).ep;
+    const w = worker(404, ['sub_new23456', 'sub_new34567']);
+    await ctx.route(`${API}/**`, w);
+    hits.length = 0;
+    await watchX24(p, 'X12'); await p.waitForTimeout(1500);   // the rules change → PUT → 404
+    let l = await log(p), k = await kept(p), eps = posted(hits);
+    ok('404: 브라우저 구독 해지 → 새로 구독 → 새 endpoint POST → 새 id, 켜짐 그대로', hits.some((x) => x.m === 'PUT' && x.u === `/v1/push/rules/${SUB_ID}`) && l.unsubEp.join() === first
+      && l.subscribe.length === 2 && eps.length === 1 && eps[0] !== first && k && k.id === 'sub_new23456' && k.ep === eps[0] && (await pushBtn(p, '가격 알림 끄기').count()) === 1,
+      JSON.stringify({ l, k, eps }) + ' ' + hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('404: 그 id는 DELETE하지 않음(서버에 이미 없음)', !hits.some((x) => x.m === 'DELETE'), hits.map((x) => x.m + ' ' + x.u).join(','));
+    const second = k && k.ep;
+    hits.length = 0;
+    await p.locator('#main button[aria-label$="알림 해지"]').first().click(); await p.waitForTimeout(1500);   // PUT → 404 again
+    l = await log(p); k = await kept(p);
+    ok('404 두 번째(같은 실행): 다시 만들지 않고 끔, 받기 버튼', hits.some((x) => x.m === 'PUT' && x.u === '/v1/push/rules/sub_new23456') && !hits.some((x) => x.m === 'POST')
+      && l.subscribe.length === 2 && !k && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify({ l, k }) + ' ' + hits.map((x) => x.m + ' ' + x.u).join(','));
+    hits.length = 0;
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    l = await log(p); k = await kept(p); eps = posted(hits);
+    ok('404 뒤 받기: 남은(404 받은) 구독은 다시 쓰지 않고 해지 → 새로 구독 → 새 endpoint POST', l.unsubEp.join() === [first, second].join() && l.subscribe.length === 3
+      && eps.length === 1 && ![first, second].includes(eps[0]) && k && k.id === 'sub_new34567', JSON.stringify({ l, k, eps }));
+    ok('404: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 16) PUT 404 and the new POST fails: off as before, and the subscription made for it taken back
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    await ctx.route(`${API}/**`, worker(404, [null]));
+    hits.length = 0;
+    await watchX24(p, 'X12'); await p.waitForTimeout(1500);
+    const l = await log(p);
+    ok('404 + POST 실패: 끔(id 지움), 새로 만든 구독도 해지, 받기 버튼', hits.filter((x) => x.m === 'POST').length === 1 && l.subscribe.length === 2 && l.unsub === 2
+      && !(await kept(p)) && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify(l) + ' ' + hits.map((x) => x.m + ' ' + x.u).join(','));
+    ok('404 + POST 실패: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 17) a branch product's '이벤트 종료 3일 전' next to a 지켜보기: only the 지켜보기 is sent, the product's end is checked on
+  //     the phone and the panel says so
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY });
+    await watchX24(p);
+    // a real product that has comparison keys (the app used to send expiring for each of them)
+    const row = await p.evaluate(() => { const { D, BR, ROWS } = App.state();
+      const r = ROWS.find((x) => BR[x[0]] && (D.s[x[7]] || '').trim());
+      const row = { n: D.s[r[2]], br: `${D.meta.brands[BR[r[0]].brand][0]}|${BR[r[0]].name}` };
+      const a = JSON.parse(localStorage.getItem('pc:alerts') || '[]');
+      a.push({ id: 'e2e-row-exp', created: '2026-10-20', type: 'expiring', row }); localStorage.setItem('pc:alerts', JSON.stringify(a));
+      return { ...row, keys: D.s[r[7]] }; });
+    await restart(p, hits);
+    await p.evaluate(() => { location.hash = '#saved'; }); await p.waitForTimeout(600);
+    const note = await p.locator('#main .nfp').innerText().catch(() => '');
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const post = hits.find((x) => x.m === 'POST');
+    let rules = null; try { rules = JSON.parse(post.body).rules; } catch (e) { /* checked below */ }
+    ok('지점 상품 종료 전 알림: 서버 규칙 없음(expiring 0), 지켜보기만 보냄', rules && rules.length >= 1 && !rules.some((r) => r.kind === 'expiring') && rules.every((r) => r.key === 'X24'), JSON.stringify({ row, rules }));
+    ok("지점 상품 종료 전 알림: 패널에 '이 기기에서 앱을 열 때만'으로 셈", /1개는 이 기기에서 앱을 열 때만 알려요\([^)]*이벤트 종료 3일 전/.test(note), note.replace(/\s+/g, ' ').slice(0, 200));
+    ok('지점 상품 종료 전 알림: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 18) a push service that gives the same endpoint again after an unsubscribe: after a 404 that endpoint is never POSTed
+  //     again (#85 ④ — the Worker would store it and drop it at its next send): off, and the subscription made for it taken back
+  { const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'default', sameEp: true });
+    await watchX24(p);
+    await pushBtn(p, '가격 알림 받기').click(); await p.waitForTimeout(800);
+    const first = (await kept(p) || {}).ep;
+    await ctx.route(`${API}/**`, worker(404, ['sub_same2345']));
+    hits.length = 0;
+    await watchX24(p, 'X12'); await p.waitForTimeout(1500);   // the rules change → PUT → 404
+    const l = await log(p), k = await kept(p);
+    ok('같은 endpoint를 주는 푸시 서비스 + 404: 새 구독이 같은 endpoint면 POST 없이 끔, 그 구독도 해지, 받기 버튼', first === FCM + 'e2e-same' && hits.some((x) => x.m === 'PUT' && x.u === `/v1/push/rules/${SUB_ID}`)
+      && !hits.some((x) => x.m === 'POST') && l.subscribe.length === 2 && l.subscribe[1].ep === first && l.unsubEp.join() === [first, first].join()
+      && !k && (await cur(p)) === null && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify({ l, k }) + ' ' + H(hits));
+    ok('같은 endpoint + 404: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 19) start with a new public key and the Worker refusing the POST for now (429: its daily budget for new subscriptions):
+  //     the new browser subscription stays while the screen says on (the old id too), and the next start POSTs that same
+  //     endpoint again — no second browser subscription — for the new id, and only then DELETEs the old id
+  { const OLD_EP = FCM + 'oldkey';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', persist: true });
+    await watchX24(p);
+    await seed(p, 'sub_old12345', OLD_EP, OLDKEY);
+    await ctx.route(`${API}/**`, worker(204, [429, 'sub_new45678']));
+    await restart(p, hits);
+    let l = await log(p), k = await kept(p);
+    const e1 = posted(hits), cur1 = await cur(p);
+    ok('키 바뀜 + POST 429(시작): 새 구독은 남기고 켜짐 그대로(옛 id), 옛 id DELETE 없음', l.unsubEp.join() === OLD_EP && l.subscribe.length === 1 && e1.length === 1 && cur1 && e1[0] === cur1 && cur1 !== OLD_EP
+      && k && k.id === 'sub_old12345' && !hits.some((x) => x.m === 'DELETE'), JSON.stringify({ l, k, e1, cur1 }) + ' ' + H(hits));
+    await restart(p, hits);
+    l = await log(p); k = await kept(p);
+    const e2 = posted(hits);
+    ok('키 바뀜 + POST 429 → 다음 시작: 같은 새 endpoint를 다시 POST(새 브라우저 구독 없음) → 새 id → 그 뒤 옛 id DELETE', l.subscribe.length === 1 && e2.length === 1 && e2[0] === cur1
+      && (await cur(p)) === cur1 && k && k.id === 'sub_new45678' && k.ep === cur1 && !k.re
+      && hits.findIndex((x) => x.m === 'DELETE' && x.u === '/v1/push/subscribe/sub_old12345') > hits.findIndex((x) => x.m === 'POST'), JSON.stringify({ l, k, e2 }) + ' ' + H(hits));
+    ok('키 바뀜 + POST 429: 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 20·21) start with a new public key while the push service cannot be reached: the old key's subscription is taken back
+  //     and no new one is made; the screen stays on (marked re: 1). The next start tries once more: it works (20: subscribe,
+  //     POST, then the old id goes) or it does not (21: off, '받기' again, the old id DELETEd)
+  for (const next of ['ok', 'fail']) {
+    const OLD_EP = FCM + 'oldkey';
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', persist: true });
+    await watchX24(p);
+    await seed(p, 'sub_old12345', OLD_EP, OLDKEY);
+    await p.evaluate(() => localStorage.setItem('__fakepush_fail', '1'));
+    await ctx.route(`${API}/**`, worker(204, ['sub_new56789']));
+    await restart(p, hits);
+    let l = await log(p), k = await kept(p);
+    const h1 = H(hits);
+    await p.evaluate(() => { location.hash = '#saved'; }); await p.waitForTimeout(600);
+    ok(`키 바뀜 + 구독 실패(시작, 다음 ${next}): 옛 구독은 해지, 새 구독·POST·DELETE 없음, 켜짐 그대로(re 표시)`, l.unsubEp.join() === OLD_EP && l.subFail === 1 && l.subscribe.length === 0 && (await cur(p)) === null
+      && !/POST|DELETE/.test(h1) && k && k.id === 'sub_old12345' && k.re === 1 && (await pushBtn(p, '가격 알림 끄기').count()) === 1, JSON.stringify({ l, k }) + ' ' + h1);
+    if (next === 'ok') await p.evaluate(() => localStorage.removeItem('__fakepush_fail'));
+    await restart(p, hits);
+    l = await log(p); k = await kept(p);
+    const eps = posted(hits), del = hits.findIndex((x) => x.m === 'DELETE' && x.u === '/v1/push/subscribe/sub_old12345'), h2 = H(hits), c = await cur(p);
+    await p.evaluate(() => { location.hash = '#saved'; }); await p.waitForTimeout(600);
+    if (next === 'ok') ok('키 바뀜 + 구독 실패 → 다음 시작(닿음): 한 번 더 새 키로 구독 → POST → 새 id, 그 뒤 옛 id DELETE, 켜짐', l.subscribe.length === 1 && l.subscribe[0].key === KEY && eps.length === 1 && c && eps[0] === c
+      && k && k.id === 'sub_new56789' && k.ep === c && !k.re && del > hits.findIndex((x) => x.m === 'POST') && (await pushBtn(p, '가격 알림 끄기').count()) === 1, JSON.stringify({ l, k, eps }) + ' ' + h2);
+    else ok('키 바뀜 + 구독 실패 → 다음 시작도 실패: 끔(id 지움), 옛 id DELETE, POST 없음, 받기 버튼', l.subFail === 2 && l.subscribe.length === 0 && !eps.length && !k && del >= 0
+      && c === null && (await pushBtn(p, '가격 알림 받기').count()) === 1, JSON.stringify({ l, k }) + ' ' + h2);
+    ok(`키 바뀜 + 구독 실패(다음 ${next}): 페이지 오류 없음`, !errs.length, errs.join(' | '));
+    await ctx.close(); }
+  // 22) one at a time: at a start with a new public key the POST is slow, and meanwhile the rules' PUT for the old id gets
+  //     404 (its renewal would start a second one) — the two share one browser subscription and one POST, and the
+  //     subscription left in the browser is the one the phone keeps
+  { const OLD_EP = FCM + 'oldkey', t = [];
+    const { ctx, p, hits, errs } = await start(b, { alertsApi: API, pushPublicKey: KEY }, 'granted', 200, { perm: 'granted', endpoint: OLD_EP, key: OLDKEY });
+    await watchX24(p);
+    await p.evaluate((ep) => localStorage.setItem('pc:push', JSON.stringify({ id: 'sub_old12345', ep, h: '1:x' })), OLD_EP);
+    await ctx.route(`${API}/**`, worker(404, ['sub_new67890', 'sub_new78901'], { hold: 2500, t }));
+    await restart(p, hits); await p.waitForTimeout(3000);
+    const l = await log(p), k = await kept(p), eps = posted(hits), c = await cur(p);
+    ok('겹침: 키 바뀜 POST가 도는 동안 PUT 404 → 브라우저 구독 1번·POST 1번, 남은 구독 = 폰에 적은 endpoint, 켜짐', t.join() === 'POST>,PUT,<POST' && l.subscribe.length === 1 && eps.length === 1
+      && k && k.id === 'sub_new67890' && k.ep === eps[0] && c === eps[0] && l.unsubEp.join() === OLD_EP, JSON.stringify({ t, l, k, eps, c }) + ' ' + H(hits));
+    ok('겹침: 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();
