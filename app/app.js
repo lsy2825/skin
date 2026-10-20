@@ -2533,7 +2533,7 @@
 
   // ---------------- search index (aliases, typo correction, autocomplete — app/domain/search.js), built on first use
   let SIDX = null, normBySid = null;
-  const searchNames = () => { const sids = [...new Set(ROWS.map((r) => r[2]))]; return { sids, names: sids.map((i) => S[i]), extra: [...KEYS.map((k) => k.label), ...KEYS.filter((k) => k.full !== k.label).map((k) => k.full), ...FAM.map((f) => f.name)] }; };   // a package's clinic name is still found
+  const searchNames = () => { const sids = [...new Set(ROWS.map((r) => r[2]))]; return { sids, names: sids.map((i) => S[i]), extra: [...KEYS.map((k) => k.full), ...FAM.map((f) => f.name)] }; };   // the data's names (a package's parts are words of its full name)
   const takeIndex = (sids, idx) => { SIDX = idx; normBySid = new Map(sids.map((sid, n) => [sid, idx.normNames[n]])); return SIDX; };
   function searchIndex() {
     if (SIDX) return SIDX;
