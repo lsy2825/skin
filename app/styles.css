@@ -12,6 +12,7 @@
   --butter: #f2dc86; --butter-soft: #faf1cc; --butter-ink: #64500f; --on-butter: #1f1d1a;
   --good: var(--sage); --pricey: var(--coral); --pricey-soft: var(--coral-soft);
   --s1: #24987a; --s2: #e0683f;                          /* chart pair: validated (CVD ΔE 8.4, normal 25.2, >= 3:1) */
+  --s1-mark: #20896e;                                     /* the range bar's middle dot: --s1 a step darker so it is >= 3:1 on the track (--fill-2 2.76 -> 3.32) */
   --lt-dot: #e0683f;
   --scrim: rgba(31, 29, 26, .36);
   --shadow-1: 0 1px 2px rgba(31, 29, 26, .04), 0 1px 6px rgba(31, 29, 26, .03);
@@ -47,6 +48,7 @@
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
   --butter: #e2c766; --butter-soft: #37301a; --butter-ink: #efd88a; --on-butter: #141311;
   --s1: #1f9a78; --s2: #dc6a3d; --lt-dot: #e5774f; --scrim: rgba(0, 0, 0, .55);
+  --s1-mark: var(--s1);   /* --s1 is already >= 3:1 on the dark track (3.71) */
   --shadow-1: 0 0 0 1px rgba(255, 255, 255, .02); --shadow-2: 0 12px 36px rgba(0, 0, 0, .5);
   color-scheme: dark; } }
 :root[data-theme="dark"] {
@@ -57,6 +59,7 @@
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
   --butter: #e2c766; --butter-soft: #37301a; --butter-ink: #efd88a; --on-butter: #141311;
   --s1: #1f9a78; --s2: #dc6a3d; --lt-dot: #e5774f; --scrim: rgba(0, 0, 0, .55);
+  --s1-mark: var(--s1);   /* --s1 is already >= 3:1 on the dark track (3.71) */
   --shadow-1: 0 0 0 1px rgba(255, 255, 255, .02); --shadow-2: 0 12px 36px rgba(0, 0, 0, .5);
   color-scheme: dark; }
 
@@ -476,18 +479,19 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .disc-row .p { font-weight: var(--fw-bold); font-size: var(--fs-sec); white-space: nowrap; letter-spacing: -0.025em; }
 .disc-row .m { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--muted); flex-wrap: wrap; }
 /* ---------- the price range bar (app.js rangeBar; docs/DESIGN_SYSTEM.md §3 '범위 막대' — 2026-10-20 사용자 지시: one shape on every
-   screen). A 6px track with round ends from the lowest to the highest price (--fill-2: the ends are in words beside it), the middle
-   price as a dark 2px line 4px over and under the track, a given price (this clinic, the lowest …) as a 12px chart-colour dot ringed
-   in the card colour. '중간값 X원' (.pr-l) 8px under the track, under the line, 13/600 in the line's colour. .axis: a scale shared
-   by several bars — each track covers its own part, a hairline the rest. The marks reach 4px over and under the box (the gap
-   around it holds them) */
+   screen, and the middle price a dot, not a line: "막대기보단 그전에 점으러 하는게 더 낫다"). A 6px track with round ends from the
+   lowest to the highest price (--fill-2: the ends are in words beside it), the middle price as a filled 14px dot (--s1-mark) ringed
+   in the card colour, a given price (this clinic, the lowest …) as a hollow 12px ring (2px --ink) — another shape, not only another
+   colour. '중간값 X원' (.pr-l) 8px under the track, under the dot, 13/600 --ink-2 (words need 4.5:1; the dot's green is a mark).
+   .axis: a scale shared by several bars — each track covers its own part, a hairline the rest. The dot reaches 4px over and
+   under the track (6 with its ring); the gap around the bar holds it */
 .prange { display: block; min-width: 0; }
 .prange .pr-bar { position: relative; display: block; height: 6px; }
 .prange.axis .pr-bar::before { content: ""; position: absolute; left: 0; right: 0; top: 2.5px; height: 1px; background: var(--line); }
 .prange .pr-t { position: absolute; top: 0; height: 6px; border-radius: 3px; background: var(--fill-2); }
-.prange .pr-m { position: absolute; top: -4px; width: 2px; height: 14px; border-radius: 1px; background: var(--ink-2); transform: translateX(-50%); }
-.prange .pr-d { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; background: var(--s1); box-shadow: 0 0 0 2px var(--surface); transform: translateX(-50%); }
-/* the label names the line in its colour, like the distribution chart's '중간값 X원' over its line (.lcsvg .medt): 13/600 --ink-2 */
+.prange .pr-m { position: absolute; top: -4px; width: 14px; height: 14px; border-radius: 50%; background: var(--s1-mark); box-shadow: 0 0 0 2px var(--surface); transform: translateX(-50%); }
+.prange .pr-d { position: absolute; top: -3px; width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--ink); background: var(--surface); transform: translateX(-50%); }
+/* the label names the dot over it, in the words the distribution chart writes over its middle line (.lcsvg .medt): 13/600 --ink-2 */
 .prange .pr-l { position: relative; display: block; width: max-content; margin-top: var(--sp-2); font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--ink-2); white-space: nowrap; }
 .disc-row .prange { grid-column: 1 / -1; }
 .hero > .prange { margin-top: var(--sp-3); }   /* 24 under the range's 28px numbers (the hero's 8 + 16) */
@@ -589,7 +593,7 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .lcsvg .mk { stroke: var(--surface); stroke-width: 2; }
 .lcsvg .dl { fill: var(--ink-2); font-size: var(--fs-aux); font-weight: var(--fw-semi); font-family: var(--font); }
 .lcsvg .hair { stroke: var(--faint); stroke-width: 1; stroke-dasharray: 3 3; }
-.lcsvg .med { stroke: var(--ink-2); stroke-width: 2; }   /* the middle price: the range bar's line (§3 범위 막대) — solid 2px dark grey */
+.lcsvg .med { stroke: var(--ink-2); stroke-width: 2; }   /* the middle price: a solid 2px dark grey line across the chart (§3 범위 막대 — the bar's dot cannot cross a chart, and its green is the branches' dots here) */
 .lcsvg .medt { fill: var(--ink-2); font-size: var(--fs-aux); font-weight: var(--fw-semi); font-family: var(--font); }
 .lcsvg .dot { fill: var(--s1); stroke: var(--surface); stroke-width: 1.5; transition: r var(--fast); }
 .lcsvg .dot.cond { fill: var(--surface); stroke: var(--s1); stroke-width: 1.75; }
@@ -615,7 +619,7 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .chartempty { display: grid; gap: var(--sp-2); justify-items: center; text-align: center; padding: var(--sp-3) var(--sp-2) var(--sp-2); color: var(--muted); font-size: var(--fs-aux); }
 .spark path { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }   /* the middle price's weeks: its colour */
 .dbar { position: relative; display: inline-block; width: 90px; height: 6px; flex: none; border-radius: 3px; background: var(--fill-2); }
-.dbar::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--ink-2); transform: translateX(-50%); z-index: 1; }   /* the middle: the range bar's line */
+.dbar::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--ink-2); transform: translateX(-50%); z-index: 1; }   /* the middle: the zero of a bar that grows both ways, a line (not the range bar's dot — green is its cheaper side) */
 .dbar i { position: absolute; top: 0; height: 6px; }
 .dbar i.neg { background: var(--s1); border-radius: 3px 0 0 3px; }
 .dbar i.pos { background: var(--s2); border-radius: 0 3px 3px 0; }
