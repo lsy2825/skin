@@ -41,11 +41,13 @@ self.addEventListener("notificationclick", (e) => {
   e.notification.close();
   // the target is fixed to the saved tab inside this app's scope — never a URL from the notification or the payload.
   // An open window is told to go there by message (WindowClient.navigate support on Safari is uncertain) and focused.
+  // Both ways open the top bar's bell panel there (2026-10-20): the notification says nothing, the panel says
+  // which alert it was — a fixed mark (panel: true / '?bell=1'), which app.js takes off the address once the panel is open
   const scope = self.registration.scope;
   e.waitUntil(self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((ws) => {
     const w = ws.find((c) => typeof c.url === "string" && c.url.startsWith(scope));
-    if (w) { w.postMessage({ type: "nav", to: "saved" }); return w.focus(); }
-    return self.clients.openWindow(new URL("./#saved", scope).href);
+    if (w) { w.postMessage({ type: "nav", to: "saved", panel: true }); return w.focus(); }
+    return self.clients.openWindow(new URL("./#saved?bell=1", scope).href);
   }));
 });
 // No pushsubscriptionchange handler on purpose: the worker cannot read the subscription id the app keeps in localStorage, so it

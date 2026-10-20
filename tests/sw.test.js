@@ -1,5 +1,6 @@
 // app/sw.js — 웹 푸시 (6.0 지시서 약속 1, B6): the push shows one fixed line whatever arrives, a tap opens only this app's
-// saved tab, and the install list names only files that exist (one missing file makes the whole install fail).
+// saved tab — with the top bar's bell panel open (a fixed mark, 2026-10-20) — and the install list names only files that exist
+// (one missing file makes the whole install fail).
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -80,24 +81,24 @@ test("push: always the fixed title, tag pc-push, the promise goes to waitUntil, 
   for (const f of [n.shown[0].opts.icon, n.shown[0].opts.badge]) assert.ok(fs.existsSync(path.join(APP, f)), f);
 });
 
-test("notificationclick with the app open: close, tell that window to go to saved, focus it — no new window", async () => {
+test("notificationclick with the app open: close, tell that window to go to saved with the bell panel, focus it — no new window", async () => {
   const w = worker({ windows: ["https://other.test/", "https://app.test.evil.test/", "https://app.test/#home"] });
   const note = await click(w, { url: "https://evil.test/" });
   assert.equal(note.closed, 1);
   assert.deepEqual(w.matched, [{ type: "window", includeUncontrolled: true }]);
   const [other, lookalike, app] = w.clients;
-  assert.deepEqual(app.msgs, [{ type: "nav", to: "saved" }]);
+  assert.deepEqual(app.msgs, [{ type: "nav", to: "saved", panel: true }]);
   assert.equal(app.focused, 1);
   for (const c of [other, lookalike]) assert.deepEqual([c.msgs.length, c.focused], [0, 0], c.url);
   assert.deepEqual(w.opened, []);
 });
 
-test("notificationclick with no app window: open exactly the saved tab in scope, never a URL from the notification", async () => {
+test("notificationclick with no app window: open exactly the saved tab with the bell panel mark in scope, never a URL from the notification", async () => {
   for (const windows of [[], ["https://other.test/app/"]]) {
     const w = worker({ windows });
     const note = await click(w, { url: "https://evil.test/" });
     assert.equal(note.closed, 1);
-    assert.deepEqual(w.opened, ["https://app.test/#saved"]);
+    assert.deepEqual(w.opened, ["https://app.test/#saved?bell=1"]);
     assert.deepEqual(w.clients.map((c) => c.msgs.length + c.focused), windows.map(() => 0));
   }
 });
