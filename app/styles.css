@@ -696,6 +696,18 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .stats .sk { font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); }
 .stats b { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.025em; }
 .stats .w { font-size: var(--fs-aux); color: var(--muted); }
+/* in the price card the figures are its second line, under the 28px range: 15, as before (.qstats). At 17 a third of the card was too
+   narrow — '1,108,250 / 원', '최대 / 2.5배' (검토 2026-10-20: 4 of 36 cards at 390, all 36 at 320). A figure keeps one line: its
+   column is a third, or more when the figure needs it (min-content, the others give way). Under 375 two to a row (2 + 1): at 15 a
+   third of 320 still split 12 of 36 */
+.pricecard .stats { grid-template-columns: repeat(3, minmax(min-content, 1fr)); }
+.pricecard .stats > div { grid-template-columns: minmax(min-content, 1fr); }
+.pricecard .stats b { font-size: var(--fs-body); white-space: nowrap; }
+@media (max-width: 374px) {
+  .pricecard .stats { grid-template-columns: repeat(2, minmax(min-content, 1fr)); }
+  .pricecard .stats > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .pricecard .stats > div:nth-child(even) { border-left: 1px solid var(--line-soft); padding-left: var(--sp-2); }
+}
 /* 가격 이력's four figures are still .tiles > div.tile (keyTrend — app/unify-ab dates those lines; after both are in, statRow): the
    same shape, two to a row. A .tile that is a button (브랜드별) keeps its box: a box is a thing to press */
 .tiles:has(> div.tile) { gap: var(--sp-3) 0; padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -739,6 +751,12 @@ pre.preview { white-space: pre-wrap; font-family: inherit; font-size: var(--fs-a
 .range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--sp-2); align-items: center; }
 .range .pick { width: 100%; min-width: 0; }
 .sibs { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; }
+/* the branch head's brand line holds ♡ and ‹ n/m › at its right, so the name under it has the card's whole width (검토 2026-10-20 — beside
+   the name the 40px buttons left it 74px at 320). The 40px circles lean 8 into the card's padding above and at the right and 8 into
+   the name's line below, so the line takes the room of its words (24) */
+.brline { flex-wrap: nowrap; margin: -8px -8px -8px 0; }
+.brline > .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brline > .favbtn { margin-left: auto; }
 /* ---------- folds: one summary line everywhere (위계 점검 30 · FOLD-1 — 8 looks, 3 of them on the compare screen): the words
    (an icon before them when they have one), then one chevron at the line's right end that turns over when open. Two sizes for
    two levels: a fold that is a block of its own is a card with a 15/600 ink line (비교 '가격 종류별…'·'뭐예요? · 규격 확인',

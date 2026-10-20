@@ -708,16 +708,29 @@ const HELP = () => {
         const kr = k && k.getBoundingClientRect(), vr = v && v.getBoundingClientRect(), cs = getComputedStyle(c);
         return { k: k && k.textContent.trim(), order: !!k && !!v && kr.bottom <= vr.top + 1, left: !!k && !!v && Math.abs(kr.left - vr.left) < 1 && Math.abs(kr.left - (cr.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft))) < 1,
           align: cs.textAlign, box: __framed(c), kfs: k && getComputedStyle(k).fontSize, vfs: v && getComputedStyle(v).fontSize, vfw: v && getComputedStyle(v).fontWeight }; })), sel);
-      const goodFig = (rows) => rows.length >= 1 && rows.every((r) => r.length >= 1 && r.every((c) => c.order && c.left && c.align !== 'center' && !c.box && c.kfs === '13px' && c.vfs === '17px' && c.vfw === '760'));
+      // the number 17, but 15 in the price card: there the figures are the second line under its 28px range, and at 17 a third of
+      // the card split them ('1,108,250 / 원', '최대 / 2.5배' — 검토 2026-10-20)
+      const goodFig = (rows, vfs = '17px') => rows.length >= 1 && rows.every((r) => r.length >= 1 && r.every((c) => c.order && c.left && c.align !== 'center' && !c.box && c.kfs === '13px' && c.vfs === vfs && c.vfw === '760'));
+      // every figure's name and number on one line (a split number reads as two: '1,108,250' and '원')
+      const figLines = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).flatMap((row) => [...row.children].filter(__vis).flatMap((c) =>
+        [...c.querySelectorAll(':scope > .sk, :scope > b')].map((e) => { const rg = document.createRange(); rg.selectNodeContents(e);
+          return { t: e.textContent.trim(), n: new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size, cut: e.scrollWidth > e.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1 }; }))), sel);
       await go(p, '#compare?k=X01', 1300); const f1 = await figs('.pricecard .stats');
-      await go(p, '#me', 900); const f2 = await figs('#main .stats');
-      await go(p, '#versus', 1300); const f3 = await figs('#main .stats');
+      await go(p, '#me', 900); const f2 = await figs('#main .stats'); const l2 = await figLines('#main .stats');
+      await go(p, '#versus', 1300); const f3 = await figs('#main .stats'); const l3 = await figLines('#main .stats');
       const f4 = await p.evaluate(() => { const c = document.createElement('div'); c.className = 'card'; c.id = '__kt';
         c.innerHTML = '<div class="tiles">' + ['현재 최저가', '기록 최저 / 최고', '기간 중간 가격', '최저가 변동'].map((k) => `<div class="tile"><span class="k">${k}</span><b class="num">1,000원</b><span class="w">확인 10/19</span></div>`).join('') + '</div>';
         document.querySelector('#main .view').append(c); return true; }) && await figs('#__kt .tiles');
       await p.evaluate(() => document.querySelector('#__kt').remove());
-      ok(`U21 ${tag} 숫자 요약 한 모양: 이름 13 위 · 숫자 17/760 아래 · 왼쪽 맞춤 · 상자 없음(가격 카드·마이·지점 비교·가격 이력)`, [f1, f2, f3, f4].every(goodFig),
+      ok(`U21 ${tag} 숫자 요약 한 모양: 이름 13 위 · 숫자 760 아래(가격 카드 15, 마이·지점 비교·가격 이력 17) · 왼쪽 맞춤 · 상자 없음`, goodFig(f1, '15px') && [f2, f3, f4].every((f) => goodFig(f)),
         JSON.stringify([f1, f2, f3, f4].map((f) => f[0] && f[0][0])));
+      // every popular procedure's price card (36 X keys), and 마이 · 지점 비교: no figure split over two lines, none cut
+      const pcKeys = await p.evaluate(() => { const K = App.state().KEYS; return (Array.isArray(K) ? K : Object.values(K)).map((k) => k.id).filter((x) => /^X\d+$/.test(x)); });
+      const split = [];
+      for (const k of pcKeys) { await p.evaluate((k) => { location.hash = `#compare?k=${k}`; }, k); await p.waitForTimeout(250);
+        for (const x of await figLines('.pricecard .stats')) if (x.n !== 1 || x.cut) split.push(`${k} ${x.t} ${x.n}줄${x.cut ? ' 잘림' : ''}`); }
+      for (const x of [...l2, ...l3]) if (x.n !== 1 || x.cut) split.push(`마이·지점 비교 ${x.t} ${x.n}줄${x.cut ? ' 잘림' : ''}`);
+      ok(`U21 ${tag} 숫자 요약은 한 줄: 인기 시술 가격 카드 ${pcKeys.length}개 모두 + 마이·지점 비교(갈림·잘림 없음)`, pcKeys.length >= 30 && !split.length && l2.length >= 3 && l3.length >= 3, `${split.length}곳 ${split.slice(0, 4).join(' | ')}`);
       if (wide) {
         await go(p, '#compare?k=X12', 1500); await p.evaluate(() => { for (const d of document.querySelectorAll('details.cmpfold')) d.open = true; }); await p.waitForTimeout(400);
         const bt = await p.evaluate(() => [...document.querySelectorAll('.bcard .tile')].filter(__vis).map((t) => ({ btn: t.tagName === 'BUTTON', box: __framed(t) })));
@@ -758,6 +771,28 @@ const HELP = () => {
         ok('U19 규격 확인 배지: 확인 = 연한 초록(아이콘 없음), 추정·미확인 = 회색 + 아이콘(.kw)', by('확인').length >= 1 && by('추정').length >= 1 && by('미확인').length >= 1
           && by('확인').every((x) => /\bok\b/.test(x.cls) && !x.icon) && [...by('추정'), ...by('미확인')].every((x) => /\bkw\b/.test(x.cls) && x.icon && x.bg === fillBg), JSON.stringify(sp));
       }
+      // U20's 40px ‹ › left the branch name 74px at 320 beside ♡ and them (검토 2026-10-20: 3 lines or more at 133 of 수도권's 289,
+      // 54 before U20; at 390 2). ♡ ‹ n/m › are on the brand line now: every branch's name in this head (a branch with ‹ ›, the
+      // narrowest name), 3 lines or more at 0 at 390, at 320 not over the 54 before; the brand line at its widest (닥터에버스,
+      // '88/88') stays inside the card
+      await go(p, `#branch/${bi}`, 1300);
+      const nm = await p.evaluate(() => { const { D, BR } = App.state(), h2 = document.querySelector('#main .view > .card h2'), keep = h2.textContent, out = { n: 0, two: 0, three: [] };
+        const lines = () => { const rg = document.createRange(); rg.selectNodeContents(h2); return new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
+        for (const y of BR) { h2.textContent = `${D.meta.brands[y.brand][0]} ${y.name}`; const n = lines(); out.n++; if (n === 2) out.two++; if (n >= 3) out.three.push(h2.textContent); }
+        h2.textContent = keep;
+        const line = document.querySelector('#main .view > .card .brline'), sub = line && line.querySelector(':scope > .sub'), sb = line && line.querySelector('.sibs > .sub');
+        const long = D.meta.brands.map((x) => x[0]).sort((a, c) => c.length - a.length)[0];
+        if (sub) sub.textContent = long; if (sb) sb.textContent = '88/88';
+        const card = h2.closest('.card').getBoundingClientRect(), last = line && line.lastElementChild.getBoundingClientRect();
+        // (by the boxes: a button's 44px pressing ring, 2px past its circle, is in the line's scrollWidth)
+        const lr = line && line.getBoundingClientRect();
+        out.brand = !!line && !!sb && last.right <= lr.right + 0.5 && lr.right <= card.right - 8 && sub.clientWidth >= 24 && sb.scrollWidth <= sb.clientWidth + 1;
+        out.bd = line && { last: Math.round(last.right), line: Math.round(lr.right), card: Math.round(card.right), sub: sub.clientWidth, sb: [sb.scrollWidth, sb.clientWidth] };
+        out.h2w = Math.round(h2.getBoundingClientRect().width); out.cardw = Math.round(card.width); return out; });
+      await go(p, '#home', 600);
+      ok(`U20 ${tag} 지점 머리: ♡·‹ n/m ›는 브랜드 줄에, 이름이 카드 폭 전체(3줄 이상 ${wide ? '0곳' : '54곳 이하'}, 지점 ${nm.n}곳)`,
+        nm.n >= 289 && nm.h2w >= nm.cardw - 42 && (wide ? !nm.three.length : nm.three.length <= 54), `2줄 ${nm.two} · 3줄+ ${nm.three.length} ${nm.three.slice(0, 3).join(' | ')} · 이름 폭 ${nm.h2w}/${nm.cardw}`);
+      ok(`U20 ${tag} 브랜드 줄(가장 긴 브랜드 이름 + '88/88')이 카드 안에 들어감`, nm.brand, JSON.stringify(nm.bd));
       ok(`U18~U22 ${tag} 페이지 오류 없음`, !errs.length, errs.join(' | '));
       await ctx.close();
     }

@@ -3752,12 +3752,14 @@
     const box = h("div", { class: "view" });
     box.append(backBtn());
     const d = dist(b);
-    box.append(h("div", { class: "card" }, h("div", { class: "row" }, bdot(b), h("span", { class: "sub" }, brandOf(b)[0])),
-      (() => { const sib = BR.filter((y) => y.brand === x.brand && (regionOk(y.i) || y.i === b)).sort((p, q) => p.name.localeCompare(q.name, "ko")); const n = sib.findIndex((y) => y.i === b);
+    // ♡ and ‹ n/m › on the brand line, so the name has the card's whole width (검토 2026-10-20: beside the name, with the 40px
+    // .tbtn-i, the name had 74px at 320 and 133 of 수도권's 289 names took 3 lines or more)
+    box.append(h("div", { class: "card" }, (() => { const sib = BR.filter((y) => y.brand === x.brand && (regionOk(y.i) || y.i === b)).sort((p, q) => p.name.localeCompare(q.name, "ko")); const n = sib.findIndex((y) => y.i === b);
         const go = (d) => { const y = sib[(n + d + sib.length) % sib.length]; if (y) nav(`branch/${y.i}`, true); };
-        return h("div", { class: "row", style: "margin-top:0;flex-wrap:nowrap" }, h("h2", { style: "flex:1;min-width:0" }, `${brandOf(b)[0]} ${x.name}`), favBtn("b", bkey(b), bname(b)),
+        return h("div", { class: "row brline" }, bdot(b), h("span", { class: "sub" }, brandOf(b)[0]), favBtn("b", bkey(b), bname(b)),
           sib.length > 1 && n >= 0 ? h("span", { class: "sibs" }, h("button", { class: "tbtn-i", type: "button", "aria-label": "같은 브랜드 이전 지점", onclick: () => go(-1) }, icon("chevron-left")), h("span", { class: "sub" }, `${n + 1}/${sib.length}`),
             h("button", { class: "tbtn-i", type: "button", "aria-label": "같은 브랜드 다음 지점", onclick: () => go(1) }, icon("chevron-right"))) : null); })(),
+      h("h2", {}, `${brandOf(b)[0]} ${x.name}`),
       h("dl", { class: "kv", style: "margin-top:var(--sp-2)" }, h("dt", {}, "주소"), h("dd", {}, x.addr || "확인 못 함"),
         d != null ? [h("dt", {}, "거리"), h("dd", {}, `내 위치에서 ${km(d)}`)] : null,
         (() => { const f = fresh(b); return [h("dt", {}, "가격 확인"), h("dd", { class: f.stale ? "up" : "" }, f.d ? `${md(f.d)} (${f.n === 0 ? "오늘" : `${f.n}일 전`})${f.stale ? " · 최신이 아닐 수 있어요" : ""}` : "확인일 없음")]; })()),
