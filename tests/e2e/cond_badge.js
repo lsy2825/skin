@@ -270,7 +270,11 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
     ok('시간대 태그: 가격 확인 조건은 \'요일·시간 조건\'(\'시간대 조건\' 아님)', st.includes('요일·시간 조건') && !st.includes('시간대 조건'), n);
   }
   // 내 견적 경고와 복사 문구도 같은 말(예전 '시간대 미표기'는 사이트에 시간이 있어도 나와 틀린 말)
-  ok('앱 문구에 \'시간대 미표기\' 없음', !(await (await fetch(BASE + 'app.js')).text()).includes('미표기'));
+  // app.js와 app.js에서 나눠 낸 화면 파일(index.html이 읽는 screens/*.js, docs/APP_JS_SPLIT_PLAN.md 3단계)을 모두 본다 — 앞으로 생길 화면 파일도
+  const appSrc = ['app.js', ...new Set((await (await fetch(BASE + 'index.html')).text()).match(/screens\/[\w-]+\.js/g) || [])];
+  const saidOld = [];
+  for (const f of appSrc) { const res = await fetch(BASE + f); if (!res.ok || (await res.text()).includes('미표기')) saidOld.push(res.ok ? f : `${f}(${res.status})`); }
+  ok('앱 문구에 \'시간대 미표기\' 없음', !saidOld.length, `${appSrc.join(' · ')}${saidOld.length ? ` | 걸림: ${saidOld.join(' · ')}` : ''}`);
 
   ok('스크립트 오류 없음', !errs.length, errs.join(' '));
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await br.close(); process.exitCode = R.every(Boolean) ? 0 : 1;
