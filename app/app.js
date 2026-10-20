@@ -1649,7 +1649,8 @@
     return { low, lowB, lowName: lb != null ? bname(lb) : "", lowRow, count: set.length, set, rowState, recheck };
   }
   const saveAlerts = () => { store.set("alerts", st.alerts); store.set("notes", st.notes.slice(0, 30)); paintMeN(); pushSync(); };
-  function paintMeN() { const el = $("#me-n"); if (!el) return; const n = st.notes.filter((x) => !x.read).length; el.hidden = !n; el.textContent = n; }
+  function paintMeN() { const el = $("#me-n"); if (!el) return; const n = st.notes.filter((x) => !x.read).length; el.hidden = !n; el.textContent = n;
+    const b = $("#notibtn"); if (b) b.setAttribute("aria-label", n ? `가격 알림, 안 읽은 알림 ${n}개` : "가격 알림"); }   // the count inside an aria-label button is not read out
   function alertNow(a) {
     if (a.k) { const n = watchNow(a); return n && { value: n.low, count: n.count }; }
     if (a.cart != null) { const c = st.carts.find((x) => x.name === a.cart); if (!c) return null; const items = c.items.filter(itemOk); if (!items.length) return null; const b = cartPlan(items).full[0]; return { value: b ? b.total : null }; }
@@ -1694,7 +1695,7 @@
       if (r.fire) { st.notes.unshift({ ...noteOf(a, a.type, { text: r.text, after: (alertNow(a) || {}).value }), text: `${alertName(a)} — ${r.text}` }); fired++; }
     }
     saveAlerts();
-    if (fired) { toast(`가격 알림 ${fired}개 — 관심 탭에서 확인하세요`); deviceNotify(`가격 알림 ${fired}개`, st.notes[0].text); }
+    if (fired) { toast(`가격 알림 ${fired}개 — 관심 탭에서 확인하세요`); deviceNotify(`가격 알림 ${fired}개`, st.notes[0].text); if (noti) render(); }   // the open bell panel shows them
   }
   // '이 병원에 다녀왔어요' turned (markVisited): the person's own history, not a price — every 내 견적 합계 alert takes the total
   // as it is now as its base again, without a notice, the way a regrouped treatment's alert does above (review 2026-10-19)
@@ -1929,6 +1930,84 @@
   }
   const WATCH_HELP = { drop: "최저가가 지난번보다 내려가면", target: "최저가가 정한 금액 이하가 되면(한 번)", lowbranch: "가장 싼 지점이 다른 곳으로 바뀌면", newmatch: "이 시술을 새로 파는 지점이 생기면",
     lowended: "최저가였던 가격이 이벤트 종료·가격표에서 빠지면", recheck: "최저가 지점의 이번 주 수집이 실패해 확인이 필요하면" };
+  // one line of 알림 기록 — 관심 탭's card and the top bar's bell panel draw it the same way: the kind, the treatment, the real
+  // branch, before → after, the data date and '가격 보기'. fresh: the '새 알림' dot instead of the bell (history) icon
+  const NOTES_EMPTY = "아직 기록이 없어요. 알림을 만들면 지난 수집과 비교해 실제로 바뀐 가격만 여기에 남아요.";
+  function noteRow(x, fresh = !x.read) {
+    const b = x.b ? BK.get(x.b) : null, k = x.k && KI[x.k] != null ? x.k : null;
+    return h("li", { "data-type": x.type || "" }, h("div", { class: "item" },
+      h("span", { class: "t row", style: "flex-wrap:nowrap" }, fresh ? h("span", { class: "dot", role: "img", "aria-label": "새 알림", style: "background:var(--s2)", title: "새 알림" }) : icon(x.past ? "history" : "bell", "sm"),
+        h("span", {}, x.type ? h("span", { class: "k k4", style: "margin-right:var(--sp-2)" }, NOTE_T[x.type] || x.type) : null, x.name || x.text)),
+      h("span", { class: "sub" }, x.obs ? `관측 ${x.obs}` : x.at),
+      x.type ? h("span", { class: "m" }, b != null ? h("span", { class: "row", style: "gap:var(--sp-1)" }, bdot(b), bname(b)) : x.b ? h("span", {}, x.b.replace("|", " ")) : null,
+        x.before != null && x.after != null && typeof x.before === "number" ? h("span", { class: "num" }, `${won(x.before)} → ${won(x.after)}`) : x.after != null ? h("span", { class: "num" }, won(x.after)) : null,
+        h("span", {}, (x.text || "").split(": ").slice(1).join(": ")), h("span", { class: "sp" }),
+        k ? h("button", { class: "linkbtn", type: "button", "aria-label": `${x.name || "이 시술"} 가격 보기`, onclick: () => { closeNoti(true); nav(`compare?k=${k}`); } }, "가격 보기") : null)
+        : h("span", { class: "m" }, x.text)));
+  }
+  // 종 버튼 알림 패널 (#notip, 2026-10-20 사용자 요청): the top bar's bell opens the latest 알림 기록 right under the bar, so what
+  // an alert was is seen where its count is. Opening reads them all (the count on the bell goes); the lines that were new keep
+  // the '새 알림' dot while the panel stays open. It closes on the bell again, a tap outside it, Esc, '가격 보기', '전체 보기' and
+  // a new screen (renderNow). It lives outside #main: made when it opens and removed when it closes; while it is open, render()
+  // brings its lines up to date (paintNoti) — so a record checkAlerts makes after the full price file arrives shows there too.
+  // A phone notification tapped (sw.js: '#saved?bell=1', or a message to the open window) opens it on 관심 탭 (bellMark).
+  const NOTI_N = 5;
+  let noti = null;   // the open panel: { el, list, count, fresh: the notes new at this opening, sig, off }
+  function openNoti() {
+    if (!D) return;
+    if (noti) { paintNoti(); return; }   // already open (a phone notification tapped again): its lines again
+    const btn = $("#notibtn"), list = h("div", { class: "notip-b" }), count = h("span", { class: "sub" });
+    const el = h("div", { class: "card flush notip", id: "notip", role: "dialog", "aria-labelledby": "notip-t" },
+      h("div", { class: "row", style: "padding:var(--sp-3) 14px 0" }, h("h3", { id: "notip-t", tabindex: "-1" }, "가격 알림 기록"), h("span", { class: "sp" }), count),
+      list, h("button", { class: "morelist", type: "button", onclick: () => { closeNoti(true); nav("saved"); } }, "전체 보기", icon("chevron-right", "sm")));
+    // a tap anywhere else closes it (and still does what it was for); Esc closes it and focus goes back to the bell
+    const out = (e) => { if (noti && !el.contains(e.target) && !btn.contains(e.target)) closeNoti(true); };
+    const key = (e) => { if (e.key === "Escape" && noti && !document.querySelector(".sheet-bg")) { e.preventDefault(); closeNoti(); } };
+    document.addEventListener("click", out, true);
+    document.addEventListener("keydown", key);
+    noti = { el, list, count, fresh: new Set(), sig: "", off: () => { document.removeEventListener("click", out, true); document.removeEventListener("keydown", key); } };
+    $("#top").append(el);
+    btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-controls", "notip");
+    paintNoti();
+    el.querySelector("#notip-t").focus({ preventScroll: true });
+  }
+  // quiet: focus is not sent back to the bell (a tap elsewhere, a new screen); when it was in the panel ('가격 보기', '전체 보기')
+  // it goes to the page, not to nowhere
+  function closeNoti(quiet) {
+    if (!noti) return;
+    const n = noti, had = n.el.contains(document.activeElement); noti = null;
+    n.off(); n.el.remove();
+    const btn = $("#notibtn");
+    btn.setAttribute("aria-expanded", "false"); btn.removeAttribute("aria-controls");
+    if (quiet !== true) btn.focus(); else if (had) $("#main").focus({ preventScroll: true });
+  }
+  function paintNoti() {
+    if (!noti) return;
+    // what is new now is read (the bell's count goes) and keeps its dot in the panel until it closes
+    const unread = st.notes.filter((x) => !x.read);
+    for (const x of unread) { noti.fresh.add(x); x.read = true; }
+    if (unread.length) saveAlerts();
+    const shown = st.notes.slice(0, NOTI_N);
+    const sig = [D.meta.updated, partial(), st.notes.length, ...shown.map((x) => `${noti.fresh.has(x) ? "*" : ""}${x.at}|${x.obs}|${x.type}|${x.k}|${x.b}|${x.before}|${x.after}|${x.text}`)].join("\n");
+    if (sig === noti.sig) return;
+    noti.sig = sig;
+    const mark = focusMark(noti.list, document.activeElement);
+    noti.count.textContent = st.notes.length > NOTI_N ? `최근 ${NOTI_N}개 · 모두 ${st.notes.length}개` : "";
+    noti.list.replaceChildren(shown.length ? h("ul", { class: "list notes" }, shown.map((x) => noteRow(x, noti.fresh.has(x))))
+      : h("div", { class: "sub", style: "padding:var(--sp-2) 14px 0" }, NOTES_EMPTY));
+    if (mark) focusBack(noti.list, mark);
+  }
+  // a phone notification tapped: sw.js opens '#saved?bell=1' (or tells the open window, which goes there). The mark leaves the
+  // address at once (replaceState), so back, a reload or the remembered last screen do not open the panel again
+  function bellMark() {
+    const m = /^#([^?]*)\?(.*)$/.exec(location.hash);
+    if (!m) return false;
+    const q = new URLSearchParams(m[2]);
+    if (q.get("bell") !== "1") return false;
+    q.delete("bell");
+    history.replaceState(null, "", `#${m[1]}${q.toString() ? `?${q}` : ""}`);
+    return true;
+  }
   function alertsCard() {
     const card = h("div", { class: "card flush" }, h("div", { class: "row", style: "padding:var(--sp-3) 14px 0" }, h("h3", {}, "가격 알림"), h("span", { class: "sp" }),
       h("span", { class: "sub" }, `${st.alerts.length}/20`)));
@@ -1945,18 +2024,8 @@
     // 알림 기록: what fired (and the real past changes of a watched treatment), newest first
     card.append(h("div", { class: "row", style: "padding:var(--sp-3) 14px 0" }, h("h3", { class: "t-body" }, "알림 기록"), h("span", { class: "sp" }),
       st.notes.length ? h("button", { class: "linkbtn", type: "button", onclick: () => { const before = st.notes.slice(); st.notes = []; saveAlerts(); render(); undoToast("알림 기록을 지웠어요", () => { st.notes = before; saveAlerts(); render(); }); } }, "기록 지우기") : null));
-    card.append(st.notes.length ? h("ul", { class: "list notes" }, st.notes.slice(0, 20).map((x) => {
-      const b = x.b ? BK.get(x.b) : null, k = x.k && KI[x.k] != null ? x.k : null;
-      return h("li", { "data-type": x.type || "" }, h("div", { class: "item" },
-        h("span", { class: "t row", style: "flex-wrap:nowrap" }, x.read ? icon(x.past ? "history" : "bell", "sm") : h("span", { class: "dot", style: "background:var(--s2)", title: "새 알림" }),
-          h("span", {}, x.type ? h("span", { class: "k k4", style: "margin-right:var(--sp-2)" }, NOTE_T[x.type] || x.type) : null, x.name || x.text)),
-        h("span", { class: "sub" }, x.obs ? `관측 ${x.obs}` : x.at),
-        x.type ? h("span", { class: "m" }, b != null ? h("span", { class: "row", style: "gap:var(--sp-1)" }, bdot(b), bname(b)) : x.b ? h("span", {}, x.b.replace("|", " ")) : null,
-          x.before != null && x.after != null && typeof x.before === "number" ? h("span", { class: "num" }, `${won(x.before)} → ${won(x.after)}`) : x.after != null ? h("span", { class: "num" }, won(x.after)) : null,
-          h("span", {}, (x.text || "").split(": ").slice(1).join(": ")), h("span", { class: "sp" }),
-          k ? h("button", { class: "linkbtn", type: "button", onclick: () => nav(`compare?k=${k}`) }, "가격 보기") : null)
-          : h("span", { class: "m" }, x.text))); }))
-      : h("div", { class: "sub", style: "padding:0 14px var(--sp-3)" }, "아직 기록이 없어요. 알림을 만들면 지난 수집과 비교해 실제로 바뀐 가격만 여기에 남아요."));
+    card.append(st.notes.length ? h("ul", { class: "list notes" }, st.notes.slice(0, 20).map((x) => noteRow(x)))
+      : h("div", { class: "sub", style: "padding:0 14px var(--sp-3)" }, NOTES_EMPTY));
     if (unread.length) setTimeout(() => { for (const x of unread) x.read = true; saveAlerts(); }, 1500);
     card.append(notifyPanel());
     return card;
@@ -5273,6 +5342,7 @@
   }
   function renderNow() {
     visMemo = null;   // '이 병원에 다녀왔어요' read again once per screen (another tab may have changed it)
+    const bell = bellMark();   // a phone notification tapped: the bell panel opens on this screen (below)
     const [path, qs] = (location.hash.replace(/^#/, "") || "home").split("?");
     const [name, ...rest] = path.split("/");
     const params = new URLSearchParams(qs || "");
@@ -5280,6 +5350,7 @@
     const view = views[name] ? name : name === "more" || name === "privacy" ? "me" : name === "favorites" ? "saved" : name === "data" ? "about" : "home";
     const main = $("#main"), same = view === current && path === lastPath, mark = focusMark(main, document.activeElement);
     if (!same) { for (const c of [...openSheets]) c(true); pending = null; }
+    if (!same) closeNoti(true);   // the bell panel does not outlive its screen either
     current = view; lastPath = path;
     if ((ROUTE_NAME[view] || view === "branch") && histOn()) store.set("lastRoute", path + (qs ? `?${qs}` : ""));
     const tab = { search: "home", import: "cart", compare: "explore", rank: "explore", versus: "explore", change: "explore", table: "explore", guide: "explore", concern: "explore",
@@ -5308,11 +5379,12 @@
     watchCmpHead();
     seePrice();
     document.body.classList.toggle("has-bar", view === "concern" || view === "cart");
+    if (bell) openNoti(); else paintNoti();
   }
   window.addEventListener("popstate", render);
   document.querySelectorAll("#tabs button").forEach((b) => b.addEventListener("click", () => nav(b.dataset.tab)));
   $("#locbtn").addEventListener("click", () => { if (D) locSheet(); });
-  $("#notibtn").addEventListener("click", () => nav("saved"));
+  $("#notibtn").addEventListener("click", () => { if (noti) closeNoti(); else openNoti(); });   // the bell panel (openNoti)
   // the top bar gets a hairline once the page scrolls under it; the sticky headers fold and unfold (heads, 위계 점검 9·38)
   window.addEventListener("scroll", () => { $("#top").classList.toggle("scrolled", window.scrollY > 4); heads(); seePrice(); }, { passive: true });
   window.addEventListener("resize", heads, { passive: true });   // a turned phone: the header is no longer sticky below 500px high
@@ -5374,6 +5446,7 @@
     const hadSW = !!navigator.serviceWorker.controller;   // first install also fires controllerchange: no notice then
     navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadSW) actToast(jline("appUpdated") || "앱이 새 버전으로 바뀌었어요", ["새로고침", () => location.reload()]); });
     navigator.serviceWorker.register("sw.js").catch(() => {});
-    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "nav" && e.data.to === "saved") nav("saved"); });
+    // a phone notification tapped while the app is open (sw.js): 관심 탭 with the bell panel open (bellMark)
+    navigator.serviceWorker.addEventListener("message", (e) => { if (e.data && e.data.type === "nav" && e.data.to === "saved") nav(e.data.panel === true ? "saved?bell=1" : "saved"); });
   }
 })();
