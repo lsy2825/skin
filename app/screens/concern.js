@@ -25,13 +25,13 @@
       const sec = (n, t, ...kids) => h("section", { class: "csec" }, h("h4", {}, `${n}. ${t}`), ...kids);
       return h("div", { class: "card concern" },
         h("div", { class: "row" }, h("h3", { style: "margin:0" }, c.name), h("span", { class: "sp" }), draftTag(c)),
-        m.hits && m.hits.length ? h("div", { class: "sub" }, `적은 말에서 찾은 낱말: ${m.hits.join(", ")}`) : null,
+        m.hits && m.hits.length ? h("div", { class: "sub" }, `알아들은 말: ${m.hits.join(", ")}`) : null,
         sec(1, "고민에 대한 일반적인 설명", h("p", {}, c.general)),
         sec(2, "관련 시술과 시술 말고 할 수 있는 관리",
           h("div", { class: "flabel" }, "시술 말고 할 수 있는 관리"), h("ul", { class: "notes" }, c.non_procedural.map((x) => h("li", {}, x))),
           h("div", { class: "flabel", style: "margin-top:var(--sp-2)" }, "관련 시술"),
           h("div", { class: "sub" }, es.length ? es.map((e) => e.title).join(" · ") : "보여드릴 수 있는 시술 설명이 아직 없어요(검수 전)."),
-          h("p", { class: "tiny" }, "순서는 분류표에 적힌 순서예요. 추천 순위나 효과 순위가 아니에요.")),
+          h("p", { class: "tiny" }, "추천 순서나 효과 순서가 아니에요.")),
         es.length ? sec(3, "시술별 목적과 차이", h("div", { class: "ttable", role: "table", "aria-label": `${c.name} 관련 시술 비교` },
           h("div", { class: "tr th", role: "row" }, h("span", { role: "columnheader" }, "시술"), h("span", { role: "columnheader" }, "주로 받는 이유"), h("span", { role: "columnheader" }, "방식·비슷한 시술과 차이")),
           es.map((e) => h("div", { class: "tr", role: "row" }, h("span", { role: "cell" }, h("b", {}, e.title)), h("span", { role: "cell" }, e.purpose), h("span", { role: "cell" }, e.method || e.one_liner))))) : null,
@@ -45,7 +45,7 @@
         es.length && FLAGS.concernPriceLink ? sec(6, "직접 골라서 가격 비교하기",
           h("div", { class: "chips wrapc" }, es.flatMap((e) => famsOfEntry(e).slice(0, 4).map((f) =>
             h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${App.state().KEYS[f.main].id}`) }, `${f.name} 가격`, icon("chevron-right", "sm"))))),
-          h("p", { class: "tiny" }, "가격 비교는 이 고민 정보와 따로 계산해요. 같은 조건(용량·회차)끼리 싼 순으로 보여주고, 광고·협찬으로 순서가 바뀌지 않으며 특정 병원을 추천하지 않아요. 예약·결제·개인정보 전달 기능은 없어요.")) : null,
+          h("p", { class: "tiny" }, "가격은 이 고민 정보와 따로 계산해요. 같은 용량·횟수끼리 비교하고, 광고·협찬으로 순서가 바뀌지 않으며 특정 병원을 추천하지 않아요. 예약·결제·개인정보 전달 기능은 없어요.")) : null,
         h("div", { class: "csrc" },
           h("div", { class: "tiny" }, "고민 설명 근거: ", c.sources.length ? c.sources.flatMap((x, i) => [i ? ", " : "", h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.publisher)]) : "근거 자료 미정리"),
           h("p", { class: "tiny" }, "설명은 미리 정리해 둔 문장만 보여줘요(앱이 새로 지어낸 의학 문장은 없어요). 지금은 모두 의료진 검수 전 초안이에요. " + DISCLAIM)));
@@ -63,21 +63,21 @@
       return h("div", { class: "cprice" },
         h("div", { class: "row", style: "gap:var(--sp-3);flex-wrap:wrap" }, h("span", {}, "최저 ", h("b", { class: "num" }, won(p.min))), h("span", {}, "중간 ", h("b", { class: "num" }, won(p.med))),
           h("span", { class: "sub" }, `최고 ${won(p.max)}`)),
-        h("div", { class: "tiny" }, `${whereText(w)} · ${p.n}곳의 지점별 최저가 · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"} · ${D.meta.updated} 모음. 병원에 꼭 확인하세요.`));
+        h("div", { class: "tiny" }, `${whereText(w)} · ${p.n}곳의 지점별 최저가 · ${st.vat === "incl" ? "부가세 포함가" : "병원 표시가"} · ${D.meta.updated} 수집. 병원에 꼭 확인하세요.`));
     }
     function famAnswer(r, f, key, p) {
       const e = kbOf(f.src), ks = f.keys.filter((k) => k.id !== key.id).slice(0, 6);
       const tq = (w) => { const np = new URLSearchParams({ q: f.name, sort: "price" }); if (w.region) np.set("reg", w.region); if (w.area) np.set("area", w.area); if (w.brand) np.set("brand", App.state().D.meta.brands.findIndex((b) => b[0] === w.brand)); return `table?${np}`; };
       return h("div", { class: "card cans" },
         h("div", { class: "row" }, h("h3", { style: "margin:0" }, key.label), h("span", { class: "sp" }), h("span", { class: "sub" }, `${f.n}곳에서 팔아요`)),
-        r.spec && !r.specHonored ? h("p", { class: "tiny" }, `'${r.spec}' 묶음은 없어서 가장 많이 파는 규격으로 보여줘요.`) : null,
+        r.spec && !r.specHonored ? h("p", { class: "tiny" }, `'${r.spec}'은(는) 없어서 가장 많이 파는 종류로 보여줘요.`) : null,
         priceLine(p, r.where),
         e ? h("p", { style: "margin:var(--sp-2) 0 0" }, `${e.one_liner} ${e.purpose}`) : null,
         e ? h("div", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
         h("div", { class: "row", style: "margin-top:var(--sp-2);flex-wrap:wrap" },
           h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("chart-column", "sm"), "지점별 가격 비교"),
           Object.keys(r.where).length ? h("button", { class: "btn sm gray", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
-        ks.length ? h("div", { style: "margin-top:var(--sp-2)" }, h("div", { class: "tiny" }, "다른 규격도 물어볼 수 있어요"),
+        ks.length ? h("div", { style: "margin-top:var(--sp-2)" }, h("div", { class: "tiny" }, "다른 종류도 물어볼 수 있어요"),
           h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, ks.map((k) => h("button", { class: "chip", type: "button", onclick: () => chatSend(`${k.label} 얼마야`) }, k.label)))) : null);
     }
     function chatAnswer(r) {
@@ -138,7 +138,7 @@
       const intro = h("div", { class: "msg bot" }, mascotImg(32), h("div", { class: "bub" },
         h("p", {}, "안녕, 나는 죠미야! 시술 이름, 가격(용량·횟수·지역), 피부 고민, 앱 쓰는 법을 물어봐 줘."),
         h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, ex.map((t) => h("button", { class: "chip", type: "button", onclick: () => chatSend(t) }, t))),
-        h("p", { class: "tiny" }, "진단이나 상담이 아니고 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 규칙으로 알아듣고, 가격은 모은 가격, 의학 설명은 지식 파일의 문장만 보여줘요."),
+        h("p", { class: "tiny" }, "진단이나 상담이 아니고 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 정해 둔 규칙으로 알아듣고, 가격은 모은 가격, 의학 설명은 미리 정리해 둔 문장만 보여줘요."),
         visible.length ? h("details", { class: "fold small", style: "margin-top:var(--sp-2)" }, h("summary", {}, "피부 고민 고르기"),
           h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, visible.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => chatSend(c.name) }, c.name)))) : null));
       const paint = () => {

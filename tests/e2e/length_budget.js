@@ -82,7 +82,7 @@ const enc = encodeURIComponent;
       const s1 = await p.locator('#main .card.flush .list > li').count();
       ok(`${tag} 검색 가격 줄 20개 + '20개 더 보기' → 40개, 주소에 n=40`, s0 === 20 && MORE.test(sl) && s1 === 40 && /[?&]n=40\b/.test(p.url()), `${s0}→${s1} · '${sl}' · ${p.url().split('#')[1]}`);
       const stat = await p.locator('#main .searchstat').innerText().catch(() => '');
-      ok(`${tag} 검색 규격이 섞이면 가격 범위 대신 안내`, /여러 규격/.test(stat) && !/원 ~ /.test(stat) && await p.locator('#main .mixstat').count() === 1, stat);
+      ok(`${tag} 검색 용량이 섞이면 가격 범위 대신 안내`, /여러 용량/.test(stat) && !/원 ~ /.test(stat) && await p.locator('#main .mixstat').count() === 1, stat);
       for (const q of ['스킨보톡스 100U', '리쥬란 2cc', '보톡스']) {
         await p.goto(BASE + `#search/${enc(q)}`); await p.waitForTimeout(900);
         const f = await p.evaluate(() => ({ fold: [...document.querySelectorAll('#main details.sfold')].map((d) => d.className.split(' ').pop()), open: [...document.querySelectorAll('#main div.card.keys, #main div.card.fams')].map((d) => d.className.split(' ').pop()) }));

@@ -24,9 +24,9 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 240)}`); };
 const D = asRows(require(path.join(__dirname, '../../app/data.json')));
 const CART = [{ t: 'k', k: 'X14', q: 3 }, { t: 'k', k: 'X01', q: 2 }, { t: 'k', k: 'X12', q: 1 }];
-const WARN = '가격만으로 고르지 마세요. 같은 시술이어도 병원마다 용량·조건·정품 여부·시술 의료진이 다르고, 시술마다 부작용·주의사항이 있어요(담은 시술의 i 버튼).';
+const WARN = '가격만으로 고르지 마세요. 용량·조건·정품 여부·의료진·부작용은 담은 시술의 ⓘ에서 봐요.';
 const CALC = ['체험가·한정가·첫 방문가는 첫 1회만, 2회째부터는 그 지점의 다른 가격으로 계산해요. 요일·시간 조건 가격은 조건이 맞을 때 매번 그 가격으로 계산해요.',
-  '지점 이름을 누르면 시술별 견적이 펼쳐지고, 옵션을 그 지점의 다른 상품(용량·회차 패키지 등)으로 바꿀 수 있어요. 3회·5회 패키지를 고르면 횟수에 맞춰 묶음 수로 계산해요.'];
+  '지점 이름을 누르면 시술별 견적이 펼쳐지고 옵션을 바꿀 수 있어요. 3회·5회 묶음을 고르면 횟수에 맞춰 계산해요.'];
 const NAV_H = 64;
 // two keys no clinic sells together (no branch in common anywhere): a cart nobody can do in one place
 const branchesOf = (k) => new Set(D.rows.filter((r) => D.s[r[7]].split(' ').includes(k)).map((r) => r[0]));
@@ -57,7 +57,7 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
       const head = [...document.querySelectorAll('#main .card h3')].find((x) => /^담은 시술 \d+개$/.test(x.textContent));
       return { top: r.top, bottom: r.bottom, inFirst: r.top >= 0 && r.bottom <= innerHeight - nav, text: t.innerText.replace(/\s+/g, ' ').trim(),
         underHead: !!head && head.closest('.card') === t.closest('.card') && head.getBoundingClientRect().bottom <= r.top + 1 && !!t.nextElementSibling && t.nextElementSibling.classList.contains('cart-items'),
-        hero: (document.querySelector('#main .cartsum .hp') || {}).innerText || '', n: ((document.querySelector('#main .cartsum .hl') || {}).textContent || '').match(/(\d+)곳/),
+        hero: (document.querySelector('#main .cartsum .hp') || {}).innerText || '', n: ((document.querySelector('#main .cartsum') || {}).innerText || '').match(/모두 받을 수 있는 지점[^\d]*(\d+)곳/),
         bar: document.querySelector('.cartbar') ? document.querySelector('.cartbar').hidden : null, label: t.getAttribute('aria-label') || '' }; }, NAV_H);
     const nums = (s) => (s.match(/[\d,]{4,}/g) || []).map((x) => x.replace(/,/g, ''));
     ok(`10 ${tag} 첫 화면에 예상 총액 한 줄('담은 시술 N개' 바로 아래)`, !!f && f.inFirst && f.underHead && /^예상 총액 [\d,]+~[\d,]+원 · \d+곳 ↓$/.test(f.text), f ? `${f.text} · top ${Math.round(f.top)}` : '(없음)');
@@ -119,12 +119,12 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
       return { badges: v('.k'), src: v('a.src'),
         // what is in view on the line outside '자세히' (its own word taken out), and where '자세히' sits
         mText: q.querySelector('.m').innerText.replace(sum.innerText, ''), outNames: [...q.querySelectorAll('.qname, .later')].filter((e) => !e.closest('.qmore') && e.checkVisibility()).length,
-        pos: { h: Math.round(sr.height), right: Math.round(mr.right - sr.right), gap: pr && pr.bottom > sr.top + 1 ? Math.round(sr.left - pr.right) : null }, vat: [...q.querySelectorAll('.m > span')].some((e) => /^병원 표시 [\d,]+원 \+ VAT$|^VAT 별도$/.test(e.textContent) && e.checkVisibility()),
-        listed: !!q.querySelector('.m > span') && [...q.querySelectorAll('.m > span')].some((e) => /\+ VAT|VAT 별도/.test(e.textContent)),
+        pos: { h: Math.round(sr.height), right: Math.round(mr.right - sr.right), gap: pr && pr.bottom > sr.top + 1 ? Math.round(sr.left - pr.right) : null }, vat: [...q.querySelectorAll('.m > span')].some((e) => /^병원 표시 [\d,]+원 \+ 부가세$|^부가세 별도$/.test(e.textContent) && e.checkVisibility()),
+        listed: !!q.querySelector('.m > span') && [...q.querySelectorAll('.m > span')].some((e) => /\+ 부가세|부가세 별도/.test(e.textContent)),
         open: more.open, name: (more.querySelector('.qname') || {}).textContent || '', nameShown: more.querySelector('.qname').checkVisibility(), selShown: [...more.querySelectorAll('select')].some((e) => e.checkVisibility()),
         later: [...more.querySelectorAll('.later')].map((e) => e.textContent), sum: more.querySelector('summary').getAttribute('aria-label') }; }));
     ok('48 견적 줄마다 \'자세히\'(기본 닫힘) — 상품명·옵션 고르기는 접힘', lines.length >= 2 && lines.every((l) => !l.open && l.name && !l.nameShown && !l.selShown), JSON.stringify(lines.map((l) => [l.name.slice(0, 12), l.open, l.nameShown, l.selShown])));
-    ok('48 조건 배지·출처·병원 표시가 + VAT는 접지 않고 보임', lines.every((l) => l.badges.every(Boolean) && l.src.every(Boolean) && (!l.listed || l.vat)) && lines.some((l) => l.badges.length) && lines.some((l) => l.vat), JSON.stringify(lines.map((l) => [l.badges.length, l.src.length, l.vat])));
+    ok('48 조건 배지·출처·병원 표시가 + 부가세는 접지 않고 보임', lines.every((l) => l.badges.every(Boolean) && l.src.every(Boolean) && (!l.listed || l.vat)) && lines.some((l) => l.badges.length) && lines.some((l) => l.vat), JSON.stringify(lines.map((l) => [l.badges.length, l.src.length, l.vat])));
     ok('48 \'자세히\'의 화면 읽기 이름에 그 줄의 시술', lines.every((l) => /상품명·옵션 자세히$/.test(l.sum || '')), lines.map((l) => l.sum).join(' / '));
     ok('48 병원 상품명·\'2회째부터 <상품명>\'은 접힌 채(보이는 줄 글자에 없음)', lines.every((l) => l.outNames === 0 && !l.mText.includes(l.name) && l.later.every((t) => !l.mText.includes(t))),
       JSON.stringify(lines.map((l) => [l.outNames, l.name.slice(0, 12), l.mText.includes(l.name)])));
@@ -164,7 +164,7 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
     ok('49 바꾼 뒤(화면 다시 그림) 그 칸은 펼친 채, 줄에 새 값', await after.evaluate((d) => d.open) && /지금: 병원 표시가/.test(await after.locator('summary').innerText())
       && (await after.locator('[role=radio][aria-checked="true"]').innerText()).trim() === '병원 표시가' && (await p.evaluate(() => localStorage.getItem('pc:vat'))) === '"listed"');
     ok('49 다른 설정 줄은 그대로 닫힘', (await p.locator('#main .settings details.setrow[open]').count()) === 1);
-    await after.locator('[role=radio]', { hasText: '부가세 포함 예상가' }).click(); await p.waitForTimeout(300);
+    await after.locator('[role=radio]', { hasText: '부가세 포함가' }).click(); await p.waitForTimeout(300);
     const info = p.locator('#main .card.info .datanote');
     const vis = (await info.locator(':scope > ul.dots > li').allInnerTexts()).map((x) => x.trim());
     const rest = info.locator('details.minifold');
@@ -172,7 +172,7 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
     ok('49 데이터 안내: 점 목록, 처음 두 점만 보이고 나머지는 \'자세히\'(닫힘)', vis.length === 2 && vis[0].startsWith('체험가·한정가는 보통 1인 1회예요') && /요일·시간에만 되는 가격이에요/.test(vis[1])
       && restN === 3 && !(await rest.evaluate((d) => d.open)) && (await rest.locator('summary').innerText()).trim() === `자세히 · ${restN}개 더` && !(await shown(rest.locator('li').first())), vis.join(' / '));
     const txt = await info.textContent();
-    ok('49 데이터 안내 문장은 그대로(접힌 것도 화면 안에 있음)', ['종료일이 지난 이벤트, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요.', '병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요.', '부가세 10% 포함 예상가예요'].every((s) => txt.includes(s)) && !txt.includes('•'));
+    ok('49 데이터 안내 문장은 그대로(접힌 것도 화면 안에 있음)', ['종료일이 지난 이벤트, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격(확인 중)은 비교에서 빠져요.', '병원 사이트 표기 오류(정가가 판매가보다 낮거나 10배 넘는 값)는 정가를 지웠고, 안내 문구·서류 발급비는 뺐어요.', '10%를 더한 예상가예요'].every((s) => txt.includes(s)) && !txt.includes('•'));
     const wall = await p.evaluate(() => { let n = 0; for (const el of document.querySelectorAll('#main .card.info li, #main .card.info .note')) { if (!el.checkVisibility()) continue; const rg = document.createRange(); rg.selectNodeContents(el);
       if ([...el.children].some((c) => /block|list-item|flex|grid/.test(getComputedStyle(c).display))) continue; n = Math.max(n, new Set([...rg.getClientRects()].filter((r) => r.width > 2).map((r) => Math.round(r.top / 4))).size); } return n; });
     ok('49 데이터 안내에 6줄 넘는 문단 없음', wall > 0 && wall < 6, `가장 긴 덩어리 ${wall}줄`);

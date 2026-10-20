@@ -5,7 +5,7 @@
 //     notes, newest first, '최근 5개 · 모두 N개'
 //  2. 읽음: opening reads every note (the bell's count #me-n goes, the stored notes are read, the bell's name loses
 //     '안 읽은 알림 N개'), and the lines that were new keep the '새 알림' dot while it stays open — none the next time
-//  3. 줄 내용: kind badge · treatment · real branch · before → after · '관측 날짜' · '가격 보기' (named by its treatment)
+//  3. 줄 내용: kind badge · treatment · real branch · before → after · '날짜 수집' · '가격 보기' (named by its treatment)
 //  4. 닫기: the bell again and Esc (focus back on the bell), a tap outside (that tap still does what it was for — a tab
 //     opens its screen), a new screen; '가격 보기' → that compare screen, '전체 보기' → 관심 탭, closed, focus on the page.
 //     Focus leaving it closes it too: Tab out of it — the control focused then is not hidden under it (WCAG 2.4.11);
@@ -28,7 +28,7 @@ const BASE = process.env.BASE || 'http://localhost:8766/';
 const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in the repo
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요'); process.exit(2); }
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 260)}`); };
-const EMPTY = '아직 기록이 없어요. 알림을 만들면 지난 수집과 비교해 실제로 바뀐 가격만 여기에 남아요.';
+const EMPTY = '아직 기록이 없어요. 알림 가격이 바뀌면 여기에 남아요.';
 // 7 records, newest first, the first 3 new (the stored shape of app.js noteOf: 'pc:notes')
 const N = (o) => ({ at: '2026-10-20', obs: '2026-10-19', type: 'drop', k: 'X01', name: '', b: '', before: null, after: null, text: '', id: 'a' + Math.random().toString(36).slice(2, 7), read: true, ...o });
 const NOTES = [
@@ -81,8 +81,8 @@ const bell = async (p) => { await p.click('#notibtn'); await p.waitForTimeout(30
     ok('2 펼치면 읽음: 종의 숫자 없어짐, 저장된 기록 모두 읽음, 종 이름에서 안 읽은 수 빠짐', s1.badge === '' && s1.unreadStored === 0 && s1.nStored === 7 && s1.label === '가격 알림', JSON.stringify(s1));
     ok('2 이번에 새것이던 3줄만 \'새 알림\' 점', s1.dots === '11100', s1.dots);
     const rows = await p.evaluate(() => [...document.querySelectorAll('#notip ul.notes > li')].map((li) => ({ t: li.innerText.replace(/\s+/g, ' ').trim(), go: (li.querySelector('.linkbtn') || {}).ariaLabel || '', hist: !!li.querySelector('svg.i'), kind: (li.querySelector('.k.k4') || {}).textContent || '' })));
-    ok('3 첫 줄: 종류·시술·지점·이전 → 이후·관측일·가격 보기', /가격 하락/.test(rows[0].t) && /국산 사각턱 보톡스 50U/.test(rows[0].t) && /블리비 강남역점/.test(rows[0].t) && /39,000원 → 29,000원/.test(rows[0].t)
-      && /관측 2026-10-19/.test(rows[0].t) && /가격 보기/.test(rows[0].t) && rows[0].go === '국산 사각턱 보톡스 50U 가격 보기', JSON.stringify(rows[0]));
+    ok('3 첫 줄: 종류·시술·지점·이전 → 이후·수집일·가격 보기', /가격 하락/.test(rows[0].t) && /국산 사각턱 보톡스 50U/.test(rows[0].t) && /블리비 강남역점/.test(rows[0].t) && /39,000원 → 29,000원/.test(rows[0].t)
+      && /2026-10-19 수집/.test(rows[0].t) && /가격 보기/.test(rows[0].t) && rows[0].go === '국산 사각턱 보톡스 50U 가격 보기', JSON.stringify(rows[0]));
     ok('3 종류 배지: 가격 하락·최저가 지점 변경·목표가 이하·지난 기록·새 비교 가능 지점, 지난 기록은 시계 아이콘', rows.map((r) => r.kind).join('|') === '가격 하락|최저가 지점 변경|목표가 이하|지난 기록|새 비교 가능 지점' && rows[3].hist, rows.map((r) => r.kind + (r.hist ? '*' : '')).join('|'));
     // keyboard: the next Tab from the panel's title is its first line's '가격 보기'
     await p.keyboard.press('Tab'); const tab1 = await p.evaluate(() => { const a = document.activeElement; return !!a.closest('#notip') && a.textContent === '가격 보기'; });

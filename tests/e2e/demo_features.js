@@ -43,7 +43,7 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     ok('빠른 비교: 실제 지점 이름 4곳', names.length === 4 && names.every((n, i) => n === [...seller, non].map(bname)[i]), names.join(', '));
     const rows = await p.$$eval('.qrows li', (ls) => ls.map((l) => ({ na: l.classList.contains('na'), p: l.querySelector('.qp')?.textContent || '', d: l.querySelector('.qd')?.textContent || '', bar: !!l.querySelector('.qbar') })));
     const okr = rows.filter((r) => !r.na);
-    ok('빠른 비교: 같은 사양 없는 지점은 "비교 불가"(막대 없음)', rows[3].na && !rows[3].bar && /같은 사양/.test(await p.locator('.qrows li.na').innerText()));
+    ok('빠른 비교: 같은 시술 없는 지점은 "비교 불가"(막대 없음)', rows[3].na && !rows[3].bar && /같은 용량·횟수·원산지 가격이 없어요/.test(await p.locator('.qrows li.na').innerText()));
     ok('빠른 비교: 비교 가능한 곳마다 막대', okr.length >= 2 && okr.every((r) => r.bar));
     const base = num(okr[0].p);
     ok('빠른 비교: 차이 = 기준(맨 위) 지점과의 금액 차', okr[0].d === '기준 지점' && okr.slice(1).every((r) => r.d === (num(r.p) === base ? '기준과 같은 가격' : `기준보다 ${Math.abs(num(r.p) - base).toLocaleString('ko-KR')}원 ${num(r.p) > base ? '높아요' : '낮아요'}`)), okr.map((r) => r.d).join(' / '));
@@ -97,8 +97,8 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     const regRows = await p.locator('.regl li').count();
     // a region's line is the 가격 종류별 범위 line (2026-10-20): 'N곳 · lo~hi원' on the right, '중간값 X원' under the bar's line
     const regLines = await p.locator('.regl li').allInnerTexts();
-    ok('지역별 가격: 지역마다 지점 수·범위·중간값', regRows >= 2 && regLines.every((t) => /\d+곳 · [\d,.만]+(~[\d,.만]+)?원/.test(t) && /중간값 [\d,]+원/.test(t)), `${regRows}개 지역 · ${(regLines[0] || '').replace(/\s+/g, ' ')}`);
-    ok('지역별 가격: 표본이 적으면 알림', !(await p.locator('.regl .k', { hasText: '표본 적음' }).count()) || /3곳 미만/.test(reg));
+    ok('지역별 가격: 지역마다 지점 수·범위·중간 가격(카드가 한 번 이름 붙이고 줄은 금액만)', /점 아래 숫자는 중간 가격/.test(reg) && regRows >= 2 && regLines.every((t) => /\d+곳 · [\d,.만]+(~[\d,.만]+)?원/.test(t) && (t.match(/원/g) || []).length >= 2), `${regRows}개 지역 · ${(regLines[0] || '').replace(/\s+/g, ' ')}`);
+    ok('지역별 가격: 지점이 적으면 알림', !(await p.locator('.regl .k', { hasText: '지점 적음' }).count()) || /3곳 미만/.test(reg));
     // chart ↔ list
     await p.locator('#clinics li.rk').nth(1).hover(); await p.waitForTimeout(150);
     ok('즉시 반응: 목록 줄에 올리면 분포 그래프의 같은 지점 점 강조', await p.locator('.lcsvg circle.dot.hl').count() === 1);
@@ -115,7 +115,7 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '방문 전 체크리스트' }).click(); await p.waitForTimeout(300);
     const items = await p.locator('.chk-list li').count();
     const txt = await p.locator('.sheet').innerText();
-    ok('체크리스트: 가격 포함 범위·부가세·조건·규격·의료진 질문', items >= 7 && ['가격 포함 범위', '부가세', '가격 조건', '시술 규격', '의료진에게'].every((w) => txt.includes(w)), `${items}개`);
+    ok('체크리스트: 가격 포함 범위·부가세·조건·용량·종류·의료진 질문', items >= 7 && ['가격 포함 범위', '부가세', '가격 조건', '용량·종류', '의료진에게'].every((w) => txt.includes(w)), `${items}개`);
     await p.locator('.chk-list input').nth(0).check(); await p.locator('.chk-list input').nth(2).check(); await p.waitForTimeout(200);
     ok('체크리스트: 진행 2/N', new RegExp(`2/${items} 확인`).test(await p.locator('.sheet').innerText()));
     await p.keyboard.press('Escape');
@@ -140,7 +140,7 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
   { const { ctx, p } = await page({ favs: { k: ['X12', 'X01'], b: [] } });
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);
     await p.locator('#clinics li.rk .infob').first().click(); await p.waitForTimeout(250);
-    await p.locator('.sheet button', { hasText: '가격 확인 요청' }).click(); await p.waitForTimeout(300);
+    await p.locator('.sheet button', { hasText: '사이트 가격과 달라요' }).click(); await p.waitForTimeout(300);
     const rs = await p.locator('.sheet').innerText();
     ok('가격 확인 요청: 원본 주소·사유·시연/실제 구분', /원본 주소/.test(rs) && /기기에만 저장\(시연\)/.test(rs) && /GitHub로 신고\(실제 접수\)/.test(rs) && /서버가 없어요/.test(rs));
     await p.locator('.sheet button', { hasText: '기기에만 저장(시연)' }).click(); await p.waitForTimeout(300);
@@ -149,10 +149,10 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     await p.goto(BASE + '#saved'); await p.waitForTimeout(500);
     const sv = await p.locator('#main').innerText();
     ok('관심: 요청 상태 "서버 접수 아님"', /서버 접수 아님/.test(sv));
-    ok('관심 시술 가격: 중간값·범위·지점 수·확인일, 최저가 병원 없음', /중간값 · [\d,]+원 ~ [\d,]+원 · \d+곳/.test(sv) && /확인 \d{4}-\d{2}-\d{2}/.test(sv) && !/최저 ·/.test(sv));
-    ok('관심 시술 가격: 기록 1회면 변화 "아직 몰라요"', D.meta.prev ? true : /관측 1회라 아직 몰라요/.test(sv));
+    ok('관심 시술 가격: 중간 가격·범위·지점 수·확인일, 최저가 병원 없음', /중간 가격 · [\d,]+원 ~ [\d,]+원 · \d+곳/.test(sv) && /확인 \d{4}-\d{2}-\d{2}/.test(sv) && !/최저 ·/.test(sv));
+    ok('관심 시술 가격: 기록 1회면 변화 "아직 몰라요"', D.meta.prev ? true : /기록이 한 번뿐이라 아직 몰라요/.test(sv));
     const feed = await p.locator('section[aria-label="관심 시술 업데이트"]').innerText();
-    ok('업데이트 소식: 실제 기록만(첫 기록이면 빈 상태, 지어내지 않음)', D.changes.length ? true : /아직 비교할 이전 가격이 없어요/.test(feed) && /지어내지 않아요/.test(feed));
+    ok('관심 시술 가격 변동: 실제 기록만(첫 기록이면 빈 상태, 지어내지 않음)', D.changes.length ? true : /다음 수집부터 보여요/.test(feed));
     await p.goto(BASE + '#terms'); await p.waitForTimeout(400);
     const n0 = await p.locator('.termi').count();
     await p.fill('input[aria-label="용어 찾기"]', '샷'); await p.waitForTimeout(200);

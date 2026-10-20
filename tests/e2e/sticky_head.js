@@ -60,7 +60,7 @@ const head = (p) => p.evaluate(() => {
     const h1 = await head(p);
     ok('9 내린 상태: 앱 위 막대 숨김, 경로·기준 줄·중간값·담기가 화면 위에', h1.folded && h1.barHidden && h1.crumb && h1.basis && h1.med && h1.add && !h1.title, JSON.stringify(h1));
     ok('9 내린 상태: 고정된 부분(머리글 + 아래 탭) 25% 이하', h1.cover <= 0.25, `${(h1.cover * 100).toFixed(1)}% (전: 36.9%)`);
-    ok('9 접힌 기준 줄: 펼친 때와 같은 글자(\'중간값:\'·곳 수·부가세 기준), 잘리지 않음', h1.basisTxt === h0.basisTxt && /중간값: .*\d+곳 · (부가세 포함 예상|병원 표시가)/.test(h1.basisTxt) && !h1.basisCut, h1.basisTxt);
+    ok('9 접힌 기준 줄: 펼친 때와 같은 글자(일반가·곳 수·부가세 기준), 잘리지 않음', h1.basisTxt === h0.basisTxt && /(일반가|특가 포함) \d+곳 · (부가세 포함가|병원 표시가)/.test(h1.basisTxt) && !h1.basisCut, h1.basisTxt);
     // focus moving up the page (Shift+Tab to the price card) lands below the header, not under it
     const foc = await p.evaluate(async () => { const el = document.querySelector('.pricecard .linkbtn'); el.focus(); await new Promise((r) => setTimeout(r, 250));
       const b = el.getBoundingClientRect(), hd = document.querySelector('.cmphead').getBoundingClientRect(), top = document.querySelector('header.top').getBoundingClientRect();

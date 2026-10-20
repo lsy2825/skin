@@ -574,8 +574,8 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       const title = (await item.count()) ? await item.locator('.k.kt', { hasText: '재방문만' }).first().getAttribute('title') : '';
       ok(`G10d 지점 가격표: '재방문만' 배지, 설명에 '${RV_CART}'`, !!title && title.includes(RV_CART) && !title.includes(DONE), title || '(줄 없음)');
       if (await tap(item.locator('xpath=..').locator(':scope > .infob'), 'G10e 가격 근거')) {   // the line's ⓘ (위계 점검 47)
-        await p.waitForSelector('.sheet[aria-label="가격 확인"]');
-        const st_ = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
+        await p.waitForSelector('.sheet[aria-label="가격 정보"]');
+        const st_ = await p.locator('.sheet[aria-label="가격 정보"]').textContent();
         ok(`G10e 가격 확인: 조건 '재방문(다시 오는 손님)만', 가격 종류에 '${RV_CART}', 적용 조건 '다시 오는 손님만'`, st_.includes('재방문(다시 오는 손님)만') && st_.includes(`다시 오는 손님(재방문)만 받는 행사 가격 · ${RV_CART}`)
           && (r[5] !== 2 || st_.includes('한정가(기간·수량·첫 방문·재방문 등 조건)')) && st_.includes('다시 오는 손님만') && !st_.includes('재방문도 되는지 확인') && !st_.includes(DONE), st_.slice(0, 200));
         await p.keyboard.press('Escape'); await p.waitForTimeout(200);

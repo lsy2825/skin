@@ -37,7 +37,7 @@ const CLINIC = /블리비|쁨 |톡스앤필|리엔장|\d{1,3}(,\d{3})+원/;
     ok('병원 이름·가격이 고민 답에 없음(가격 검색과 분리)', !CLINIC.test(text), (text.match(CLINIC) || [''])[0]);
     ok('금지 표현 없음("가장 적합", "AI 추천 1위" 등)', !BANNED.test(text), (text.match(BANNED) || [''])[0]);
     ok('시술 말고 할 수 있는 관리와 한계·근거·검수 상태 표시', /시술 말고 할 수 있는 관리/.test(text) && /한계:/.test(text) && /근거/.test(text) && /검수 전/.test(text));
-    ok('순서가 추천 순위가 아니라고 밝힘', /추천 순위나 효과 순위가 아니에요/.test(text));
+    ok('순서가 추천 순위가 아니라고 밝힘', /추천 순서나 효과 순서가 아니에요/.test(text));
     const after = await p.evaluate(() => JSON.stringify(localStorage));
     ok('적은 문장이 저장되지 않음(localStorage·주소)', !after.includes('특이문구7429') && !decodeURIComponent(p.url()).includes('특이문구') && after === before, `url=${p.url().split('#')[1]}`);
     ok('외부로 보내는 요청 없음', !p.requests.length, p.requests.slice(0, 2).join(' '));

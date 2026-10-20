@@ -48,9 +48,9 @@ const timeLimited = (r) => WHEN && Pricing.whenLimited(r[16], S[r[17]]);
   // 2) price sheet order with the price class
   await p.locator('#clinics li.rk .infob').first().click(); await p.waitForTimeout(500);
   const dts = await p.$$eval('.sheet dl.facts dt', (xs) => xs.map((x) => x.textContent));
-  const order = ['가격과 부가세', '가격 종류', '조건', '회차', '유효기간', '비교 기준', '정가(병원 표기)', '확인일', '원본'];
+  const order = ['가격과 부가세', '가격 종류', '조건', '횟수', '유효기간', '비교 기준', '정가(병원 표기)', '확인일', '원본'];
   const idx = order.map((t) => dts.indexOf(t));
-  ok('C4 가격 근거 순서: 가격·부가세 → 가격 종류 → 조건 → 회차 → 기간 → 비교 기준 → 정가 → 확인일 → 원본', idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])), dts.slice(0, 10).join(' > '));
+  ok('C4 가격 정보 순서: 가격·부가세 → 가격 종류 → 조건 → 횟수 → 기간 → 비교 기준 → 정가 → 확인일 → 원본', idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])), dts.slice(0, 10).join(' > '));
   ok('C5 비교 판정이 맨 위(사실 목록보다 먼저)', await p.evaluate(() => { const a = document.querySelector('.sheet .clsbox'), b = document.querySelector('.sheet dl.facts'); return !!a && !!b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }));
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
 
