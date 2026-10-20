@@ -86,11 +86,13 @@ const scan = (sel) => {
     const t = el.matches('nav.tabs button') ? el.querySelector('.ti') : el, bg = getComputedStyle(t).backgroundColor;
     out.chosen.push(lab(el)); if (bg !== C.ink) out.chosenBad.push(`${lab(el)} ${bg}`);
   }
-  // a count: charcoal (ivory in the dark), on the chosen tab the pill turned round — light with charcoal words in it (사용자 결정 2026-10-20)
+  // a count: charcoal (ivory in the dark), on the chosen tab the pill turned round — light with charcoal words in it, ringed 2px in
+  // the pill's own colour (사용자 결정 2026-10-20: without the ring the plain badge's --bg ring shows, and the light badge's top,
+  // standing above the pill, melts into the tab bar)
   for (const el of document.querySelectorAll('nav.tabs .badge, header.top .badge')) if (vis(el)) {
-    const cs = getComputedStyle(el), chosen = !!el.closest('nav.tabs [aria-current="page"]');
-    out.badge.push({ chosen, ok: chosen ? cs.backgroundColor === C.onP && cs.color === C.ink && cr(cs.backgroundColor, C.ink) >= 3 && cr(cs.color, cs.backgroundColor) >= 4.5
-      : cs.backgroundColor === C.ink && cs.color === C.onP, d: `${chosen ? '고른 탭' : '다른 탭'} ${cs.backgroundColor}/${cs.color}` }); }
+    const cs = getComputedStyle(el), chosen = !!el.closest('nav.tabs [aria-current="page"]'), ring = cs.boxShadow === `${C.ink} 0px 0px 0px 2px`;
+    out.badge.push({ chosen, ok: chosen ? cs.backgroundColor === C.onP && cs.color === C.ink && ring && cr(cs.backgroundColor, C.ink) >= 3 && cr(cs.color, cs.backgroundColor) >= 4.5
+      : cs.backgroundColor === C.ink && cs.color === C.onP, d: `${chosen ? '고른 탭' : '다른 탭'} ${cs.backgroundColor}/${cs.color}${chosen ? ` 테두리 ${cs.boxShadow}` : ''}` }); }
   // a switch: on = the charcoal track with the knob in the colour on it, ≥ 3:1 on what it sits on and to each other; off = the grey track
   for (const l of document.querySelectorAll(sel ? '.sheet label.switch' : '#main label.switch')) {
     const tr = l.querySelector('.tr'), inp = l.querySelector('input'); if (!tr || !inp || !vis(tr)) continue;
@@ -137,7 +139,7 @@ const scan = (sel) => {
       ok(`${W} ${label}: 코랄은 쓸 수 없는 가격·입력 오류·하트에만`, !r.coralBad.length, r.coralBad.slice(0, 4).join(', ') || `${r.coral.length}곳`);
       ok(`${W} ${label}: 버터는 조건과 죠미에만`, !r.butterBad.length, r.butterBad.slice(0, 4).join(', ') || `${r.butter.length}곳`);
       ok(`${W} ${label}: 고른 것은 차콜 채움 하나`, !r.chosenBad.length, r.chosenBad.slice(0, 3).join(', ') || r.chosen.slice(0, 4).join(', '));
-      ok(`${W} ${label}: 숫자 배지는 진한 색, 고른 탭 안에서는 반전(알약과 구분)`, r.badge.every((x) => x.ok), r.badge.map((x) => x.d).join(', ') || '없음');
+      ok(`${W} ${label}: 숫자 배지는 진한 색, 고른 탭 안에서는 반전 + 알약 색 테두리 2px(알약과 구분)`, r.badge.every((x) => x.ok), r.badge.map((x) => x.d).join(', ') || '없음');
       seen.badgeOn += r.badge.filter((x) => x.chosen).length; seen.badgeOff += r.badge.filter((x) => !x.chosen).length;
       if (r.sw.length) ok(`${W} ${label}: 켠 스위치는 차콜(고른 것과 같은 모양), 끈 스위치는 회색`, r.sw.every((x) => x.ok), r.sw.filter((x) => !x.ok).map((x) => x.d).slice(0, 3).join(', ') || r.sw.map((x) => x.d).slice(0, 2).join(', '));
       seen.swOn += r.sw.filter((x) => x.on).length; seen.swOff += r.sw.filter((x) => !x.on).length;

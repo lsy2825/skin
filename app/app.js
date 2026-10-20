@@ -4682,7 +4682,7 @@
       h("div", { class: "sub" }, "이름에 '+'로 묶인 상품만 찾아요. 스펙(샷 수·용량)이 모두 같고 다른 구성이 없을 때만 '따로 사는 것보다 얼마' 를 계산해요.")));
     if (!found.length) { res.append(h("div", { class: "empty" }, "담은 시술을 2개 이상 묶은 패키지를 찾지 못했어요.")); return res; }
     const stateTxt = { match: "같은 시술", spec: "용량·부위·제품 다름", check: "구성 확인 필요" };
-    res.append(h("ul", { class: "list" }, found.slice(0, 30).map((y) => { const r = ROWS[y.i];
+    res.append(h("ul", { class: "list pkgs" }, found.slice(0, 30).map((y) => { const r = ROWS[y.i];
       return h("li", {}, h("div", { class: "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
         h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${y.b}`) }, bdot(y.b), bname(y.b)), kindBadge(r),
           ...y.m.matched.map((z) => z.state === "match" ? h("span", { class: "k ok" }, `${itemLabel(items[z.j])}: ${stateTxt[z.state]}`) : kwBadge(`${itemLabel(items[z.j])}: ${stateTxt[z.state]}`)),

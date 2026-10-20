@@ -408,8 +408,16 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .kx { background: var(--coral-soft); color: var(--coral); }
 .k.ok { background: var(--sage-soft); color: var(--sage); }
 /* a badge wider than its whole line wraps inside itself instead of running past the card (320 부산 병원 패키지: '수입 필러 1cc
-   (…): 용량·부위·제품 다름' 86px, '추가 구성: …' 31px). The row moves a badge that fits to its next line first, so the others stay one line */
-.m > .k { max-width: 100%; white-space: normal; }
+   (…): 용량·부위·제품 다름' 86px, '추가 구성: …' 31px). The row moves a badge that fits to its next line first, so the others stay one line.
+   Its lines come out even, so no word is left alone on the last one ('…제품' / '다름') */
+.m > .k { max-width: 100%; white-space: normal; text-wrap: balance; }
+/* 병원 패키지 (내 견적 › 병원별 비교): a badge there names a whole item ('국산 사각턱 보톡스 50U: 용량·부위·제품 다름' 256px), wider
+   than the column beside 담기 (234px at 390, 204 at 360). As before, it runs on under 담기 to the row's right edge in one line; only
+   one wider than the whole row wraps (2026-10-20 검토: held to the column, 60 of 112 at 390 went to two lines). The branch link that
+   starts the badges is a 28px line, so the line under it starts 4px below 담기 (32px) — a badge's top met 담기's lower left by 1–4px */
+.pkgs .item.ra { container-type: inline-size; }
+.pkgs .item.ra > .m > .k { max-width: 100cqw; flex-shrink: 0; }
+@media (min-width: 336px) { .pkgs .item.ra > .m > .linkbtn:first-child { min-height: 28px; } }
 
 /* ---------- home */
 .hero-home { padding: var(--sp-2) 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }

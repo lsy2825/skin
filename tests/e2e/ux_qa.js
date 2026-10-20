@@ -91,8 +91,10 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
       const over = [...c.querySelectorAll('*')].filter((e) => !e.matches('.cx')).map((e) => [e, e.getBoundingClientRect()]).filter(([, x]) => x.width && x.right > r.right + 0.5)
         .map(([e, x]) => `${e.tagName.toLowerCase()}.${typeof e.className === 'string' ? e.className : ''}«${(e.textContent || '').trim().slice(0, 12)}» +${Math.round(x.right - r.right)}`);
       return { cp: ((c.querySelector('.cp') || {}).innerText || '').replace(/\s+/g, ' '), over }; }));
-    ok('320px 부산 내 견적: 담은 시술 줄의 가격·\'가능한 지점 없음\'이 줄 안(넘침 0)', !!none && lines.length >= 4 && lines.some((l) => l.cp.includes('가능한 지점 없음')) && lines.every((l) => !l.over.length),
-      `${none} · ${lines.map((l) => `${l.cp}${l.over.length ? ' ✗ ' + l.over.slice(0, 2).join(' ') : ''}`).join(' | ')}`);
+    // the week's data may have no such item: then the lines are still measured, and the '가능한 지점 없음' line is a SKIP
+    if (!none) console.log('SKIP | 320px 부산 내 견적 \'가능한 지점 없음\' 줄 | 이 자료엔 부산에서 안 파는 시술(3줄 이상)이 없음');
+    ok('320px 부산 내 견적: 담은 시술 줄의 가격·\'가능한 지점 없음\'이 줄 안(넘침 0)', lines.length >= 3 && (!none || lines.some((l) => l.cp.includes('가능한 지점 없음'))) && lines.every((l) => !l.over.length),
+      `${none || '안 파는 시술 없음'} · ${lines.map((l) => `${l.cp}${l.over.length ? ' ✗ ' + l.over.slice(0, 2).join(' ') : ''}`).join(' | ')}`);
     const ex = p.locator('.cartsum button[aria-expanded="false"]'); if (await ex.count()) { await ex.first().click(); await p.waitForTimeout(500); }
     const tabs = [], pk = [];
     for (const t of ['한 곳에서', '나눠 받기', '병원 패키지', '브랜드·지역']) {
@@ -105,7 +107,47 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
         return { sw: document.documentElement.scrollWidth, out, rows: document.querySelectorAll('#main .card.flush ul.list > li .item.ra').length }; });
       if (t === '병원 패키지') pk.push(r.rows);
       if (r.sw > 320 || r.out.length) tabs.push(`${t}: 폭 ${r.sw} ${r.out.slice(0, 3).join(' ')}`); }
-    ok('320px 부산 병원별 비교 4개 탭: 가로 넘침 0, 카드 밖으로 나간 것 없음(병원 패키지의 긴 배지는 배지 안에서 줄바꿈)', !tabs.length && pk[0] > 0, tabs.join(' | ') || `병원 패키지 ${pk[0]}줄`);
+    if (!pk[0]) console.log('SKIP | 320px 부산 병원 패키지 줄 | 이 자료엔 담은 시술을 묶은 패키지가 없음 — 아래 시험 줄로만 확인');
+    ok('320px 부산 병원별 비교 4개 탭: 가로 넘침 0, 카드 밖으로 나간 것 없음(병원 패키지의 긴 배지는 배지 안에서 줄바꿈)', !tabs.length, tabs.join(' | ') || `병원 패키지 ${pk[0]}줄`);
+    // 4c) 병원 패키지 badges at 320 · 360 · 390 (2026-10-20 검토): one no wider than its row stays one line — from 336px it runs
+    // on under 담기 to the row's right edge, as before (held to the column beside 담기, 60 of 112 went to two lines at 390) — and
+    // only one wider than the row wraps, inside it. None meets 담기 (before: a badge's top met its lower left by 1–4px), none
+    // runs past the row. Measured on the week's rows and on two made-up rows with the app's classes (a badge just wider than the
+    // column beside 담기, one far wider than the row), so the check holds whatever the data has
+    { await p.locator('.seg[role=tablist] button', { hasText: '병원 패키지' }).click(); await p.waitForTimeout(600);
+      const pkgCheck = () => {
+        const mk = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt) e.textContent = txt; if (tag === 'button') e.type = 'button'; return e; };
+        let syn = document.getElementById('qa-pkgs');
+        if (!syn) { syn = mk('div', 'card flush'); syn.id = 'qa-pkgs'; const ul = mk('ul', 'list pkgs'); syn.append(ul);
+          for (const id of ['a', 'b']) { const it = mk('div', 'item ra'), m = mk('span', 'm'), k = mk('span', 'k kw'); k.dataset.qa = id;
+            m.append(mk('button', 'linkbtn', '시험 지점'), k); it.append(mk('span', 't', '시험 패키지 A + B'), mk('span', 'p num', '1,234,000원'), m, mk('button', 'addbtn', '＋ 담기'));
+            const li = mk('li'); li.append(it); ul.append(li); }
+          document.querySelector('#main').append(syn); }
+        const nat = (k) => { const c = k.cloneNode(true); c.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap;max-width:none;width:max-content'; k.parentElement.append(c); const w = c.getBoundingClientRect().width; c.remove(); return w; };
+        const box = (it) => { const r = it.getBoundingClientRect(), cs = getComputedStyle(it); return { l: r.left + parseFloat(cs.paddingLeft), r: r.right - parseFloat(cs.paddingRight) }; };
+        // the made-up badges: A a little wider than the column beside 담기 (from 336px; at 320 the badges take the whole row, so
+        // A is a little narrower than the row), B far wider than the row
+        const a = syn.querySelector('[data-qa=a]'), bb = syn.querySelector('[data-qa=b]'), ra = box(a.closest('.item')), mW = a.parentElement.getBoundingClientRect().width, cw = ra.r - ra.l;
+        const target = mW < cw - 24 ? (mW + cw) / 2 : cw - 24; let words = 1;
+        do { a.textContent = `시험 시술 ${'가나다 '.repeat(words).trim()}: 용량·부위·제품 다름`; words++; } while (nat(a) < target && words < 60);
+        bb.textContent = `추가 구성: ${'시험 시술 300샷, '.repeat(14)}끝`;
+        const res = { sw: document.documentElement.scrollWidth, n: 0, fitWrapped: [], wide: 0, past: [], ov: [], syn: {} };
+        for (const it of document.querySelectorAll('#main .pkgs .item.ra')) { const c = box(it), btn = it.querySelector(':scope > .addbtn'), q = btn && btn.getBoundingClientRect();
+          for (const k of it.querySelectorAll(':scope > .m > .k')) { const x = k.getBoundingClientRect(), w = nat(k), one = x.height < 30, t = k.textContent.trim().slice(0, 18);
+            const fits = w <= c.r - c.l + 0.5, ov = !!q && x.left < q.right && x.right > q.left && x.top < q.bottom && x.bottom > q.top;
+            if (k.dataset.qa) res.syn[k.dataset.qa] = { one, fits, ov, past: x.right > c.r + 0.5, ext: x.right > k.parentElement.getBoundingClientRect().right + 1, w: Math.round(w), cw: Math.round(c.r - c.l), mW: Math.round(k.parentElement.getBoundingClientRect().width) };
+            else { res.n++; if (!fits) res.wide++; }
+            if (fits && !one) res.fitWrapped.push(`«${t}» ${Math.round(w)}/${Math.round(c.r - c.l)}`);
+            if (x.right > c.r + 0.5) res.past.push(`«${t}» +${Math.round(x.right - c.r)}`);
+            if (ov) res.ov.push(`«${t}» ${Math.round(Math.min(x.bottom, q.bottom) - Math.max(x.top, q.top))}px`); } }
+        return res; };
+      for (const W of [320, 360, 390]) { await p.setViewportSize({ width: W, height: 800 }); await p.waitForTimeout(400);
+        if (!(await p.locator('#main .card .pkgs').count())) { await p.locator('.seg[role=tablist] button', { hasText: '병원 패키지' }).click(); await p.waitForTimeout(600); }
+        const r = await p.evaluate(pkgCheck), A = r.syn.a || {}, B = r.syn.b || {};
+        ok(`${W}px 병원 패키지 배지: 줄에 들어가면 한 줄${W >= 336 ? '(담기 밑까지)' : ''}, 줄보다 길면 줄 안에서 줄바꿈, 담기와 겹침 0, 줄 밖 0`,
+          r.sw <= W && !r.fitWrapped.length && !r.past.length && !r.ov.length && A.fits && A.one && (W < 336 || A.ext) && !B.fits && !B.one,
+          `실제 ${r.n}개(줄보다 긴 것 ${r.wide}) · 시험 A ${A.w}/${A.mW}/${A.cw}px ${A.one ? '한 줄' : '두 줄 ✗'}${W >= 336 ? (A.ext ? ' 담기 밑까지' : ' 1열에 묶임 ✗') : ''} · 시험 B ${B.one ? '한 줄 ✗' : '줄바꿈'}`
+          + `${r.sw > W ? ` · 폭 ${r.sw} ✗` : ''}${r.fitWrapped.length ? ` · 접힘 ✗ ${r.fitWrapped.slice(0, 2).join(' ')}` : ''}${r.past.length ? ` · 줄 밖 ✗ ${r.past.slice(0, 2).join(' ')}` : ''}${r.ov.length ? ` · 담기와 겹침 ✗ ${r.ov.slice(0, 2).join(' ')}` : ''}`); } }
     await ctx.close(); }
   // 5) empty states
   { const ctx = await b.newContext({ serviceWorkers: 'block', viewport: { width: 390, height: 844 } }); const p = await ctx.newPage();
