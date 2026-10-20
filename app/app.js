@@ -1947,10 +1947,12 @@
   }
   // 종 버튼 알림 패널 (#notip, 2026-10-20 사용자 요청): the top bar's bell opens the latest 알림 기록 right under the bar, so what
   // an alert was is seen where its count is. Opening reads them all (the count on the bell goes); the lines that were new keep
-  // the '새 알림' dot while the panel stays open. It closes on the bell again, a tap outside it, Esc, '가격 보기', '전체 보기' and
-  // a new screen (renderNow). It lives outside #main: made when it opens and removed when it closes; while it is open, render()
-  // brings its lines up to date (paintNoti) — so a record checkAlerts makes after the full price file arrives shows there too.
-  // A phone notification tapped (sw.js: '#saved?bell=1', or a message to the open window) opens it on 관심 탭 (bellMark).
+  // the '새 알림' dot while the panel stays open. It closes on the bell again, a tap outside it, focus leaving it (Tab), Esc,
+  // '가격 보기', '전체 보기' and a new screen (renderNow). It lives outside #main: made when it opens and removed when it closes;
+  // while it is open, render() brings its lines up to date (paintNoti) — so a record checkAlerts makes after the full price
+  // file arrives shows there too.
+  // The mark a tapped phone notification brings when sw.js sends one ('#saved?bell=1', or a message to the open window with
+  // panel: true — PWA_IMPLEMENTATION.md 4-3) opens it on 관심 탭 (bellMark).
   const NOTI_N = 5;
   let noti = null;   // the open panel: { el, list, count, fresh: the notes new at this opening, sig, off }
   function openNoti() {
@@ -1960,12 +1962,17 @@
     const el = h("div", { class: "card flush notip", id: "notip", role: "dialog", "aria-labelledby": "notip-t" },
       h("div", { class: "row", style: "padding:var(--sp-3) 14px 0" }, h("h3", { id: "notip-t", tabindex: "-1" }, "가격 알림 기록"), h("span", { class: "sp" }), count),
       list, h("button", { class: "morelist", type: "button", onclick: () => { closeNoti(true); nav("saved"); } }, "전체 보기", icon("chevron-right", "sm")));
-    // a tap anywhere else closes it (and still does what it was for); Esc closes it and focus goes back to the bell
+    // a tap anywhere else closes it (and still does what it was for), and so does focus going anywhere else — Tab out of it, a
+    // field tapped: the control then focused would be hidden under the panel (WCAG 2.4.11). The panel only goes, nothing below
+    // moves, so a press that focused on its way down still clicks. A tap on the panel's own text sends focus to the page with no
+    // focusin, so it stays open. Esc closes it; focus goes back to the bell from the panel, the bell or nowhere (that tap on its
+    // text) — never off a control elsewhere, which stays where it is
     const out = (e) => { if (noti && !el.contains(e.target) && !btn.contains(e.target)) closeNoti(true); };
-    const key = (e) => { if (e.key === "Escape" && noti && !document.querySelector(".sheet-bg")) { e.preventDefault(); closeNoti(); } };
-    document.addEventListener("click", out, true);
-    document.addEventListener("keydown", key);
-    noti = { el, list, count, fresh: new Set(), sig: "", off: () => { document.removeEventListener("click", out, true); document.removeEventListener("keydown", key); } };
+    const key = (e) => { if (e.key === "Escape" && noti && !document.querySelector(".sheet-bg")) { e.preventDefault();
+      const a = document.activeElement; closeNoti(!(!a || a === document.body || el.contains(a) || btn.contains(a))); } };
+    const on = [["click", out, true], ["focusin", out, true], ["keydown", key, false]];
+    for (const [t, f, c] of on) document.addEventListener(t, f, c);
+    noti = { el, list, count, fresh: new Set(), sig: "", off: () => { for (const [t, f, c] of on) document.removeEventListener(t, f, c); } };
     $("#top").append(el);
     btn.setAttribute("aria-expanded", "true"); btn.setAttribute("aria-controls", "notip");
     paintNoti();

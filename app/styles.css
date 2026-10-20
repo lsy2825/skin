@@ -144,6 +144,9 @@ header.top .upd { font-size: var(--fs-aux); color: var(--muted); white-space: no
 .notip > * { flex: none; }
 .notip > .notip-b { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .notip > .morelist { margin-top: var(--sp-2); }
+/* its title takes focus when it opens (where a screen reader starts) but is not a control and not in the Tab order — no ring,
+   as #main: opened from the bell or from a phone notification's address (focus given before any tap) it looks the same */
+#notip-t:focus { outline: none; }
 .tbtn-i[aria-expanded="true"] { background: var(--fill); color: var(--ink); }   /* the bell while its panel is open */
 
 /* ---------- bottom tab bar (phone) / side rail (wide) */

@@ -1,17 +1,22 @@
 // 종 버튼 알림 패널 (2026-10-20 사용자 요청) in a real browser. The top bar's bell (#notibtn) opens the latest 알림 기록 right
 // under the bar instead of only going to 관심 탭:
 //  1. 열기: the panel (#notip, role=dialog '가격 알림 기록') sits right under the top bar inside the screen; the bell says
-//     aria-expanded=true and names the panel; focus goes into it. The latest 5 notes, newest first, '최근 5개 · 모두 N개'
+//     aria-expanded=true and names the panel; focus goes into it (its title, with no ring — not a control). The latest 5
+//     notes, newest first, '최근 5개 · 모두 N개'
 //  2. 읽음: opening reads every note (the bell's count #me-n goes, the stored notes are read, the bell's name loses
 //     '안 읽은 알림 N개'), and the lines that were new keep the '새 알림' dot while it stays open — none the next time
 //  3. 줄 내용: kind badge · treatment · real branch · before → after · '관측 날짜' · '가격 보기' (named by its treatment)
 //  4. 닫기: the bell again and Esc (focus back on the bell), a tap outside (that tap still does what it was for — a tab
-//     opens its screen), a new screen; '가격 보기' → that compare screen, '전체 보기' → 관심 탭, closed, focus on the page
+//     opens its screen), a new screen; '가격 보기' → that compare screen, '전체 보기' → 관심 탭, closed, focus on the page.
+//     Focus leaving it closes it too: Tab out of it — the control focused then is not hidden under it (WCAG 2.4.11);
+//     Shift+Tab from its title is the bell (still open), once more is out (closed, focus stays there). A tap on its own text
+//     keeps it open, and Esc after that sends focus to the bell
 //  5. 같은 모양: the panel's lines are 관심 탭's 알림 기록 lines — the same elements, classes and computed type/colour/spacing
 //  6. 빈 기록: 관심 탭's empty line word for word. Type steps (13·15·17·22, 400·600·760) and 24px targets in the panel
 //  7. 320px (dark) and 320×568: inside the screen, nothing wider than the panel, no sideways scroll; above the tab bar and
 //     scrolling inside when the lines do not fit
-//  8. 휴대폰 알림을 눌러 들어올 때 (sw.js): a cold start on '#saved?bell=1' (openWindow) opens 관심 탭 with the panel, the mark
+//  8. 휴대폰 알림을 눌러 들어올 때 (sw.js): a cold start on '#saved?bell=1' (openWindow) opens 관심 탭 with the panel — its
+//     title focused before any tap has no ring either, as opened from the bell — the mark
 //     leaves the address (a reload, back or the remembered last screen do not open it again); a record checkAlerts makes once
 //     the price file is in shows in the open panel with its dot and is read; the open window's message {type:'nav', to:'saved',
 //     panel:true} does the same (the message listener needs localhost or https: run on 'localhost'), a message without
@@ -89,6 +94,32 @@ const bell = async (p) => { await p.click('#notibtn'); await p.waitForTimeout(30
     ok('2 다시 열면 새 알림 점 없음(이미 읽음), 숫자도 없음', s3.open && s3.dots === '00000' && s3.badge === '', s3.dots);
     await p.keyboard.press('Escape'); await p.waitForTimeout(200); const s4 = await state(p);
     ok('4 Esc로 닫힘, 초점은 종', !s4.open && s4.exp === 'false' && s4.focus === 'bell', JSON.stringify(s4));
+    // keyboard: Enter on the bell, then Tab through the panel and out of it — it closes as focus leaves, and the control
+    // focused then is seen, not under the panel (WCAG 2.4.11)
+    await p.keyboard.press('Enter'); await p.waitForTimeout(300);
+    const ring = await p.evaluate(() => { const t = document.querySelector('#notip-t'); return { on: document.activeElement === t, fv: t.matches(':focus-visible'), outline: getComputedStyle(t).outlineStyle }; });
+    const walk = [];
+    for (let i = 0; i < 14; i++) {
+      await p.keyboard.press('Tab'); await p.waitForTimeout(80);
+      const w = await p.evaluate(() => { const a = document.activeElement, el = document.querySelector('#notip'), r = a.getBoundingClientRect();
+        const t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { open: !!el, inPanel: !!(el && el.contains(a)), el: `${a.tagName}.${a.className} ${(a.getAttribute('aria-label') || a.textContent || '').trim().slice(0, 16)}`,
+          seen: !!t && (t === a || a.contains(t)), exp: document.querySelector('#notibtn').getAttribute('aria-expanded') }; });
+      walk.push(w); if (!w.inPanel) break; }
+    const wOut = walk[walk.length - 1];
+    ok('4 키보드: Enter로 열면 제목에 초점(테두리 없음), Tab으로 패널 밖에 나가면 닫히고 초점 받은 칸이 가려지지 않음',
+      ring.on && ring.outline === 'none' && walk.length >= 2 && walk.slice(0, -1).every((w) => w.inPanel && w.open) && !wOut.inPanel && !wOut.open && wOut.exp === 'false' && wOut.seen,
+      JSON.stringify({ ring, steps: walk.length, out: wOut }));
+    await bell(p); await p.keyboard.press('Shift+Tab'); await p.waitForTimeout(80); const sb1 = await state(p);
+    await p.keyboard.press('Shift+Tab'); await p.waitForTimeout(80); const sb2 = await state(p), sbEl = await p.evaluate(() => document.activeElement.id || document.activeElement.tagName);
+    ok('4 Shift+Tab: 제목 앞은 종(패널 그대로), 한 번 더면 닫히고 초점은 그 버튼에 그대로', sb1.open && sb1.focus === 'bell' && !sb2.open && sb2.exp === 'false' && sb2.focus !== 'bell' && /btn$/.test(sbEl),
+      `${sbEl} ${JSON.stringify(sb1)} ${JSON.stringify(sb2)}`);
+    // a tap on the panel's own text (no control): it stays open; Esc then closes it and focus goes to the bell
+    await bell(p);
+    const tp = await p.evaluate(() => { const r = document.querySelector('#notip ul.notes > li .sub').getBoundingClientRect(); return { x: Math.round(r.left + 4), y: Math.round(r.top + r.height / 2) }; });
+    await p.mouse.click(tp.x, tp.y); await p.waitForTimeout(200); const st1 = await state(p);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200); const st2 = await state(p);
+    ok('4 패널 안 글자를 누르면 그대로 열림, 그다음 Esc는 닫고 초점은 종', st1.open && st1.exp === 'true' && !st2.open && st2.focus === 'bell', `${JSON.stringify(st1)} ${JSON.stringify(st2)}`);
     // a tap outside on nothing tappable: the page's left gutter beside the panel
     await bell(p);
     const pt = await p.evaluate(() => { const r = document.querySelector('#notip').getBoundingClientRect(), x = 3, y = Math.round(r.top + 120), e = document.elementFromPoint(x, y);
@@ -180,6 +211,8 @@ const bell = async (p) => { await p.click('#notibtn'); await p.waitForTimeout(30
   { const { ctx, p, errs } = await open(b, { hash: '#saved?bell=1' });
     const s = await state(p), last = await p.evaluate(() => localStorage.getItem('pc:lastRoute'));
     ok('8 \'#saved?bell=1\'로 열면: 관심 탭 + 패널 열림, 새 알림 점·읽음, 주소의 표시는 지워짐', s.open && s.view === 'saved' && s.hash === '#saved' && s.dots === '11100' && s.badge === '' && s.unreadStored === 0, JSON.stringify(s));
+    const ring8 = await p.evaluate(() => { const t = document.querySelector('#notip-t'); return { on: document.activeElement === t, fv: t.matches(':focus-visible'), outline: getComputedStyle(t).outlineStyle }; });
+    ok('8 누르기 전에 연 패널도 제목에 초점 테두리 없음(종으로 열 때와 같은 모양)', ring8.on && ring8.outline === 'none', JSON.stringify(ring8));
     ok('8 마지막 화면 기억에도 표시가 남지 않음', !/bell/.test(last || ''), last);
     await p.reload(); await ready(p); await p.waitForTimeout(400); const r1 = await state(p);
     ok('8 새로 고침하면 패널이 다시 열리지 않음', !r1.open && r1.hash === '#saved', JSON.stringify(r1));
