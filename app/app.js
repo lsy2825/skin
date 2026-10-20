@@ -174,7 +174,13 @@
     D.rows = rowsOf(D); delete D.cols;
     S = D.s;
     BR = D.branches.map((b, i) => ({ i, brand: b[0], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], region: S[b[5]], site: S[b[6]], geo: b[9] ?? 0 }));
-    KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label }));
+    KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label, full: label }));
+    // 패키지: the parts it is made of, not the clinic's name for it (Spec.pkgLabel, 사용자 요청 2026-10-20). k.full keeps the
+    // name the data gave (search and 죠미 still know it; each branch's price line keeps the clinic's own product name). A
+    // short name another key already has, or two packages would share, stays full — two rows must not read the same.
+    { const short = KEYS.map((k) => (k.cat === "패키지" ? Spec.pkgLabel(k.label) : k.label)), seen = new Map();
+      short.forEach((s) => seen.set(s, (seen.get(s) || 0) + 1));
+      KEYS.forEach((k, j) => { if (short[j] !== k.label && seen.get(short[j]) === 1) k.label = short[j]; }); }
     KI = Object.assign(Object.create(null), Object.fromEntries(KEYS.map((k) => [k.id, k.i])));   // no prototype: '#compare?k=__proto__' is just unknown (round-2 D5)
     ROWS = D.rows;
     // source re-checks of low prices (scrape/verify_prices.py): row → { s: 1 found · 2 name only · 3 not found · 4 fetch error · 5 in the same block, d: date }
@@ -214,7 +220,8 @@
     const spaceless = (src) => { let re; try { re = new RegExp(src); } catch (e) { re = /$^/; } return { source: src, test: (x) => re.test(x) || re.test(String(x).replace(/\s+/g, "")) }; };
     const PN = D.meta.partial ? D.meta.partial.fn : null;   // home.json: branches per family counted in the full file
     FAM = (D.meta.fam || []).map(([name, rx, vs, cat, fid, desc], fi) => ({ name, rx: spaceless(rx), cat: cat || "", fid: fid || "", desc: desc || [], pn: PN ? PN[fi] : null,
-      vs: vs.map(([id, label]) => ({ k: KI[id], label })).filter((v) => v.k != null) })).filter((f) => f.vs.length);
+      // a package option reads as its key does (its parts — the data gives both the same clinic name)
+      vs: vs.map(([id, label]) => ({ k: KI[id], label: KI[id] != null && KEYS[KI[id]].full === label ? KEYS[KI[id]].label : label })).filter((v) => v.k != null) })).filter((f) => f.vs.length);
     famOf = KEYS.map(() => null);
     FAM.forEach((f) => f.vs.forEach((v) => { if (!famOf[v.k]) famOf[v.k] = { f, label: v.label }; }));
     FAM.forEach((f, i) => { f.idx = i; });
@@ -766,7 +773,8 @@
   // A family's only option is called '기본' (348 of them): that names nothing, so the key's own name ('코 조각주사') goes there.
   // A long name (758 keys over 20 characters) gives its short name (Spec.shortLabel — '담기 · 리쥬베룩 패키지', 위계 점검 39; a
   // bracket of an amount alone, '(100U)', stays); the full name stays in the button's aria-label and the title above it
-  const addTarget = (k) => Spec.shortLabel(famOf[k] && famOf[k].label !== "기본" ? famOf[k].label : KEYS[k].label);
+  const addTarget = (k) => { const l = famOf[k] && famOf[k].label !== "기본" ? famOf[k].label : KEYS[k].label;
+    return KEYS[k].full !== KEYS[k].label ? Spec.pkgShort(l) : Spec.shortLabel(l); };   // a package: its parts ('리쥬란힐러 2cc 외 2')
   const addBtn = (k) => {
     const target = addTarget(k), id = KEYS[k].id;
     const b = h("button", { class: "addbtn", type: "button", "aria-pressed": inCart(k) ? "true" : "false",
@@ -2527,7 +2535,7 @@
 
   // ---------------- search index (aliases, typo correction, autocomplete — app/domain/search.js), built on first use
   let SIDX = null, normBySid = null;
-  const searchNames = () => { const sids = [...new Set(ROWS.map((r) => r[2]))]; return { sids, names: sids.map((i) => S[i]), extra: [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)] }; };
+  const searchNames = () => { const sids = [...new Set(ROWS.map((r) => r[2]))]; return { sids, names: sids.map((i) => S[i]), extra: [...KEYS.map((k) => k.label), ...KEYS.filter((k) => k.full !== k.label).map((k) => k.full), ...FAM.map((f) => f.name)] }; };   // a package's clinic name is still found
   const takeIndex = (sids, idx) => { SIDX = idx; normBySid = new Map(sids.map((sid, n) => [sid, idx.normNames[n]])); return SIDX; };
   function searchIndex() {
     if (SIDX) return SIDX;
@@ -2546,7 +2554,7 @@
   }
   App.searchReady = () => !!SIDX;
   App.searchIndexData = () => SIDX;   // tests: the worker's index against one built here (tests/e2e/o3_search.js)
-  const suggestTerms = () => [...KEYS.map((k) => k.label), ...FAM.map((f) => f.name)];
+  const suggestTerms = () => [...KEYS.map((k) => k.label), ...KEYS.filter((k) => k.full !== k.label).map((k) => k.full), ...FAM.map((f) => f.name)];
   // popular = procedure families sold at the most branches
   let POP = null;
   const popularTerms = () => POP || (POP = FAM.map((f) => [f.name, new Set(f.vs.flatMap((v) => [...byKB[v.k].keys()])).size]).sort((a, b) => b[1] - a[1]).slice(0, 8).map((x) => x[0]));
@@ -4483,7 +4491,7 @@
     // the price is the region's median of the kind's main key, and the count next to it (no description) is that median's
     // branch count — not f.n, every branch and every size in the country (review of hierarchy audit 13: '패키지 · 204곳'
     // under a 15-branch 부산)
-    const keys = KEYS.filter((k) => tokens.length && qc.test(Search.norm(`${k.label} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`)))
+    const keys = KEYS.filter((k) => tokens.length && qc.test(Search.norm(`${k.label} ${k.full !== k.label ? k.full : ""} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`)))
       .sort((a, b) => byKB[b.i].size - byKB[a.i].size).slice(0, 8);
     // decision material first (hierarchy audit 5): what the page opens on depends on the words —
     //  · a spec in them ('리쥬란 2cc', '사각턱 50U'): the matching specs ('같은 조건 가격 비교', each with the region's median,

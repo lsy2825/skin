@@ -173,6 +173,27 @@
     const t = dropBrackets(s);
     return t.length >= 2 ? t : s;
   }
+  // a package says what it is made of, not the clinic's name for it (사용자 요청 2026-10-20): '리쥬베룩 패키지(리쥬란힐러 2cc +
+  // 쥬베룩 스킨 2cc + 크라이오셀)' → '리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀', a trailing '5회' kept. Only that shape changes
+  // (and '이름 : A + B'): a name without '+' and then one bracket listing two or more parts. A bracket that is a note ('압출+염증주사 포함/…'), a '+'
+  // in the name itself ('블랙필+…(…)', 'NMN(NAD+ …)'), and anything after the bracket but a session count leave the name as it is.
+  const PKG_NOTE = /포함|별도|처방|필요\s?시|택\s?1|중\s?택|선택|무료|증정|서비스|이상|이하|기준/;
+  function pkgLabel(label) {
+    const s = oneLine(label);
+    // '이름(A + B) 5회', or '이름 : A + B 1회' (a colon after the name; parts joined by '-' too are steps, not parts — left as is)
+    const m = /^([^()+]+?)\s*\(([^()]*\+[^()]*)\)(\s*[\d,]+\s*회)?$/.exec(s), c = !m && /^([^():+]+?)\s*[:：]\s*([^:：]*\+[^:：]*)$/.exec(s);
+    const parts = m ? m[2] + (m[3] || "") : c && !c[2].includes("-") ? c[2] : null;
+    if (!parts || PKG_NOTE.test(parts)) return s;
+    const t = oneLine(parts.replace(/\s*\+\s*/g, " + "));
+    return t.split(" + ").length >= 2 ? t : s;
+  }
+  // the same parts on a small button ('담기 · …'): whole when short, else the first part and how many more ('리쥬란힐러 2cc 외 2')
+  function pkgShort(label, max = 20) {
+    const s = oneLine(label);
+    if (s.length <= max) return s;
+    const parts = s.split(" + ");
+    return parts.length >= 2 ? `${parts[0]} 외 ${parts.length - 1}` : s;
+  }
 
-  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder, shortLabel };
+  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder, shortLabel, pkgLabel, pkgShort };
 });
