@@ -47,7 +47,7 @@ test("no line twice anywhere, no near-copies within one record", () => {
 });
 
 test("every situation the app asks for has lines once the file is loaded", () => {
-  const app = ["app/app.js", "app/core.js", "app/screens/ops.js", "app/screens/about.js", "app/screens/concern.js"].map((f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8")).join("\n");
+  const app = ["app/app.js", "app/core.js", "app/screens/ops.js", "app/screens/about.js", "app/screens/concern.js", "app/screens/map.js"].map((f) => fs.readFileSync(path.join(__dirname, "..", f), "utf8")).join("\n");
   const used = new Set([...app.matchAll(/jline\(\s*"([A-Za-z]+)"/g)].map((m) => m[1]));
   ["tip", "cheer"].forEach((x) => used.add(x));     // the sheet picks one of the two
   const L = fresh(); L.load(DATA);

@@ -44,8 +44,8 @@ const BUTTER_OK = /^(\.k1, \.k2, \.kt, \.kc|ul\.warns|\.elig li\.el-limit \.ei2|
 const butterAt = usedBy(/var\(--(butter|butter-soft|butter-ink|on-butter)\)/), butterBad = butterAt.filter((s) => !BUTTER_OK.test(s));
 ok('버터는 조건(배지·조건 목록)과 죠미(얼굴·말풍선·입구)에만 — 선택·순위·알림 막대에 없음', !butterBad.length, butterBad.length ? butterBad.join(' | ') : butterAt.join(' | '));
 ok('검색창 ×: 브라우저 기본(파랑) 대신 회색 24px 버튼', /input\[type="search"\]::-webkit-search-cancel-button\s*\{[^}]*-webkit-appearance:\s*none[^}]*width:\s*24px[^}]*height:\s*24px[^}]*background:\s*var\(--muted\)/.test(css));
-// screens/about.js and screens/concern.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2, 3-3): checked the same way
-const inl = ['app.js', 'screens/about.js', 'screens/concern.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
+// screens/about.js, screens/concern.js and screens/map.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-4): checked the same way
+const inl = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
   .filter(([, l]) => /style:\s*["`][^"`]*color:\s*var\(--(pricey|coral|butter|butter-ink|butter-soft)\)/.test(l)).map(([n]) => `${f}:${n}`));
 ok('app.js에 직접 적은 코랄·버터 글자색 없음(클래스로)', !inl.length, inl.join(', '));
 
