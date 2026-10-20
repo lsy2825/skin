@@ -68,8 +68,8 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   const sheetOf = async (name_, label) => {
     await p.locator('#main .card.flush li', { has: p.locator('.item .k.kt', { hasText: label }) }).filter({ has: p.locator('.item > .t', { hasText: name_ }) }).first()
       .locator(':scope > .infob').click();
-    await p.waitForSelector('.sheet[aria-label="가격 확인"]');
-    const t = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
+    await p.waitForSelector('.sheet[aria-label="가격 정보"]');
+    const t = await p.locator('.sheet[aria-label="가격 정보"]').textContent();
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     return t;
   };
@@ -82,10 +82,10 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
   // price sheet: the condition line is '요일·시간 조건' (not '평일 낮 조건')
   await p.locator('#main .card.flush li', { has: p.locator('.item .k.kt', { hasText: LABEL }) }).filter({ has: p.locator('.item > .t', { hasText: name }) }).first()
     .locator(':scope > .infob').click();
-  await p.waitForSelector('.sheet[aria-label="가격 확인"]');
-  const sheetTxt = await p.locator('.sheet[aria-label="가격 확인"]').textContent();
+  await p.waitForSelector('.sheet[aria-label="가격 정보"]');
+  const sheetTxt = await p.locator('.sheet[aria-label="가격 정보"]').textContent();
   ok('가격 확인: 조건에 \'요일·시간 조건\'', sheetTxt.includes('요일·시간 조건') && !sheetTxt.includes('평일 낮 조건'));
-  ok('가격 확인: 배지도 \'평일·시간 한정\'', await p.locator('.sheet[aria-label="가격 확인"] .k.kt', { hasText: LABEL }).count() > 0);
+  ok('가격 확인: 배지도 \'평일·시간 한정\'', await p.locator('.sheet[aria-label="가격 정보"] .k.kt', { hasText: LABEL }).count() > 0);
   await p.keyboard.press('Escape'); await p.waitForTimeout(200);
 
   // legend (데이터 상태와 출처) and data notes (마이 → 데이터 안내): 해피아워 is not only '평일 낮' any more (C #83)
@@ -182,7 +182,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
       ok('화수목 가격: 배지 설명에 \'되는 요일: 화·수·목\'', !!bad && bad.some(([x, ti]) => x === lb && ti.includes('되는 요일: 화·수·목')), bad ? (bad.find(([x]) => x === lb) || [])[1] : '');
       const st = await sheetOf(n, lb);
       ok('가격 확인: 조건에 \'되는 요일: 화·수·목\'', st.includes('되는 요일: 화·수·목'), n);
-      ok('가격 확인: 가격 종류는 조건부', st.includes('조건부 — 첫 방문·요일·시간 같은 조건이 맞을 때만') || /체험가 —|한정가 —/.test(st), n);
+      ok('가격 확인: 가격 종류는 조건부', st.includes('특가 — 첫 방문·요일·시간 조건이 맞을 때만') || /체험가 —|한정가 —/.test(st), n);
     }
     // a price with hours, valid on Wednesdays: outside the window no, inside yes; the sheet lists the hours
     const wbit = bit(3);
@@ -226,7 +226,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
       bad = await rowBadges(r[0], n, lb);
       ok(`태그 없는 요일 가격: '${lb}' 배지`, !!bad, `${n} | ${names(bad)}`);
       const st = await sheetOf(n, lb);
-      ok('태그 없는 요일 가격: 가격 확인은 조건부, 되는 요일 줄', st.includes('조건부 — 첫 방문·요일·시간 같은 조건이 맞을 때만') && st.includes(P.whenLines(daysOf(r), '')[0]), n);
+      ok('태그 없는 요일 가격: 가격 확인은 조건부, 되는 요일 줄', st.includes('특가 — 첫 방문·요일·시간 조건이 맞을 때만') && st.includes(P.whenLines(daysOf(r), '')[0]), n);
       // 특가 off (the branch page's switch): a price for some weekdays only is not a plain price, so it is not listed
       const special = async (on_) => { const sw = p.locator('#main label.switch', { hasText: '특가 포함' }).first();
         if ((await sw.locator('input').isChecked()) !== on_) await sw.click(); await p.waitForTimeout(400); };

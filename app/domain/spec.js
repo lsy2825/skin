@@ -77,8 +77,8 @@
       : first ? { k: "첫 방문", v: "첫 방문·첫 시술만", state: "limit" } : { k: "첫 방문", v: "표기 없음 — 재방문도 되는지 확인", state: "unknown" });
     out.push(o.kind === 1 ? { k: "체험 가격", v: "체험가 — 보통 1인 1회", state: "limit" }
       : o.kind === 2 ? { k: "체험 가격", v: "한정가 — 기간·수량·조건이 붙어요", state: "limit" }
-        : o.kind === 3 ? { k: "체험 가격", v: "구독권", state: "limit" }
-          : o.kind === 4 ? { k: "체험 가격", v: "고시가(병원 게시 가격표)", state: "none" } : { k: "체험 가격", v: "일반 가격", state: "none" });
+        : o.kind === 3 ? { k: "체험 가격", v: "이용권", state: "limit" }
+          : o.kind === 4 ? { k: "체험 가격", v: "고시가(병원 게시 가격표)", state: "none" } : { k: "체험 가격", v: "일반가", state: "none" });
     out.push(o.vat === 2 ? { k: "부가세", v: "별도 — 결제 때 10%를 더 내요", state: "limit" }
       : o.vat === 1 ? { k: "부가세", v: "포함", state: "none" } : { k: "부가세", v: "포함 여부 표기를 찾지 못했어요", state: "unknown" });
     const u = o.until || "";

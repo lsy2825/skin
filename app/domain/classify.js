@@ -12,17 +12,17 @@
   // cmp: 'direct' = compare as is · 'caution' = same treatment, something to check · 'reference' = not the same unit,
   // only for reference · 'never' = a different treatment, never merged
   const CLASSES = {
-    A: { label: "같은 시술·같은 규격", cmp: "direct", say: "비교 묶음의 제품·용량·횟수와 상품명이 맞아요." },
-    B: { label: "제품명 표기 없음", cmp: "caution", say: "같은 묶음의 다른 병원은 제품명을 적었는데, 이 상품명엔 제품·장비 이름이 없어요. 어떤 제품인지 병원에 확인하세요." },
+    A: { label: "같은 시술·같은 용량", cmp: "direct", say: "비교하는 시술과 제품·용량·횟수가 맞아요." },
+    B: { label: "제품명 표기 없음", cmp: "caution", say: "같은 시술의 다른 병원은 제품명을 적었는데, 이 상품명엔 제품·장비 이름이 없어요. 어떤 제품인지 병원에 확인하세요." },
     C: { label: "다른 제품·장비", cmp: "caution", say: "같은 부위·횟수지만 제품·장비가 다른 가격과 함께 있어요. 제품이 달라 효과·통증·유지 기간이 다를 수 있어요." },
-    D: { label: "용량·부위 표기 없음", cmp: "caution", say: "비교 묶음은 용량·부위를 정했는데, 이 상품명엔 그 표기가 없어요." },
-    E: { label: "조건부 가격", cmp: "caution", say: "첫 방문·체험가·한정가·요일·시간 같은 조건이 붙은 가격이에요. 조건이 맞을 때만 이 가격이에요." },
-    F: { label: "묶음 상품", cmp: "reference", say: "다른 시술이 함께 들어간 묶음 가격이에요. 단품 가격과 바로 비교하지 마세요." },
+    D: { label: "용량·부위 표기 없음", cmp: "caution", say: "비교하는 시술은 용량·부위가 정해져 있는데, 이 상품명엔 그 표기가 없어요." },
+    E: { label: "특가", cmp: "caution", say: "첫 방문·체험가·한정가·요일·시간 같은 조건이 붙은 가격이에요. 조건이 맞을 때만 이 가격이에요." },
+    F: { label: "패키지", cmp: "reference", say: "다른 시술이 함께 들어간 패키지 가격이에요. 단품 가격과 바로 비교하지 마세요." },
     G: { label: "이용권·코스", cmp: "reference", say: "여러 번·기간 이용권 가격이에요. 1회 가격과 바로 비교하지 마세요." },
     H: { label: "추가 옵션", cmp: "reference", say: "다른 시술과 함께할 때만 사는 추가 옵션이에요. 단독 가격이 아니에요." },
     I: { label: "고시 가격표", cmp: "caution", say: "병원 게시 비급여 가격표(정가)예요. 행사 가격이 아니라 실제 결제가는 다를 수 있어요." },
-    J: { label: "이름만 비슷한 다른 시술", cmp: "never", say: "이름에 같은 낱말이 있지만 다른 시술이에요. 자동으로 같은 묶음에 넣지 않아요." },
-    R: { label: "확인 필요", cmp: "caution", say: "같은 묶음의 다른 가격과 너무 달라요(10배 이상 차이). 표기 오류일 수 있어 사람이 확인해야 해요." },
+    J: { label: "이름만 비슷한 다른 시술", cmp: "never", say: "이름에 같은 낱말이 있지만 다른 시술이에요. 자동으로 같은 시술로 묶지 않아요." },
+    R: { label: "확인 필요", cmp: "caution", say: "같은 시술의 다른 가격과 너무 달라요(10배 이상 차이). 표기 오류일 수 있어 사람이 확인해야 해요." },
   };
 
   // devices / products under one canonical name (제모 devices are written many ways). Spec.PRODUCTS covers the rest.
@@ -64,7 +64,7 @@
     if (o.price > 0 && o.median > 0 && (o.price <= o.median / 10 || o.price >= o.median * 10)) {
       const r = o.price / o.median;
       // 체험가 far below the middle is an event, not an error; the review is for the rest
-      if (!(r < 1 && (o.kind === 1 || o.kind === 2))) return out("R", `${CLASSES.R.say} (중간값의 ${r < 1 ? Math.round(r * 100) + "%" : r.toFixed(1) + "배"})`);
+      if (!(r < 1 && (o.kind === 1 || o.kind === 2))) return out("R", `${CLASSES.R.say} (중간 가격의 ${r < 1 ? Math.round(r * 100) + "%" : r.toFixed(1) + "배"})`);
     }
     if (o.addon != null ? o.addon : ADDON.test(name)) return out("H");
     if ((o.sess || 1) >= 99) return out("G");
@@ -72,7 +72,7 @@
     if (o.kind === 1 || o.kind === 2 || (o.tags || []).length || /첫\s*방문|신규|평일|주말|타임|선착순/.test(Spec.dropNewItem(name))) return out("E");
     if (o.kind === 4) return out("I");
     const ps = products(name), mix = o.mix;
-    if (mix && mix.mixed && ps.length) return out("C", `${CLASSES.C.say} 이 가격: ${ps.join("·")} · 같은 묶음: ${[...mix.named.keys()].join("·")}`);
+    if (mix && mix.mixed && ps.length) return out("C", `${CLASSES.C.say} 이 가격: ${ps.join("·")} · 같은 시술: ${[...mix.named.keys()].join("·")}`);
     if (mix && mix.named.size && !ps.length) return out("B");
     if (AMOUNT.test(label) && !AMOUNT.test(name)) return out("D");
     return out("A");

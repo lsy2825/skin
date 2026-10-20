@@ -82,7 +82,7 @@ test("historyReady: a price history is shown only after 8 distinct weeks", () =>
   assert.equal(S.historyReady(obs(days(8, 7))), true);                       // 8 weekly snapshots
   assert.equal(S.historyReady(S.observations(days(8, 7), [null, null, null, null, null, null, [1, 1, 1], [1, 1, 1]])), false);   // a key seen twice
   assert.equal(S.historyReady(null), false);
-  assert.match(S.obsLabel(obs(["2026-10-13", "2026-10-14"])), /^관측 2회 · 10\/13~10\/14$/);
+  assert.match(S.obsLabel(obs(["2026-10-13", "2026-10-14"])), /^기록 2번 · 10\/13~10\/14$/);
 });
 
 // ---- list order and length (2026-10-16 hierarchy audit 5·6·7·11)

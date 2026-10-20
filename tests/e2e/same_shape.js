@@ -90,7 +90,7 @@ const HELP = () => {
       const cl = [...pc.querySelectorAll('.condlow')].map((c) => { const cs = getComputedStyle(c); return { line: parseFloat(cs.borderTopWidth) >= 1 && cs.borderTopStyle !== 'none', fill: __framed(c), badges: [...c.querySelectorAll('.k')].filter(__vis).map((k) => k.className + ':' + k.textContent.trim()), sub: (c.querySelector('.sub') || {}).textContent || '' }; });
       const cf = [...document.querySelectorAll('#main details.cmpfold')].map((d) => { const prev = d.previousElementSibling; return { card: d.classList.contains('card'), gap: prev ? Math.round(d.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : null }; });
       const rk = rows[0] && rows[0].querySelector('.rank .b'), card = document.querySelector('#clinics');
-      const infob = rows.filter((li) => li.querySelectorAll(':scope > .infob').length === 1 && /가격 근거/.test(li.querySelector(':scope > .infob').getAttribute('aria-label'))).length;
+      const infob = rows.filter((li) => li.querySelectorAll(':scope > .infob').length === 1 && /가격 정보/.test(li.querySelector(':scope > .infob').getAttribute('aria-label'))).length;
       const hits = rows.slice(0, 3).map(__hit); scrollTo(0, 0);
       return { n: rows.length, bad, both, boxes, cl, cf, textX: rk ? rk.getBoundingClientRect().left - card.getBoundingClientRect().left : null, infob, hits,
         priceR: rows[0] ? card.getBoundingClientRect().right - rows[0].querySelector('.rank .p').getBoundingClientRect().right : null };
@@ -98,10 +98,10 @@ const HELP = () => {
     ok(`29 ${tag} 비교 줄 배지 순서: 종류·조건 → 경고 → 정보`, cmp.n >= 5 && !cmp.bad.length, `${cmp.n}줄 · 어긋난 줄 ${cmp.bad.length} ${cmp.bad.slice(0, 2).join(' | ')}`);
     if (wide) ok('29 비교: 조건 배지와 날짜 배지가 같이 있는 줄이 있음(순서가 시험됨)', cmp.both > 0, `${cmp.both}줄`);
     ok(`31 ${tag} 가격 카드 안에 테두리·채움 상자 없음`, !cmp.boxes.length, cmp.boxes.join(', '));
-    ok(`31 ${tag} 조건부 가격·확인 필요 초저가: 위 선 + 배지, 채움 없음, 문장 그대로`, cmp.cl.length >= 1 && cmp.cl.every((c) => c.line && !c.fill && c.badges.length >= 1)
+    ok(`31 ${tag} 특가·초저가: 위 선 + 배지, 채움 없음, 문장 그대로`, cmp.cl.length >= 1 && cmp.cl.every((c) => c.line && !c.fill && c.badges.length >= 1)
       && cmp.cl.some((c) => /조건이 맞을 때만 이 가격이에요\.$/.test(c.sub)), JSON.stringify(cmp.cl).slice(0, 240));
     ok(`30 ${tag} 비교 덩어리 접기 2개는 카드, 위 간격은 화면 간격(덩어리 사이) 24px`, cmp.cf.length === 2 && cmp.cf.every((c) => c.card && c.gap === 24), JSON.stringify(cmp.cf));
-    ok(`47 ${tag} 비교 줄: ⓘ 하나(가격 근거)`, cmp.infob === cmp.n, `${cmp.infob}/${cmp.n}`);
+    ok(`47 ${tag} 비교 줄: ⓘ 하나(가격 정보)`, cmp.infob === cmp.n, `${cmp.infob}/${cmp.n}`);
     ok(`47 ${tag} 비교 줄 ⓘ: 보이는 칸 36, 누르는 곳 44(오른쪽으로만 넓힘)`, cmp.hits.length === 3 && cmp.hits.every(__hitOkN), JSON.stringify(cmp.hits[0]));
     await p.evaluate(() => { for (const d of document.querySelectorAll('details.cmpfold')) d.open = true; }); await p.waitForTimeout(300);
     const inner = await p.evaluate(() => [...document.querySelectorAll('details.cmpfold')].map((d) => [...d.querySelectorAll('*')].filter((e) => __vis(e) && (e.matches('.card, .guide') || (e.closest('.cmpfold') === d && getComputedStyle(e).boxShadow !== 'none' && e.matches('div, section'))) && __framed(e)).map((e) => e.className)));
@@ -179,9 +179,9 @@ const HELP = () => {
     if (wide) {
       // the ⓘ opens the evidence; its '원본' line links the clinic's page
       await p.locator('#main .card.results li.rk > .infob').first().click(); await p.waitForTimeout(300);
-      const sh = await p.evaluate(() => { const s = document.querySelector('.sheet[aria-label="가격 확인"]'); if (!s) return null; const dt = [...s.querySelectorAll('dt')].find((x) => x.textContent === '원본');
+      const sh = await p.evaluate(() => { const s = document.querySelector('.sheet[aria-label="가격 정보"]'); if (!s) return null; const dt = [...s.querySelectorAll('dt')].find((x) => x.textContent === '원본');
         return { orig: !!dt, link: !!(dt && dt.nextElementSibling.querySelector('a[href^="http"][target=_blank]')) || /원본 링크 없음/.test(dt ? dt.nextElementSibling.textContent : '') }; });
-      ok('47 검색 ⓘ → 가격 근거 창, \'원본\' 줄에 병원 원본 링크', !!sh && sh.orig && sh.link, JSON.stringify(sh));
+      ok('47 검색 ⓘ → 가격 정보 창, \'원본\' 줄에 병원 원본 링크', !!sh && sh.orig && sh.link, JSON.stringify(sh));
       await p.keyboard.press('Escape'); await p.waitForTimeout(200);
       // 이렇게 찾았어요 goes in the filter card
       await go(p, '#search/' + encodeURIComponent('사각턱 50U -제오민') + '?nl=0', 1500);
@@ -227,7 +227,7 @@ const HELP = () => {
     ok(`52 ${tag} 지점 줄과 비교 줄의 글자 시작선이 같음`, cmpX != null && Math.abs(br.textX - cmpX) < 0.6, `비교 ${cmpX} · 지점 ${br.textX}`);
     if (wide) {
       await p.locator('#main .card.flush ul.list > li.rk > .infob').first().click(); await p.waitForTimeout(300);
-      ok('47 지점 ⓘ → 가격 근거 창(원본 줄)', await p.locator('.sheet[aria-label="가격 확인"] dt', { hasText: /^원본$/ }).count() === 1);
+      ok('47 지점 ⓘ → 가격 정보 창(원본 줄)', await p.locator('.sheet[aria-label="가격 정보"] dt', { hasText: /^원본$/ }).count() === 1);
       await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     }
 

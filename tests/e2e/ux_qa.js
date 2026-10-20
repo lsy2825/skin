@@ -165,7 +165,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push([name, pass, deta
     ok('검색 결과 없음 안내', /가격이 없어요/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#saved'); await p.waitForTimeout(400); const savedTxt = await p.locator('#main').innerText();
     await p.goto(BASE + '#me'); await p.waitForTimeout(400);
-    ok('알림(관심 탭)·기록(마이) 없을 때 안내', /알림을 만들 수 있어요/.test(savedTxt) && /하트를 누르면/.test(savedTxt) && /기록하면/.test(await p.locator('#main').innerText()));
+    ok('알림(관심 탭)·기록(마이) 없을 때 안내', /'가격 알림'이나 내 견적의 '합계 알림'에서 만들 수 있어요/.test(savedTxt) && /하트를 누르면/.test(savedTxt) && /기록하면/.test(await p.locator('#main').innerText()));
     // undo: favourite remove
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(400);
     await p.click('.cmphead .favbtn'); await p.click('.cmphead .favbtn'); await p.waitForTimeout(150);

@@ -29,17 +29,17 @@
         h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, "병원 홈페이지에 공개된 가격을 매주 모은 자료예요. '실시간' 가격이 아니에요."),
         h("dl", { class: "facts", style: "margin-top:var(--sp-2)" },
           row("전체 등록 지점", `${BR.length}곳 (${D.meta.brands.filter((b, i) => BR.some((x) => x.brand === i)).map((b) => b[0]).join("·")})`),
-          row("이번 수집에서 확인", `${ver}곳${stale ? ` · 수집 실패해 지난 가격을 쓰는 곳 ${stale}곳` : " · 실패 0곳"}`),
+          row("이번 수집에서 확인", `${ver}곳${stale ? ` · 못 읽어 지난 가격인 곳 ${stale}곳` : ""}`),
           row("다음 수집 때 먼저 볼 지점", pri.length ? `${pri.length}곳 (오래된 확인·끝나 가는 이벤트·급변 검토 등)` : "없음"),
-          row("가격 수집일", `${D.meta.updated}${m && m.built ? ` · 파일 만든 시각 ${m.built.replace("T", " ").slice(0, 16)} UTC` : ""}`),
-          row("마지막 동기화", local ? `${local.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })} — 이 휴대폰이 서버의 데이터 버전을 확인한 시각${SYNC.metaOk ? "" : " (그때 서버에 닿지 못함)"}` : "-"),
-          row("이번 갱신에서 바뀐 가격", cc ? `가격 바뀜 ${cc.price}개 · 새로 생김 ${cc.added}개 · 빠짐 ${cc.removed}개 (지난 수집본과 비교, 실제로 달라진 줄만)` : "비교할 지난 수집본 정보가 없어요"),
+          row("가격 수집일", D.meta.updated),
+          row("마지막 확인", local ? `${local.toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}${SYNC.metaOk ? "" : " (그때 서버에 닿지 못함)"}` : "-"),
+          row("마지막 파일 갱신에서 바뀐 가격", cc ? `가격 바뀜 ${cc.price}개 · 새로 생김 ${cc.added}개 · 빠짐 ${cc.removed}개` : "비교할 지난 파일이 없어요"),
           row("갱신 실패", `${stale}곳${SYNC.failed ? ` · 이 휴대폰의 마지막 내려받기 실패: ${SYNC.failed}` : ""}`),
-          row("데이터 원본", `${liveBrands().length}개 브랜드 공식 홈페이지의 공개 가격 페이지 (${liveBrands().map((b) => b.name).join("·")})`),
-          row("가격 비교 기준", "같은 시술·같은 용량(샷 수)·같은 회차·같은 원산지끼리만 비교해요. 다른 규격은 '조건 상이'로 따로 둬요."),
-          row("부가세 처리", "병원이 '부가세 별도'라고 적은 가격에만 10%를 더해 '부가세 포함 예상가'로 보여줘요. 부가세 표기를 못 찾은 가격은 더하지도 빼지도 않아요. 마이 → 가격 표시에서 병원 표시가로 바꿀 수 있어요."),
-          row("이벤트 가격 처리", "체험가·한정가·첫 방문·요일·시간 조건 가격은 '조건부'로 표시해요. 종료일이 지난 가격은 비교에서 빠지고, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격은 확인 전까지 빠져요."),
-          row("가격 오류 신고", "각 가격의 'i'(가격 근거) → '원본과 달라요' 또는 '이 가격 다시 확인하기'. GitHub로 보내면 운영자에게 실제로 접수돼요.")),
+          row("가격 출처", `${liveBrands().length}개 브랜드 공식 홈페이지의 공개 가격 페이지 (${liveBrands().map((b) => b.name).join("·")})`),
+          row("가격 비교 기준", "같은 시술·용량(샷 수)·횟수·원산지끼리만 비교해요."),
+          row("부가세 처리", "'부가세 별도' 가격에만 10%를 더해 '부가세 포함가'로 보여줘요. 표기를 못 찾은 가격은 그대로 둬요. 마이 → 가격 표시에서 바꿀 수 있어요."),
+          row("이벤트 가격 처리", "체험가·한정가·첫 방문·요일·시간 조건 가격은 '특가'로 표시해요. 종료일이 지난 가격은 비교에서 빠지고, 지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격은 확인 전까지 빠져요."),
+          row("가격 오류 신고", "각 가격의 ⓘ(가격 정보) → '사이트 가격과 달라요' 또는 '이 가격 다시 확인하기'. GitHub로 보내면 운영자에게 접수돼요.")),
         h("div", { class: "sub", style: "margin:var(--sp-2) 0" }, "브랜드별 수집 상태"),
         h("ul", { class: "list" }, D.meta.brands.map((bb, bi) => { const brs = BR.filter((x) => x.brand === bi); if (!brs.length) return null;
           const ok = brs.filter((x) => !fresh(x.i).stale).length, ds = brs.map((x) => verified(x.i)).filter(Boolean).sort();
@@ -66,20 +66,20 @@
       return h("div", { class: "card", id: "install" }, ...kids);
     }
     function deviceCard() {
-      const box = h("div", { class: "card", id: "device" }, h("h3", {}, icon("database", "sm"), " 이 기기"));
+      const box = h("div", { class: "card", id: "device" }, h("h3", {}, icon("database", "sm"), " 이 휴대폰"));
       const dl = h("dl", { class: "facts" });
       box.append(dl, h("button", { class: "btn sm gray", type: "button", style: "margin-top:var(--sp-2)", onclick: async () => {
         App.Data.abort();                       // stop a running download first
         await cacheClear(); toast("저장된 가격을 지웠어요. 다시 받아요"); setTimeout(() => location.reload(), 400); } }, icon("refresh-cw", "sm"), "저장된 가격 지우고 다시 받기"),
-        h("p", { class: "tiny" }, "관심·내 견적·설정은 그대로 두고 가격 파일만 지워요. 이 휴대폰에만 있는 정보예요."));
+        h("p", { class: "tiny" }, "관심·내 견적·설정은 그대로 두고 가격 파일만 지워요."));
       (async () => {
         const m = await cacheInfo(), keys = canCache() ? await caches.keys().catch(() => []) : [];
         let est = null; try { est = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null; } catch (e) { est = null; }
         const row = (k, v) => h("div", { class: "fact" }, h("dt", {}, k), h("dd", {}, v));
         fill(dl, row("앱으로 실행", standalone() ? "예 (설치한 앱)" : "아니요 (브라우저)"),
-          row("저장된 가격", m ? `${m.updated} 수집본 · 지점 ${m.branches}곳 · 가격 ${m.rows.toLocaleString()}줄 · ${(m.bytes / 1e6).toFixed(1)}MB` : "저장된 사본 없음(다음에 열 때 다시 받아요)"),
-          row("데이터 버전", SYNC.version || "-"),
-          row("앱 버전", keys.find((k) => /^pc-v\d+$/.test(k)) || "서비스 워커 없음(이 브라우저는 오프라인 앱을 쓰지 않아요)"),
+          row("저장된 가격", m ? `${m.updated} 수집 · 지점 ${m.branches}곳 · 가격 ${m.rows.toLocaleString()}개 · ${(m.bytes / 1e6).toFixed(1)}MB` : "저장된 사본 없음(다음에 열 때 다시 받아요)"),
+          row("가격 파일 버전", SYNC.version || "-"),
+          row("앱 버전", keys.find((k) => /^pc-v\d+$/.test(k)) || "오프라인 저장 안 함(이 브라우저)"),
           est && est.usage ? row("이 사이트 저장 공간", `${(est.usage / 1e6).toFixed(1)}MB 사용`) : null,
           row("휴대폰 알림", !notifySupported() ? "지원 안 함" : Notification.permission === "denied" ? "꺼짐(브라우저 설정)" : PUSH && pushState() ? "켜짐(앱이 닫혀 있어도)" : Notification.permission === "granted" ? "켜짐(앱을 열 때만)" : "아직 안 켬"));
       })();
@@ -97,8 +97,8 @@
         h("div", { class: "card" }, h("h3", {}, "약속하는 것"),
           h("ul", { class: "plain" },
             h("li", {}, "돈을 받고 비교 순서를 바꾸지 않아요. 기본 순서는 지역·이름 순이고, 가격순은 직접 고를 때만이에요."),
-            h("li", {}, "같은 제품·용량·횟수끼리만 나란히 놓아요. 규격이 다르면 다른 묶음이에요."),
-            h("li", {}, "모든 가격에 병원 원본 링크와 수집일을 붙여요. 조건(첫 방문·체험가·부가세)은 가격 옆에 적어요."),
+            h("li", {}, "같은 제품·용량·횟수끼리만 나란히 놓아요."),
+            h("li", {}, "모든 가격에 병원 사이트 링크와 수집일을 붙여요. 조건(첫 방문·체험가·부가세)은 가격 옆에 적어요."),
             h("li", {}, "광고·예약·쿠폰·병원 제휴는 지금 없어요. 생기면 이 화면에 먼저 적고, 가격 비교와 섞지 않아요."))),
         h("div", { class: "card" }, h("h3", {}, "수집 범위"),
           h("p", { class: "sub" }, `${md(D.meta.updated)} 수집 · ${br.length}개 체인 ${BR.length}곳. 전국 모든 피부과가 아니에요 — 동네 의원 대부분은 아직 없어요.`),
@@ -106,7 +106,7 @@
         h("div", { class: "card" }, h("h3", {}, "이해관계"),
           h("p", { class: "sub" }, "지금 이 앱은 병원·제약사·장비 회사에서 받는 돈이 없어요. 수익 방식이 정해지면 여기에 날짜와 함께 적어요.")),
         h("div", { class: "card" }, h("h3", {}, "정정·삭제 요청"),
-          h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 근거 화면의 '신고'(가격 오류 신고)로 받아요. 지금은 GitHub 공개 글로 접수돼요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
+          h("p", { class: "sub" }, "가격이 틀렸거나 병원 정보를 빼 달라는 요청은 가격 정보 화면의 '신고'로 받아요. 지금은 GitHub 공개 글로 접수돼요. 병원이 요청하면 확인 후 수집에서 빼요(지금까지 1곳 중지). 운영자 연락처는 정식 공개 전에 확정해요."),
           h("button", { class: "btn line block", type: "button", onclick: () => nav("about") }, "데이터 상태와 출처 자세히", icon("chevron-right", "sm"))));
       return box;
     };
@@ -136,13 +136,13 @@
           h("dt", {}, h("span", { class: "k kt" }, Pricing.condLabel("시간대"))), h("dd", {}, "점심·해피아워처럼 정해진 시간에만 되는 가격. 요일은 병원에 확인하세요"),
           // only a file with the site's days (C #71) can show this badge: the visit sheet's words split the same way (WHEN_COL)
           WHEN_COL ? [h("dt", {}, h("span", { class: "k kt" }, `${Pricing.whenBadge(32, 0)} 등`)), h("dd", {}, "사이트에 적힌 요일에만 되는 가격")] : null,
-          h("dt", {}, h("span", { class: "k k4" }, "고시가")), h("dd", {}, "리엔장 비급여 진료비 고시표(정가). 이벤트가가 아니에요"),
+          h("dt", {}, h("span", { class: "k k4" }, "고시가")), h("dd", {}, "리엔장 비급여 진료비 고시표(정가). 행사 가격이 아니에요"),
           h("dt", {}, h("span", { class: "k k4" }, "~10/17까지")), h("dd", {}, "병원이 적은 이벤트 종료일. 지나면 비교에서 빠지고, 다음 날 아침 다시 모아요"),
           h("dt", {}, kwBadge("급변·확인 중")), h("dd", {}, "지난 수집보다 90% 넘게 내리거나 10배 넘게 오른 가격. 확인 전까지 비교에서 빠져요")),
         h("h3", { style: "margin-top:var(--sp-3)" }, "어떻게 비교하나요"),
         h("ul", { class: "plain" },
-          h("li", {}, "같은 조건끼리만 비교해요. 브랜드가 다르면 용량·샷 수·회차·원산지가 같은 36개 시술만 맞대고, 그 밖은 이름이 똑같은 옵션을 3곳 이상이 팔 때만 묶어요. 비슷하지만 다른 상품은 묶지 않아요."),
-          h("li", {}, "목록은 처음에 지역·지점 이름순이에요(기준 위치를 정하면 가까운순). 낮은·높은 가격순은 직접 고를 수 있고, 광고·제휴로 순서가 바뀌지 않아요. 특정 병원을 '최저가'로 앞세우지 않고 가격 범위와 중간값으로 요약해요."),
+          h("li", {}, "같은 용량·샷 수·횟수·원산지끼리만 비교해요. 그 밖은 이름이 똑같은 옵션을 3곳 이상이 팔 때만 묶고, 비슷하지만 다른 상품은 묶지 않아요."),
+          h("li", {}, "목록은 처음에 지역·지점 이름순이에요(기준 위치를 정하면 가까운순). 낮은·높은 가격순은 직접 고를 수 있고, 광고·제휴로 순서가 바뀌지 않아요. 특정 병원을 '최저가'로 앞세우지 않고 가격 범위와 중간 가격으로 요약해요."),
           h("li", {}, "가격과 함께 부작용·주의사항, 시술 조건을 보여줘요. 장비·약제의 정품 여부는 앱이 확인하지 않고, 의료진 정보는 모으지 않아요 — 병원에 확인하세요."),
           FLAGS.branchRanking ? h("li", {}, "지점 순위의 '몇 % 싸요'는 같은 옵션을 파는 지점들의 중간 가격 대비 평균(기하평균)이에요.") : null,
           h("li", {}, "할인율은 병원이 직접 적은 정가가 있을 때만 보여요."),
@@ -155,10 +155,10 @@
         h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, `각 병원 사이트의 공개 페이지만 읽어요. 로그인·차단 우회는 하지 않고, 수집 전에 robots.txt를 확인해요${src.checked_at ? ` (마지막 확인 ${src.checked_at.slice(0, 10)})` : ""}.`),
         h("ul", { class: "list" }, D.meta.brands.map((b, i) => { const s = (src.brands || {})[b[0]]; if (!BR.some((x) => x.brand === i)) return null;
           return h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
-            h("span", { class: "sub" }, s ? (s.allowed ? "robots.txt 허용" : "robots.txt 막힘") : "-"),
+            h("span", { class: "sub" }, s ? (s.allowed ? "수집 허용" : "수집 막힘") : "-"),
             h("span", { class: "m" }, b[2], s && s.rate ? ` · ${s.rate}` : ""))); })),
         h("h3", { style: "margin-top:var(--sp-3)" }, "자동으로 정리한 것"),
-        h("ul", { class: "list" }, Object.entries(A.issues || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, k), h("span", { class: "sub num" }, `${n}줄`))))),
+        h("ul", { class: "list" }, Object.entries(A.issues || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, k), h("span", { class: "sub num" }, `${n}개`))))),
         h("div", { class: "sub", style: "margin-top:var(--sp-3)" }, `기준일 ${D.meta.updated} · 가격 ${D.meta.rows.toLocaleString()}개 · ${branchCountText()}. 지도 © OpenStreetMap 기여자.`)));
       return box;
     };
@@ -174,7 +174,7 @@
       const list = h("div", {});
       box.append(h("div", { class: "card" }, h("h2", {}, "시술 사전"),
         jprefs().freq === "often" ? jomiSay("explaining", jline("guideTip") || "이름이 비슷한 시술을 쉽게 정리했어요.") : null,
-        h("div", { class: "sub" }, "이름이 비슷해서 헷갈리는 시술을 쉽게 정리했어요. '가격 비교'를 누르면 지점별 가격을 봐요."),
+        h("div", { class: "sub" }, "이름이 비슷해서 헷갈리는 시술을 정리했어요."),
         h("div", { class: "chips", style: "margin-top:var(--sp-2)" }, ["", ...CMP_CATS].map((x) => h("button", { class: "chip", type: "button", "aria-pressed": x === c ? "true" : "false",
           onclick: () => nav(x ? `guide?c=${encodeURIComponent(x)}` : "guide", true) }, x || "전체"))),
         h("div", { style: "margin-top:var(--sp-2)" }, q), list));

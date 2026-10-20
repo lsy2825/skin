@@ -121,7 +121,7 @@
       const pop = h("div", {}, h("b", {}, bname(b.i)), h("br"), h("span", { class: "sub" }, b.addr || ""),
         prices ? h("div", { class: "fw-bold", style: "margin-top:var(--sp-2)" }, won(prices.get(b.i).p)) : null,
         dist(b.i) != null ? h("div", { class: "sub" }, `기준 위치에서 ${km(dist(b.i))}`) : null,
-        b.geo ? h("div", { class: "sub" }, `지도 위치는 주소의 ${b.geo === 1 ? "도로" : "구·동"}까지만 찾은 근사치예요 — 방문 전 주소를 확인하세요`) : null,
+        b.geo ? h("div", { class: "sub" }, `지도 위치는 대략이에요(${b.geo === 1 ? "도로" : "구·동"}까지) — 방문 전 주소를 확인하세요`) : null,
         same > 1 ? h("div", { class: "sub" }, `${b.geo ? "같은 좌표" : "같은 건물"}에 ${same}곳 — 지도에 위아래로 나란히 놓았어요`) : null,
         h("button", { class: "btn sm", type: "button", style: "margin-top:var(--sp-2)", onclick: () => nav(`branch/${b.i}`) }, "이 지점 가격 보기"));
       m.bindPopup(pop);
@@ -170,7 +170,7 @@
           h("span", { class: "m" }, x.b.addr, x.p != null && x.d != null ? h("b", {}, km(x.d)) : null)),
         h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b.i)} 지도에서 보기`, onclick: () => focusBranch(x.b.i) }, icon("map-pin"))), { first: sel >= 40 ? 41 : 40, unit: "곳" }) : null;
       el.replaceChildren(h("div", { style: "padding:var(--sp-3) 14px 0" }, h("h3", {}, st.loc ? `가까운 지점${st.locName ? ` · ${st.locName} 기준` : ""}` : "지도에 보이는 지점"),
-        h("div", { class: "sub" }, `${list.length}곳${st.mapKm && st.loc ? ` · ${st.mapKm}km 안` : ""} · 지도를 옮긴 뒤 '이 지역 재검색'을 누르면 목록이 바뀌어요${st.loc ? "" : " · 위치나 동네를 정하면 거리순·거리 제한"}`), kmChips()),
+        h("div", { class: "sub" }, `${list.length}곳${st.mapKm && st.loc ? ` · ${st.mapKm}km 안` : ""}`), kmChips()),
         list.length ? ul : h("div", { class: "empty" }, "이 지역에 표시할 지점이 없어요. 지도를 넓히거나 동네 이름으로 찾아보세요."), ...(mb ? [mb] : []));
     }
   });

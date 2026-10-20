@@ -42,7 +42,7 @@ const app = fs.readFileSync(path.join(ROOT, 'app/app.js'), 'utf8'), css = fs.rea
 const old = ['mrange', 'rangebar', 'rbar', 'pcl-track', 'pcl-bar', 'pcl-med', 'midl'].filter((c) => new RegExp(`["' .]${c}["' {]`).test(app) || new RegExp(`\\.${c}\\b`).test(css));
 ok('옛 범위 막대 이름(.mrange·.rangebar·.pcl-track·.rbar)이 app.js·styles.css에 없음', !old.length, old.join(', '));
 ok('범위 막대를 그리는 함수는 rangeBar 하나(class "prange"는 그 안에서만)', (app.match(/class: `prange/g) || []).length === 1 && (app.match(/function rangeBar\(/g) || []).length === 1 && !/class: "prange/.test(app));
-ok('가격 이력: 중간값 선은 --ink-2(범위 막대의 선 색), 최저가는 --s1', /\{ name: "중간값", color: "var\(--ink-2\)"/.test(app) && /\{ name: "최저가", color: "var\(--s1\)"/.test(app));
+ok('가격 이력: 중간 가격 선은 --ink-2(범위 막대의 선 색), 최저가는 --s1', /\{ name: "중간 가격", color: "var\(--ink-2\)"/.test(app) && /\{ name: "최저가", color: "var\(--s1\)"/.test(app));
 ok('값 막대의 바탕(.qbar·.prog·.dbar)은 범위 막대 트랙과 같은 --fill-2, 6px·둥근 끝 3', ['qbar', 'prog', 'dbar'].every((c) => { const m = css.match(new RegExp(`(^|\\n)\\.${c} \\{([^}]*)\\}`)); return m && /background: var\(--fill-2\)/.test(m[2]) && /height: 6px/.test(m[2]) && /border-radius: 3px/.test(m[2]); }));
 ok('분포 그래프·가격 동향 작은 선: 중간값은 실선 2px --ink-2', /\.lcsvg \.med \{ stroke: var\(--ink-2\); stroke-width: 2; \}/.test(css) && !/\.lcsvg \.med \{[^}]*dasharray/.test(css) && /\.spark path \{[^}]*stroke: var\(--ink-2\)/.test(css));
 
@@ -93,16 +93,16 @@ const HELP = () => {
       if (Math.abs(lr.top - (tr.bottom + 8)) > 0.5) bad.push(`라벨 위치 트랙 아래 ${(lr.top - tr.bottom).toFixed(1)}px`);
       if (lr.left < box.left - 0.5 || lr.right > box.right + 0.5) bad.push('라벨이 막대 밖');
       const cx = mr ? mr.left + mr.width / 2 : 0; if (cx < lr.left - 0.5 || cx > lr.right + 0.5) bad.push('라벨이 중간값 점 아래가 아님');
-      if (!/^중간값 [\d,]+원$/.test(l.textContent)) bad.push(`라벨 글자 «${l.textContent}»`); }
+      if (!/^[\d,]+원$/.test(l.textContent)) bad.push(`라벨 글자 «${l.textContent}»`); }
     const img = pr.getAttribute('role') === 'img', words = (img ? pr.getAttribute('aria-label') : ((pr.closest('[aria-label]') || {}).getAttribute?.('aria-label'))) || '';
-    const named = img ? /가격 범위 [\d,]+원~[\d,]+원, 중간값 [\d,]+원/.test(words) : pr.getAttribute('aria-hidden') === 'true' && /중간값/.test(words);
+    const named = img ? /가격 범위 [\d,]+원~[\d,]+원, 중간 가격 [\d,]+원/.test(words) : pr.getAttribute('aria-hidden') === 'true' && /중간 가격/.test(words);
     if (!named) bad.push(`읽는 이름 ${pr.getAttribute('role')} «${words}»`);
     // what it says: the numbers it is named with, placed on its scale (the range, or the shared scale's two ends written under
     // its list) — the track's ends, the middle dot's centre and the ring's centre each within 1px of where those numbers put them
     const num = (x) => +String(x).replace(/,/g, '');
-    const r2 = words.match(/가격 범위 ([\d,]+)원~([\d,]+)원/) || words.match(/([\d,]+)원부터 ([\d,]+)원까지/), r1 = !r2 && words.match(/곳, ([\d,]+)원, 중간값/);
-    const lo = r2 ? num(r2[1]) : r1 ? num(r1[1]) : null, hi = r2 ? num(r2[2]) : lo, mm = words.match(/중간값 ([\d,]+)원/), med = mm ? num(mm[1]) : null;
-    const ma = img && d ? words.match(/중간값 [\d,]+원, .+ ([\d,]+)원$/) : null, at = ma ? num(ma[1]) : null;
+    const r2 = words.match(/가격 범위 ([\d,]+)원~([\d,]+)원/) || words.match(/([\d,]+)원부터 ([\d,]+)원까지/), r1 = !r2 && words.match(/곳, ([\d,]+)원, 중간 가격/);
+    const lo = r2 ? num(r2[1]) : r1 ? num(r1[1]) : null, hi = r2 ? num(r2[2]) : lo, mm = words.match(/중간 가격 ([\d,]+)원/), med = mm ? num(mm[1]) : null;
+    const ma = img && d ? words.match(/중간 가격 [\d,]+원, .+ ([\d,]+)원$/) : null, at = ma ? num(ma[1]) : null;
     let a = lo, b = hi;
     if (pr.classList.contains('axis')) { const ends = pr.closest('.pcls, .regl')?.nextElementSibling;
       const es = ends && ends.matches('.row.tiny') ? [...ends.children].filter((e) => /원$/.test(e.textContent)) : [];
@@ -125,7 +125,7 @@ const HELP = () => {
   // anything else that draws a price range: a picture named '중간값' that is not the part, a painted thin bar outside it
   window.__stray = () => {
     const VALUE = '.qbar, .qbar *, .pbars i, .cbar .side i, .prog, .prog *, .dbar, .dbar *, .vbar i';
-    const imgs = [...document.querySelectorAll('#main [role=img]')].filter((e) => __vis(e) && /중간값/.test(e.getAttribute('aria-label') || '') && !e.matches('svg, .prange'))
+    const imgs = [...document.querySelectorAll('#main [role=img]')].filter((e) => __vis(e) && /중간 가격/.test(e.getAttribute('aria-label') || '') && !e.matches('svg, .prange'))
       .map((e) => `img.${e.className}`);
     const thin = [];
     for (const e of document.querySelectorAll('#main *')) {
@@ -193,8 +193,8 @@ const HELP = () => {
     const crs = hm.map((x) => x.cr).filter((c) => c && c.dotTrack), lo2 = (k) => Math.min(...crs.map((c) => c[k])).toFixed(2);
     console.log(`INFO | ${tag} 중간값 점 대비(가장 낮은 것): 트랙 ${lo2('dotTrack')}:1 · 카드 ${lo2('dotCard')}:1`);
     // the captions under the list name the marks as they are drawn (a dot, not a line)
-    const caps = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간값이에요/.test(t)));
-    ok(`${tag} 홈 발견 설명: '점은 중간값'(세로선이라고 하지 않음)`, caps.length === 1 && /점은 중간값이에요/.test(caps[0]) && !/세로선/.test(caps[0]), caps.join(' | '));
+    const caps = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간 가격이에요/.test(t)));
+    ok(`${tag} 홈 발견 설명: '점은 중간 가격'(세로선이라고 하지 않음)`, caps.length === 1 && /점은 중간 가격이에요/.test(caps[0]) && !/세로선/.test(caps[0]), caps.join(' | '));
     const hs = await p.evaluate(() => __stray());
     ok(`${tag} 홈: 다른 모양의 범위 막대 없음`, !hs.length, hs.slice(0, 5).join(' | '));
     ok(`${tag} 홈: 가로 넘침 없음`, (await wide(p)) <= 0, `${await wide(p)}px`);
@@ -204,7 +204,7 @@ const HELP = () => {
     // ---------- 비교 가격 카드 (X12) and its folds
     await go(p, '#compare?k=X12', 1500);
     const hero = await bars(p, '#main .pricecard .hero > .prange');
-    ok(`${tag} 비교 가격 카드: 같은 부품 + 중간값 라벨(점 아래, 막대 안)`, hero.length === 1 && !badOf(hero).length && /^중간값 [\d,]+원$/.test(hero[0].label || ''), JSON.stringify(hero[0] || {}).slice(0, 200));
+    ok(`${tag} 비교 가격 카드: 같은 부품 + 중간 가격 라벨(점 아래, 막대 안, 금액만)`, hero.length === 1 && !badOf(hero).length && /^[\d,]+원$/.test(hero[0].label || ''), JSON.stringify(hero[0] || {}).slice(0, 200));
     const hmed = await p.evaluate(() => (document.querySelector('.cmphead .hmed') || {}).textContent || '');
     ok(`${tag} 비교: 막대 라벨의 중간값 = 머리글 중간값`, !!hero[0] && hmed.replace(/[^\d]/g, '') === (hero[0].label || '').replace(/[^\d]/g, ''), `${hmed} · ${hero[0] && hero[0].label}`);
     await p.evaluate(() => { for (const d of document.querySelectorAll('#main details.cmpfold')) d.open = true; }); await p.waitForTimeout(700);
@@ -255,12 +255,12 @@ const HELP = () => {
     ok(`390 ${scheme === 'dark' ? '어두운' : '밝은'} 홈 발견(할인 강조 켬): 같은 부품 + 이 가격 = 빈 고리(12px, 2px --ink — 중간값 점과 다른 모양)`, hm.length >= 3 && hm.every((x) => x.dot) && !badOf(hm).length, badOf(hm).slice(0, 4).join(' | ') || `${hm.length}줄`);
     const rc = hm.map((x) => x.cr).filter((c) => c && c.ringTrack), lo3 = (k) => Math.min(...rc.map((c) => c[k])).toFixed(2);
     console.log(`INFO | 390 ${scheme} 이 가격 고리 대비(가장 낮은 것): 트랙 ${lo3('ringTrack')}:1 · 카드 ${lo3('ringCard')}:1`);
-    const capd = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간값이에요/.test(t)));
-    ok(`390 ${scheme === 'dark' ? '어두운' : '밝은'} 홈 발견(할인 강조 켬) 설명: '빈 동그라미는 이 가격, 채운 점은 중간값'`, capd.length === 1 && /빈 동그라미는 이 가격, 채운 점은 중간값이에요/.test(capd[0]) && !/세로선/.test(capd[0]), capd.join(' | '));
+    const capd = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간 가격이에요/.test(t)));
+    ok(`390 ${scheme === 'dark' ? '어두운' : '밝은'} 홈 발견(할인 강조 켬) 설명: '빈 동그라미는 이 가격, 채운 점은 중간 가격'`, capd.length === 1 && /빈 동그라미는 이 가격, 채운 점은 중간 가격이에요/.test(capd[0]) && !/세로선/.test(capd[0]), capd.join(' | '));
     if (scheme === 'light') ok('홈 발견(할인 강조 켬) 줄 = 누르면 열리는 비교, 고리 = 막대 왼쪽 끝(가장 낮은 조건 없는 가격)', ...(await sameAsCompare(p, true)));
     await go(p, '#home', 1200);
     const aria = await p.evaluate(() => (document.querySelector('#main .disc-row .prange') || {}).getAttribute?.('aria-label') || '');
-    ok('고리가 있는 막대의 읽는 이름: 범위 · 중간값 · 그 가격(둘을 말로 구별)', /가격 범위 [\d,]+원~[\d,]+원, 중간값 [\d,]+원, .+ [\d,]+원$/.test(aria), aria);
+    ok('고리가 있는 막대의 읽는 이름: 범위 · 중간 가격 · 그 가격(둘을 말로 구별)', /가격 범위 [\d,]+원~[\d,]+원, 중간 가격 [\d,]+원, .+ [\d,]+원$/.test(aria), aria);
     ok(`홈 발견(할인 강조 켬) ${scheme}: 페이지 오류 없음`, !errs.length, errs.join(' | '));
     await ctx.close();
   }

@@ -300,11 +300,11 @@
       take(new RegExp(`\\s${a}(역|점|구|동)?(\\s|근처|주변|에서)`), () => { out.area = a; out.chips.push(`${a} 근처 지점`); });
     }
     take(/\s(체험가|한정가|고시가)\s/, (m) => { out.kind = m[1]; out.chips.push(m[1]); });
-    take(/\s(일반가|정가만|조건\s*없는)\s/, () => { out.cond = "plain"; out.chips.push("조건 없는 가격"); });
-    take(/\s(패키지|\d+\s*회\s*권|여러\s*회)\s/, () => { out.sess = "pkg"; out.chips.push("2회 이상 패키지"); });
+    take(/\s(일반가|정가만|조건\s*없는)\s/, () => { out.cond = "plain"; out.chips.push("일반가만"); });
+    take(/\s(패키지|\d+\s*회\s*권|여러\s*회)\s/, () => { out.sess = "pkg"; out.chips.push("2회 이상 묶음"); });
     take(/\s(이용권|무제한|구독)\s/, () => { out.sess = "pass"; out.chips.push("이용권"); });
-    take(/\s(제일\s*싼\s*곳?|가장\s*싼\s*곳?|최저가?|싼\s*곳|저렴한\s*곳?)\s/, () => { out.sort = "price"; out.chips.push("싼 순"); });
-    take(/\s(가까운|근처|주변)\s/, () => { out.sort = "near"; out.chips.push("가까운 순"); });
+    take(/\s(제일\s*싼\s*곳?|가장\s*싼\s*곳?|최저가?|싼\s*곳|저렴한\s*곳?)\s/, () => { out.sort = "price"; out.chips.push("낮은 가격순"); });
+    take(/\s(가까운|근처|주변)\s/, () => { out.sort = "near"; out.chips.push("가까운순"); });
     take(/\s(할인율|많이\s*할인)\s/, () => { out.sort = "disc"; out.chips.push("할인율 큰 순"); });
     out.q = text.replace(/[?？!.]/g, " ").replace(/\s(에서|으로|로|를|을|은|는|이|가|좀|추천|알려\s*줘|찾아\s*줘|어디|얼마|가격|싸|싼|싼데|싸요|있어|있나요)(?=\s)/g, " ").replace(/\s+/g, " ").trim();
     return out;
