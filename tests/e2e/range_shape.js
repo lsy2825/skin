@@ -12,6 +12,14 @@
 //  - each .prange measured: track 6px · radius 3 · --fill-2; one line 2×14, 4px over the track, --ink-2; dot 12px --s1 ringed in
 //    the card colour; label 13/600 --ink-2, 8px under the track, in the bar, over the line; the line ≥ 3:1 on the track and the
 //    card, the dot ≥ 3:1 on the card (light and dark); no page wider than the screen
+//  - and what it says (2026-10-20 review): the track's two ends, the line and the dot sit where the bar's own numbers put them
+//    (the numbers read aloud — its own name, or its line's — on its scale: the range, or the two ends written under a shared
+//    scale), within 1px; every bar's lowest and highest price is in words on its line, or else its track is ≥ 3:1 on the card
+//  - one meaning: a 홈 발견 row and the comparison it opens show the same range, middle price and branch count (the header's
+//    '중간값', the price card's bar); with flags.discountEmphasis the dot is the bar's left end, the lowest plain price
+//  - 지역별 가격 is the 가격 종류별 line: 'N곳 · lo~hi원', '중간값 X원' under the line; its first 8 lines, then '더 보기', and the
+//    lines it adds are the same part on the same scale
+//  - value bars with a ground (.qbar · .prog · .dbar) on --fill-2
 // Turning any of it back (the old .mrange / .rangebar / .pcl-track / .rbar, a dashed chart middle, an 8px track) fails here.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/range_shape.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
@@ -30,6 +38,7 @@ const old = ['mrange', 'rangebar', 'rbar', 'pcl-track', 'pcl-bar', 'pcl-med', 'm
 ok('옛 범위 막대 이름(.mrange·.rangebar·.pcl-track·.rbar)이 app.js·styles.css에 없음', !old.length, old.join(', '));
 ok('범위 막대를 그리는 함수는 rangeBar 하나(class "prange"는 그 안에서만)', (app.match(/class: `prange/g) || []).length === 1 && (app.match(/function rangeBar\(/g) || []).length === 1 && !/class: "prange/.test(app));
 ok('가격 이력: 중간값 선은 --ink-2(범위 막대의 선 색), 최저가는 --s1', /\{ name: "중간값", color: "var\(--ink-2\)"/.test(app) && /\{ name: "최저가", color: "var\(--s1\)"/.test(app));
+ok('값 막대의 바탕(.qbar·.prog·.dbar)은 범위 막대 트랙과 같은 --fill-2, 6px·둥근 끝 3', ['qbar', 'prog', 'dbar'].every((c) => { const m = css.match(new RegExp(`(^|\\n)\\.${c} \\{([^}]*)\\}`)); return m && /background: var\(--fill-2\)/.test(m[2]) && /height: 6px/.test(m[2]) && /border-radius: 3px/.test(m[2]); }));
 ok('분포 그래프·가격 동향 작은 선: 중간값은 실선 2px --ink-2', /\.lcsvg \.med \{ stroke: var\(--ink-2\); stroke-width: 2; \}/.test(css) && !/\.lcsvg \.med \{[^}]*dasharray/.test(css) && /\.spark path \{[^}]*stroke: var\(--ink-2\)/.test(css));
 
 // in-page helpers
@@ -74,10 +83,33 @@ const HELP = () => {
       if (lr.left < box.left - 0.5 || lr.right > box.right + 0.5) bad.push('라벨이 막대 밖');
       const cx = mr ? mr.left + mr.width / 2 : 0; if (cx < lr.left - 0.5 || cx > lr.right + 0.5) bad.push('라벨이 중간값 선 아래가 아님');
       if (!/^중간값 [\d,]+원$/.test(l.textContent)) bad.push(`라벨 글자 «${l.textContent}»`); }
-    const named = pr.getAttribute('role') === 'img' ? /가격 범위 [\d,]+원~[\d,]+원, 중간값 [\d,]+원/.test(pr.getAttribute('aria-label') || '')
-      : pr.getAttribute('aria-hidden') === 'true' && /중간값/.test((pr.closest('[aria-label]') || {}).getAttribute?.('aria-label') || '');
-    if (!named) bad.push(`읽는 이름 ${pr.getAttribute('role')} «${pr.getAttribute('aria-label') || ''}»`);
-    return { bad, w: Math.round(box.width), axis: pr.classList.contains('axis'), dot: !!d, label };
+    const img = pr.getAttribute('role') === 'img', words = (img ? pr.getAttribute('aria-label') : ((pr.closest('[aria-label]') || {}).getAttribute?.('aria-label'))) || '';
+    const named = img ? /가격 범위 [\d,]+원~[\d,]+원, 중간값 [\d,]+원/.test(words) : pr.getAttribute('aria-hidden') === 'true' && /중간값/.test(words);
+    if (!named) bad.push(`읽는 이름 ${pr.getAttribute('role')} «${words}»`);
+    // what it says: the numbers it is named with, placed on its scale (the range, or the shared scale's two ends written under
+    // its list) — the track's ends, the line's centre and the dot's centre each within 1px of where those numbers put them
+    const num = (x) => +String(x).replace(/,/g, '');
+    const r2 = words.match(/가격 범위 ([\d,]+)원~([\d,]+)원/) || words.match(/([\d,]+)원부터 ([\d,]+)원까지/), r1 = !r2 && words.match(/곳, ([\d,]+)원, 중간값/);
+    const lo = r2 ? num(r2[1]) : r1 ? num(r1[1]) : null, hi = r2 ? num(r2[2]) : lo, mm = words.match(/중간값 ([\d,]+)원/), med = mm ? num(mm[1]) : null;
+    const ma = img && d ? words.match(/중간값 [\d,]+원, .+ ([\d,]+)원$/) : null, at = ma ? num(ma[1]) : null;
+    let a = lo, b = hi;
+    if (pr.classList.contains('axis')) { const ends = pr.closest('.pcls, .regl')?.nextElementSibling;
+      const es = ends && ends.matches('.row.tiny') ? [...ends.children].filter((e) => /원$/.test(e.textContent)) : [];
+      if (es.length === 2) { a = num(es[0].textContent.replace('원', '')); b = num(es[1].textContent.replace('원', '')); } else { a = b = null; bad.push('한 눈금인데 목록 아래 눈금 양 끝 글자가 없음'); } }
+    if (lo == null || med == null) bad.push(`읽는 이름에서 범위·중간값을 못 읽음 «${words}»`);
+    else if (a != null) {
+      const f = (v) => (b > a ? Math.max(0, Math.min(1, (v - a) / (b - a))) : 0.5), W = box.width - 6, pos = (v) => box.left + 3 + W * f(v);
+      if (Math.abs(tr.left - (pos(lo) - 3)) > 1 || Math.abs(tr.right - (pos(hi) + 3)) > 1) bad.push(`트랙 자리 ${(tr.left - box.left).toFixed(1)}~${(tr.right - box.left).toFixed(1)} (기대 ${(pos(lo) - 3 - box.left).toFixed(1)}~${(pos(hi) + 3 - box.left).toFixed(1)}, ${lo}~${hi}원)`);
+      if (m && Math.abs(mr.left + mr.width / 2 - pos(med)) > 1) bad.push(`중간값 선 자리 ${(mr.left + mr.width / 2 - box.left).toFixed(1)} (기대 ${(pos(med) - box.left).toFixed(1)}, ${med}원)`);
+      if (d) { const dr = d.getBoundingClientRect(); if (at == null) bad.push('점이 있는데 읽는 이름에 그 가격이 없음');
+        else if (Math.abs(dr.left + dr.width / 2 - pos(at)) > 1) bad.push(`점 자리 ${(dr.left + dr.width / 2 - box.left).toFixed(1)} (기대 ${(pos(at) - box.left).toFixed(1)}, ${at}원)`); }
+    }
+    // the range's two ends in words on the bar's own line (or the track alone must be seen: 3:1 on the card)
+    if (lo != null) { const line = pr.closest('li, .pcl, .disc-row, .hero') || pr.parentElement, txt = (line.innerText || '').replace(/\s+/g, '');
+      const c = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const says = lo === hi ? txt.includes(`${c(lo)}원`) : [Pricing.rangeText(lo, hi), `${c(lo)}원~${c(hi)}원`].some((t) => txt.includes(t.replace(/\s+/g, '')));
+      if (!says && __cr(tc.backgroundColor, card) < 3) bad.push(`범위 양 끝이 줄 글자에 없고 트랙은 카드와 ${__cr(tc.backgroundColor, card).toFixed(2)}:1 «${txt.slice(0, 60)}»`); }
+    return { bad, w: Math.round(box.width), axis: pr.classList.contains('axis'), dot: !!d, label, lo, hi, med, at };
   };
   // anything else that draws a price range: a picture named '중간값' that is not the part, a painted thin bar outside it
   window.__stray = () => {
@@ -91,7 +123,8 @@ const HELP = () => {
       if (r.height < 3 || r.height > 16 || r.width < r.height * 3 || r.width < 24) continue;
       if (cs.backgroundColor === 'rgba(0, 0, 0, 0)' || cs.backgroundColor === 'transparent') continue;
       if (e.textContent.trim() || e.querySelector('svg, img')) continue;
-      if (e.matches(VALUE)) { if (!e.matches('.vbar i') && Math.abs(r.height - 6) > 0.1) thin.push(`${e.className || e.tagName}:${r.height}px(값 막대는 6)`); continue; }
+      if (e.matches(VALUE)) { if (!e.matches('.vbar i') && Math.abs(r.height - 6) > 0.1) thin.push(`${e.className || e.tagName}:${r.height}px(값 막대는 6)`);
+        if (e.matches('.qbar, .prog, .dbar') && cs.backgroundColor !== __tok('--fill-2')) thin.push(`${e.className}: 바탕 ${cs.backgroundColor}(값 막대 바탕은 --fill-2)`); continue; }
       thin.push(`${e.tagName.toLowerCase()}.${e.className}:${Math.round(r.width)}×${r.height} in .${e.parentElement.className}`);
     }
     return [...imgs, ...thin];
@@ -116,6 +149,25 @@ const HELP = () => {
   const bars = (p, sel) => p.evaluate((s) => [...document.querySelectorAll(s)].filter(__vis).map(__bar), sel);
   const badOf = (xs) => xs.flatMap((x, i) => x.bad.map((m) => `#${i} ${m}`));
   const wide = (p) => p.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+  // 홈 발견 rows against the comparison each opens: the header's '중간값' and its count, the price card bar's range and middle
+  // (dot: the dot is the bar's left end — the lowest plain price, the comparison's own lowest)
+  const sameAsCompare = async (p, dot) => {
+    const rows = await p.evaluate(() => [...document.querySelectorAll('#main .disc-row')].map((r) => ({ t: r.querySelector('.t').textContent, ...__bar(r.querySelector('.prange')),
+      n: +(((r.querySelector('.m') || {}).textContent || '').match(/(\d+)곳$/) || [])[1] || null })));
+    const bad = [];
+    for (let i = 0; i < rows.length; i++) {
+      await go(p, '#home', 900); await p.locator('#main .disc-row').nth(i).click(); await p.waitForTimeout(1300);
+      const c = await p.evaluate(() => { const pr = document.querySelector('#main .pricecard .hero > .prange'), hm = document.querySelector('.cmphead .hmed'), bs = document.querySelector('.cmphead .basis');
+        return { k: location.hash, hmed: hm ? +hm.textContent.replace(/[^\d]/g, '') : null, n: bs ? +((bs.textContent.match(/(\d+)곳/) || [])[1]) : null, bar: pr ? __bar(pr) : null }; });
+      const x = rows[i], why = [];
+      if (c.hmed !== x.med) why.push(`중간값 홈 ${x.med} · 비교 ${c.hmed}`);
+      if (c.n !== x.n) why.push(`지점 수 홈 ${x.n} · 비교 ${c.n}`);
+      if (!c.bar || c.bar.lo !== x.lo || c.bar.hi !== x.hi || c.bar.med !== x.med) why.push(`막대 홈 ${x.lo}~${x.hi}/${x.med} · 비교 ${c.bar ? `${c.bar.lo}~${c.bar.hi}/${c.bar.med}` : '없음'}`);
+      if (dot && x.at !== x.lo) why.push(`점 ${x.at} ≠ 왼쪽 끝 ${x.lo}`);
+      if (why.length) bad.push(`${x.t}: ${why.join(', ')}`);
+    }
+    return [rows.length >= 3 && !bad.length, bad.join(' | ') || `${rows.length}줄 같음`];
+  };
 
   for (const [vp, scheme] of [[{ width: 390, height: 844 }, 'light'], [{ width: 390, height: 844 }, 'dark'], [{ width: 320, height: 640 }, 'light'], [{ width: 320, height: 640 }, 'dark']]) {
     const tag = `${vp.width} ${scheme === 'dark' ? '어두운' : '밝은'}`;
@@ -130,6 +182,8 @@ const HELP = () => {
     const hs = await p.evaluate(() => __stray());
     ok(`${tag} 홈: 다른 모양의 범위 막대 없음`, !hs.length, hs.slice(0, 5).join(' | '));
     ok(`${tag} 홈: 가로 넘침 없음`, (await wide(p)) <= 0, `${await wide(p)}px`);
+    // one meaning: each row, then the comparison it opens — the same range, middle price and branch count
+    if (vp.width === 390 && scheme === 'light') ok('홈 발견 줄 = 누르면 열리는 비교(범위·중간값·지점 수)', ...(await sameAsCompare(p)));
 
     // ---------- 비교 가격 카드 (X12) and its folds
     await go(p, '#compare?k=X12', 1500);
@@ -140,7 +194,15 @@ const HELP = () => {
     await p.evaluate(() => { for (const d of document.querySelectorAll('#main details.cmpfold')) d.open = true; }); await p.waitForTimeout(700);
     const kinds = await bars(p, '#main .pcls .prange'), regs = await bars(p, '#main .regl .prange');
     ok(`${tag} 가격 종류별 범위: 줄마다 같은 부품(한 눈금 · 중간값 라벨)`, kinds.length >= 2 && !badOf(kinds).length && kinds.every((x) => x.axis && x.label), `${kinds.length}줄 ${badOf(kinds).slice(0, 3).join(' | ')}`);
-    ok(`${tag} 지역별 가격: 줄마다 같은 부품(한 눈금)`, regs.length >= 2 && !badOf(regs).length && regs.every((x) => x.axis), `${regs.length}줄 ${badOf(regs).slice(0, 3).join(' | ')}`);
+    ok(`${tag} 지역별 가격: 줄마다 같은 부품(한 눈금 · 중간값 라벨)`, regs.length >= 2 && !badOf(regs).length && regs.every((x) => x.axis && x.label), `${regs.length}줄 ${badOf(regs).slice(0, 3).join(' | ')}`);
+    // the two cards' lines are one line: name (badge) · 'N곳 · lo~hi원' on the right · the bar · '중간값 X원'
+    const lines = await p.evaluate(() => [...document.querySelectorAll('#main .pcls .pcl, #main .regl li')].filter(__vis).map((e) => [...e.children].map((c) => c.className).join(' + ') + ' | ' + ((e.querySelector('.rv') || {}).textContent || '')));
+    ok(`${tag} 가격 종류별·지역별 줄은 한 모양(이름 · 'N곳 · lo~hi원' · 막대 · 중간값 라벨)`, lines.length >= 4 && lines.every((t) => /^row \+ prange axis \| [\d,]+곳 · [\d,.만]+(~[\d,.만]+)?원$/.test(t)), [...new Set(lines.map((t) => t.replace(/\d[\d,.만~]*/g, '#')))].join(' / '));
+    const regMore = p.locator('#main section[aria-label="지역별 같은 사양 가격"] > .morelist');
+    ok(`${tag} 지역별 가격: 처음 8줄, 나머지는 '더 보기'`, regs.length <= 8 && (regs.length < 8 || (await regMore.count()) === 1), `${regs.length}줄 · 더 보기 ${await regMore.count()}`);
+    if (await regMore.count()) { await regMore.click(); await p.waitForTimeout(300);
+      const all = await bars(p, '#main .regl .prange');
+      ok(`${tag} 지역별 '더 보기'로 더한 줄도 같은 부품 · 같은 눈금`, all.length > regs.length && !badOf(all).length && all.every((x) => x.axis && x.label) && new Set(all.map((x) => x.w)).size === 1, `${regs.length} → ${all.length}줄 ${badOf(all).slice(0, 3).join(' | ')}`); }
     ok(`${tag} 한 눈금의 막대는 폭이 모두 같음(가격 종류별 · 지역별)`, new Set(kinds.map((x) => x.w)).size === 1 && new Set(regs.map((x) => x.w)).size === 1 && regs[0].w >= vp.width - 100,
       `종류 ${[...new Set(kinds.map((x) => x.w))].join('/')} · 지역 ${[...new Set(regs.map((x) => x.w))].join('/')}`);
     const med = await p.evaluate(() => { const l = document.querySelector('#main .lcsvg .med'); if (!l) return null; const cs = getComputedStyle(l);
@@ -175,6 +237,8 @@ const HELP = () => {
     await go(p, '#home', 1500);
     const hm = await bars(p, '#main .disc-row .prange');
     ok(`390 ${scheme === 'dark' ? '어두운' : '밝은'} 홈 발견(할인 강조 켬): 같은 부품 + 이 가격 점(12px --s1, 바탕색 테두리)`, hm.length >= 3 && hm.every((x) => x.dot) && !badOf(hm).length, badOf(hm).slice(0, 4).join(' | ') || `${hm.length}줄`);
+    if (scheme === 'light') ok('홈 발견(할인 강조 켬) 줄 = 누르면 열리는 비교, 점 = 막대 왼쪽 끝(가장 낮은 조건 없는 가격)', ...(await sameAsCompare(p, true)));
+    await go(p, '#home', 1200);
     const aria = await p.evaluate(() => (document.querySelector('#main .disc-row .prange') || {}).getAttribute?.('aria-label') || '');
     ok('점이 있는 막대의 읽는 이름: 범위 · 중간값 · 그 가격', /가격 범위 [\d,]+원~[\d,]+원, 중간값 [\d,]+원, .+ [\d,]+원$/.test(aria), aria);
     ok(`홈 발견(할인 강조 켬) ${scheme}: 페이지 오류 없음`, !errs.length, errs.join(' | '));

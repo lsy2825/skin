@@ -95,7 +95,9 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     if (!(await p.locator('#cmpmore').evaluate((d) => d.open))) { await p.locator('#cmpmore > summary').click(); await p.waitForTimeout(200); }   // closed again after goBack
     const reg = await p.locator('section[aria-label="지역별 같은 사양 가격"]').innerText().catch(() => '');
     const regRows = await p.locator('.regl li').count();
-    ok('지역별 가격: 지역마다 지점 수·중간값', regRows >= 2 && /곳 · 중간/.test(reg), `${regRows}개 지역`);
+    // a region's line is the 가격 종류별 범위 line (2026-10-20): 'N곳 · lo~hi원' on the right, '중간값 X원' under the bar's line
+    const regLines = await p.locator('.regl li').allInnerTexts();
+    ok('지역별 가격: 지역마다 지점 수·범위·중간값', regRows >= 2 && regLines.every((t) => /\d+곳 · [\d,.만]+(~[\d,.만]+)?원/.test(t) && /중간값 [\d,]+원/.test(t)), `${regRows}개 지역 · ${(regLines[0] || '').replace(/\s+/g, ' ')}`);
     ok('지역별 가격: 표본이 적으면 알림', !(await p.locator('.regl .k', { hasText: '표본 적음' }).count()) || /3곳 미만/.test(reg));
     // chart ↔ list
     await p.locator('#clinics li.rk').nth(1).hover(); await p.waitForTimeout(150);
