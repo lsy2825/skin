@@ -650,7 +650,15 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
     # part of the product — kept, it made a second key next to '고주파 리프팅 텐텐듀얼 리프팅' (2026-10-15)
     raw = re.sub(r"\s*[:：]\s*(?=(?:\d+\s*회)?\s*(?:\([^()]*\))?\s*$)", " ", raw).rstrip()
     nm = re.sub(r"\[[^\]]*\]", " ", raw)
-    nm = nm if bundle else ADDON.sub("", nm)
+    # what comes with it ('+ 크라이오', '+ 모델링팩', '+ LDM 6분' — xkeys.ADDON: no amount, so taken off before the amounts are read)
+    # and a choice count in square brackets ('더마브이 [홍조/여드름자국/혈관 모드 택 2가지]') are no words of the name, but another product
+    # than the plain one: kept in the signature and shown after the amount (2026-10-19, after the 검수 of #127: the signature left them
+    # out, so '스케일링 5회' T6A7A6D3 held 밴스 부천 '스케일링+크라이오 5회' 400,000 and 유앤아이 대구·부천 '스케일링 + 크라이오 5회' next to
+    # the plain price at other branches — #127 kept them out only next to a plain row of the same page). A bundle sold so at 3 branches
+    # is a key of its own ('리즈네 2cc + 모델링팩', 닥터에버스)
+    more = [] if bundle else [(f"+ {w}", comp(w)) for w in (_with_word(m.group()) for m in WITH.finditer(nm))] \
+        + [(f"택 {n}", f"택{n}") for n in re.findall(r"\[[^\]]*?택\s*(\d+)", raw)]
+    nm = nm if bundle else WITH.sub("", nm)
     seg = [x for x in _segs(nm) if x.strip()]
     disp = (seg[-1] if seg else nm).strip()
     # a package's parts all count ('+ 크라이오셀' is a part here, not a free extra): keep '+' away from comp()'s add-on rule
@@ -698,12 +706,13 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
             return None, "이름 없음"
         famname = re.sub(r"\s*(?<![A-Za-z])(?:or|OR|Or)(?![A-Za-z])\s*|\s*또는\s*", "/", base)
         cat = ROWCAT.get(rowcat) or ("톡신" if re.search(r"톡신|보톡|톡스", comp(raw)) else "윤곽·필러" if rowcat == "보톡스·필러" else "기타")
-        sub = " ".join(([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else [])) or "기본"
-        label = " ".join([famname] + ([amounts] if amounts else []) + ([f"{sess}회"] if sess > 1 else []))
+        tail = ([amounts] if amounts else []) + [x for x, _ in more] + ([f"{sess}회"] if sess > 1 else [])
+        sub = " ".join(tail) or "기본"
+        label = " ".join([famname] + tail)
         # the shop's own 'or' / '또는' became '/' in the name: the rows still say 'or' (검증 8차: '이 지점의 같은 시술군' found none)
         rx = re.escape(comp(famname)).replace("/", "(?:/|[oO][rR]|또는)")
         fid = "generic"
-    sig = "|".join(["x", famname, sigtext, str(sess)])
+    sig = "|".join(["x", famname, sigtext + "".join(f"＋{w}" for w in sorted(w for _, w in more)), str(sess)])
     # the sex from the group title ('[여성] …' in mname) when the name itself doesn't say it: '발등 + 발가락 5회' for women and for
     # men were one key, or two told apart only by '표기 n' (2026-10-15)
     if sex and not re.search(r"남성|여성|남자|여자|男|女", sigtext):
@@ -713,6 +722,23 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
     desc = re.findall(r"\(([^()]{2,40})\)", disp)
     return dict(fam=fid, famname=famname, cat=cat, tags=[], area="", residual="", detail=desc[0] if desc else "", details=desc, amount=amounts,
                 sess=sess, sig=sig, label=label, sub=sub, rx=rx), ""
+
+
+# xkeys.ADDON, but '+ LDM' read first by its own rule: LDM takes only minutes, in brackets too. ADDON reads any digits after LDM, so
+# '+ LDM 5회' (a count) left '회' in the name ('위코우노회 + LDM 5', 유앤아이 목포점 '엠페이스 … + LDM 5회'), and none in brackets, so
+# 닥터에버스 '스킨스크러버+LDM(12분)+모델링팩' read '(12분)' as the scrubber's amount ('스킨스크러버 12분 + LDM', 검수 2026-10-20 — the same
+# menu writes '빌리로빈(5cc)+LDM(12분)+모델링팩'). An alternative before ADDON, not an edit of its text: a change of xkeys.ADDON can't
+# stop this import (the first form did, by an assert on the replaced text)
+WITH = re.compile(r"\s*\+\s*LDM(?:\s*\d+\s*분|\s*\(\s*\d+\s*분\s*\))?(?:\s*\d+회)?|" + ADDON.pattern, ADDON.flags | re.I)
+
+
+def _with_word(w):
+    """one spelling for what comes with a product (a WITH match): '+ ldm' is '+ LDM', '+LDM(12분)' '+ LDM 12분', '+ 모델링' '+ 모델링팩'
+    (the clinics' short form, both in one chain's menus: 닥터에버스 '…+모델링' / '…+모델링팩'); a session count after it is the row's"""
+    w = re.sub(r"^\s*[+＋]\s*|\s*\d+\s*회$", "", w or "")
+    w = re.sub(r"(?i)^(?:ldm|led)", lambda m: m.group().upper(), re.sub(r"\s+", " ", w).strip())
+    w = re.sub(r"^LDM\s*\(\s*(\d+)\s*분\s*\)$", r"LDM \1분", w)
+    return "모델링팩" if w == "모델링" else w
 
 
 def comp_spaces(s):
@@ -747,6 +773,11 @@ def _spaced(word, text):
 def _family_variant(raw, fam, sess, display=None):
     if fam["id"] == "mole":
         raw = _mole_raw(raw)
+    count = ""
+    if fam["id"] == "acneinj":
+        raw, count = _acne_count(raw)
+        if count is None:
+            return None, "용량이 둘 이상"
     full = comp(raw)
     st = model_apart(_strip(raw))
     by_unit = defaultdict(set)
@@ -757,6 +788,8 @@ def _family_variant(raw, fam, sess, display=None):
     if any(len(v) > 1 for v in by_unit.values()):
         return None, "용량이 둘 이상"
     amount = " ".join(f"{int(v) if v.is_integer() else v}{u}" for u, vs in sorted(by_unit.items()) for v in vs)
+    # (last, so word_order() leaves '10개 이하' alone: '이하 1부위' would read as '1부위 이하')
+    amount = " ".join(x for x in (amount, count) if x)
     # 'name - detail' (블리비: '바디 인모드 리프팅 - 팔뚝/허벅지/…', '다한증보톡스 - 겨드랑이/손/발')
     parts = re.split(r"\s+-\s+", st, maxsplit=1)
     main, detail = parts[0], (parts[1] if len(parts) > 1 else "")
@@ -875,6 +908,43 @@ def _mole_raw(raw):
     mm = lambda v: f"{round(float(v) * 10, 2):g}"
     raw = MOLE_CM.sub(lambda m: (f"{mm(m.group(1))}{m.group(2)}" if m.group(1) else "") + f"{mm(m.group(3))}mm", raw or "")
     return re.sub(r"(?<![\d.])1\s*개\s*당", "개당", raw)
+
+
+# 염증주사: how many spots a price is for (2026-10-19, after the X34 검수). The amount rule read only 'N개', in or out of brackets, so
+# T09603A8 '염증주사 5개' held 톡스앤필 목동점 '(5개)' 25,000 (exactly five) with 천안불당점 '(5개미만)' 10,000 (up to four), '염증주사 10개'
+# held '(여드름 5~10개)', '(~10개)', '(10개까지)' and 밴스 의정부점 '(10개 한정)' (a price for one), and the same words outside brackets
+# were words of the spec: 셀린 '염증주사 1-5개' → '염증주사 1 5개', '5개 미만' → '미만 5개', 데이뷰 '5개까지' → '까지 5개'. One reading now,
+# in brackets or not: an upper bound ('N개 이하·까지·이내', '~N개', '최대 N개', 'a-b개' from one) is 'N개 이하' — 'N개 미만' is one less
+# ('5개 미만' = '4개 이하', '1-5개 미만' too) —, a range from two or more stays a range ('2~4개', '5-10개 미만' = '5~9개'), a plain 'N개'
+# is exactly N. The same for 부위 ('[1~3부위]' = '3부위까지'). With 개당 the bound is how many one may buy at that price ('개당 - 최대
+# 10개'), as is a count right before 한정 ('(10개 한정)', not '한정가'): one spot, no count (xkeys X34 reads them so too)
+ACNE_RANGE = re.compile(r"(?<![\d.])(\d+)\s*(?:개|부위)?\s*[-~∼～〜]\s*(\d+)\s*(개|부위)(\s*미만)?")
+ACNE_UPTO = re.compile(r"(?:최대\s*|[~∼～〜]\s*)(\d+)\s*(개|부위)(?:\s*(?:까지|이하|이내))?|(?<![\d.])(\d+)\s*(개|부위)\s*(까지|이하|이내|미만)")
+ACNE_LIMIT = re.compile(r"(?<![\d.])\d+\s*개\s*한정(?!\s*(?:특\s*)?가)")
+
+
+def _acne_count(raw):
+    """(a 염증주사 name without its count words, the count they say: '5개 이하', '2~4개', '' — None when two counts differ)"""
+    raw = ACNE_LIMIT.sub(" ", raw or "")
+    per_one = "개당" in comp(raw)
+    found = []
+
+    def bound(lo, hi, u):
+        if per_one:
+            return " "
+        found.append(f"{hi}{u}" if lo >= hi else f"{hi}{u} 이하" if lo <= 1 else f"{lo}~{hi}{u}")
+        return " "
+
+    def rng(m):
+        lo, hi = int(m.group(1)), int(m.group(2)) - (1 if m.group(4) else 0)
+        return bound(lo, hi, m.group(3)) if 0 < hi and lo <= hi else m.group(0)
+
+    def upto(m):
+        n, u = (int(m.group(1)), m.group(2)) if m.group(1) else (int(m.group(3)), m.group(4))
+        hi = n - (1 if m.group(5) == "미만" else 0)
+        return bound(1, hi, u) if hi > 0 else m.group(0)
+    raw = ACNE_UPTO.sub(upto, ACNE_RANGE.sub(rng, raw))
+    return raw, (found[0] if len(set(found)) == 1 else None if found else "")
 
 
 ORDER_UNIT = r"\d+(?:\.\d+)?(?:U|cc|ml|샷|KJ|부위|개|줄|시린지|vial|분|mm)(?![A-Za-z가-힣])"
@@ -1092,12 +1162,13 @@ def build(rows, min_branches=3):
     # Rows go together by their spec (the loose signature), not their name: names that differ only in what the spec leaves out are
     # the same twins — 밴스 천안 '콜라스터 오리지널 4cc' 99,000 (list 189,000) and '… 4cc 1회' 49,000 (90,000), the two menus as
     # above with a count word, 포항 '브라이톤 레이저' / '… 1회'. The name alone left 23 rows of 11 keys (검수 2026-10-19)
-    # Two parts the spec leaves out do tell products apart: a '+' extra (xkeys.ADDON, taken off in _exact) and a choice count in square
-    # brackets. 유앤아이 구로점 '스케일링 5회' 250,000 / '스케일링 + 크라이오 5회' 350,000, 밴스 홍대 '위코우노 1CC (1회체험가)' 99,000 /
-    # '위코우노 1CC + LDM 6분 (1회체험가)' 129,000 (the 99,000 of 강서화곡·명동·성수·수지), 유앤아이 선릉점 '더마브이 [… 모드 택 1가지]' /
-    # '[… 택 2가지]' / '[… 택 3가지]'. When the plain rows of such a page are no twins by themselves, they keep the key and only the
-    # rows with the extra part leave it (검수 2026-10-19, 2nd: first every row of the page left — 23 real prices and the key '위코우노
-    # 2cc'). 선릉점 has no plain row: its three prices leave the key as before. (Other branches' '+' rows still stand in the plain key, §6)
+    # Two parts tell products apart: a '+' extra (xkeys.ADDON) and a choice count in square brackets. 유앤아이 구로점 '스케일링 5회'
+    # 250,000 / '스케일링 + 크라이오 5회' 350,000, 밴스 홍대 '위코우노 1CC (1회체험가)' 99,000 / '위코우노 1CC + LDM 6분 (1회체험가)'
+    # 129,000 (the 99,000 of 강서화곡·명동·성수·수지), 유앤아이 선릉점 '더마브이 [… 모드 택 1가지]' / '[… 택 2가지]' / '[… 택 3가지]'.
+    # Since the follow-up of 2026-10-19 the spec keeps them (_exact), so such rows are no twins of the plain one at all. What is left
+    # for the rule below: an extra the spec still can't read (one inside square brackets, '피지쿨링관리 [엔젤필+크라이오]') — the plain
+    # rows of the page keep the key when they are no twins by themselves, only the rows with the extra part leave it (검수 2026-10-19,
+    # 2nd: first every row of the page left — 23 real prices and the key '위코우노 2cc')
     twin_idx = defaultdict(list)
     for i, (r, v) in enumerate(zip(rows, vs)):
         if v and v["fam"] == "generic":
