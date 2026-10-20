@@ -31,6 +31,16 @@
     return e;
   };
   const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
+  // empty states (2026-10-20 디자인 통일 U01, DESIGN_SYSTEM §3 '빈 상태'): a card or one block with nothing in it → emptyBox (an
+  // icon in a grey circle, a title, one sentence, maybe a next step); a list that filters or sorts down to no line → emptyLine
+  // (one grey line). The whole screen empty (빈 내 견적, 검색 결과 없음, 오류) is app.js jomiEmpty — 죠미 instead of the icon
+  const emptyBox = (ic, title, ...kids) => h("div", { class: "empty" }, h("div", { class: "ei" }, icon(ic)), h("b", {}, title), ...kids);
+  const emptyLine = (text, tag = "div") => h(tag, { class: "empty one" }, text);
+  // a search field in one shape (2026-10-20 디자인 통일 U11, DESIGN_SYSTEM §3 '찾기 칸'): one height (59), radius 18, the magnifier first. The app's
+  // own search (홈·탐색·검색) is white (.search); a field that narrows this screen's list or finds within it is filled (.search.inset —
+  // 가격 변동·전체 가격표·지점·지점 비교·쉬운 용어·시술 사전·지도·비교 '다른 시술 찾기'). There were three: white with the magnifier,
+  // filled without it (an inline background), and a 48px white .field
+  const searchBox = (input, { inset = false, style, cls = "" } = {}, ...after) => h("div", { class: `search${inset ? " inset" : ""}${cls ? " " + cls : ""}`, style }, icon("search"), input, ...after);
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
 
   // personal keys live in the space of whoever uses the phone (round-2 R01): "pc:<key>" before sign-in, "pc:u:<id>:<key>" for
@@ -72,5 +82,5 @@
   }
   async function copyText(text, done = (App.jline && App.jline("copied")) || "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
 
-  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
+  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, emptyBox, emptyLine, searchBox, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
 })();

@@ -30,7 +30,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   const box = p.locator('#cmppick .specnotes');
   if (!NEW) {
     ok('예전 자료: 규격 낱말 설명이 없음', await p.locator('.specnotes').count() === 0);
-    await p.locator('#cmppick .vstep .vchip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(500);
+    await p.locator('#cmppick .vstep .chip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(500);
     ok('예전 자료: 규격을 바꿔도 설명 없음', await p.locator('.specnotes').count() === 0 && !/k=X01\b/.test(await p.evaluate(() => location.hash)));
     await p.evaluate(() => { location.hash = '#compare?k=X03'; }); await p.waitForTimeout(700);
     ok("예전 자료: '스킨보톡스'도 설명 없음", await p.locator('#cmppick .vsteps').count() === 1 && await p.locator('.specnotes').count() === 0);
@@ -48,7 +48,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     const wide = await p.evaluate(() => document.documentElement.scrollWidth - innerWidth), inner = await box.evaluate((e) => e.scrollWidth - e.clientWidth);
     ok('320px에서 넘치지 않음', wide <= 0 && inner <= 1, `page ${wide}px · box ${inner}px`);
     // another spec: the lines follow the chosen spec
-    await p.locator('#cmppick .vstep .vchip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(600);
+    await p.locator('#cmppick .vstep .chip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(600);
     const us = line('미국산'), t2 = (await box.count()) ? await box.innerText() : '';
     ok("규격을 '미국산'으로 바꾸면 그 설명으로 바뀜", !!us && t2.includes(us.one_liner) && !t2.includes(kr.one_liner), t2.replace(/\n/g, ' / ').slice(0, 100));
     await p.locator('#cmppick .modesw button', { hasText: '자세히' }).click(); await p.waitForTimeout(400);

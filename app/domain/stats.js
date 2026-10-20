@@ -74,8 +74,8 @@
       minBranches: Math.min(...pts.map((p) => p.n)) };
   }
   // a short honest label: '관측 2회 · 10/13~10/14' (never 'N주' unless N distinct weeks were observed)
-  const obsLabel = (o) => !o.n ? "기록 없음" : o.n === 1 ? `기록 1번 · ${o.first.slice(5).replace("-", "/")}`
-    : `기록 ${o.n}번 · ${o.first.slice(5).replace("-", "/")}~${o.last.slice(5).replace("-", "/")}${o.weeks >= 2 ? ` (서로 다른 ${o.weeks}주)` : ""}`;
+  const obsLabel = (o) => !o.n ? "기록 없음" : o.n === 1 ? `기록 1번 · ${md(o.first)}`
+    : `기록 ${o.n}번 · ${md(o.first)}~${md(o.last)}${o.weeks >= 2 ? ` (서로 다른 ${o.weeks}주)` : ""}`;   // dates as md (U04)
 
   // a price history is drawn (line, 'N% 변동', 최저가 변동 횟수) only after this many distinct weeks were observed: one or
   // two snapshots read as a trend they are not (audit U13·U20, improvement report stage 1)
@@ -140,6 +140,26 @@
     return common && common.size ? [...common][0] : null;
   }
 
+  // one way to write a date or a time on a screen (2026-10-20 디자인 통일 U04 — '2026-10-19 기준', '10/19 수집', '확인 2026-10-19',
+  // '10. 20. 오전 04:33' and '04:14 UTC' were all on screen): a date is 'M/D' with no leading zero ('10/19', '1/5' — the top bar
+  // and the period badge '~10/31까지' already were), a time is Korea time 'M/D HH:MM'. Copied text and reports keep the year
+  // (they leave the app). Not a date / not a time → ''
+  function md(iso) { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso == null ? "" : iso)); return m ? `${+m[2]}/${+m[3]}` : ""; }
+  function mdhm(t) {
+    const d = t instanceof Date ? t : new Date(t == null ? NaN : t);
+    if (!isFinite(d.getTime())) return "";
+    const k = new Date(d.getTime() + 9 * 3600000), p2 = (n) => String(n).padStart(2, "0");   // Korea has no summer time: UTC+9 always
+    return `${k.getUTCMonth() + 1}/${k.getUTCDate()} ${p2(k.getUTCHours())}:${p2(k.getUTCMinutes())}`;
+  }
+  // a price that moved, in one shape on every screen (U08; DESIGN_SYSTEM §2 '가격 방향은 늘 ▼▲와 함께'): '▼ 80%' · '▲ 124%' — the
+  // mark, a space, the size (digits after the point: 0, or 1 for a trend's small moves). A move that rounds to 0 is '0%' with no
+  // mark. pct: −0.8 for −80% (a fraction); not a number → ''
+  function moveText(pct, digits = 0) {
+    if (pct == null || !isFinite(pct)) return "";
+    const v = Math.abs(pct * 100), s = v.toFixed(digits);
+    return +s === 0 ? `${(0).toFixed(digits)}%` : `${pct < 0 ? "▼" : "▲"} ${s}%`;
+  }
+
   return { median, observations, obsLabel, historyReady, HISTORY_MIN_WEEKS, isoWeek, medianSorted, groupStat, position, byLevel, order, SORTS,
-    SIDO_FIRST, sidoCmp, MORE_STEP, more, groups, commonDate, sharedKey };
+    SIDO_FIRST, sidoCmp, MORE_STEP, more, groups, commonDate, sharedKey, md, mdhm, moveText };
 });

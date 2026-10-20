@@ -8,7 +8,7 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { $, h, icon, won, km, views, FLAGS, nav, render, moreList, bdot, bname, st, ranking, brandOn, brandOf, dist, regionCmp,
+    const { $, h, icon, won, km, emptyBox, emptyLine, views, FLAGS, nav, render, moreList, bdot, bname, st, ranking, brandOn, brandOf, dist, regionCmp,
       locate, savePlace, usePlace, areaSearch, brandChips } = App;
     // ---------------- map
     let map, layer, meMarker;
@@ -53,8 +53,8 @@
     }
     function initMap(again) {
       if (typeof L === "undefined") {
-        if (leafletFailed) { $("#map").replaceWith(h("div", { class: "card empty" }, "지도를 불러오지 못했어요(인터넷 연결 확인).")); return; }
-        const el = $("#map"); if (el) el.replaceChildren(h("div", { class: "empty" }, "지도를 불러오는 중…"));
+        if (leafletFailed) { $("#map").replaceWith(h("div", { class: "card" }, emptyBox("map", "지도를 불러오지 못했어요", "인터넷 연결을 확인해 주세요. 아래 목록은 그대로 볼 수 있어요."))); return; }
+        const el = $("#map"); if (el) el.replaceChildren(emptyLine("지도를 불러오는 중…"));
         loadLeaflet().then(() => { leafletFailed = false; if (App.state().current === "map") render(); }).catch(() => { if (App.state().current === "map") render(); });
         return;
       }
@@ -171,7 +171,7 @@
         h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b.i)} 지도에서 보기`, onclick: () => focusBranch(x.b.i) }, icon("map-pin"))), { first: sel >= 40 ? 41 : 40, unit: "곳" }) : null;
       el.replaceChildren(h("div", { style: "padding:var(--sp-3) 14px 0" }, h("h3", {}, st.loc ? `가까운 지점${st.locName ? ` · ${st.locName} 기준` : ""}` : "지도에 보이는 지점"),
         h("div", { class: "sub" }, `${list.length}곳${st.mapKm && st.loc ? ` · ${st.mapKm}km 안` : ""}`), kmChips()),
-        list.length ? ul : h("div", { class: "empty" }, "이 지역에 표시할 지점이 없어요. 지도를 넓히거나 동네 이름으로 찾아보세요."), ...(mb ? [mb] : []));
+        list.length ? ul : emptyLine("이 지역에 표시할 지점이 없어요. 지도를 넓히거나 동네 이름으로 찾아보세요."), ...(mb ? [mb] : []));
     }
   });
 })();

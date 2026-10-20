@@ -7,7 +7,7 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { h, fill, icon, won, views, FLAGS, kbOf, nav, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, kbVisible, chatCtx, jomiImg,
+    const { h, fill, icon, won, rangeEl, hereLink, jomiEmpty, views, FLAGS, kbOf, nav, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, kbVisible, chatCtx, jomiImg,
       regionName, st, J, track } = App;
     let pendingChat = "";   // a message from the home box for 죠미와 대화 (memory only); 홈 hands it over with App.chatPending
     App.chatPending = (t) => { pendingChat = t; };
@@ -60,10 +60,12 @@
     function priceLine(p, w) {
       const { D } = App.state();   // read now: these are replaced when new data arrives
       if (!p || !p.n) return h("p", { class: "sub" }, `${whereText(w)}에서는 모은 가격이 없어요. 지역이나 브랜드를 바꿔 물어봐 줘.`);
+      // the price line every range has (홈 '오늘의 발견' — 2026-10-20 디자인 통일 U07): 'lo~hi원 · 중간 X원 · N곳'. It was '최저 · 중간 ·
+      // 최고', three numbers and the lowest first, where every other line keeps to the objective layout (lowestHighlight off)
       return h("div", { class: "cprice" },
-        h("div", { class: "row", style: "gap:var(--sp-3);flex-wrap:wrap" }, h("span", {}, "최저 ", h("b", { class: "num" }, won(p.min))), h("span", {}, "중간 ", h("b", { class: "num" }, won(p.med))),
-          h("span", { class: "sub" }, `최고 ${won(p.max)}`)),
-        h("div", { class: "tiny" }, `${whereText(w)} · ${p.n}곳의 지점별 최저가 · ${st.vat === "incl" ? "부가세 포함가" : "병원 표시가"} · ${D.meta.updated} 수집. 병원에 꼭 확인하세요.`));
+        h("div", { class: "row", style: "gap:var(--sp-1) var(--sp-2);flex-wrap:wrap" }, h("b", { class: "num" }, rangeEl(p.min, p.max)), h("span", {}, `중간 ${won(p.med)}`),
+          h("span", { class: "sub" }, `${p.n}곳`)),
+        h("div", { class: "tiny" }, `${whereText(w)} · 지점마다 가장 싼 가격 하나씩 · ${st.vat === "incl" ? "부가세 포함가" : "병원 표시가"} · ${Stats.md(D.meta.updated)} 수집. 병원에 꼭 확인하세요.`));
     }
     function famAnswer(r, f, key, p) {
       const e = kbOf(f.src), ks = f.keys.filter((k) => k.id !== key.id).slice(0, 6);
@@ -73,7 +75,7 @@
         r.spec && !r.specHonored ? h("p", { class: "tiny" }, `'${r.spec}'은(는) 없어서 가장 많이 파는 종류로 보여줘요.`) : null,
         priceLine(p, r.where),
         e ? h("p", { style: "margin:var(--sp-2) 0 0" }, `${e.one_liner} ${e.purpose}`) : null,
-        e ? h("div", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
+        e ? h("div", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, reviewBadge(e), hereLink("info", "부작용·주의사항 보기", () => kbSheet(e, f.src))) : null,
         h("div", { class: "row", style: "margin-top:var(--sp-2);flex-wrap:wrap" },
           h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("chart-column", "sm"), "지점별 가격 비교"),
           Object.keys(r.where).length ? h("button", { class: "btn sm gray", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
@@ -126,7 +128,7 @@
       const { CONC } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
       box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
-      if (!FLAGS.concernSearch) { box.append(h("div", { class: "card empty" }, "죠미와 대화는 지금 꺼져 있어요.")); return box; }
+      if (!FLAGS.concernSearch) { box.append(h("div", { class: "card" }, jomiEmpty("empty", "죠미와 대화는 지금 꺼져 있어요", "시술 가격은 시술별 비교에서 볼 수 있어요."))); return box; }
       if (!chatMemo) chatMemo = JomiChat.memory();
       const picked = params.get("c");   // a concern id from a chip or the search page — never the typed words
       const ta = h("textarea", { rows: "1", maxlength: String(JomiChat.MAX_LEN), placeholder: "예: 카프리 레이저 얼마야? · 이마 주름이 신경 쓰여요", "aria-label": "죠미에게 말하기", enterkeyhint: "send" });

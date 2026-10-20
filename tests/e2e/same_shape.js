@@ -273,6 +273,216 @@ const HELP = () => {
     ok(`${tag} 페이지 오류 없음`, !errs.length, errs.join(' | '));
     await ctx.close();
   }
+
+  // ---------- 디자인 통일 묶음 A (2026-10-20 · U01~U13, docs/DESIGN_SYSTEM.md): one role, one shape — the sources first, then the
+  // screens at 390 (and the brand tiles at 320)
+  {
+    const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
+    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
+    const hits = (re) => SRC.flatMap(([f, s]) => s.split('\n').map((l, i) => [f, i + 1, l]).filter(([, , l]) => !/^\s*\/\//.test(l) && re.test(l)).map(([f, n, l]) => `${f}:${n} ${l.trim().slice(0, 70)}`));
+    const css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    // U01: an empty state is built by emptyBox / emptyLine / jomiEmpty only — no hand-made .empty, no .chartempty, no 'card empty'
+    const handEmpty = hits(/class: "(card )?empty"|chartempty|class: "empty", style/).filter((x) => !/const (emptyBox|emptyLine|jomiEmpty) =/.test(x));
+    ok('U01 빈 상태는 emptyBox·emptyLine·jomiEmpty로만(손으로 만든 .empty·.chartempty·card empty 없음)', !handEmpty.length && !/\.chartempty/.test(css), handEmpty.slice(0, 3).join(' | '));
+    // U02: no range written as 'X원 ~ Y원' / 'X원~Y원' by hand. The range bar's words read aloud ('가격 범위 X원~Y원') belong to the
+    // range bar's own work (app/range-dot) and are left to it
+    const handRange = hits(/won\([^)]*\)\s*\}?\s*~\s*\$?\{?won\(|" ~ "/).filter((x) => !/const words = `\$\{opts\.name/.test(x));
+    ok("U02 범위는 Pricing.rangeText·rangeEl로만('X원 ~ Y원'·'X원~Y원'을 손으로 쓰지 않음)", !handRange.length, handRange.slice(0, 3).join(' | '));
+    // U04: no ISO date sliced by hand for a screen, no 'UTC' / toLocaleString time
+    const handDate = hits(/toLocaleString\("ko-KR", \{ month|\} UTC`|\.slice\(5\)\.replace\("-", "\/"\)|\.d\.slice\(5\)/);
+    ok('U04 날짜는 md·mdhm으로만(손으로 자른 날짜·UTC·toLocaleString 시각 없음)', !handDate.length, handDate.join(' | '));
+    // U05: every checkbox charcoal (one rule), no sage accent
+    ok('U05 체크박스 색은 규칙 하나(input[type=checkbox] → --primary), 세이지 accent-color 없음', /input\[type="checkbox"\][^{]*\{[^}]*accent-color:\s*var\(--primary\)/.test(css) && !/accent-color:\s*var\(--accent\)/.test(css));
+    // U08: no '−' (U+2212 — not in the font subset) or '+N%' for a price move
+    const handMove = hits(/"−" : "\+"|\? "−"|\}%`\)\]|\}↓`/);
+    ok("U08 가격 방향은 Stats.moveText('▼ 80%')·▼▲로만('−'·'+N%'·'N원↓' 없음)", !handMove.length, handMove.join(' | '));
+    // U11: no filled search by an inline background, no search input as a 48px .field
+    const handSearch = hits(/class: "search", style: "[^"]*background|type: "search", class: "field"|class: "search" \}, h\("span", \{ html/);
+    ok('U11 찾기 칸은 searchBox(.search / .search.inset)로만(인라인 배경·.field 찾기 칸·인라인 svg 없음)', !handSearch.length, handSearch.join(' | '));
+    // U12: the 14px-corner spec tile is gone
+    ok('U12 규격 칩 .vchip 없음(쉬운 보기 = .chip, 자세히 = .opt)', !hits(/"vchip"/).length && !/\.vchip\b/.test(css));
+
+    const { ctx, p, errs } = await page({ width: 390, height: 844 });
+    const reload = async () => { await p.reload(); await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 }); };
+    // the shape of every empty state on the screen: box (icon circle + title + sentence), line (one grey line), or 죠미
+    const empties = () => p.evaluate(() => [...document.querySelectorAll('#main .empty')].filter(__vis).map((e) => {
+      const ei = e.querySelector(':scope > .ei > svg'), b = e.querySelector(':scope > b'), img = e.querySelector(':scope > img.portrait');
+      const kind = e.classList.contains('one') ? 'line' : e.classList.contains('jomi-empty') ? 'jomi' : 'box';
+      const ok = kind === 'line' ? !ei && !b && !img && e.children.length === 0 && parseFloat(getComputedStyle(e).fontSize) === 15
+        : kind === 'jomi' ? !!img && !ei && !!b : !!ei && !!b && !img && getComputedStyle(e.querySelector('.ei')).borderRadius === '50%';
+      return { kind, ok, t: e.textContent.trim().slice(0, 24) }; }));
+    // 관심 with nothing in it: 가격 알림 and 관심 지점 are boxes, 알림 기록 (a list under its own title) a line, no 죠미 (the screen is not empty)
+    await p.evaluate(() => { for (const k of ['favs', 'alerts', 'notes', 'recent']) localStorage.removeItem('pc:' + k); }); await reload();
+    await go(p, '#saved', 1200);
+    const sv = await empties();
+    ok('U01 관심 빈 화면: 카드는 상자(아이콘 원·제목·문장), 알림 기록은 한 줄, 죠미 없음, 회색 sub 문장 없음', sv.length >= 3 && sv.every((x) => x.ok) && sv.filter((x) => x.kind === 'box').length >= 2
+      && sv.some((x) => x.kind === 'line' && /기록이 없어요/.test(x.t)) && !sv.some((x) => x.kind === 'jomi') && !(await p.locator('#main .card p.sub', { hasText: /하트를 누르면|기록이 없어요/ }).count()), JSON.stringify(sv));
+    // the whole screen empty: 죠미 (빈 내 견적, 검색 결과 없음); 마이 '받은 시술 기록' a box
+    await p.evaluate(() => { localStorage.setItem('pc:carts', JSON.stringify([{ id: 'e', name: '내 견적', items: [] }])); localStorage.setItem('pc:ci', '0'); }); await reload();
+    await go(p, '#cart', 1200); const ce = await empties();
+    await go(p, '#search/' + encodeURIComponent('없는시술zzz'), 1500); const se2 = await empties();
+    await go(p, '#me', 1000); const me = await empties();
+    ok('U01 화면 전체가 빌 때만 죠미(빈 내 견적·검색 결과 없음), 마이 기록은 상자', ce.length === 1 && ce[0].kind === 'jomi' && ce[0].ok && se2.length === 1 && se2[0].kind === 'jomi' && se2[0].ok && me.some((x) => x.kind === 'box') && me.every((x) => x.ok),
+      JSON.stringify([ce, se2, me]));
+    await p.evaluate((items) => { localStorage.setItem('pc:carts', JSON.stringify([{ id: 's', name: '모양 시험', items }])); localStorage.setItem('pc:favs', JSON.stringify({ k: ['X01'], b: [] })); }, CART); await reload();
+    // a filtered list with no line: one line (가격 변동 search with nothing matching)
+    await go(p, '#change', 1200); await p.fill('#main input[type=search]', '없는시술zzz'); await p.waitForTimeout(300);
+    const ch0 = await empties();
+    ok('U01 걸러서 줄이 없으면 한 줄(가격 변동 찾기)', ch0.length === 1 && ch0[0].kind === 'line' && ch0[0].ok, JSON.stringify(ch0));
+
+    // U02 · U03: a range is the same words everywhere — the compare card's 28 too, 만 when both ends are 10만 or more; 내 견적 in won
+    const RANGE = /^[\d,.]+만?~[\d,.]+만?원$/, BAD = /[\d,]원\s*~\s*[\d,.]+/;
+    await go(p, '#compare?k=X14', 1300);
+    const r14 = await p.evaluate(() => { const hp = document.querySelector('.pricecard .hero .hp'); return { t: hp.textContent.trim(), fs: getComputedStyle(hp).fontSize, nw: hp.querySelectorAll('.nw').length }; });
+    await go(p, '#compare?k=X01', 1300);
+    const r01 = await p.evaluate(() => document.querySelector('.pricecard .hero .hp').textContent.trim());
+    ok('U02 비교 가격 카드 28: 다른 범위와 같은 글자(10만 이상 양 끝은 만, 아니면 원 — 띄어쓰기 없이 끝에 원 한 번)', r14.fs === '28px' && /^[\d.]+만~[\d.]+만원$/.test(r14.t) && r14.nw === 2 && /^[\d,]+~[\d,]+원$/.test(r01), `${r14.t} (${r14.fs}) · ${r01}`);
+    await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(600);
+    const bt = await p.evaluate(() => [...document.querySelectorAll('#main .bcard .tile b.num')].map((b) => ({ t: b.textContent.trim(), ends: b.querySelectorAll('.nw').length,
+      split: [...b.querySelectorAll('.nw')].some((s) => new Set([...s.getClientRects()].map((r) => Math.round(r.top))).size > 1) })));
+    ok('U03 브랜드별 비교 칸: 범위는 rangeEl — 끝마다 한 줄, \'~\'에서만 줄바꿈(390)', bt.length >= 3 && bt.every((x) => RANGE.test(x.t) || /^[\d,]+원$/.test(x.t)) && bt.every((x) => x.ends === 2 || /^[\d,]+원$/.test(x.t)) && !bt.some((x) => x.split), JSON.stringify(bt.slice(0, 3)));
+    await go(p, '#saved', 1200);
+    const svT = await p.locator('#main').innerText();
+    await go(p, '#cart', 1200);
+    const ct = await p.evaluate(() => ({ hp: (document.querySelector('.cartsum .hp') || {}).textContent, tl: (document.querySelector('.totline b') || {}).textContent, bar: (document.querySelector('.cartbar .cb-t b') || {}).textContent }));
+    ok('U02 내 견적: 요약 카드 28 = 예상 총액 줄 = 아래 고정 요약, 양 끝 원(한 모양)', /^[\d,]+~[\d,]+원$/.test(ct.hp) && ct.hp === ct.tl && ct.hp === ct.bar, JSON.stringify(ct));
+    ok('U02 관심 시술 가격 줄도 같은 범위 글자(\'중간값 · X원 ~ Y원\' 없음)', !BAD.test(svT) && /[\d,.]+만?~[\d,.]+만?원/.test(svT), svT.split('\n').filter((l) => /~/.test(l)).slice(0, 2).join(' / '));
+
+    // U04: dates are 'M/D', the data's date word is 수집, a time Korea time 'M/D HH:MM'; nothing ISO on these screens
+    // (a data version id '2026-10-19.7498fa52' is a name, not a date; a quoted clinic sentence (“…”) is the clinic's words)
+    const ISO = /\b20\d\d-\d\d-\d\d\b(?!\.[0-9a-f])/;
+    const dates = {};
+    for (const [hash, k] of [['#explore', '탐색'], ['#compare?k=X12', '비교'], ['#saved', '관심'], ['#change', '가격 변동'], ['#about', '데이터 안내'], ['#me', '마이']]) {
+      await go(p, hash, 1300); await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(300);
+      dates[k] = (await p.evaluate(() => document.querySelector('#main').innerText)).replace(/“[^”]*”/g, ''); }
+    const bi0 = await p.evaluate(() => { const { D } = App.state(); const x = D.branches.findIndex((y) => D.s[y[1]] === '강남역점'); return x >= 0 ? x : 0; });
+    await go(p, `#branch/${bi0}`, 1300); dates['지점'] = await p.evaluate(() => document.querySelector('#main').innerText.slice(0, 4000));
+    const badDates = Object.entries(dates).filter(([, t]) => ISO.test(t) || /UTC|오전 \d|오후 \d|\d{1,2}\/\d{1,2} 기준|데이터 \d|\d 모음/.test(t)).map(([k, t]) => `${k}: ${(t.match(ISO) || t.match(/UTC|오전 \d|오후 \d|\d{1,2}\/\d{1,2} 기준|데이터 \d|\d 모음/))[0]}`);
+    const upd = await p.locator('#upd').innerText();
+    ok('U04 날짜는 M/D, 데이터 날짜는 \'수집\', 확인일은 \'확인 M/D\', 시각은 한국 시간(ISO·UTC·오전/오후 없음)', !badDates.length && /^\d{1,2}\/\d{1,2} 수집 · \d+곳$/.test(upd)
+      && /\d{1,2}\/\d{1,2} \d\d:\d\d/.test(dates['데이터 안내']) && /확인 \d{1,2}\/\d{1,2}/.test(dates['관심']) && /\d{1,2}\/\d{1,2} \(\d+일 전\)|\d{1,2}\/\d{1,2} \(오늘\)/.test(dates['지점']), `${upd} · ${badDates.join(' | ')}`);
+
+    // U05: the alert sheet's checkboxes are charcoal like the chosen tile above them
+    await go(p, '#compare?k=X12', 1300);
+    await p.locator('#main .morebtn').first().click(); await p.waitForTimeout(500);
+    await p.locator('.sheet button', { hasText: /알림/ }).first().click(); await p.waitForTimeout(700);
+    const cb = await p.evaluate(() => { const s = [...document.querySelectorAll('.sheet')].pop(), prim = getComputedStyle(document.documentElement).getPropertyValue('--primary').trim(), v = parseInt(prim.replace('#', ''), 16);
+      const want = `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`; const xs = [...s.querySelectorAll('input[type=checkbox]')];
+      return { n: xs.length, colours: [...new Set(xs.map((x) => getComputedStyle(x).accentColor))], want, tile: getComputedStyle(s.querySelector('.opt[aria-pressed=true]')).backgroundColor }; });
+    ok('U05 가격 알림 창: 체크박스 6개 모두 차콜(고른 타일과 같은 색)', cb.n >= 6 && cb.colours.length === 1 && cb.colours[0] === cb.want && cb.tile === cb.want, JSON.stringify(cb));
+    await p.keyboard.press('Escape'); await p.waitForTimeout(300); await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+
+    // U08: a price move is '▼ N%' / '▲ N%' on 홈 and 가격 변동 alike; A/B says the cheaper side with ▼; no '−' (U+2212)
+    const MOVE = /^[▼▲] \d+(\.\d)?%$|^0%$/;
+    await go(p, '#home', 1500);
+    const hmv = await p.evaluate(() => [...document.querySelectorAll('#main .card.flush .item .m > span.down, #main .card.flush .item .m > span.up')].map((x) => x.textContent.trim()));
+    await go(p, '#change', 1300);
+    const cmv = await p.evaluate(() => [...document.querySelectorAll('#main .card.flush ul.list .item .m > span.down, #main .card.flush ul.list .item .m > span.up')].slice(0, 40).map((x) => x.textContent.trim()));
+    const cmt = await p.evaluate(() => document.querySelector('#main').innerText);
+    await go(p, `#versus/${bi0}/${bi0 + 1}`, 1500);
+    const vs = await p.evaluate(() => [...document.querySelectorAll('#main .card.flush ul.list .item > .p')].slice(0, 40).map((x) => x.textContent.trim()));
+    ok('U08 가격 방향 한 모양: 홈·가격 변동 \'▼ 80%\'·\'▲ 124%\', A/B \'A ▼ N원\', \'−\'·\'↓\' 없음', (!hmv.length || hmv.every((t) => MOVE.test(t))) && cmv.length > 0 && cmv.every((t) => MOVE.test(t)) && !/−/.test(cmt)
+      && vs.length > 0 && vs.every((t) => /^(A|B) ▼ [\d,]+원$|^같음$/.test(t)), `${hmv.slice(0, 2)} · ${cmv.slice(0, 3)} · ${vs.slice(0, 3)}`);
+
+    // U09: a grey action button has its edge; a grey badge (~10/31까지) has none
+    await go(p, `#branch/${bi0}`, 1300);
+    const gb = await p.evaluate(() => { const L = (c) => { const v = (c.match(/[\d.]+/g) || []).slice(0, 3).map((x) => +x / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]; };
+      const ratio = (a, b) => { const x = L(a), y = L(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };
+      const btns = [...document.querySelectorAll('#main .bbtns > .btn.gray:not([aria-pressed="true"])')].filter(__vis), k = [...document.querySelectorAll('#main .k.k4')].filter(__vis)[0];
+      const edge = (e) => { const m = /inset 0px 0px 0px 1px|rgb[^)]*\) 0px 0px 0px 1px inset/.test(getComputedStyle(e).boxShadow) ? (getComputedStyle(e).boxShadow.match(/rgba?\([^)]*\)/) || [''])[0] : null; return m; };
+      return { n: btns.length, edges: btns.map((b) => !!edge(b)), contrast: btns[0] && edge(btns[0]) ? ratio(edge(btns[0]), getComputedStyle(btns[0]).backgroundColor).toFixed(2) : null, badge: k ? getComputedStyle(k).boxShadow : null, badgeBg: k && getComputedStyle(k).backgroundColor === (btns[0] && getComputedStyle(btns[0]).backgroundColor) }; });
+    ok('U09 회색 동작 버튼: 1px 안쪽 테두리(바탕과 1.4:1 이상), 같은 바탕의 회색 배지는 테두리 없음', gb.n >= 4 && gb.edges.every(Boolean) && +gb.contrast >= 1.4 && gb.badge === 'none' && gb.badgeBg, JSON.stringify(gb));
+
+    // U10: a text link that takes you to another screen is 'words ›'; one that opens a sheet or moves here is 'icon words'.
+    // Read from what it does: tap each, see whether the address changed or a sheet opened
+    // a link named by the place it opens (a variant's or a branch's own name) carries no mark: it must go somewhere
+    const linkShape = (sel, i) => p.evaluate(([sel, i]) => { const l = [...document.querySelectorAll(sel)].filter(__vis)[i]; if (!l) return null;
+      const nodes = [...l.childNodes].filter((n) => n.nodeType === 1 || n.textContent.trim()), svg = (n) => !!n && n.nodeName === 'svg';
+      const chev = (s) => svg(s) && !!s.querySelector('path[d="m9 18 6-6-6-6"]'), first = nodes[0], last = nodes[nodes.length - 1];
+      return { t: l.textContent.trim(), lead: svg(first) && !chev(first), trail: chev(last) && nodes.length > 1, bare: !l.querySelector('svg') }; }, [sel, i]);
+    const lk = [];
+    for (const [hash, sel, open] of [['#compare?k=X01', '#main .pricecard .linkbtn', false], ['#compare?k=X01', '#main details.cmpfold .linkbtn:not(.src)', true], ['#home', '#main p.foot .linkbtn', false]]) {
+      await go(p, hash, 1300); if (open) { await p.evaluate(() => { for (const d of document.querySelectorAll('#main details.cmpfold')) d.open = true; }); await p.waitForTimeout(400); }
+      const n = await p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).length, sel);
+      for (let i = 0; i < Math.min(n, 8); i++) {
+        await go(p, hash, 1100); if (open) { await p.evaluate(() => { for (const d of document.querySelectorAll('#main details.cmpfold')) d.open = true; }); await p.waitForTimeout(300); }
+        const s = await linkShape(sel, i); if (!s) continue;
+        const before = await p.evaluate(() => ({ h: location.hash, sheets: document.querySelectorAll('.sheet').length }));
+        await p.evaluate(([sel, i]) => [...document.querySelectorAll(sel)].filter(__vis)[i].click(), [sel, i]); await p.waitForTimeout(500);
+        const after = await p.evaluate(() => ({ h: location.hash, sheets: document.querySelectorAll('.sheet').length }));
+        const goes = after.h !== before.h && after.sheets <= before.sheets;
+        lk.push({ ...s, goes, ok: s.bare ? goes : goes ? s.trail && !s.lead : s.lead && !s.trail });
+        await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+      }
+    }
+    ok('U10 글자 링크: 다른 화면으로 가면 \'글자 ›\', 창을 열거나 이 화면 안이면 \'아이콘 글자\'(꺾쇠 없음), 이름 링크는 표시 없이 이동', lk.length >= 6 && lk.every((x) => x.ok)
+      && lk.some((x) => x.goes && x.trail) && lk.some((x) => !x.goes && x.lead),
+      JSON.stringify(lk.filter((x) => !x.ok).concat(lk.slice(0, 2)).map((x) => [x.t, x.goes, x.lead, x.trail])));
+
+    // U11: every search field has the magnifier, 57px and the 18 corner; the app's own search is white, a screen's own list filled
+    const fields = [];
+    for (const [hash, own] of [['#home', true], ['#explore', true], ['#search/' + encodeURIComponent('보톡스'), true], ['#change', false], ['#table', false], [`#branch/${bi0}`, false],
+      [`#versus/${bi0}/${bi0 + 1}`, false], ['#terms', false], ['#guide', false], ['#map', false], ['#compare?k=X01', false]]) {
+      await go(p, hash, hash === '#map' ? 2200 : 1300);
+      if (hash.startsWith('#compare')) { await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(300); }
+      fields.push(...await p.evaluate(([hash, own]) => [...document.querySelectorAll('#main input[type=search]')].filter(__vis).map((inp) => { const box = inp.closest('.search');
+        if (!box) return { hash, ok: false, why: 'no .search', l: inp.getAttribute('aria-label') };
+        const r = box.getBoundingClientRect(), cs = getComputedStyle(box), root = getComputedStyle(document.documentElement), tok = (n) => { const v = parseInt(root.getPropertyValue(n).trim().replace('#', ''), 16); return `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`; };
+        const mag = !!box.firstElementChild && box.firstElementChild.nodeName === 'svg' && !!box.firstElementChild.querySelector('circle[r="8"]');
+        const inset = box.classList.contains('inset');
+        return { hash, l: inp.getAttribute('aria-label'), ok: mag && r.height >= 56 && r.height <= 60 && cs.borderTopLeftRadius === '18px' && !box.getAttribute('style')?.includes('background') && (own ? !inset && cs.backgroundColor === tok('--surface') : inset && cs.backgroundColor === tok('--fill')),
+          h: Math.round(r.height), mag, inset }; }), [hash, own]));
+    }
+    ok('U11 찾기 칸 한 모양: 돋보기·같은 높이·반경 18, 앱 검색은 흰 바탕, 화면 안 목록 찾기는 채움(.search.inset)', fields.length >= 11 && fields.every((x) => x.ok) && new Set(fields.map((x) => x.h)).size === 1, JSON.stringify(fields.filter((x) => !x.ok).slice(0, 3)) + ` · ${fields.length}칸 · 높이 ${[...new Set(fields.map((x) => x.h))]}`);
+
+    // U12: 쉬운 보기's spec chips are the app's chip (pill 13/600, chosen charcoal), like the 분야 chips under them
+    await go(p, '#compare?k=X01', 1300); await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(500);
+    const chs = await p.evaluate(() => { const st = (e) => { const c = getComputedStyle(e); return `${c.borderTopLeftRadius}/${c.fontSize}/${c.fontWeight}/${c.minHeight}`; };
+      const spec = [...document.querySelectorAll('#cmppick .vstep button')], cat = document.querySelector('#cmppick details.cmpother > .chips > .chip:not([aria-pressed=true])');
+      const on = spec.find((x) => x.getAttribute('aria-checked') === 'true');
+      return { n: spec.length, allChip: spec.every((x) => x.classList.contains('chip')), looks: [...new Set(spec.filter((x) => x.getAttribute('aria-checked') !== 'true').map(st))], cat: cat ? st(cat) : null,
+        on: on ? getComputedStyle(on).backgroundColor : null, ink: getComputedStyle(document.querySelector('#cmppick details.cmpother > .chips > .chip[aria-pressed=true]') || document.body).backgroundColor }; });
+    ok('U12 규격 칩(쉬운 보기) = 분야 칩: 알약·13/600, 고른 것은 같은 차콜', chs.n >= 2 && chs.allChip && chs.looks.length === 1 && chs.looks[0] === chs.cat && chs.on === chs.ink, JSON.stringify(chs));
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#cmppick .seg button')].find((x) => /자세히/.test(x.textContent)); if (b) b.click(); }); await p.waitForTimeout(700);
+    const det = await p.evaluate(() => ({ opt: document.querySelectorAll('#cmppick .vrows .opt').length, two: [...document.querySelectorAll('#cmppick .vrows .opt')].slice(0, 3).every((o) => o.children.length === 2) }));
+    ok('U12 자세히(둘째 줄 가격)는 옵션 타일(.opt)', det.opt >= 2 && det.two, JSON.stringify(det));
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#cmppick .seg button')].find((x) => /쉬운 보기/.test(x.textContent)); if (b) b.click(); }); await p.waitForTimeout(400);
+
+    // U13: 비교함 담기 has the toast every 담기 has — 죠미, a fixed first line with the count, a second line, 되돌리기 (빠른 비교 from two)
+    await p.evaluate(() => localStorage.removeItem('pc:short'));
+    await go(p, '#compare?k=X12', 1300);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#main .seg.vsw button')].find((x) => /카드/.test(x.textContent)); if (b) b.click(); }); await p.waitForTimeout(800);
+    const tst = () => p.evaluate(() => { const t = document.querySelector('#toast'), tm = t.querySelector('.tm'), ts = t.querySelector('.ts'), b = t.querySelector('button'), tt = t.querySelector('.tt');
+      return { jt: t.classList.contains('jt'), face: !!t.querySelector('img.mascot'), tm: tm && tm.textContent, tt: tt && tt.textContent, cut: !!tm && tm.scrollWidth > tm.clientWidth + 1, ts: ts && ts.textContent, btn: b && b.textContent }; });
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#main .ccard .shortbtn')][0]; b.scrollIntoView({ block: 'center' }); b.click(); }); await p.waitForTimeout(300);
+    const t1 = await tst();
+    await p.locator('#toast button', { hasText: '되돌리기' }).click(); await p.waitForTimeout(300);
+    const undone = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:short') || '[]').length);
+    await go(p, '#compare?k=X12', 1300);
+    await p.evaluate(() => { for (const b of [...document.querySelectorAll('#main .ccard .shortbtn')].slice(0, 2)) b.click(); }); await p.waitForTimeout(300);
+    const t2 = await tst();
+    await go(p, '#home', 1300); await p.evaluate(() => { scrollTo(0, 0); document.querySelector('#main .pwrap > .addbtn:not([aria-pressed="true"])').click(); }); await p.waitForTimeout(300);   // a card not in the cart: one tap puts it in
+    const t3 = await tst();
+    ok('U13 비교함 담기 알림 = 내 견적 담기 알림: 죠미·고정 첫 줄(n/4)·둘째 줄·되돌리기(2곳부터 빠른 비교), 잘림 없음',
+      t1.jt && t1.face && t1.tm === '비교함에 담았어요 (1/4)' && !t1.cut && !!t1.ts && t1.btn === '되돌리기' && undone === 0 && t2.tm === '비교함에 담았어요 (2/4)' && t2.btn === '빠른 비교'
+      && t3.jt && t3.face && /^내 견적에 담았어요/.test(t3.tm) && !!t3.ts && t3.btn === '되돌리기', JSON.stringify([t1, t2, t3]));
+    await p.evaluate(() => { localStorage.removeItem('pc:short'); localStorage.setItem('pc:jomiPrefs', JSON.stringify({ freq: 'off' })); }); await reload();
+    await go(p, '#compare?k=X12', 1300);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#main .seg.vsw button')].find((x) => /카드/.test(x.textContent)); if (b) b.click(); }); await p.waitForTimeout(800);
+    await p.evaluate(() => { const b = [...document.querySelectorAll('#main .ccard .shortbtn')][0]; b.scrollIntoView({ block: 'center' }); b.click(); }); await p.waitForTimeout(300);
+    const t4 = await tst();
+    ok('U13 죠미 \'끄기\': 첫 줄만(얼굴·둘째 줄 없음)', t4.jt && !t4.face && t4.tt === '비교함에 담았어요 (1/4)' && !t4.ts && t4.btn === '되돌리기', JSON.stringify(t4));
+    ok('U01~U13 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close();
+
+    // U03 at 320: the brand tiles break only at '~'
+    const n3 = await page({ width: 320, height: 640 });
+    await go(n3.p, '#compare?k=X01', 1500); await n3.p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await n3.p.waitForTimeout(600);
+    const bt3 = await n3.p.evaluate(() => [...document.querySelectorAll('#main .bcard .tile b.num')].map((b) => ({ t: b.textContent.trim(), split: [...b.querySelectorAll('.nw')].some((s) => new Set([...s.getClientRects()].map((r) => Math.round(r.top))).size > 1),
+      over: b.scrollWidth > b.clientWidth + 1 })));
+    ok('U03 320 브랜드별 비교 칸: 숫자 중간에서 줄이 바뀌지 않음, 넘침 없음', bt3.length >= 3 && !bt3.some((x) => x.split || x.over), JSON.stringify(bt3.filter((x) => x.split || x.over).slice(0, 3)));
+    await n3.ctx.close();
+  }
   await b.close();
   const pass = R.filter(Boolean).length; console.log(`\n${pass}/${R.length} 통과`); process.exit(pass === R.length ? 0 : 1);
 })();

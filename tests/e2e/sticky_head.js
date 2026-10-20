@@ -78,14 +78,17 @@ const head = (p) => p.evaluate(() => {
       return { n: segs.length, cur: segs.map((s) => s.getAttribute('aria-current')), lastW: +getComputedStyle(last).fontWeight, otherW: segs.slice(0, -1).map((s) => +getComputedStyle(s).fontWeight),
         lastInk: getComputedStyle(last).color === getComputedStyle(document.querySelector('.cmphead .cmpt')).color, under: segs.every((s) => getComputedStyle(s).textDecorationLine.includes('underline')),
         sep: Math.min(...[...document.querySelectorAll('.cmphead .crumb .sep')].map((s) => ratio(getComputedStyle(s).color, bg))).toFixed(2),
-        cat: fs('#cmppick details.cmpother > .chips > .chip'), fam: fs('#cmppick .famname'), spec: fs('#cmppick .vstep .vchip b'), title: fs('#cmppick h3'),
-        famW: +getComputedStyle(document.querySelector('#cmppick .famname')).fontWeight, specW: +getComputedStyle(document.querySelector('#cmppick .vstep .vchip b')).fontWeight };
+        cat: fs('#cmppick details.cmpother > .chips > .chip'), fam: fs('#cmppick .famname'), spec: fs('#cmppick .vstep .chip'), title: fs('#cmppick h3'),
+        famW: +getComputedStyle(document.querySelector('#cmppick .famname')).fontWeight, specW: +getComputedStyle(document.querySelector('#cmppick .vstep .chip')).fontWeight,
+        // the app's one chip (U12): the spec chips are pills like the 분야 chips under them
+        specR: getComputedStyle(document.querySelector('#cmppick .vstep .chip')).borderRadius, catR: getComputedStyle(document.querySelector('#cmppick details.cmpother > .chips > .chip')).borderRadius };
     });
     ok('20 경로: 마지막 단계만 aria-current·진한 700, 앞 단계는 보통 굵기, 모두 밑줄(버튼)', cr.n >= 2 && cr.cur.slice(0, -1).every((c) => c === null) && cr.cur[cr.n - 1] === 'page' && cr.lastW >= 700 && cr.otherW.every((w) => w < 600) && cr.lastInk && cr.under, JSON.stringify(cr));
     ok('20 경로 \'›\' 대비 3:1 이상', +cr.sep >= 3, `${cr.sep}:1 (전: 1.84:1)`);
-    // 2026-10-19 type steps: the card title is the section step (17) and the treatment sits under it — it was 17 under a 16 title
-    ok('20 규격 바꾸기 단계: 카드 제목 17 > 시술 15/760 · 규격 칩 15/600 · 분야 칩 13', cr.title === '17px' && cr.cat === '13px' && cr.fam === '15px' && cr.famW === 760 && cr.spec === '15px' && cr.specW === 600,
-      `${cr.title} > ${cr.fam}/${cr.famW} · ${cr.spec}/${cr.specW} · ${cr.cat}`);
+    // 2026-10-19 type steps: the card title is the section step (17) and the treatment sits under it — it was 17 under a 16 title.
+    // 2026-10-20 디자인 통일 U12: the spec chips are the app's one chip (pill, 13/600) like the 분야 chips — they were 15/600 tiles
+    ok('20 규격 바꾸기 단계: 카드 제목 17 > 시술 15/760 · 규격 칩 = 분야 칩(알약 13/600)', cr.title === '17px' && cr.cat === '13px' && cr.fam === '15px' && cr.famW === 760 && cr.spec === '13px' && cr.specW === 600
+      && cr.specR === cr.catR && parseFloat(cr.specR) >= 999, `${cr.title} > ${cr.fam}/${cr.famW} · ${cr.spec}/${cr.specW} ${cr.specR} · ${cr.cat} ${cr.catR}`);
     // 40: the sub-navigation on its screens
     const sn = [];
     for (const r of ['compare?k=X01', 'versus', 'table']) {

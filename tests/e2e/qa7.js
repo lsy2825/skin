@@ -257,7 +257,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     // branches in one building (same coordinates, e.g. 블리비·쁨 안산점): each gets its own marker and 📍 opens the right one
     await p.selectOption('select[aria-label="지도에 표시할 시술"]', ''); await p.waitForTimeout(400);
     await p.fill('input[aria-label="지역 이름으로 찾기"]', '안산'); await p.waitForTimeout(250);
-    await p.locator('input[aria-label="지역 이름으로 찾기"] + .chips button').first().click(); await p.waitForTimeout(900);
+    await p.locator('.search:has(input[aria-label="지역 이름으로 찾기"]) + .chips button').first().click(); await p.waitForTimeout(900);
     if (await p.locator('.mapbtn.again').isVisible()) { await p.locator('.mapbtn.again').click(); await p.waitForTimeout(300); }
     const pair = ['블리비 안산점', '쁨 안산점'], viaPin = [], viaList = [];
     for (const name of pair) { const li = p.locator('#near li[data-b]').filter({ hasText: name }).first();

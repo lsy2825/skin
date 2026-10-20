@@ -210,7 +210,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
     console.log(`C: ${k} @ ${bname(b)} · ${S[C.first.r[2]]} ${won(f)} → ${S[C.next.r[2]]} ${won(g)} (${repeat ? 'repeat' : 'regular'})`);
     await seed([{ t: 'k', k, q: 3 }], where(b));
     const swc = p.locator('.ci .cdone label.switch', { hasText: DONE });
-    const lowOff = +((await text('.cartsum .hp')).match(/[\d,]+원/) || ['0'])[0].replace(/[^\d]/g, '');   // the lowest one-clinic total, switch off
+    const lowOff = +((await text('.cartsum .hp')).match(/[\d,]+(?=원|~)/) || ['0'])[0].replace(/[^\d]/g, '');   // the lowest one-clinic total, switch off (the range's low end: '2,714,800~3,597,000원' — one range shape, U02)
     ok('C1 1회 가격이 있는 시술엔 \'전에 이 시술을 받아 봤어요\'(꺼짐)', (await swc.count()) === 1 && !(await swc.locator('input').isChecked()));
     let q = await quote(b), ln = q && q.lines[0];
     ok(`C2 꺼짐: 1회 가격 + 2 × 다음 가격${repeat ? '(요일·시간 조건 가격)' : ''}`, !!ln && ln.total === won(f + 2 * g) && (!repeat || ln.m.includes(REPEAT_TXT)), ln ? `${ln.total} · 기대 ${won(f + 2 * g)}` : '(견적 없음)');
@@ -349,7 +349,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       const [k, bs] = G.key.split('|'), b = +bs, f = price(G.rv.r), g = price(G.plain.r), rvName = S[G.rv.r[2]], plName = S[G.plain.r[2]];
       console.log(`G1: ${k} @ ${bname(b)} · ${rvName} ${won(f)} · 일반가 ${plName} ${won(g)} · 꺼짐 ${won(3 * g)} · 켬 ${won(f + 2 * g)}`);
       await seed([{ t: 'k', k, q: 3 }], where(b));
-      const lowOff = +((await text('.cartsum .hp')).match(/[\d,]+원/) || ['0'])[0].replace(/[^\d]/g, '');   // the lowest one-clinic total, not visited
+      const lowOff = +((await text('.cartsum .hp')).match(/[\d,]+(?=원|~)/) || ['0'])[0].replace(/[^\d]/g, '');   // the lowest one-clinic total, not visited
       let q = await quote(b), ln = q && q.lines[0];
       ok('G1 다녀옴 꺼짐(처음 가는 사람): 재방문 가격을 쓰지 않음 — 3 × 일반가', !!ln && ln.total === won(3 * g) && !ln.m.includes(rvName), ln ? `${ln.total} · 기대 ${won(3 * g)} | ${ln.m.slice(0, 120)}` : '(견적 없음)');
       const sw0 = vswQ();
@@ -425,7 +425,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       await quote(b);
       if (await tap(vswQ().locator('label.switch'), 'G15 다녀왔어요 스위치')) {
         await p.waitForTimeout(500);
-        const lowOn = +((await text('.cartsum .hp')).match(/[\d,]+원/) || ['0'])[0].replace(/[^\d]/g, '');
+        const lowOn = +((await text('.cartsum .hp')).match(/[\d,]+(?=원|~)/) || ['0'])[0].replace(/[^\d]/g, '');
         const al = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]')[0]);
         await openCart(); await p.waitForTimeout(300);
         let nt = await notesTxt();
@@ -465,7 +465,7 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
         if (await tap(tBtn('켜기'), 'G19b 켜기')) {
           await p.waitForTimeout(500);
           const tt2 = await text('#toast'), undo = await tBtn('되돌리기').count();
-          const lowOn = +((await text('.cartsum .hp')).match(/[\d,]+원/) || ['0'])[0].replace(/[^\d]/g, '');
+          const lowOn = +((await text('.cartsum .hp')).match(/[\d,]+(?=원|~)/) || ['0'])[0].replace(/[^\d]/g, '');
           const al = await p.evaluate(() => JSON.parse(localStorage.getItem('pc:alerts') || '[]')[0]);
           const l19 = await lineOf(b);
           ok('G19b 켜기 = 견적 스위치: 저장, 스위치 켜짐, 재방문가 + 2 × 일반가, 합계 알림 기준은 새 합계, 알림 \'…켰어요\' + 되돌리기', JSON.stringify(await visited()) === JSON.stringify([bkey(b)]) && (await vswQ().locator('input').isChecked())

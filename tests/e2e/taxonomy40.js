@@ -42,7 +42,7 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
   // 2) easy (steps) by default, detailed on demand, remembered
   await go('compare?k=X24');
   ok('B5 쉬운 보기 기본: 종류 → 용량·부위 → 횟수 단계', await p.locator('.vsteps .vstep').count() >= 1 && /종류|용량|횟수/.test(await p.locator('.vsteps').innerText()));
-  const kinds = p.locator('.vsteps .vstep').first().locator('.vchip');
+  const kinds = p.locator('.vsteps .vstep').first().locator('.chip');
   const before = await p.evaluate(() => location.hash);
   if (await kinds.count() > 1) {
     const other = kinds.locator('xpath=self::*[@aria-checked="false"]').first(); const t = (await other.innerText()).trim();
@@ -112,7 +112,7 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
     ok('B17 고른 제품 칩은 고른 모양(aria-checked → 채움), 나머지와 다름', on.length === 1 && off.length > 0 && off.every((x) => x[1] !== on[0][1]), JSON.stringify(look.slice(0, 3)));
   } else console.log('SKIP | B15~B17 | 수도권 안에서 제품이 섞이는 비교 묶음이 데이터에 없음');
   await go('compare?k=X24');
-  const vlook = await p.$$eval('.vsteps .vchip', (xs) => xs.map((x) => [x.getAttribute('aria-checked'), getComputedStyle(x).backgroundColor]));
+  const vlook = await p.$$eval('.vsteps .chip', (xs) => xs.map((x) => [x.getAttribute('aria-checked'), getComputedStyle(x).backgroundColor]));
   const von = vlook.filter((x) => x[0] === 'true'), voff = vlook.filter((x) => x[0] === 'false');
   ok('B18 지금 비교 중인 규격 칩(쉬운 보기)도 고른 모양', von.length >= 1 && voff.length > 0 && voff.every((x) => von.every((y) => y[1] !== x[1])), JSON.stringify(vlook.slice(0, 3)));
   ok('B13 페이지 오류 0개', !errs.length, errs.slice(0, 3).join(' / '));

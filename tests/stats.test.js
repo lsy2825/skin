@@ -142,3 +142,35 @@ test("sharedKey: rows compare as one spec only when every row shares a key", () 
   assert.equal(S.sharedKey(null), null);
   assert.equal(S.sharedKey([["T9", "X01"]]), "T9");
 });
+
+test("md · mdhm: a date is 'M/D', a time Korea time 'M/D HH:MM' (U04: one shape on every screen)", () => {
+  assert.equal(S.md("2026-10-19"), "10/19");
+  assert.equal(S.md("2026-01-05"), "1/5");                      // no leading zero, like '~10/31까지'
+  assert.equal(S.md("2026-10-20T04:14:19+00:00"), "10/20");
+  assert.equal(S.md(""), "");
+  assert.equal(S.md(null), "");
+  assert.equal(S.md("10/19"), "");                               // not an ISO date
+  assert.equal(S.mdhm("2026-10-20T04:14:19+00:00"), "10/20 13:14");
+  assert.equal(S.mdhm("2026-10-19T20:05:00Z"), "10/20 05:05");   // past midnight in Korea: the next day
+  assert.equal(S.mdhm("2026-12-31T15:00:00Z"), "1/1 00:00");
+  assert.equal(S.mdhm(new Date(Date.UTC(2026, 9, 20, 0, 3))), "10/20 09:03");
+  assert.equal(S.mdhm("nope"), "");
+  assert.equal(S.mdhm(null), "");
+});
+
+test("moveText: a price move is '▼ 80%' / '▲ 124%' everywhere (U08)", () => {
+  assert.equal(S.moveText(-0.8), "▼ 80%");
+  assert.equal(S.moveText(1.24), "▲ 124%");
+  assert.equal(S.moveText(-0.0321, 1), "▼ 3.2%");
+  assert.equal(S.moveText(0.004), "0%");                          // rounds to nothing: no mark
+  assert.equal(S.moveText(0.0004, 1), "0.0%");
+  assert.equal(S.moveText(-0.006), "▼ 1%");
+  assert.equal(S.moveText(null), "");
+  assert.equal(S.moveText(NaN), "");
+  assert.ok(!/[−+]/.test(S.moveText(-0.5) + S.moveText(0.5)));    // never '−' (U+2212, missing from the font subset) or '+'
+});
+
+test("obsLabel writes its dates like every screen date (md: no leading zero)", () => {
+  const o = S.observations(["2026-01-05", "2026-01-12"], [1, 1]);
+  assert.match(S.obsLabel(o), /^기록 2번 · 1\/5~1\/12/);
+});
