@@ -43,7 +43,7 @@ const CAPITAL = ['서울', '경기', '인천'];   // '수도권', the app's defa
     const why = !info.bf ? '예전 data.json(brandFirst 없음)' : `처음 모은 체인 없음(prev=${info.prev}${fresh.length ? ', 수도권 밖에만' : ''})`;
     ok(`${why}: 안내 없음`, t0 === null, t0 || '');
     const kids = await card().evaluate((el) => [...el.children].map((c) => c.tagName + (c.className ? '.' + c.className : '')));
-    ok(`${why}: 머리 카드는 그대로(제목·기간·네 칸)`, kids.join(' ') === 'H2 DIV.sub DIV.tiles', kids.join(' '));
+    ok(`${why}: 머리 카드는 그대로(제목·기간·네 칸 고르기 — 홈과 같은 .seg, 2026-10-20 디자인 통일 U22)`, kids.join(' ') === 'H2 DIV.sub DIV.seg two', kids.join(' '));
     ok(`${why}: '체인은 … 모았어요' 문구 없음`, !/모았어요/.test(await card().textContent()));
   } else {
     const not = info.names.filter((n) => !want.includes(n));
@@ -71,9 +71,9 @@ const CAPITAL = ['서울', '경기', '인천'];   // '수도권', the app's defa
     if (empty) { await open({ region: empty }); const t4 = await notice(); ok(`지역 ${empty}: 새 체인 지점이 없으면 안내 없음`, t4 === null, t4 || ''); }
     await open();
   }
-  // the tiles under it still answer a tap (render() only)
-  await p.locator('.view .tile.tbtn', { hasText: '새로 생겼어요' }).click(); await p.waitForTimeout(250);
-  ok("'새로 생겼어요' 칸을 누르면 선택됨", (await p.locator('.view .tile.tbtn', { hasText: '새로 생겼어요' }).getAttribute('aria-pressed')) === 'true');
+  // the pick under it still answers a tap (render() only)
+  await p.locator('.view .seg.two button', { hasText: '새로 생겼어요' }).click(); await p.waitForTimeout(250);
+  ok("'새로 생겼어요' 칸을 누르면 선택됨", (await p.locator('.view .seg.two button', { hasText: '새로 생겼어요' }).getAttribute('aria-pressed')) === 'true');
   ok('안내는 칸을 눌러도 그대로', (await notice()) === t0, String(await notice()));
   ok('페이지 오류 없음', !errs.length, errs.join(' | '));
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1;
