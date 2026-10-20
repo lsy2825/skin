@@ -339,11 +339,11 @@ select.mini { border: 1px solid var(--line); background: var(--surface); border-
 .notipanel { position: fixed; z-index: 60; width: min(360px, calc(100vw - 32px)); max-height: min(70vh, 520px); overflow: auto; overscroll-behavior: contain;
   background: var(--surface); border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: var(--shadow-2); padding: 0 6px; animation: sheetin .18s var(--ease); }
 .notipanel:focus { outline: none; }
-.notipanel > .row { padding: var(--sp-3) 14px var(--sp-1); }
-.notipanel > .sub { padding: var(--sp-1) 14px var(--sp-3); }
+.notipanel > .row { padding: var(--sp-3) 14px var(--sp-2); }
+.notipanel > .sub { padding: var(--sp-2) 14px var(--sp-3); }
 .notipanel ul.notes { margin: 0; padding: 0; background: none; }   /* the panel is the surface: no second box inside it */
 /* '알림 관리·전체 보기' stays in sight while the records scroll */
-.notipanel .foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-1); padding: var(--sp-2) 14px;
+.notipanel .foot { position: sticky; bottom: 0; display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 14px;
   background: var(--surface); border-top: 1px solid var(--line-soft); }
 .suggest { position: absolute; left: -12px; right: -12px; top: calc(100% + var(--sp-2)); z-index: 45; list-style: none; margin: 0; padding: var(--sp-2); background: var(--surface);
   border: 1px solid var(--line-soft); border-radius: 16px; box-shadow: var(--shadow-2); animation: sheetin .18s var(--ease); max-height: 60vh; overflow: auto; }
