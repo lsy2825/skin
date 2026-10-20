@@ -534,3 +534,6 @@ B가 `config.js`에 `alertsApi`·`pushPublicKey`·`metrics` → 계정을 Worker
    위 '사용자 결정·자료가 필요한 것'(2026-10-13) 표의 PIN 줄('새 PIN 4자리 → 해시 교체')은 #81로 바뀜: 번호를 채팅으로 주지 않고 4번 도구를 써요.
 8. 시험 브랜치 지우기(C 부탁): `probe/c-robots-more`, `probe/c-drevers-tabs`, `probe/c-cellin-new` — 채팅에서는 브랜치 삭제가 막혀 사용자가 GitHub → Branches에서 지워요.
 9. 전체 회귀(e2e 포함, `APP_PIN` 필요): 번호를 바꾼 뒤 `APP_PIN` 환경 변수를 둔 곳에서 `bash tests/run_regression.sh`.
+10. (2026-10-20, 사용자 지시 "B가 바쁘니 A가 할 수 있는 건 A가") 종 버튼 알림 패널 — B의 파일(`app/app.js`·`app/styles.css`, 새 `tests/e2e/notipanel.js`)을
+    A가 고침: 종을 누르면 바로 아래로 최근 알림 기록 5개(종류·시술·이전 → 이후 가격·관측일·가격 보기)가 펼쳐지고, '알림 관리·전체 보기'는 관심 탭.
+    B는 다음 작업 전에 main을 받아 주세요(같은 파일).
