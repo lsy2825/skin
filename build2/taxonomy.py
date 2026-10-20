@@ -656,7 +656,7 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
     # out, so '스케일링 5회' T6A7A6D3 held 밴스 부천 '스케일링+크라이오 5회' 400,000 and 유앤아이 대구·부천 '스케일링 + 크라이오 5회' next to
     # the plain price at other branches — #127 kept them out only next to a plain row of the same page). A bundle sold so at 3 branches
     # is a key of its own ('리즈네 2cc + 모델링팩', 닥터에버스)
-    more = [] if bundle else [(f"+ {w}", comp(w)) for w in (_with_word(m.group(1)) for m in WITH.finditer(nm))] \
+    more = [] if bundle else [(f"+ {w}", comp(w)) for w in (_with_word(m.group()) for m in WITH.finditer(nm))] \
         + [(f"택 {n}", f"택{n}") for n in re.findall(r"\[[^\]]*?택\s*(\d+)", raw)]
     nm = nm if bundle else WITH.sub("", nm)
     seg = [x for x in _segs(nm) if x.strip()]
@@ -724,16 +724,20 @@ def _exact(raw, sess, rowcat, bundle, sex=""):
                 sess=sess, sig=sig, label=label, sub=sub, rx=rx), ""
 
 
-# xkeys.ADDON, but 'LDM' takes only minutes: it reads any digits after it, so '+ LDM 5회' (a count) left '회' in the name ('위코우노회 +
-# LDM 5', 유앤아이 목포점 '엠페이스 … + LDM 5회'). Only here, where the add-on is read into the spec
-WITH = re.compile(ADDON.pattern.replace(r"(?:LDM|ldm)\s*\d*분?", r"(?:LDM|ldm)(?:\s*\d+\s*분)?"), ADDON.flags)
-assert WITH.pattern != ADDON.pattern
+# xkeys.ADDON, but '+ LDM' read first by its own rule: LDM takes only minutes, in brackets too. ADDON reads any digits after LDM, so
+# '+ LDM 5회' (a count) left '회' in the name ('위코우노회 + LDM 5', 유앤아이 목포점 '엠페이스 … + LDM 5회'), and none in brackets, so
+# 닥터에버스 '스킨스크러버+LDM(12분)+모델링팩' read '(12분)' as the scrubber's amount ('스킨스크러버 12분 + LDM', 검수 2026-10-20 — the same
+# menu writes '빌리로빈(5cc)+LDM(12분)+모델링팩'). An alternative before ADDON, not an edit of its text: a change of xkeys.ADDON can't
+# stop this import (the first form did, by an assert on the replaced text)
+WITH = re.compile(r"\s*\+\s*LDM(?:\s*\d+\s*분|\s*\(\s*\d+\s*분\s*\))?(?:\s*\d+회)?|" + ADDON.pattern, ADDON.flags | re.I)
 
 
 def _with_word(w):
-    """one spelling for what comes with a product: '+ ldm' is '+ LDM', '+ 모델링' '+ 모델링팩' (the clinics' short form, both in one
-    chain's menus: 닥터에버스 '…+모델링' / '…+모델링팩')"""
-    w = re.sub(r"(?i)^(?:ldm|led)", lambda m: m.group().upper(), re.sub(r"\s+", " ", w or "").strip())
+    """one spelling for what comes with a product (a WITH match): '+ ldm' is '+ LDM', '+LDM(12분)' '+ LDM 12분', '+ 모델링' '+ 모델링팩'
+    (the clinics' short form, both in one chain's menus: 닥터에버스 '…+모델링' / '…+모델링팩'); a session count after it is the row's"""
+    w = re.sub(r"^\s*[+＋]\s*|\s*\d+\s*회$", "", w or "")
+    w = re.sub(r"(?i)^(?:ldm|led)", lambda m: m.group().upper(), re.sub(r"\s+", " ", w).strip())
+    w = re.sub(r"^LDM\s*\(\s*(\d+)\s*분\s*\)$", r"LDM \1분", w)
     return "모델링팩" if w == "모델링" else w
 
 

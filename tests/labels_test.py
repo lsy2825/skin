@@ -2475,6 +2475,19 @@ ok("... 대괄호 속 '택 N'도 규격('더마브이 [… 택 2가지]' → '�
    _tv("더마브이 [홍조/혈관 모드 택 2가지]", "피부·레이저")["label"] == "더마브이 택 2"
    and _tv("더마브이 [홍조/혈관 모드 택 2가지]", "피부·레이저")["sig"] != _tv("더마브이 1회", "피부·레이저")["sig"])
 ok("... 묶음(패키지)은 그대로 '+' 부분을 모두 셈('스케일링 + 아쿠아필'은 패키지)", _tv("스케일링 + 아쿠아필 1회", "피부·레이저")["fam"] == "package")
+# 검수 2026-10-20: 괄호 속 분은 LDM의 분(닥터에버스 '스킨스크러버+LDM(12분)+모델링팩', '빌리로빈(5cc)+LDM(12분)+모델링팩') — 앞 제품의 양이 아님
+ok("... '+LDM(12분)'은 'LDM 12분'('스킨케어 스킨스크러버+LDM(12분)+모델링팩' → '스킨케어 스킨스크러버 + LDM 12분 + 모델링팩', 괄호 없이 쓴 것과 같음)",
+   _tv("스킨케어 스킨스크러버+LDM(12분)+모델링팩 1회", "피부·레이저")["label"] == "스킨케어 스킨스크러버 + LDM 12분 + 모델링팩"
+   and _tv("스킨케어 스킨스크러버+LDM(12분)+모델링팩 1회", "피부·레이저")["sig"] == _tv("스킨케어 스킨스크러버 + LDM 12분 + 모델링팩 1회", "피부·레이저")["sig"],
+   _tv("스킨케어 스킨스크러버+LDM(12분)+모델링팩 1회", "피부·레이저")["label"])
+# ... and the signature's add-on reading does not hang on how xkeys.ADDON spells LDM: an xkeys fix of the LDM part (reading only
+# minutes) stopped `import taxonomy` with an AssertionError (검수 2026-10-20) — the whole build with it
+_r = subprocess.run([sys.executable, "-c", "import re, sys; sys.path.insert(0, sys.argv[1]); import xkeys; "
+                     "xkeys.ADDON = re.compile(xkeys.ADDON.pattern.replace(r'(?:LDM|ldm)\\s*\\d*분?', r'(?:LDM|ldm)(?:\\s*\\d+\\s*분)?'), xkeys.ADDON.flags); "
+                     "import taxonomy; print(taxonomy.variant('위코우노 + LDM 5회', cat='스킨부스터', display='위코우노 + LDM 5회')[0]['label'])",
+                     os.path.join(ROOT, "build2")], capture_output=True, text=True, timeout=120, env=dict(os.environ, PYTHONDONTWRITEBYTECODE="1"))
+ok("... xkeys.ADDON의 LDM 부분을 고쳐도 taxonomy를 읽을 수 있고 'LDM 5회'의 5는 회차", _r.returncode == 0 and _r.stdout.strip() == "위코우노 + LDM 5회",
+   (_r.returncode, _r.stdout.strip(), _r.stderr.strip()[-200:]))
 # 3d-3) 2026-10-19 후속: 염증주사 개수 — 괄호 안이든 밖이든 같은 뜻은 같은 규격, 정확한 개수와 위 한계(이하·까지·미만)는 따로
 # (T09603A8 '염증주사 5개'에 톡스앤필 목동점 '(5개)' 25,000(정확히 5개)과 천안불당점 '(5개미만)' 10,000(4개까지)이 같이 있었고, 셀린
 # '1-5개'·'5개 미만', 데이뷰 '5개까지'는 '염증주사 1 5개'·'미만 5개'·'까지 5개'로 따로였음)
