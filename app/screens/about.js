@@ -182,7 +182,7 @@
         return h("div", { class: "gitem" },
           h("div", { class: "row", style: "flex-wrap:nowrap" }, h("b", { style: "flex:1;min-width:0" }, members ? `${e ? e.title : f.name} · ${members.length}가지` : c ? f.name : famTitle(f)),
             h("span", { class: "sub", style: "flex:none" }, `${members ? new Set(members.flatMap((m) => m.vs.flatMap((v) => [...byKB[v.k].keys()]))).size : f.n}곳`),
-            members ? null : h("button", { class: "btn sm soft", type: "button", style: "flex:none", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, "가격 비교")),
+            members ? null : h("button", { class: "btn sm gray", type: "button", style: "flex:none", onclick: () => nav(`compare?k=${KEYS[f.main].id}`) }, "가격 비교")),
           e ? h("p", {}, `${e.one_liner} ${e.purpose}`) : null, e && e.method ? h("p", { class: "sub" }, e.method) : null,
           e ? h("div", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, reviewBadge(e), evidenceBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, members ? null : f) }, "부작용·주의사항·근거 보기")) : null,
           members ? h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, members.map((m) => h("button", { class: "chip", type: "button", onclick: () => nav(`compare?k=${KEYS[m.main].id}`) }, c ? m.name : famTitle(m)))) : null);

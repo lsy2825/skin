@@ -1,6 +1,9 @@
 // 시술별 비교 '카드' view in a real browser: the same clinics in the same order as the list, swipeable without widening
 // the page (320 px), previous/next buttons, price evidence from a card, the choice remembered, and the neutral default
-// order kept (no rank numbers, not cheapest-first).
+// order kept (no rank numbers, not cheapest-first). A card's three actions at 320·360·390·414 (사용자 결정 2026-10-20 — in one
+// row they were 60~68px wide at 360·390 and their words stacked a letter a line, main too): the branch head's grid of equal halves
+// (.bbtns), 가격 근거 · 지점 보기 side by side and 비교함 across both under them (2+1); every button 36 high with its words on one
+// line and nothing cut, '비교함에 있음' (pressed) too.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/compare_cards.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -47,5 +50,33 @@ const num = (t) => +String(t).replace(/[^\d]/g, '');
   ok('정렬을 바꾸면 카드 순서도 바뀜(낮은 가격순)', asc.every((v, i, a) => !i || a[i - 1] <= v));
   await p.locator('#clinics .seg.vsw button', { hasText: '목록' }).click(); await p.waitForTimeout(300);
   ok('목록으로 되돌리기', await p.locator('#clinics li.rk').count() > 0 && await p.locator('#clinics .ccard').count() === 0);
+  await ctx.close();
+  // the card's actions at four widths: one line each, 2+1 grid
+  const acts = () => [...document.querySelectorAll('#clinics .ccard')].slice(0, 3).map((c) => { const a = c.querySelector('.ccard-a'), ar = a.getBoundingClientRect();
+    const bs = [...a.children].map((x) => { const r = x.getBoundingClientRect();
+      // the lines its words take: the distinct tops of its text's boxes (a word stacked a letter a line has one top per letter)
+      const tops = new Set(); for (const t of [...x.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim())) { const rg = document.createRange(); rg.selectNodeContents(t);
+        for (const q of rg.getClientRects()) if (q.width > 0) tops.add(Math.round(q.top)); }
+      return { t: x.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left - ar.left), y: Math.round(r.top - ar.top), lines: tops.size, cut: x.scrollWidth > x.clientWidth + 1 }; });
+    return { aw: Math.round(ar.width), bs }; });
+  const shapeOk = (c) => { const [g, s, k] = c.bs; return c.bs.length === 3 && c.bs.every((x) => x.h >= 36 && x.h <= 40 && x.lines === 1 && !x.cut)
+    && g.y === s.y && Math.abs(g.w - s.w) <= 1 && g.x === 0 && Math.abs(s.x + s.w - c.aw) <= 1 && k.y >= g.y + g.h && k.x === 0 && Math.abs(k.w - c.aw) <= 1 && /^비교함/.test(k.t); };
+  const show = (cs) => cs.slice(0, 1).map((c) => `판 ${c.aw} · ` + c.bs.map((x) => `${x.t} ${x.w}×${x.h} ${x.lines}줄${x.cut ? ' 잘림' : ''}`).join(' / ')).join('');
+  for (const W of [320, 360, 390, 414]) {
+    const c2 = await b.newContext({ serviceWorkers: 'block', viewport: { width: W, height: 800 } }); const q = await c2.newPage(); q.on('pageerror', (e) => errs.push(e.message));
+    await q.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
+    await q.goto(BASE); await q.evaluate(() => localStorage.clear()); await q.reload();
+    for (const d of PIN) await q.click(`#gate-pad button[data-d="${d}"]`); await q.waitForSelector('.pc');
+    await q.goto(BASE + '#compare?k=X12'); await q.waitForTimeout(500);
+    await q.locator('#clinics .seg.vsw button', { hasText: '카드' }).click(); await q.waitForTimeout(400);
+    const m = await q.evaluate(acts);
+    ok(`${W}px 카드 버튼: 가격 근거·지점 보기 같은 폭 반반, 비교함은 그 아래 한 줄 전체(2+1), 모두 높이 36·글자 한 줄·잘림 없음`, m.length === 3 && m.every(shapeOk), show(m));
+    await q.locator('#clinics .ccard').first().locator('.shortbtn').click(); await q.waitForTimeout(300);
+    const m2 = await q.evaluate(acts);
+    ok(`${W}px 카드 '비교함에 있음'(누른 뒤)도 한 줄, 같은 격자`, /비교함에 있음/.test(m2[0].bs[2].t) && shapeOk(m2[0]), show(m2));
+    const wide = await q.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    ok(`${W}px 카드 보기에서 페이지가 옆으로 넓어지지 않음`, wide <= 0, `${wide}px`);
+    await c2.close();
+  }
   ok('스크립트 오류 없음', !errs.length, errs.join(' '));
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await b.close(); process.exitCode = R.every(Boolean) ? 0 : 1; })();

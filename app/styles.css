@@ -26,7 +26,9 @@
      chosen control is filled with it, the tab bar's pill and a switch that is on too (2026-10-20); butter = a condition on a price,
      nothing else (and 죠미's own face and bubble); coral = a price that cannot be had (기간 끝남, 방문일엔 안 됨, 가격표에 없음) and
      an input error, nothing else; a data state (지난 자료, 급변·확인 중, 미확인 …) = grey with an icon (.kw); counts on the tabs =
-     charcoal, turned round inside the chosen tab's pill (2026-10-20); put in a list (담김, 비교함에 있음) = light green */
+     charcoal, turned round inside the chosen tab's pill (2026-10-20); put in a list (담김, 비교함에 있음) = light green, the only
+     other light green fills being the 확인됨 badge (.k.ok) and 홈's price entry card — an action button is grey (.btn.gray), never
+     light green (2026-10-20) */
   --fs-title: 22px; --fs-sec: 17px; --fs-body: 15px; --fs-aux: 13px; --fs-num: 28px; --fs-input: 16px;
   --fw-reg: 400; --fw-semi: 600; --fw-bold: 760;
   /* spacing steps (2026-10-19 사용자 결정, docs/DESIGN_SYSTEM.md §2): 8px units — 8 inside a block, 16 inside a card (its padding
@@ -191,7 +193,9 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
   font-weight: var(--fw-semi); font-size: var(--fs-body); background: var(--primary); color: var(--on-primary); text-decoration: none; transition: transform var(--fast), opacity var(--fast), background var(--fast); }
 .btn:active { transform: scale(.975); }
 .btn:disabled { opacity: .4; cursor: default; }
-.btn.soft { background: var(--sage-soft); color: var(--sage); }
+/* an action that is not the screen's main one: grey (가격 비교, 지점 추가 (n/4), 내 위치로 거리 보기, 죠미와 대화 …). The light
+   green is kept for what is put in a list (담김 · 비교함에 있음) — 사용자 결정 2026-10-20: there was a light green action button
+   (.btn.soft) that looked like a button already pressed */
 .btn.gray { background: var(--fill); color: var(--ink); }
 .btn.line { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 /* 비교함에 있음: a list the branch is in, like 담김 — the same light green (사용자 결정 2026-10-20: the same state, the same look) */
@@ -275,8 +279,11 @@ a.src { font-size: var(--fs-aux); }
 .ccard-p s { font-size: var(--fs-aux); font-weight: var(--fw-reg); color: var(--muted); margin-left: var(--sp-2); }
 .ccard-n { font-size: var(--fs-aux); color: var(--ink-2); overflow-wrap: anywhere; }
 .ccard .m { display: flex; flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); align-items: center; font-size: var(--fs-aux); }
-.ccard-a { margin-top: auto; gap: var(--sp-2); padding-top: 0; }
-.ccard-a .btn { flex: 1; }
+/* the card's actions: the branch head's grid of equal halves (.bbtns) at the card's foot — 가격 근거 · 지점 보기, 비교함 across both
+   (2+1, none alone in a half), 16px under the card's last line like the grid's other places (the card's 8px gap + 8) and pushed to
+   the foot so every card's buttons line up. Three in a row were 60~68px at 360·390, their words a letter a line (사용자 결정 2026-10-20) */
+.ccard-a { margin-top: auto; padding-top: var(--sp-2); }
+.ccard-a > .shortbtn { grid-column: 1 / -1; }
 .ccnav { padding: 0 var(--sp-2) 0 14px; align-items: center; }
 .setseg { background: var(--fill); }
 .switch { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--ink-2); cursor: pointer; user-select: none; min-height: 32px; }

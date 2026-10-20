@@ -5,12 +5,15 @@
 // 2026-10-20 사용자 결정 ('같은 역할은 같은 모양'): a switch that is on is chosen — the charcoal track of every chosen control, its
 // knob in the colour on it (the dark theme turns both round, like a chosen chip), never sage; the count on the chosen tab is the
 // pill turned round (light, charcoal words; dark, ivory words), on the other tabs charcoal; 비교함에 있음 (.shortbtn) is a list the
-// branch is in, like 담김: the same light green. No switch is green.
+// branch is in, like 담김: the same light green. No switch is green. Light green (--sage-soft) is what is put in a list (담김 ·
+// 비교함에 있음, aria-pressed=true), the 확인됨 badge (.k.ok) and 홈's price entry card only — an action button is grey (.btn.gray:
+// 가격 비교 · 지점 추가 (n/4) · 내 위치로 거리 보기 · 죠미와 대화 were a light green .btn.soft that looked already pressed).
 // 1) app/styles.css and app.js: where coral and butter may be used, the grey steps. 2) In a browser (390 px, light and dark):
 // what is coral or butter on each screen, the look of every chosen control, the tab count, '제품 표기 없음', the compare header's
 // 담기 (an outline), the small switch '전에 이 시술을 받아 봤어요' (36×22 to see, 44 to press, a 13/400 grey label), search's ×,
 // every switch on and off (track and knob, ≥ 3:1 on the card and to each other) and its focus ring (2px charcoal, 2px apart),
-// the count on the chosen tab and on the others, 비교함에 있음 on the branch page and in 가격 근거.
+// the count on the chosen tab and on the others, 비교함에 있음 on the branch page and in 가격 근거, what has a light green fill on
+// every screen, the grey of the actions that were light green (시술 사전 · 빠른 비교 · 내 견적 고급 설정).
 // A list in a butter box (ul.warns) is a price's conditions only — 가격 근거 '조건', the quote's '확인할 조건'; the treatment
 // sheet's side effects · cautions · sources and 고민 '시술 말고 할 수 있는 관리' are grey (ul.notes) — and 빠른 비교's date chip is grey.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/color_roles.js
@@ -49,11 +52,17 @@ ok('코랄은 쓸 수 없는 가격(.kx·.unav·없음)·입력 오류·관심 �
 const BUTTER_OK = /^(\.k1, \.k2, \.kt, \.kc|ul\.warns|\.elig li\.el-limit \.ei2|\.mascot|\.jomi-say \.bub|\.entry\.e-concern)$/;
 const butterAt = usedBy(/var\(--(butter|butter-soft|butter-ink|on-butter)\)/), butterBad = butterAt.filter((s) => !BUTTER_OK.test(s));
 ok('버터는 조건(배지·조건 목록)과 죠미(얼굴·말풍선·입구)에만 — 선택·순위·알림 막대에 없음', !butterBad.length, butterBad.length ? butterBad.join(' | ') : butterAt.join(' | '));
+// light green: put in a list (담김 · 비교함에 있음 — pressed), the 확인됨 badge and 홈's price entry card; never an action
+const SAGE_OK = /^(\.btn\.shortbtn\[aria-pressed="true"\]|(\.actions |\.cmphead )?\.addbtn\[aria-pressed="true"\]|\.k\.ok|\.entry\.e-price)$/;
+const sageAt = usedBy(/var\(--sage-soft\)/), sageBad = sageAt.filter((s) => !SAGE_OK.test(s));
+ok('연한 초록 바탕은 넣어 둔 상태(aria-pressed=true·담김)·확인됨 배지·입구 카드에만 — 연한 초록 동작 버튼(.btn.soft) 없음', !sageBad.length && sageAt.length >= 3, sageBad.length ? sageBad.join(' | ') : sageAt.join(' | '));
 ok('검색창 ×: 브라우저 기본(파랑) 대신 회색 24px 버튼', /input\[type="search"\]::-webkit-search-cancel-button\s*\{[^}]*-webkit-appearance:\s*none[^}]*width:\s*24px[^}]*height:\s*24px[^}]*background:\s*var\(--muted\)/.test(css));
 // screens/about.js, screens/concern.js and screens/map.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-4): checked the same way
 const inl = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
   .filter(([, l]) => /style:\s*["`][^"`]*color:\s*var\(--(pricey|coral|butter|butter-ink|butter-soft)\)/.test(l)).map(([n]) => `${f}:${n}`));
 ok('app.js에 직접 적은 코랄·버터 글자색 없음(클래스로)', !inl.length, inl.join(', '));
+const soft = js.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /class:\s*["`][^"`]*\bbtn\b[^"`]*\bsoft\b|sage-soft/.test(l)).map(([n]) => `app.js:${n}`);
+ok("app.js에 연한 초록 동작 버튼('btn … soft')·직접 적은 연한 초록 없음 — 동작은 회색 .btn.gray", !soft.length, soft.join(', '));
 
 // ---- 2) the screens
 const scan = (sel) => {
@@ -71,12 +80,15 @@ const scan = (sel) => {
   // a butter list box: only a price's conditions (가격 근거 '조건' · the quote's '확인할 조건'), never an explanation
   const condList = (u) => { const f = u.closest('.fact'); return f ? ((f.querySelector('dt') || {}).textContent || '').trim() === '조건' : !!u.closest('li.qrow, .t3card'); };
   const butterOk = (el) => { const u = el.closest('ul.warns'); return u ? condList(u) : !!el.closest('.k1, .k2, .kt, .kc, .mascot, .jomi-say, .e-concern, .el-limit'); };
-  const out = { coral: [], coralBad: [], butter: [], butterBad: [], chosen: [], chosenBad: [], badge: [], prodk: [], kw: [], kwBad: [], sw: [], short: [] };
+  // light green: put in a list (담김 · 비교함에 있음, pressed), the 확인됨 badge, 홈's price entry card — never an action button
+  const sageOk = (el) => el.matches('.addbtn[aria-pressed="true"], .shortbtn[aria-pressed="true"], .k.ok, .entry.e-price');
+  const out = { coral: [], coralBad: [], butter: [], butterBad: [], sage: [], sageBad: [], chosen: [], chosenBad: [], badge: [], prodk: [], kw: [], kwBad: [], sw: [], short: [] };
   for (const el of document.querySelectorAll(sel || '#main *, nav.tabs *, header.top *')) {
     if (!vis(el)) continue;
     const cs = getComputedStyle(el), own = [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
     if ((own && cs.color === C.coral) || cs.backgroundColor === C.coral || cs.backgroundColor === C.coralS) { out.coral.push(lab(el)); if (!coralOk(el)) out.coralBad.push(lab(el)); }
     if ((own && cs.color === C.butterI) || cs.backgroundColor === C.butter || cs.backgroundColor === C.butterS) { out.butter.push(lab(el)); if (!butterOk(el)) out.butterBad.push(lab(el)); }
+    if (cs.backgroundColor === C.sageS) { out.sage.push(lab(el)); if (!sageOk(el)) out.sageBad.push(lab(el)); }
   }
   // a chosen control: the charcoal fill (the tab bar's pill too). Not here: 담김 (light green, 사용자 결정), 비교함에 있음 (a list the
   // branch is in, like 담김: its icon and words change), the heart, the brand filter (all on by default: on is an ordinary chip,
@@ -128,8 +140,8 @@ const scan = (sel) => {
     await p.evaluate(() => { const { D } = App.state(), keys = []; for (const x of D.branches) if (/강남/.test(D.s[x[1]]) && keys.length < 3) keys.push(`${D.meta.brands[x[0]][0]}|${D.s[x[1]]}`);
       localStorage.setItem('pc:short', JSON.stringify(keys)); });
     const screens = [['홈', '#home'], ['검색', '#search?q=' + encodeURIComponent('리쥬란')], ['비교', '#compare?k=X01'], ['비교(제품 섞임)', '#compare?k=X35'], ['지점', `#branch/${bi}`],
-      ['내 견적', '#cart'], ['내 견적 병원별', '#cart', 'quote'], ['가격 변동', '#change'], ['마이', '#me'], ['전체 가격표', '#table'], ['빠른 비교', '#quick?k=X01'], ['고민', '#concern?c=pigment']];
-    const seen = { coral: new Set(), kc: 0, kw: 0, prodk: 0, chosen: 0, badgeOn: 0, badgeOff: 0, swOn: 0, swOff: 0, shortOn: 0 };
+      ['내 견적', '#cart'], ['내 견적 병원별', '#cart', 'quote'], ['가격 변동', '#change'], ['마이', '#me'], ['전체 가격표', '#table'], ['빠른 비교', '#quick?k=X01'], ['고민', '#concern?c=pigment'], ['시술 사전', '#guide']];
+    const seen = { coral: new Set(), kc: 0, kw: 0, prodk: 0, chosen: 0, badgeOn: 0, badgeOff: 0, swOn: 0, swOff: 0, shortOn: 0, sage: new Set() };
     for (const [label, hash, step] of screens) {
       await p.goto(BASE + hash); await p.waitForTimeout(900);
       if (step) { const ex = p.locator('.cartsum button[aria-expanded="false"]'); if (await ex.count()) { await ex.first().click(); await p.waitForTimeout(500); } }
@@ -138,6 +150,8 @@ const scan = (sel) => {
       r.coral.forEach((x) => seen.coral.add(x.replace(/«.*/, ''))); seen.kw += r.kw.length; seen.prodk += r.prodk.length; seen.chosen += r.chosen.length;
       ok(`${W} ${label}: 코랄은 쓸 수 없는 가격·입력 오류·하트에만`, !r.coralBad.length, r.coralBad.slice(0, 4).join(', ') || `${r.coral.length}곳`);
       ok(`${W} ${label}: 버터는 조건과 죠미에만`, !r.butterBad.length, r.butterBad.slice(0, 4).join(', ') || `${r.butter.length}곳`);
+      ok(`${W} ${label}: 연한 초록 바탕은 넣어 둔 상태(담김·비교함에 있음)·확인됨 배지·입구 카드에만`, !r.sageBad.length, r.sageBad.slice(0, 4).join(', ') || `${r.sage.length}곳`);
+      r.sage.forEach((x) => seen.sage.add(x.replace(/«.*/, '')));
       ok(`${W} ${label}: 고른 것은 차콜 채움 하나`, !r.chosenBad.length, r.chosenBad.slice(0, 3).join(', ') || r.chosen.slice(0, 4).join(', '));
       ok(`${W} ${label}: 숫자 배지는 진한 색, 고른 탭 안에서는 반전 + 알약 색 테두리 2px(알약과 구분)`, r.badge.every((x) => x.ok), r.badge.map((x) => x.d).join(', ') || '없음');
       seen.badgeOn += r.badge.filter((x) => x.chosen).length; seen.badgeOff += r.badge.filter((x) => !x.chosen).length;
@@ -155,8 +169,17 @@ const scan = (sel) => {
         ok(`${W} 고민: '시술 말고 할 수 있는 관리'는 회색 목록(ul.notes)`, l.includes('notes') && !l.includes('warns'), l.join(', ') || '고민 카드 없음'); }
     }
     ok(`${W} 시험이 볼 것이 있었음(데이터 상태 배지·제품 알약·고른 것·켠/끈 스위치·고른 탭/다른 탭의 배지)`, seen.kw > 0 && seen.prodk > 0 && seen.chosen > 10
-      && seen.swOn > 0 && seen.swOff > 0 && seen.badgeOn > 0 && seen.badgeOff > 0,
-      `kw ${seen.kw} · prodk ${seen.prodk} · chosen ${seen.chosen} · 스위치 켬 ${seen.swOn}/끔 ${seen.swOff} · 배지 고른 탭 ${seen.badgeOn}/다른 탭 ${seen.badgeOff}`);
+      && seen.swOn > 0 && seen.swOff > 0 && seen.badgeOn > 0 && seen.badgeOff > 0 && seen.sage.size >= 2,
+      `kw ${seen.kw} · prodk ${seen.prodk} · chosen ${seen.chosen} · 스위치 켬 ${seen.swOn}/끔 ${seen.swOff} · 배지 고른 탭 ${seen.badgeOn}/다른 탭 ${seen.badgeOff} · 연한 초록 ${[...seen.sage].join(' ')}`);
+    // the actions that were light green (.btn.soft) are the grey action button (사용자 결정 2026-10-20): 시술 사전 '가격 비교', 빠른 비교
+    // '지점 추가 (n/4)', 내 견적 고급 비교 설정 '내 위치로 거리 보기'
+    for (const [label, hash, text, open] of [['시술 사전', '#guide', '가격 비교'], ['빠른 비교', '#quick?k=X01', '지점 추가'], ['내 견적 고급 비교 설정', '#cart', '내 위치로 거리 보기', '#main details.advset']]) {
+      await p.goto(BASE + hash); await p.waitForTimeout(900);
+      if (open) { const o = p.locator(open).first(); if ((await o.count()) && !(await o.evaluate((d) => d.open))) { await o.locator(':scope > summary').click(); await p.waitForTimeout(400); } }
+      const g = await p.evaluate((text) => { const e = [...document.querySelectorAll('#main button.btn')].find((x) => x.textContent.trim().startsWith(text) && x.checkVisibility()); if (!e) return null;
+        const cs = getComputedStyle(e), root = getComputedStyle(document.documentElement), rgb = (n) => { const v = parseInt(root.getPropertyValue(n).trim().replace('#', ''), 16); return `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`; };
+        return { t: e.textContent.trim(), cls: e.className, gray: e.matches('.btn.gray') && cs.backgroundColor === rgb('--fill') && cs.color === rgb('--ink') }; }, text);
+      ok(`${W} ${label} '${text}': 회색 동작 버튼(.btn.gray — 연한 초록 아님)`, !!g && g.gray, JSON.stringify(g)); }
     // 비교함에 있음 on the branch page (and 가격 근거's, the same button): pressed = 담김's light green, unpressed = grey (사용자 결정 2026-10-20)
     await p.goto(BASE + `#branch/${bi}`); await p.waitForTimeout(900);
     { const sb = p.locator('#main .shortbtn').first(), was = (await sb.getAttribute('aria-pressed')) === 'true';
@@ -190,6 +213,7 @@ const scan = (sel) => {
     { const ib = p.locator('#main li.rk > .infob').first(); await ib.click(); await p.waitForTimeout(600);
       const r = await p.evaluate(scan, '.sheet *');
       ok(`${W} 가격 근거 창: 버터는 '조건' 목록과 조건 배지에만`, !r.butterBad.length, r.butterBad.slice(0, 3).join(', ') || `${r.butter.length}곳`);
+      ok(`${W} 가격 근거 창: 연한 초록은 '비교함에 있음'·확인됨 배지에만`, !r.sageBad.length, r.sageBad.slice(0, 3).join(', ') || `${r.sage.length}곳`);
       ok(`${W} 가격 근거 창 '비교함' 버튼: 들어 있으면 담김처럼 연한 초록, 아니면 회색`, r.short.length > 0 && r.short.every((x) => x.ok), r.short.map((x) => x.d).join(', ') || '없음');
       await p.keyboard.press('Escape'); await p.waitForTimeout(400); }
     // 비교 머리글 '담기': an outline — surface inside, a charcoal line; never the screen's brightest fill in the dark (사용자 결정 4)

@@ -276,12 +276,12 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
   // Q7 guide: '가격 비교' opens the same treatment
   { const { ctx, p } = await page();
     await p.goto(BASE + '#guide'); await p.waitForTimeout(600);
-    const names = await p.$$eval('.gitem', (gs) => gs.map((g, i) => [i, g.querySelector('b').textContent, !!g.querySelector('.btn.soft')]).filter((x) => x[2]));
+    const names = await p.$$eval('.gitem', (gs) => gs.map((g, i) => [i, g.querySelector('b').textContent, !!g.querySelector('.btn')]).filter((x) => x[2]));
     const sample = names.filter((_, j) => j < 10 || j % Math.max(1, Math.floor(names.length / 25)) === 0).slice(0, 40);
     let bad = [];
     for (const [i, name] of sample) {
       await p.goto(BASE + '#guide'); await p.waitForTimeout(250);
-      await p.locator('.gitem').nth(i).locator('.btn.soft').click(); await p.waitForTimeout(300);
+      await p.locator('.gitem').nth(i).locator('.btn').click(); await p.waitForTimeout(300);
       const selTxt = await p.locator('select[aria-label="시술 고르기"] option:checked').textContent();
       if (!/#compare\?k=/.test(p.url()) || !selTxt.startsWith(name + ' · ')) bad.push(`${name} → ${selTxt}`);
     }
@@ -296,7 +296,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     let sbad = [], sn = 0;
     for (const q of ['사각턱 보톡스', '주름 보톡스', '스킨보톡스', '리쥬란']) {
       await p.goto(BASE + '#guide?q=' + encodeURIComponent(q)); await p.waitForTimeout(350);
-      const g = p.locator('.gitem').filter({ has: p.locator('.btn.soft') }).first(); if (!(await g.count())) { sbad.push(`${q}: 항목 없음`); continue; }
+      const g = p.locator('.gitem').filter({ has: p.locator('.btn') }).first(); if (!(await g.count())) { sbad.push(`${q}: 항목 없음`); continue; }
       const name = await g.locator('b').first().textContent(); await g.locator('.linkbtn', { hasText: '부작용' }).click(); await p.waitForTimeout(250);
       const btn = p.locator('.sheet .btn', { hasText: '가격 비교' }); const bt = await btn.textContent(); await btn.click(); await p.waitForTimeout(350); sn++;
       const s = await p.locator('select[aria-label="시술 고르기"] option:checked').textContent();
