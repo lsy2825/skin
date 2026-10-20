@@ -80,7 +80,7 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     // compare header give the same number on the same basis and branch count; ranges keep one unit at both ends
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(600);
     const hmed = num(await p.locator('.cmphead .hmed').innerText()), basis = await p.locator('.cmphead .basis').innerText();
-    const midl = await p.locator('.rangebar .midl').innerText().catch(() => '');
+    const midl = await p.locator('.pricecard .prange .pr-l').innerText().catch(() => '');
     await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(200); await p.locator('.actsheet button', { hasText: '횟수·다른 옵션으로 담기' }).click(); await p.waitForTimeout(400);
     const optTxt = await p.locator('.sheet .opt[aria-pressed="true"]').innerText().catch(() => ''), line = await p.locator('.sheet .note').innerText().catch(() => '');
     const n0 = (/(\d+)곳/.exec(basis) || [])[1], n1 = (/(\d+)곳/.exec(line) || [])[1];
