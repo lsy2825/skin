@@ -187,6 +187,24 @@
     const t = oneLine(parts.replace(/\s*\+\s*/g, " + "));
     return t.split(" + ").length >= 2 ? t : s;
   }
+  // the names a key list shows (app.js applyData; the tests run the same): a 패키지 key reads as its parts only when nothing is lost
+  // — every fact its full name states (product, dose, origin, sessions, area …: parse 'known') the parts state the same, and
+  // every attribute (attrsOf — 남성 …) is still there ('남성 인기 패키지 (얼굴전체 + 아래턱)', '슈링크 … 패키지(울트라F …)',
+  // '풀페이스 리쥬란 3cc 1회 (리쥬란힐러 2cc + …)' keep their names) — and only when no other key would then read the same,
+  // spaces, brackets and a trailing '1회' aside (two options of one family must not look alike)
+  function pkgNames(keys, attrsOf) {
+    const known = (x) => new Map(parse(x).filter((f) => f.state === "known" && f.k !== "시술").map((f) => [f.k, f.v]));
+    const keeps = (full, part) => {
+      const a = known(full), b = known(part);
+      for (const [k, v] of a) if (b.get(k) !== v) return false;
+      if (attrsOf) { const has = new Set(attrsOf(part)); if (attrsOf(full).some((t) => !has.has(t))) return false; }
+      return true;
+    };
+    const short = keys.map((k) => { if (k.cat !== "패키지") return k.label; const t = pkgLabel(k.label); return t !== k.label && keeps(k.label, t) ? t : k.label; });
+    const nk = (x) => oneLine(x).replace(/\s*1회$/, "").replace(/[\s()]/g, ""), seen = new Map();
+    short.forEach((x) => seen.set(nk(x), (seen.get(nk(x)) || 0) + 1));
+    return keys.map((k, j) => (short[j] !== k.label && seen.get(nk(short[j])) === 1 ? short[j] : k.label));
+  }
   // the same parts on a small button ('담기 · …'): whole when short, else the first part and how many more ('리쥬란힐러 2cc 외 2')
   function pkgShort(label, max = 20) {
     const s = oneLine(label);
@@ -195,5 +213,5 @@
     return parts.length >= 2 ? `${parts[0]} 외 ${parts.length - 1}` : s;
   }
 
-  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder, shortLabel, pkgLabel, pkgShort };
+  return { PRODUCTS, norm, parse, diff, eligibility, notesFor, famWords, dropNewItem, kbFinder, shortLabel, pkgLabel, pkgNames, pkgShort };
 });

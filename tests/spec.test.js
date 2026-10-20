@@ -240,18 +240,37 @@ test("pkgShort: the parts on a small button — whole when short, else the first
   assert.equal(Spec.pkgShort("가나다라마바사아자차카타파하 가나다라마바사"), "가나다라마바사아자차카타파하 가나다라마바사");   // no parts: as it is
 });
 
-test("pkgLabel on the real data: only 패키지 keys of that shape change, and no two keys end up with the same name", () => {
+test("pkgNames: nothing the full name said is lost — 남성, the device, a dose — and no two keys look alike", () => {
+  const Search = require("../app/domain/search.js");
+  const keys = [
+    { cat: "패키지", label: "리쥬베룩 패키지(리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀)" },
+    { cat: "패키지", label: "남성 인기 패키지 (얼굴전체 + 아래턱) 5회" },                                    // 남성 is only in the name
+    { cat: "패키지", label: "슈링크 유니버스 풀 리프팅 패키지(울트라F 300샷 + 울트라 부스터 300샷) 1회" },   // the device is only in the name
+    { cat: "패키지", label: "풀페이스 리쥬란 3cc 1회 (리쥬란힐러 2cc + 아이리쥬란 1cc)" },                    // 3cc → 2cc would change the dose
+    { cat: "패키지", label: "울써마지 : 울쎄라피 프라임 300샷 + 써마지 FLX 600샷" },
+    { cat: "패키지", label: "울쎄라피 프라임 300샷+써마지FLX 600샷" },                                         // differs from the line above in spaces only
+    { cat: "리프팅", label: "인모드 얼굴전체 2가지 모드 (FX+FORMA)" },                                         // not a package
+  ];
+  assert.deepEqual(Spec.pkgNames(keys, Search.attrsOf), ["리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀", ...keys.slice(1).map((k) => k.label)]);
+});
+
+test("pkgNames on the real data: only packages change, as parts of their own name, with the same facts, and no new look-alike pair", () => {
+  const Search = require("../app/domain/search.js");
   const D = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/data.json"), "utf8"));
-  const K = D.keys.map(([id, cat, label]) => ({ id, cat, label, full: label }));
-  const short = K.map((k) => (k.cat === "패키지" ? Spec.pkgLabel(k.label) : k.label)), seen = new Map();
-  short.forEach((s) => seen.set(s, (seen.get(s) || 0) + 1));
-  K.forEach((k, j) => { if (short[j] !== k.label && seen.get(short[j]) === 1) k.label = short[j]; });   // as app.js applyData
-  const changed = K.filter((k) => k.label !== k.full);
+  const K = D.keys.map(([id, cat, label]) => ({ id, cat, label }));
+  const L = Spec.pkgNames(K, Search.attrsOf);
+  const changed = K.map((k, j) => ({ ...k, short: L[j] })).filter((k) => k.short !== k.label);
   assert.ok(changed.length >= 30, `packages that say their parts: ${changed.length}`);
   const flat = (x) => x.replace(/\s+/g, "");
-  assert.ok(changed.every((k) => k.cat === "패키지" && k.label.includes(" + ") && k.label.replace(/\s*[\d,]+\s*회$/, "").split(" + ").every((p) => flat(k.full).includes(flat(p)))),
+  assert.ok(changed.every((k) => k.cat === "패키지" && k.short.includes(" + ") && k.short.replace(/\s*[\d,]+\s*회$/, "").split(" + ").every((p) => flat(k.label).includes(flat(p)))),
     "only packages, each a list of parts taken from its own name");
-  const names = new Map(); for (const k of K) names.set(k.label, (names.get(k.label) || 0) + 1);
-  const before = new Map(); for (const k of K) before.set(k.full, (before.get(k.full) || 0) + 1);
-  assert.equal([...names.values()].filter((n) => n > 1).length, [...before.values()].filter((n) => n > 1).length, "no new pair of keys reads the same");
+  const known = (x) => JSON.stringify(Spec.parse(x).filter((f) => f.state === "known" && f.k !== "시술").map((f) => [f.k, f.v]));
+  for (const k of changed) {
+    const a = new Map(JSON.parse(known(k.label))), b = new Map(JSON.parse(known(k.short)));
+    for (const [f, v] of a) assert.equal(b.get(f), v, `${k.label}: ${f}`);
+    for (const t of Search.attrsOf(k.label)) assert.ok(Search.attrsOf(k.short).includes(t), `${k.label}: ${t}`);
+  }
+  const nk = (x) => x.replace(/\s+/g, " ").trim().replace(/\s*1회$/, "").replace(/[\s()]/g, "");
+  const pairs = (names) => { const m = new Map(); for (const n of names) m.set(nk(n), (m.get(nk(n)) || 0) + 1); return [...m.values()].filter((n) => n > 1).length; };
+  assert.equal(pairs(L), pairs(K.map((k) => k.label)), "no new pair of keys reads the same (spaces, brackets, a trailing 1회 aside)");
 });

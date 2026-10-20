@@ -175,12 +175,10 @@
     S = D.s;
     BR = D.branches.map((b, i) => ({ i, brand: b[0], name: S[b[1]], addr: S[b[2]], lat: b[3], lng: b[4], region: S[b[5]], site: S[b[6]], geo: b[9] ?? 0 }));
     KEYS = D.keys.map(([id, cat, label], i) => ({ i, id, cat, label, full: label }));
-    // 패키지: the parts it is made of, not the clinic's name for it (Spec.pkgLabel, 사용자 요청 2026-10-20). k.full keeps the
-    // name the data gave (search and 죠미 still know it; each branch's price line keeps the clinic's own product name). A
-    // short name another key already has, or two packages would share, stays full — two rows must not read the same.
-    { const short = KEYS.map((k) => (k.cat === "패키지" ? Spec.pkgLabel(k.label) : k.label)), seen = new Map();
-      short.forEach((s) => seen.set(s, (seen.get(s) || 0) + 1));
-      KEYS.forEach((k, j) => { if (short[j] !== k.label && seen.get(short[j]) === 1) k.label = short[j]; }); }
+    // 패키지: the parts it is made of, not the clinic's name for it (Spec.pkgNames, 사용자 요청 2026-10-20) — unless that loses
+    // what the name said (남성, the device, a dose) or another key would read the same. k.full keeps the name the data gave
+    // (search, family search and 죠미 still know it; each branch's price line keeps the clinic's own product name).
+    Spec.pkgNames(KEYS, Search.attrsOf).forEach((l, j) => { KEYS[j].label = l; });
     KI = Object.assign(Object.create(null), Object.fromEntries(KEYS.map((k) => [k.id, k.i])));   // no prototype: '#compare?k=__proto__' is just unknown (round-2 D5)
     ROWS = D.rows;
     // source re-checks of low prices (scrape/verify_prices.py): row → { s: 1 found · 2 name only · 3 not found · 4 fetch error · 5 in the same block, d: date }
@@ -3086,7 +3084,8 @@
   const CMP_CATS = ["톡신", "윤곽·필러", "리프팅", "부스터", "피부", "제모·바디", "패키지", "기타"];
   const CAT_START = { "톡신": "X01", "윤곽·필러": "X09", "리프팅": "X12", "부스터": "X24", "피부": "X28", "제모·바디": "X35" };
   const famsIn = (c) => FAM.filter((f) => f.cat === c).sort((a, b) => b.n - a.n);
-  const famNorm = (f) => f.norm || (f.norm = Search.norm(`${f.name} ${f.cat} ${f.vs.map((v) => v.label).join(" ")} ${KEYS[f.main].label}`));
+  // a package's clinic name (k.full) still finds its family
+  const famNorm = (f) => f.norm || (f.norm = Search.norm(`${f.name} ${f.cat} ${f.vs.map((v) => v.label).join(" ")} ${f.vs.map((v) => (KEYS[v.k].full !== v.label ? KEYS[v.k].full : "")).join(" ")} ${KEYS[f.main].label}`));
   const famFind = (text) => { const c = text.trim() ? Search.compile(text, searchIndex()) : null; return c && !c.empty ? FAM.filter((f) => c.test(famNorm(f))).sort((a, b) => b.n - a.n) : []; };
   // only medically reviewed text is 'verified'; drafts are shown (labelled) only while flags.showDraftKnowledge is on
   const KB_STATE = () => (FLAGS.showDraftKnowledge ? "설명은 의료진 검수 전 초안이에요." : "의료진 검수를 마친 설명만 보여줘요.");
