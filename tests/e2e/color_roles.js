@@ -58,11 +58,13 @@ const sageAt = usedBy(/var\(--sage-soft\)/), sageBad = sageAt.filter((s) => !SAG
 ok('연한 초록 바탕은 넣어 둔 상태(aria-pressed=true·담김)·확인됨 배지·입구 카드에만 — 연한 초록 동작 버튼(.btn.soft) 없음', !sageBad.length && sageAt.length >= 3, sageBad.length ? sageBad.join(' | ') : sageAt.join(' | '));
 ok('검색창 ×: 브라우저 기본(파랑) 대신 회색 24px 버튼', /input\[type="search"\]::-webkit-search-cancel-button\s*\{[^}]*-webkit-appearance:\s*none[^}]*width:\s*24px[^}]*height:\s*24px[^}]*background:\s*var\(--muted\)/.test(css));
 // screens/about.js, screens/concern.js and screens/map.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-4): checked the same way
-const inl = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
-  .filter(([, l]) => /style:\s*["`][^"`]*color:\s*var\(--(pricey|coral|butter|butter-ink|butter-soft)\)/.test(l)).map(([n]) => `${f}:${n}`));
+const SRC = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'];
+const srcLines = (re) => SRC.flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
+  .filter(([, l]) => re.test(l)).map(([n]) => `${f}:${n}`));
+const inl = srcLines(/style:\s*["`][^"`]*color:\s*var\(--(pricey|coral|butter|butter-ink|butter-soft)\)/);
 ok('app.js에 직접 적은 코랄·버터 글자색 없음(클래스로)', !inl.length, inl.join(', '));
-const soft = js.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /class:\s*["`][^"`]*\bbtn\b[^"`]*\bsoft\b|sage-soft/.test(l)).map(([n]) => `app.js:${n}`);
-ok("app.js에 연한 초록 동작 버튼('btn … soft')·직접 적은 연한 초록 없음 — 동작은 회색 .btn.gray", !soft.length, soft.join(', '));
+const soft = srcLines(/class:\s*["`][^"`]*\bbtn\b[^"`]*\bsoft\b|sage-soft/);
+ok("app.js·screens에 연한 초록 동작 버튼('btn … soft')·직접 적은 연한 초록 없음 — 동작은 회색 .btn.gray", !soft.length, soft.join(', '));
 
 // ---- 2) the screens
 const scan = (sel) => {
