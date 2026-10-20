@@ -11,6 +11,9 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
 const APP = path.join(__dirname, '..', '..', 'app');
 const metaFor = (buf, updated) => { const sha = crypto.createHash('sha256').update(buf).digest('hex'); const d = JSON.parse(buf.toString('utf8'));
   return { schema: 1, version: `${updated}.${sha.slice(0, 8)}`, updated, built: '2026-10-21T00:00:00+00:00', bytes: buf.length, sha256: sha, rows: d.meta.rows, branches: d.branches.length, verified: d.branches.length, stale: 0, brands: [] }; };
+// the header's date as the app writes it (app.js paintUpd: 2026-10-19 → '10/19 기준'). The saved copy is the served
+// data-meta.json's, so step 4 reads its date from there instead of a fixed day (it said 10/14 and failed after the 10-19 data)
+const md = (u) => `${+u.slice(5, 7)}/${+u.slice(8, 10)}`;
 
 (async () => {
   const b = await chromium.launch();
@@ -66,7 +69,7 @@ const metaFor = (buf, updated) => { const sha = crypto.createHash('sha256').upda
   await p.reload(); await p.waitForSelector('.pc');
   const during = await p.locator('#netbar').innerText().catch(() => '');
   const upd1 = await p.locator('#upd').textContent();
-  ok('새 버전 받는 동안: 저장된 가격을 먼저 보여줌(PARTIALLY_READY)', /새 가격 받는 중/.test(during) && /10\/14/.test(upd1), `${during} | ${upd1}`);
+  ok('새 버전 받는 동안: 저장된 가격을 먼저 보여줌(PARTIALLY_READY)', /새 가격 받는 중/.test(during) && upd1.includes(`${md(meta.updated)} 기준`), `${during} | ${upd1}`);
   await p.waitForSelector('#netbar .nb-act', { timeout: 15000 }).catch(() => {});
   const readyTxt = await p.locator('#netbar').innerText().catch(() => '');
   ok('검사 통과 후 "새 가격(2026-10-21)이 준비됐어요"', /새 가격\(2026-10-21\)이 준비됐어요/.test(readyTxt), readyTxt);
