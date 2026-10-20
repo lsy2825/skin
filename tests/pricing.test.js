@@ -665,3 +665,18 @@ test("price range text in won only: a screen whose totals are in won (내 견적
   assert.equal(P.rangeText(2022680, 4936800, { won: false }), "202.3만~493.7만원");
   assert.equal(P.rangeText(2022680, 4936800, {}), "202.3만~493.7만원");
 });
+
+test("range bar marks: one scale for the track, the middle price and a given price (app.js rangeBar, DESIGN_SYSTEM §3 범위 막대)", () => {
+  // the range is its own scale: the track runs end to end, the middle and a given price where they fall
+  assert.deepEqual(P.rangeMarks(10000, 50000, 20000), { lo: 0, hi: 1, med: 0.25, at: null });
+  assert.deepEqual(P.rangeMarks(10000, 50000, 20000, { at: 40000 }), { lo: 0, hi: 1, med: 0.25, at: 0.75 });
+  // a scale shared by several bars (가격 종류별·지역별): each track covers its own part of it
+  assert.deepEqual(P.rangeMarks(30000, 50000, 40000, { axis: [10000, 90000] }), { lo: 0.25, hi: 0.5, med: 0.375, at: null });
+  // one branch in a region: a track with no width at its price, the middle on it
+  assert.deepEqual(P.rangeMarks(50000, 50000, 50000, { axis: [10000, 90000] }), { lo: 0.5, hi: 0.5, med: 0.5, at: null });
+  // a value off the scale is held at its end, never drawn outside the bar
+  assert.deepEqual(P.rangeMarks(10000, 50000, 5000, { at: 90000 }), { lo: 0, hi: 1, med: 0, at: 1 });
+  // a scale with no width: every mark in the middle; no value, no mark
+  assert.deepEqual(P.rangeMarks(19690, 19690, 19690), { lo: 0.5, hi: 0.5, med: 0.5, at: null });
+  assert.deepEqual(P.rangeMarks(10000, 50000, null, { at: undefined }), { lo: 0, hi: 1, med: null, at: null });
+});

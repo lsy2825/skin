@@ -86,7 +86,7 @@ const HELP = () => {
       const bad = rows.map((li) => __badOrder(li.querySelector('.m'))).filter(Boolean);
       const both = rows.filter((li) => li.querySelector('.m .k.kt, .m .k.k1, .m .k.k2') && li.querySelector('.m .k.k4')).length;
       const pc = document.querySelector('.pricecard');
-      const boxes = [...pc.querySelectorAll('*')].filter((e) => __vis(e) && !e.matches('.k, .k *, button, button *, a, a *, svg, svg *, .rangebar, .rangebar *') && __framed(e)).map((e) => e.className || e.tagName);
+      const boxes = [...pc.querySelectorAll('*')].filter((e) => __vis(e) && !e.matches('.k, .k *, button, button *, a, a *, svg, svg *, .prange, .prange *') && __framed(e)).map((e) => e.className || e.tagName);
       const cl = [...pc.querySelectorAll('.condlow')].map((c) => { const cs = getComputedStyle(c); return { line: parseFloat(cs.borderTopWidth) >= 1 && cs.borderTopStyle !== 'none', fill: __framed(c), badges: [...c.querySelectorAll('.k')].filter(__vis).map((k) => k.className + ':' + k.textContent.trim()), sub: (c.querySelector('.sub') || {}).textContent || '' }; });
       const cf = [...document.querySelectorAll('#main details.cmpfold')].map((d) => { const prev = d.previousElementSibling; return { card: d.classList.contains('card'), gap: prev ? Math.round(d.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) : null }; });
       const rk = rows[0] && rows[0].querySelector('.rank .b'), card = document.querySelector('#clinics');

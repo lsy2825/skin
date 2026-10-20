@@ -366,7 +366,16 @@
     return { one: false, lo: a, hi: b, text: `${a}~${b}` };
   }
   const rangeText = (lo, hi, opts) => rangeParts(lo, hi, opts).text;
+  // ---- where the marks of a price range bar sit (app.js rangeBar — one shape on every screen, docs/DESIGN_SYSTEM.md §3 '범위
+  // 막대'), as fractions 0…1 of its scale: the track from lo to hi, the middle price (med), a given price (opts.at). The scale is
+  // the range itself, or opts.axis [a, b] shared by several bars (가격 종류별·지역별 — each track then covers its own part of
+  // it). A value off the scale is held at its end; a scale with no width puts every mark in the middle; no value, no mark (null)
+  function rangeMarks(lo, hi, med, opts) {
+    const [a, b] = opts && opts.axis ? opts.axis : [lo, hi];
+    const f = (v) => v == null || !isFinite(v) ? null : b > a ? Math.max(0, Math.min(1, (v - a) / (b - a))) : 0.5;
+    return { lo: f(lo), hi: f(hi), med: f(med), at: f(opts && opts.at) };
+  }
 
   return { weekdayHoliday, weekendOnly, periodOver, vatPrice, isExpired, KR_HOLIDAYS, parseCutoff, WHEN_FIELD, hasWhenFields, hoursCode, dayList, whenLines, whenLimited, condState,
-    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, isRevisit, cheapest, isOnce, withoutOnce, canTake, forVisitor, isTrial, lineCost, compareClinics, limitOnce, matchPackage, rangeParts, rangeText };
+    condLabel, condTitle, whenBadge, ONCE_TAGS, REPEAT_TAGS, condClass, isRevisit, cheapest, isOnce, withoutOnce, canTake, forVisitor, isTrial, lineCost, compareClinics, limitOnce, matchPackage, rangeParts, rangeText, rangeMarks };
 });

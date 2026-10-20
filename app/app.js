@@ -1357,7 +1357,26 @@
   // opts.won: full won at both ends (내 견적, whose summary total is in won — one total, one unit on that screen)
   const rangeEl = (lo, hi, opts) => { const r = Pricing.rangeParts(lo, hi, opts); return r.one ? r.text : [h("span", { class: "nw" }, r.lo), "~", h("wbr"), h("span", { class: "nw" }, r.hi)]; };
   const WON = { won: true };
-  const svg = (tag, attrs, ...kids) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v); kids.forEach((c) => c && e.append(c)); return e; };
+  // a price range drawn as a bar — one shape on every screen (2026-10-20 사용자 지시: 홈 '오늘의 발견'과 비교 가격 카드의 막대가
+  // 달랐음; docs/DESIGN_SYSTEM.md §3 '범위 막대'): a 6px track with round ends from the lowest to the highest price, the middle
+  // price as a dark 2px line 4px over and under the track, a given price (opts.at, read aloud as opts.atName) as a 12px dot.
+  // opts.label: '중간값 X원' under the line (비교 가격 카드, 가격 종류별 범위). opts.axis [a, b]: a scale shared by several bars
+  // (가격 종류별·지역별) — each track covers its own part, a hairline the rest. opts.name goes before the words read aloud;
+  // opts.hidden when the line's own name already says them. Where the marks sit is Pricing.rangeMarks (unit-tested)
+  function rangeBar(lo, hi, med, opts = {}) {
+    const M = Pricing.rangeMarks(lo, hi, med, opts);
+    // the scale runs between the centres of the track's round ends (3px in), so a mark at the lowest price sits on the end's centre
+    const x = (f) => `calc(3px + (100% - 6px) * ${f.toFixed(4)})`;
+    const words = `${opts.name ? opts.name + " " : ""}가격 범위 ${won(lo)}~${won(hi)}${med != null ? `, 중간값 ${won(med)}` : ""}${M.at != null ? `, ${opts.atName || "이 가격"} ${won(opts.at)}` : ""}`;
+    return h("div", { class: `prange${opts.axis ? " axis" : ""}`, ...(opts.hidden ? { "aria-hidden": "true" } : { role: "img", "aria-label": words }) },
+      h("span", { class: "pr-bar" },
+        h("i", { class: "pr-t", style: `left:calc((100% - 6px) * ${M.lo.toFixed(4)});width:calc((100% - 6px) * ${(M.hi - M.lo).toFixed(4)} + 6px)` }),
+        M.med != null ? h("b", { class: "pr-m", style: `left:${x(M.med)}` }) : null,
+        M.at != null ? h("i", { class: "pr-d", style: `left:${x(M.at)}` }) : null),
+      // the label in won like the compare header's '중간값 19,690원'; shifted by its own width × the place, so it never leaves the bar
+      opts.label && M.med != null ? h("span", { class: "pr-l", style: `left:${x(M.med)};transform:translateX(-${(M.med * 100).toFixed(1)}%)` }, `중간값 ${won(med)}`) : null);
+  }
+  const svg =(tag, attrs, ...kids) => { const e = document.createElementNS("http://www.w3.org/2000/svg", tag); for (const [k, v] of Object.entries(attrs || {})) if (v != null) e.setAttribute(k, v); kids.forEach((c) => c && e.append(c)); return e; };
   // change of the median between the last two snapshots that have the key
   function keyChange(id) {
     const v = (TR().k[id] || []).map((x) => x && x[0]);
@@ -1481,7 +1500,8 @@
     return wrap;
   }
   // where each clinic's lowest price sits: one dot per branch on one price axis (dots stacked where they would overlap),
-  // filled = no condition, ring = a conditional price (first visit, trial …), dark = the headline lowest; dashed = median
+  // filled = no condition, ring = a conditional price (first visit, trial …), dark = the headline lowest; the middle price is
+  // the range bar's mark — a solid 2px dark grey line (docs/DESIGN_SYSTEM.md §3 '범위 막대')
   function distChart(list, med, bestI, title, onPick) {
     const R = 4.5, PL = 14, PR = 14, TOP = 24, AX = 24;
     const ps = list.map((x) => x.p);
@@ -1595,7 +1615,7 @@
       h("div", { class: "tile" }, h("span", { class: "k" }, "관측 최저 / 최고"), h("b", { class: "num" }, `${won(s.min)}`), h("span", { class: "w" }, `최고 ${won(s.max)} · 최저 마지막 ${s.minLast}`)),
       h("div", { class: "tile" }, h("span", { class: "k" }, "기간 중앙값"), h("b", { class: "num" }, won(sm ? sm.median : s.median)), h("span", { class: "w" }, "지점 중간값들의 중앙값")),
       h("div", { class: "tile" }, h("span", { class: "k" }, "최저가 변동"), h("b", { class: "num" }, `${s.changes}번`), h("span", { class: "w" }, `${s.points}번 관측 (${s.first}~)`))));
-    card.append(lineChart(dates, [{ name: "중간값", color: "var(--s2)", values: med }, { name: "최저가", color: "var(--s1)", values: low }], `${k.label} 가격 이력`));
+    card.append(lineChart(dates, [{ name: "중간값", color: "var(--ink-2)", values: med }, { name: "최저가", color: "var(--s1)", values: low }], `${k.label} 가격 이력`));
     return card;
   }
   // ---------------- saved treatments & price alerts (checked when the app opens; e-mail/push later with sign-in)
@@ -2106,6 +2126,11 @@
   // page's own box swaps the page it is on, so 뒤로 goes where it went before)
   const findGo = (v, replace) => { const t = String(v || "").trim(); if (!t) return; const id = specRoute(t); nav(id ? `compare?k=${id}` : `search/${encodeURIComponent(t)}`, replace); };
   const secHead = (title, sub, more) => h("div", { class: "sec-h" }, h("h2", {}, title), sub ? h("span", { class: "sub" }, sub) : null, more || null);
+  // 오늘의 발견's rows are picked on their own measure, but the numbers a row shows — the range, the middle price and its branch
+  // count — are the comparison's (keyNums: the median over every plain price as in the compare header, the range without the
+  // unverified ultra-lows as in its price card), so a row and the comparison it opens draw the line at the same price and the
+  // bar's ends mean the same (2026-10-20 review: 윤곽주사 3cc 29,700원 on 홈 ↔ 27,500원 on 비교; 아쿠아필's left end 5,390원 ↔ 10,890원)
+  const findNums = (x) => { const N = keyNums(x.k); return N && { ...x, lo: N.lo, hi: N.hi, med: N.med, n: N.prices.length, top: N.ptop }; };
   // treatments whose lowest plain price sits far below the middle of the same-condition prices (comparable sets only)
   function lowFinds(n = 4) {
     const out = [];
@@ -2114,23 +2139,28 @@
       const pl = plainRanking(f.main); if (pl.length < 5) continue;
       const { normal } = splitLow(pl); if (normal.length < 5) continue;
       const med = median(pl.map((x) => x.p)), top = normal[0], below = med ? 1 - top.p / med : 0;
-      if (below >= 0.15 && below <= 0.7) out.push({ k: f.main, top, med, below, lo: pl[0].p, hi: pl[pl.length - 1].p, n: pl.length });
+      if (below >= 0.15 && below <= 0.7) out.push({ k: f.main, below });
     }
-    return out.sort((a, c) => c.below - a.below).slice(0, n);
+    return out.sort((a, c) => c.below - a.below).slice(0, n).map(findNums).filter(Boolean);
   }
-  // same-condition treatments with the widest gap between the lowest and highest plain price (unverified ultra-lows left out)
+  // same-condition treatments with the widest gap between the lowest and highest plain price (unverified ultra-lows left out).
+  // A middle price below the drawn range (ultra-lows pulling it down) is not pinned to the bar's end — the price card draws
+  // no bar then — so such a treatment is passed over
   function spreadFinds(n = 4) {
     const out = [];
     for (const f of [...FAM].filter((x) => x.cat !== "기타").sort((a, c) => c.n - a.n).slice(0, 80)) {
       const pl = plainRanking(f.main); if (pl.length < 5) continue;
       const { normal } = splitLow(pl); if (normal.length < 5) continue;
       const ps = normal.map((x) => x.p), lo = Math.min(...ps), hi = Math.max(...ps), spread = lo ? hi / lo : 1;
-      if (spread >= 1.5 && spread <= 10) out.push({ k: f.main, lo, hi, med: median(ps), spread, n: ps.length });
+      if (spread >= 1.5 && spread <= 10) out.push({ k: f.main, spread });
     }
-    return out.sort((a, c) => c.spread - a.spread).slice(0, n);
+    const picked = [];
+    for (const x of out.sort((a, c) => c.spread - a.spread)) {
+      if (picked.length >= n) break;
+      const y = findNums(x); if (y && y.med >= y.lo && y.med <= y.hi) picked.push(y);
+    }
+    return picked;
   }
-  const mrange = (lo, hi, at, med) => { const pos = (v) => `${hi > lo ? Math.max(0, Math.min(100, (v - lo) / (hi - lo) * 100)) : 50}%`;
-    return h("span", { class: "mrange", role: "img", "aria-label": `가격 범위 ${won(lo)}~${won(hi)} 중 ${won(at)}, 중간값 ${won(med)}` }, h("b", { style: `left:${pos(med)}` }), h("i", { style: `left:${pos(at)}` })); };
 
   views.home = () => {
     const box = h("div", { class: "view" });
@@ -2188,7 +2218,7 @@
         HL && FLAGS.discountEmphasis ? h("span", { class: below > 0 ? "save" : "save flat" }, below > 0 ? `중간보다 ${below}% 싸요` : `${base.length}곳 비교`)
           : HL ? h("span", { class: "save flat" }, nlo === nhi ? `${base.length}곳 같은 가격` : `${Pricing.rangeText(nlo, nhi)} · ${base.length}곳`)
           : h("span", { class: "save flat" }, nlo === nhi ? "모두 같은 가격" : rangeEl(nlo, nhi)),
-        HL ? h("span", { class: "basis" }, `${pl.length ? "조건 없는 가격" : "조건부 가격"} ${base.length}곳 · 중간 ${won(med)}`) : pl.length ? null : h("span", { class: "basis" }, "조건이 붙은 가격만 있어요"),
+        HL ? h("span", { class: "basis" }, `${pl.length ? "조건 없는 가격" : "조건부 가격"} ${base.length}곳 · 중간값 ${won(med)}`) : pl.length ? null : h("span", { class: "basis" }, "조건이 붙은 가격만 있어요"),
         HL && cond ? h("span", { class: "basis" }, `조건부 ${won(cond.p)}~ (${priceConds(cond.i)[0] || "조건 있음"})`) : null,
         HL && lowp.length ? h("span", { class: "basis" }, `확인 필요 초저가 ${won(lowp[0].p)} (중간값의 ${Math.round(lowp[0].p / med * 100)}%)`) : null,
         HL && kindBadge(r).length ? h("span", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, kindBadge(r).slice(0, 2)) : null,
@@ -2205,16 +2235,18 @@
     if (spreads.length) box.append(secHead("죠미의 오늘의 발견", "병원마다 가격 차이가 큰 시술"), h("div", { class: "card flush" }, h("ul", { class: "list" }, spreads.map((x) =>
       h("li", {}, h("button", { class: "disc-row", type: "button", onclick: () => { st.key = x.k; nav("compare"); } },
         h("span", { class: "t" }, KEYS[x.k].label), h("span", { class: "p num" }, `최대 ${x.spread.toFixed(1)}배`),
-        h("span", { class: "mrange", role: "img", "aria-label": `가격 범위 ${won(x.lo)}~${won(x.hi)}, 중간값 ${won(x.med)}` }, h("b", { style: `left:${x.hi > x.lo ? (x.med - x.lo) / (x.hi - x.lo) * 100 : 50}%` })),
-        h("span", { class: "m" }, h("span", { class: "num" }, `${won(x.lo)} ~ ${won(x.hi)}`), h("span", {}, `중간값 ${won(x.med)}`), h("span", {}, `${x.n}곳`))))))),
+        rangeBar(x.lo, x.hi, x.med),
+        // the range in the words every range uses ('10,890~108,900원', Pricing.rangeText — the 가격 종류별 lines beside the same bar)
+        h("span", { class: "m" }, h("span", { class: "num" }, rangeEl(x.lo, x.hi)), h("span", {}, `중간값 ${won(x.med)}`), h("span", {}, `${x.n}곳`))))))),
       h("p", { class: "foot under" }, "같은 용량·회차인데도 병원마다 가격이 이만큼 달라요. 막대는 가장 낮은 값부터 높은 값까지, 세로선은 중간값이에요. 가격 차이의 이유(조건·구성)는 시술 화면에서 확인하세요."),
       h("p", { class: "foot under" }, `고르는 기준: 조건 없는 가격이 5곳 이상인 시술 중 '가장 높은 가격 ÷ 가장 낮은 가격'이 큰 순서(1.5~10배, 확인이 필요한 초저가는 뺌). ${D.meta.updated} 데이터로 자동으로 골라요 — 사람이 고르거나 광고로 정하지 않아요.`));
     const finds = FLAGS.discountEmphasis ? lowFinds() : [];
     if (finds.length) box.append(secHead("죠미의 오늘의 발견", "중간값보다 많이 낮은 곳"), h("div", { class: "card flush" }, h("ul", { class: "list" }, finds.map((x) =>
       h("li", {}, h("button", { class: "disc-row", type: "button", onclick: () => { st.key = x.k; nav("compare"); } },
         h("span", { class: "t" }, KEYS[x.k].label), h("span", { class: "p num" }, won(x.top.p)),
-        mrange(x.lo, x.hi, x.top.p, x.med),
-        h("span", { class: "m" }, bdot(x.top.b), h("span", {}, bname(x.top.b)), h("span", { class: "down" }, `중간값보다 ${Math.round(x.below * 100)}% ↓`), h("span", {}, `조건 없는 가격 ${x.n}곳`))))))),
+        rangeBar(x.lo, x.hi, x.med, { at: x.top.p, atName: bname(x.top.b) }),
+        // the bar's two ends in words as on every range bar's line (its track alone is too light to read them from)
+        h("span", { class: "m" }, bdot(x.top.b), h("span", {}, bname(x.top.b)), h("span", { class: "num" }, rangeEl(x.lo, x.hi)), h("span", { class: "down" }, `중간값보다 ${Math.round(x.below * 100)}% ↓`), h("span", {}, `조건 없는 가격 ${x.n}곳`))))))),
       h("p", { class: "foot under" }, "점은 이 가격, 세로선은 중간값이에요. 첫 방문가·체험가처럼 조건이 붙은 가격과 확인이 필요한 초저가는 빼고 골랐어요."));
     // 가격 변동 since last week (max 2 per branch); before the second collection: say when it starts, draw nothing
     const ch = changeItems(), dn = ch.filter((x) => x.t === "down").length, up = ch.filter((x) => x.t === "up").length;
@@ -3171,17 +3203,25 @@
     }
     const rows = PCLS.map(([c, l]) => ({ c, l, v: [...per.get(c).values()].sort((a, b) => a - b) })).filter((x) => x.v.length);
     if (rows.length < 2) return null;
-    const lo = Math.min(...rows.map((x) => x.v[0])), hi = Math.max(...rows.map((x) => x.v[x.v.length - 1])), span = hi - lo || 1;
-    const pos = (v) => `${((v - lo) / span * 100).toFixed(1)}%`;
+    const lo = Math.min(...rows.map((x) => x.v[0])), hi = Math.max(...rows.map((x) => x.v[x.v.length - 1]));
     return h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "가격 종류별 범위"), h("span", { class: "sp" }), h("span", { class: "sub" }, `${regionName()} · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"}`)),
       h("div", { class: "sub" }, "같은 시술이라도 일반가와 체험가·조건부 가격은 다른 가격이에요. 지점마다 종류별 가장 싼 가격 하나씩, 한 눈금 위에 놓았어요."),
-      h("div", { class: "pcls", role: "list" }, rows.map((x) => { const med = median(x.v);
-        return h("div", { class: `pcl pcl-${x.c}`, role: "listitem", "aria-label": `${x.l} ${x.v.length}곳, ${won(x.v[0])}부터 ${won(x.v[x.v.length - 1])}까지, 중간값 ${won(med)}` },
-          h("div", { class: "row" }, h("b", {}, x.l), h("span", { class: "sp" }), h("span", { class: "tiny num" }, `${x.v.length}곳 · ${Pricing.rangeText(x.v[0], x.v[x.v.length - 1])}`)),
-          h("div", { class: "pcl-track", "aria-hidden": "true" }, h("span", { class: "pcl-bar", style: `left:${pos(x.v[0])};width:max(4px, calc(${pos(x.v[x.v.length - 1])} - ${pos(x.v[0])}))` }), h("span", { class: "pcl-med", style: `left:${pos(med)}` })),
-          h("div", { class: "tiny" }, `중간값 ${won(med)}`)); })),
-      h("div", { class: "row tiny", style: "margin-top:var(--sp-2)" }, h("span", {}, won(lo)), h("span", { class: "sp" }), h("span", {}, won(hi))));
+      h("div", { class: "pcls", role: "list" }, rows.map((x) => { const L = axisLine(x.l, null, x.v.length, x.v[0], x.v[x.v.length - 1], median(x.v), [lo, hi]);
+        return h("div", { class: "pcl", role: "listitem", "aria-label": L.name }, L.kids); })),
+      axisEnds(lo, hi));
   }
+  // one line of a card whose bars share one scale (가격 종류별 범위 · 지역별 가격 — one look for both): the name (and a badge),
+  // 'N곳 · lo~hi원' on the right, then the range bar on the card's scale with '중간값 X원' under its line. The ends are in
+  // words on every line, so the light track is never the only sign of the range (2026-10-20 review: 지역별 had no ends in
+  // words, its range only a 1.3:1 track). The line's own name says it all aloud; the bar is hidden from a screen reader.
+  // → { name: the line's aria-label, kids: its children }
+  function axisLine(name, badge, n, lo, hi, med, axis) {
+    return { name: `${name} ${n}곳, ${lo === hi ? won(lo) : `${won(lo)}부터 ${won(hi)}까지`}, 중간값 ${won(med)}${badge ? `, ${badge.textContent}` : ""}`,
+      kids: [h("div", { class: "row" }, h("b", {}, name), badge, h("span", { class: "sp" }), h("span", { class: "rv num" }, `${n}곳 · ${Pricing.rangeText(lo, hi)}`)),
+        rangeBar(lo, hi, med, { axis, label: true, hidden: true })] };
+  }
+  // the shared scale's two ends, under its lines
+  const axisEnds = (lo, hi) => h("div", { class: "row tiny", style: "margin-top:var(--sp-2)" }, h("span", {}, won(lo)), h("span", { class: "sp" }), h("span", {}, won(hi)));
   // a group whose rows name different products / devices (or some name none): say so above the price, and let the list be
   // narrowed to one (docs/TREATMENT_TAXONOMY.md §4 — e.g. '(여) 겨드랑이 제모 1회' across 아포지 플러스·클라리티Ⅱ·젠틀맥스)
   function mixNote(k) {
@@ -3208,14 +3248,6 @@
   // 규격 미리 선택: the screen opened with nothing chosen shows the first category's start spec (CAT_START: the most widely
   // sold spec of that category), never key 0
   const defaultKey = () => { for (const c of CMP_CATS) { const i = KI[CAT_START[c]]; if (i != null) return i; } return FAM.length ? FAM[0].main : 0; };
-  // the price range on one track with the middle price marked (6.0 design ②: one small distribution bar in the price card)
-  function rangeBar(lo, hi, med) {
-    if (!(hi > lo) || med == null || med < lo || med > hi) return null;   // a middle outside the drawn range (low outliers) is not pinned to an edge
-    const at = Math.max(0, Math.min(100, (med - lo) / (hi - lo) * 100));
-    return h("div", { class: "rangebar", role: "img", "aria-label": `가격 범위 ${won(lo)}~${won(hi)} 중 중간값 ${won(med)}` },
-      // the label in won like the header's '중간값 19,690원' (not '중간 2만원'); shifted by its own width × at so it never leaves the bar
-      h("span", { class: "mid", style: `left:${at.toFixed(1)}%` }), h("span", { class: "midl", style: `left:${at.toFixed(1)}%;transform:translateX(-${at.toFixed(1)}%)` }, `중간값 ${won(med)}`));
-  }
   // 6.0 design ①: the sticky header — where am I (분야 › 시술 › 규격), the procedure in big type, ONE basis line for the
   // middle price (the price card's range and numbers follow it; the clinic list says its own '조건부 포함 N곳'), the middle
   // price, '담기' naming what it adds, and '⋯' for the tools the bottom bar used to hold
@@ -3399,7 +3431,9 @@
         : h("div", { class: "hero" },
           h("span", { class: "hl" }, ptop ? "같은 조건 가격 범위" : "조건이 붙은 가격만 있어요"),
           h("span", { class: `hp range num${tick ? " tick" : ""}` }, lo === hi ? h("span", { class: "nw" }, won(lo)) : [h("span", { class: "nw" }, won(lo)), h("span", { class: "to" }, " ~ "), h("span", { class: "nw" }, won(hi))]),
-          rangeBar(lo, hi, med),
+          // the price range on one track with the middle price marked and named under it (6.0 design ②; the one range bar). A
+          // middle outside the drawn range (low outliers) is not pinned to an edge: no bar then
+          hi > lo && med != null && med >= lo && med <= hi ? rangeBar(lo, hi, med, { label: true }) : null,
           h("div", { class: "meta" }, h("span", {}, st.vat === "incl" ? "부가세 포함 예상가" : "병원 표시가"), h("span", {}, `${regionName()} · ${D.meta.updated} 수집`)),
           h("div", { class: "row", style: "gap:var(--sp-3);margin-top:var(--sp-2)" },
             h("button", { class: "linkbtn", type: "button", onclick: () => basisSheet(k, rk, plain) }, icon("circle-help", "xs"), "계산 기준"),
@@ -3426,7 +3460,7 @@
       const dl = rk.map((x) => ({ b: x.b, i: x.i, p: x.p, cond: !plainOk(x.i) }));
       fold1 = cmpFold("more", k, "가격 종류별·브랜드별·지역별 보기",
         h("div", { class: "card" }, h("div", { class: "row" }, h("h3", {}, "병원별 가격 분포"), h("span", { class: "sp" }), h("span", { class: "sub" }, `조건부 포함 ${rk.length}곳`)),
-          h("div", { class: "sub" }, `지점마다 가장 싼 가격 하나씩 · ${regionName()} · ${st.special ? "특가 포함" : "일반가만"} · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"} · 점선은 위 중간값`),
+          h("div", { class: "sub" }, `지점마다 가장 싼 가격 하나씩 · ${regionName()} · ${st.special ? "특가 포함" : "일반가만"} · ${st.vat === "incl" ? "부가세 포함 예상" : "병원 표시가"} · 세로선은 위 중간값`),
           rk.length >= 3 ? distChart(dl, med, HL ? top.i : null, `${k.label} 병원별 가격 분포`, (d) => nav(`branch/${d.b}`))
             : h("div", { class: "chartempty" }, "비교할 지점이 3곳 미만이라 분포를 그리지 않아요. 위 목록을 보세요.")));
       fold1.id = "cmpmore";
@@ -3490,7 +3524,7 @@
           h("span", { class: "n num" }, n + 1), h("span", { class: "b" }, bdot(x.b), h("span", {}, bname(x.b))),
           h("span", { class: "p num" }, won(x.p)),
           // badges in the one order (kindBadge): the price's kind and conditions, warnings (초저가, 지난 자료), information (제품)
-          h("span", { class: "m" }, S[r[2]], listS(r), kindBadge(r, { warn: [low ? (() => { const t = `이 목록(조건부 포함) 중간 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%`;
+          h("span", { class: "m" }, S[r[2]], listS(r), kindBadge(r, { warn: [low ? (() => { const t = `이 목록(조건부 포함) 중간값 ${won(medAll)}의 ${Math.round(x.p / medAll * 100)}%`;
             return checkedOk(x.i) ? h("span", { class: "k ok", title: t }, `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}`) : kwBadge("초저가·조건 확인", { title: t }); })() : null,
             fresh(x.b).stale ? kwBadge("지난 자료", {}, "history") : null], info: [prodTag(x.i)] }),
             FLAGS.lowestHighlight && x.p > min0 ? h("span", { class: "gap" }, `최저 +${won(x.p - min0)}`) : null, x.d != null ? h("b", {}, km(x.d)) : null)),
@@ -4076,13 +4110,21 @@
     }
     if (per.size < 2) return null;
     const regs = [...per.entries()].map(([rg, ps]) => { const s = [...ps].sort((a, c) => a - c); return { rg, n: s.length, lo: s[0], hi: s[s.length - 1], med: median(s) }; }).sort((a, c) => c.n - a.n || a.rg.localeCompare(c.rg, "ko"));
-    const gl = Math.min(...regs.map((x) => x.lo)), gh = Math.max(...regs.map((x) => x.hi)), pos = (v) => gh > gl ? (v - gl) / (gh - gl) * 100 : 50;
+    const gl = Math.min(...regs.map((x) => x.lo)), gh = Math.max(...regs.map((x) => x.hi));
+    // a line per region, the same line as '가격 종류별 범위' (axisLine): its name, 'N곳 · lo~hi원', then its range bar on the
+    // card's one scale with '중간값 X원' under the line — every bar the card's full width, so the regions are read on the same
+    // scale (the bar used to share a line with the words, and its width followed the words': 102~110px at 390, 32~40px at 320).
+    // The first 8 regions (most branches first), then the shared '더 보기' — 17 lines of a bar and a label made the card
+    // 1,072px tall at 390. The scale is every region's, so the lines added later sit on it too; how many are shown stays
+    // across redraws of the same procedure
+    const ul = h("ul", { class: "regl" }), kid = KEYS[k].id, keep = st.regN && st.regN.k === kid ? st.regN.n : 0;
+    const more = moreList(ul, regs, (x) => { const L = axisLine(x.rg, x.n < 3 ? h("span", { class: "k k4" }, "표본 적음") : null, x.n, x.lo, x.hi, x.med, [gl, gh]);
+      return h("li", { "aria-label": L.name }, L.kids); }, { first: Math.max(8, keep), name: "지역", onMore: (n) => { st.regN = { k: kid, n }; } });
     return h("section", { class: "card", "aria-label": "지역별 같은 사양 가격" }, h("h3", {}, "지역별 가격"),
       h("div", { class: "sub" }, "조건 없는 가격 · 지점마다 하나 · 위 지역 선택과 상관없이 전국(브랜드 필터는 적용)"),
-      h("ul", { class: "regl" }, regs.map((x) => h("li", {}, h("span", { class: "rg" }, x.rg, x.n < 3 ? h("span", { class: "k k4" }, "표본 적음") : null),
-        h("span", { class: "rbar", role: "img", "aria-label": `${x.rg} ${x.n}곳 ${won(x.lo)}~${won(x.hi)}, 중간값 ${won(x.med)}` }, h("i", { style: `left:${pos(x.lo)}%;width:${Math.max(1.5, pos(x.hi) - pos(x.lo))}%` }), h("b", { style: `left:${pos(x.med)}%` })),
-        h("span", { class: "rv num" }, `${x.n}곳 · 중간 ${won(x.med)}`)))),
-      regs.some((x) => x.n < 3) ? h("p", { class: "tiny", style: "margin-top:var(--sp-2)" }, "지점이 3곳 미만인 지역은 통계라기보다 개별 가격이에요. 지역 차이로 읽지 마세요.") : null);
+      ul, axisEnds(gl, gh),
+      regs.some((x) => x.n < 3) ? h("p", { class: "tiny", style: "margin-top:var(--sp-2)" }, "지점이 3곳 미만인 지역은 통계라기보다 개별 가격이에요. 지역 차이로 읽지 마세요.") : null,
+      more);
   }
 
   // ---- 관심 시술 대시보드 + 업데이트 소식 (only what the weekly data actually recorded)
