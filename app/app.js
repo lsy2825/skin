@@ -1668,8 +1668,10 @@
   const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const standalone = () => window.matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
   // 푸시 알림 (6.0 약속 1, app/domain/push.js): only when config.js has alertsApi + pushPublicKey (chat A sends both). The
-  // permission prompt and the subscription happen only inside the tap on '가격 알림 받기'; the id the Worker gives back stays
-  // on this phone (device key 'push', not per account). The rules follow the phone's alerts (PUT when they change).
+  // permission prompt only inside the tap on '가격 알림 받기', and the first subscription with it; once the permission is
+  // given, a subscription is made again without a tap when it no longer works — at a start for a new public key, after a
+  // 404/410 on PUT (chat A's request #85 ②④). The id the Worker gives back stays on this phone (device key 'push', not per
+  // account). The rules follow the phone's alerts (PUT when they change).
   const CFG = window.APP_CONFIG || {};
   const PUSH = Push.enabled(CFG);
   const pushSupported = () => notifySupported() && "PushManager" in window;
@@ -1699,6 +1701,10 @@
     // made with the key in config.js
     if (had && (fresh || pushGone.has(had.endpoint) || Push.otherKey(had, CFG))) {
       pushGone.add(had.endpoint);
+      // still on (a new key at start): marked first, so a next start that finds no subscription (the new one could not be
+      // made: offline) tries once more instead of turning off without a word (read now: a 404 on the way may have cleared it)
+      const on = pushState();
+      if (on) store.set("push", { ...on, re: 1 });
       if (!(await had.unsubscribe())) throw new Error("unsubscribe refused");
       had = null;
     }
@@ -1802,8 +1808,15 @@
       const reg = await swReg();
       if (!reg || !reg.pushManager) return;   // not registered yet: next start
       const sub = await reg.pushManager.getSubscription();
-      if (!sub) { await pushUnsubscribe(); render(); return; }
+      if (!sub && !s.re) { await pushUnsubscribe(); render(); return; }
       if (!pushRules().rules.length) { await pushUnsubscribe(); render(); return; }   // nothing left to watch: no subscription
+      if (!sub) {
+        // an earlier start took back the old key's subscription and could not make the new one (s.re): once more now, and
+        // off when that does not work either ('받기' then asks with a tap)
+        try { await pushSubscribe(); } catch (e) { await pushUnsubscribe(); }
+        render();
+        return;
+      }
       if (sub.endpoint !== s.ep || Push.otherKey(sub, CFG)) {
         // renewed by the browser, or made with another public key (chat A's request #85 ②: pushSubscribe takes that one back
         // and makes a new one): POST the new one first; the old id goes only once that worked (offline: next start)

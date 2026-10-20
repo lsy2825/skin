@@ -94,6 +94,9 @@ test("the rules' fingerprint changes with the rules and only then; the kept stat
   assert.notEqual(P.hash([{ kind: "target", key: "X24", max: 100000 }]), P.hash([{ kind: "target", key: "X24", max: 200000 }]));
   assert.notEqual(P.hash([{ kind: "watch", key: "X24", region: "서울" }]), P.hash([{ kind: "watch", key: "X24", region: "부산" }]));
   assert.deepEqual(P.cleanState({ id: "id_12345678", ep: "https://x", h: "1:a", extra: 1 }), { id: "id_12345678", ep: "https://x", h: "1:a" });
+  // re (taken back for a new key at a start, the new one maybe not made yet): kept only as 1
+  assert.deepEqual(P.cleanState({ id: "id_12345678", ep: "https://x", h: "1:a", re: 1 }), { id: "id_12345678", ep: "https://x", h: "1:a", re: 1 });
+  for (const re of [true, "1", 2, 0, null]) assert.deepEqual(P.cleanState({ id: "id_12345678", ep: "https://x", h: "1:a", re }), { id: "id_12345678", ep: "https://x", h: "1:a" }, String(re));
   for (const bad of [null, {}, { id: "x", ep: "https://x", h: "1" }, { id: "id_12345678", ep: 3, h: "1" }]) assert.equal(P.cleanState(bad), null);
 });
 
@@ -125,7 +128,7 @@ test("지점 상품 '이벤트 종료 3일 전'은 서버 규칙을 만들지 �
   assert.ok(!r.rules.some((x) => x.kind === "expiring"));
 });
 
-test("공개키가 바뀐 구독 찾기(A #85 ②): 브라우저가 보여 주는 applicationServerKey 바이트가 설정의 공개키와 다를 때만", () => {
+test("공개키가 바뀐 구독 찾기(A #85 ②): 브라우저가 보여 주는 공개키 모양(65바이트, 0x04)의 applicationServerKey가 설정의 공개키와 다를 때만", () => {
   const want = P.keyBytes(KEY);
   const subWith = (k) => ({ endpoint: "https://fcm.googleapis.com/fcm/send/x", options: { userVisibleOnly: true, applicationServerKey: k } });
   // the same 65 bytes, as the browser gives them (an ArrayBuffer) or as a typed array — also one inside a bigger buffer
@@ -135,16 +138,20 @@ test("공개키가 바뀐 구독 찾기(A #85 ②): 브라우저가 보여 주�
   const big = new Uint8Array(80); big.set(want, 7);
   assert.equal(P.otherKey(subWith(new Uint8Array(big.buffer, 7, 65)), ON), false);
   assert.equal(P.otherKey(subWith(Buffer.from(KEY, "base64url")), ON), false);
-  // another key: one byte off, or another length
+  // another key: one byte off (the last, or the first after 0x04), or another whole key
   const other = Uint8Array.from(want); other[64] ^= 1;
   assert.equal(P.otherKey(subWith(other.buffer), ON), true);
+  const other1 = Uint8Array.from(want); other1[1] ^= 1;
+  assert.equal(P.otherKey(subWith(other1), ON), true);
   assert.equal(P.otherKey(subWith(Buffer.concat([Buffer.from([4]), Buffer.alloc(64, 9)])), ON), true);
-  assert.equal(P.otherKey(subWith(new Uint8Array(64).fill(7)), ON), true);
-  assert.equal(P.otherKey(subWith(new ArrayBuffer(0)), ON), true);
-  // a key the browser does not show (no options, null key, not bytes, a getter that throws): not 'other' — no new
-  // subscription at every start for a browser that cannot tell
+  // a key the browser does not show (no options, null key, not bytes, a getter that throws) or shows in another shape (an
+  // empty buffer, 64 or 66 bytes, 65 bytes not starting 0x04): not 'other' — no new subscription, and no new endpoint out
+  // of the Worker's daily budget, at every start for a browser that cannot tell (review of #85 ②)
   const throws = { endpoint: "https://x.test", get options() { throw new Error("no"); } };
-  [null, {}, { options: null }, subWith(null), subWith(undefined), subWith(KEY), subWith([4, 7, 7]), throws]
+  const no4 = Uint8Array.from(want); no4[0] = 0;
+  const longer = new Uint8Array(66); longer.set(want);
+  [null, {}, { options: null }, subWith(null), subWith(undefined), subWith(KEY), subWith([4, 7, 7]), throws,
+    subWith(new ArrayBuffer(0)), subWith(new Uint8Array(0)), subWith(new Uint8Array(64).fill(7)), subWith(want.subarray(0, 64)), subWith(longer), subWith(no4.buffer)]
     .forEach((sub, i) => assert.equal(P.otherKey(sub, ON), false, `case ${i}`));
   // push not set up (no valid key in the settings): never 'other'
   assert.equal(P.otherKey(subWith(other.buffer), {}), false);

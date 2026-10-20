@@ -1,6 +1,7 @@
 // 푸시 알림 (6.0 지시서 약속 1, 채팅 B6): the phone's side of the alerts Worker (chat A, cf/alerts). Hidden unless app/config.js
 // has both alertsApi (https) and pushPublicKey (the VAPID public key). What goes out:
-//   POST {alertsApi}/v1/push/subscribe {subscription, rules} → {id}   (only after the user taps '받기' and allows notifications)
+//   POST {alertsApi}/v1/push/subscribe {subscription, rules} → {id}   (first after the user taps '받기' and allows notifications;
+//                                                                      again with a new subscription for a new key or a 404/410)
 //   PUT  {alertsApi}/v1/push/rules/{id} {rules}                        (when the phone's alerts change)
 //   DELETE {alertsApi}/v1/push/subscribe/{id}                          ('끄기')
 // rules: at most 20 of {kind: target|watch|newmatch|expiring, key, max?, region?}, made from the phone's own alerts. The id
@@ -135,18 +136,22 @@
     return ArrayBuffer.isView(x) ? new Uint8Array(x.buffer, x.byteOffset, x.byteLength) : null;
   }
   // the browser's subscription was made with a public key other than cfg.pushPublicKey (the VAPID keys were replaced: the
-  // Worker's pushes to it are refused, chat A's request #85 ②). Only a key the browser shows counts — a browser that does
-  // not show one (no options.applicationServerKey) says false, so an unreadable key never makes a new subscription at each start.
+  // Worker's pushes to it are refused, chat A's request #85 ②). Only a key the browser shows in the public key's shape counts
+  // (65 bytes starting 0x04, as keyBytes) — none, an empty buffer or anything else says false, so a browser that cannot tell
+  // never makes a new subscription (and a new endpoint, out of the Worker's daily budget) at each start.
   function otherKey(sub, cfg) {
     const want = keyBytes(cfg && cfg.pushPublicKey);
     let have = null;
     try { have = bytesOf(sub && sub.options && sub.options.applicationServerKey); } catch (e) { return false; }
-    if (!want || !have) return false;
-    return have.length !== want.length || have.some((v, i) => v !== want[i]);
+    if (!want || !have || have.length !== want.length || have[0] !== 4) return false;
+    return have.some((v, i) => v !== want[i]);
   }
 
-  // what the phone keeps: { id, ep: the subscription's endpoint, h: hash of the rules last sent }, or null
-  const cleanState = (s) => (s && typeof s === "object" && ID.test(s.id || "") && typeof s.ep === "string" && typeof s.h === "string" ? { id: s.id, ep: s.ep, h: s.h } : null);
+  // what the phone keeps: { id, ep: the subscription's endpoint, h: hash of the rules last sent, re?: 1 }, or null. re: the
+  // browser's subscription was taken back for a new public key at a start and the new one may not be made yet (offline) —
+  // a next start that finds none tries once more instead of turning off
+  const cleanState = (s) => (s && typeof s === "object" && ID.test(s.id || "") && typeof s.ep === "string" && typeof s.h === "string"
+    ? (s.re === 1 ? { id: s.id, ep: s.ep, h: s.h, re: 1 } : { id: s.id, ep: s.ep, h: s.h }) : null);
 
   return { KINDS, MAX_RULES, MAX_DEL, base, keyBytes, enabled, subJSON, rulesOf, hash, subscribeReq, rulesReq, unsubscribeReq, idOf, cleanDel, addDel, delDone, otherKey, cleanState };
 });
