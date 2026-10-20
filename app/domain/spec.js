@@ -72,9 +72,9 @@
 
   function eligibility(o) {
     const n = dropNewItem(o.name), tags = o.tags || [], out = [];
-    const first = tags.includes("첫 방문") || /첫\s*방문|신규/.test(n);
+    const first = tags.includes("첫 방문") || /첫\s*(?:방문|시술|경험)|신규/.test(n);
     out.push(o.revisit ? { k: "재방문", v: "다시 오는 손님만 — 처음 가면 못 받을 수 있어요", state: "limit" }
-      : first ? { k: "첫 방문", v: "첫 방문(신규)만", state: "limit" } : { k: "첫 방문", v: "표기 없음 — 재방문도 되는지 확인", state: "unknown" });
+      : first ? { k: "첫 방문", v: "첫 방문·첫 시술만", state: "limit" } : { k: "첫 방문", v: "표기 없음 — 재방문도 되는지 확인", state: "unknown" });
     out.push(o.kind === 1 ? { k: "체험 가격", v: "체험가 — 보통 1인 1회", state: "limit" }
       : o.kind === 2 ? { k: "체험 가격", v: "한정가 — 기간·수량·조건이 붙어요", state: "limit" }
         : o.kind === 3 ? { k: "체험 가격", v: "구독권", state: "limit" }

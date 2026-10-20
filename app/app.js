@@ -242,7 +242,7 @@
     const added = D.meta.brands.map((_, i) => i).filter((i) => i >= store.get("nbrands", 4) && !st.brands.includes(i));
     if (added.length && store.get("brands", null)) { st.brands.push(...added); store.set("brands", st.brands); }
     store.set("nbrands", D.meta.brands.length);
-    if (!D.meta.partial) migrateKeys();   // home.json has only some ids: saved items move only with the full list
+    if (!D.meta.partial) { migrateKeys(); migrateNames(); }   // home.json has only some rows: saved items move only with the full list
     paintUpd();
     paintSync();
   }
@@ -267,6 +267,27 @@
     for (const x of L) { const n = mv(x.k); if (n) { x.k = n; sc++; } }
     if (sc) store.set("snaps", L);
     return c + fc + ac + sc;
+  }
+  // saved option names the build renamed at the same branch (Sync.renamed: a section title put in front or taken off, C #126):
+  // '이 옵션 그대로' cart lines, a branch's pick (it.ov) and option price alerts keep finding their row instead of dropping out
+  function migrateNames() {
+    const memo = new Map();
+    const at = (b) => { if (!memo.has(b)) { const m = new Map(); for (const i of byB[b] || []) { const n = S[ROWS[i][2]]; if (!m.has(n)) m.set(n, []); m.get(n).push(ROWS[i][3]); } memo.set(b, m); } return memo.get(b); };
+    const fix = (n, b, p) => { if (b == null || typeof n !== "string") return null; const m = at(b); return Sync.renamed(n, [...m.keys()], p, (x) => m.get(x)); };
+    let c = 0;
+    for (const cart of st.carts || []) for (const it of cart.items || []) {
+      if (it.t === "r") { const n = fix(it.n, BK.get(it.br), it.p); if (n) { it.n = n; c++; } }
+      if (it.ov) for (const bk of Object.keys(it.ov)) { const n = fix(it.ov[bk], BK.get(bk)); if (n) { it.ov[bk] = n; c++; } }
+    }
+    if (c) saveCarts();
+    let ac = 0;
+    for (const a of st.alerts || []) {
+      if (a.row) { const n = fix(a.row.n, BK.get(a.row.br)); if (n) { a.row.n = n; ac++; } }
+      const lr = a.base && a.base.lowRow;
+      if (lr) { const ps = lr.split("|"), bk = ps.slice(0, 2).join("|"), n = fix(ps.slice(2).join("|"), BK.get(bk)); if (n) { a.base.lowRow = `${bk}|${n}`; ac++; } }
+    }
+    if (ac) saveAlerts();
+    return c + ac;
   }
   // the date the rows of key id were last regrouped (data.json meta.recl), or ""
   const reclDate = (id) => { let d = ""; for (const [dt, ks] of D.meta.recl || []) if (ks.includes(id)) d = dt; return d; };
@@ -868,9 +889,12 @@
   // ---------------- price facts: why a price is what it is (conditions, VAT, source) — for the '가격 확인' sheet
   // conditions read from the clinic's own option name (and the tags clean.py found); nothing here is guessed
   const ADDON_COND = "추가 옵션이에요(본 시술과 함께)";
+  // the build's '첫 방문' tag also stands for '첫 시술'·'첫경험' (build2/clean.py TAGS): the price may be for someone new to the
+  // clinic or new to that treatment — the sites do not say which (C 2026-10-19, docs/TREATMENT_TAXONOMY.md §6)
+  const FIRST_COND = "첫 방문·첫 시술 조건";
   const COND_WORDS = [[/(\d[\d,]*\s*만?\s*원)\s*이상\s*(결제|구매|시술|시)/, "최소 결제 금액 조건이 있어요"], [/\d+\s*(샷|cc|U|회|부위)\s*이상\s*(시|구매|결제)?/i, "최소 수량 조건이 있어요"],
     [/단독\s*(불가|시술\s*불가|사용\s*불가)/, "단독으로는 못 받아요(다른 시술과 함께)"], [/(^|\s|\(|\])옵션\s*\d*\)|추가\s*(시|구매|결제)|\d\s*(샷|cc|U)\s*추가|(^|\s)추가(\s|$)/, ADDON_COND],
-    [/동시\s*시술|함께\s*시술|(진행|구매|결제|이용)\s*(고객|시)/, "다른 시술을 받거나 산 사람만"], [/첫\s*방문|신규|웰컴|첫\s*시술|첫\s*구매/, "첫 방문(신규) 조건"],
+    [/동시\s*시술|함께\s*시술|(진행|구매|결제|이용)\s*(고객|시)/, "다른 시술을 받거나 산 사람만"], [/첫\s*방문|신규|웰컴|첫\s*시술|첫\s*경험|첫\s*구매/, FIRST_COND],
     [/1\s*인\s*(당\s*)?1\s*회/, "1인 1회"], [/선착순|한정\s*수량/, "선착순·수량 한정"], [/평일|주말|타임\s*세일|\d\s*시\s*(이전|전|까지)|프라임\s*타임/, "요일·시간 조건"],
     [/팁\s*(별도|미포함)|별도\s*(구매|비용)/, "추가 비용이 따로 있어요"]];
   function priceConds(i) {
@@ -879,7 +903,7 @@
     // the add-on line: with the build's add-on field the sheet says what the badge says (addonOf), the name only in older files
     for (const [rx, t] of COND_WORDS) if ((t === ADDON_COND && ADDON_COL) ? addonOf(r) : rx.test(n)) out.add(t);
     // '평일 낮' and '시간대' (해피아워·화수목·점심·평일 한정…): the same words as the name rule above (and no '한정', which eligOf drops)
-    for (const t of (S[r[6]] || "").split("·").filter(Boolean)) out.add(t === "첫 방문" ? "첫 방문(신규) 조건" : t === "1인 1회" ? "1인 1회" : t === "평일 낮" || t === "시간대" ? "요일·시간 조건" : `${t} 조건`);
+    for (const t of (S[r[6]] || "").split("·").filter(Boolean)) out.add(t === "첫 방문" ? FIRST_COND : t === "1인 1회" ? "1인 1회" : t === "평일 낮" || t === "시간대" ? "요일·시간 조건" : `${t} 조건`);
     for (const x of Pricing.whenLines(r[20], r[21])) out.add(x);    // the days / hours the site wrote: '되는 요일: 화·수·목', '되는 시간: 12:00~15:00'
     if (r[5] === 1) out.add("체험가(보통 1인 1회)");
     if (r[5] === 2) out.add("한정가(기간·수량·첫 방문·재방문 등 조건)");
@@ -2519,7 +2543,7 @@
         h("div", { class: "sub" }, "고르고 '적용'을 누르면 가격표에 바로 반영돼요. 숫자는 지금 다른 조건을 그대로 둘 때의 가격 수예요."),
         opts("조건부 가격(체험가·한정가·첫 방문·요일·시간 조건)", "cond", [["", "모두", null], ["plain", "조건 없는 가격만", cnt.cond.plain || 0], ["special", "조건부만", cnt.cond.special || 0]]),
         opts("가격 종류", "kind", [[-1, "전체", null], ...D.meta.kinds.map((k, i) => [i, k, cnt.kind[i] || 0])]),
-        opts("첫 방문 가격", "fv", [["", "상관없음", null], ["only", "첫 방문가만", cnt.fv.only || 0], ["no", "첫 방문가 빼기", cnt.fv.no || 0]], "병원이 '첫 방문·신규'라고 적은 가격이에요. 두 번째부터는 보통 일반가예요."),
+        opts("첫 방문 가격", "fv", [["", "상관없음", null], ["only", "첫 방문가만", cnt.fv.only || 0], ["no", "첫 방문가 빼기", cnt.fv.no || 0]], "병원이 '첫 방문·신규·첫 시술'이라고 적은 가격이에요. 두 번째부터는 보통 일반가예요."),
         opts("묶음 가격(A+B처럼 여러 시술을 한 값에)", "bun", [["", "포함", null], ["only", "묶음만", cnt.bun.only || 0], ["no", "묶음 빼기", cnt.bun.no || 0]], "묶음은 구성이 지점마다 달라서 시술별 비교에는 쓰지 않아요."),
         opts("회차·패키지", "sess", [["", "전체", null], ...Object.entries(SESS_L).map(([k, l]) => [k, l, cnt.sess[k] || 0])], "회차가 적혀 있지 않은 가격은 1회 가격으로 보지만, 상품명에 없다는 걸 함께 표시해요."),
         opts("부가세 표시(앱 전체)", "vat", [["incl", "부가세 포함 예상가", null], ["listed", "병원 표시가", null]], "병원이 '부가세 별도'라고 적은 가격에만 10%를 더해요. 부가세 표기를 못 찾은 가격은 더하지도 빼지도 않아요."),

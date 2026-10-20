@@ -58,3 +58,16 @@ test("the repo's data-meta.json matches app/data.json (bytes, checksum, counts) 
   const d = JSON.parse(raw.toString("utf8"));
   assert.deepEqual(Y.checkData(d, m, m.sha256), []);
 });
+
+test("renamed: a saved option name finds its row after the build put a section title in front of it or took it off", () => {
+  const names = ["男) 팔전체 12회 · 제모데이 12회", "女) 팔전체 12회 · 제모데이 12회", "스킨보톡스 1부위", "국산보톡스 · 스킨보톡스 2부위"];
+  assert.equal(Y.renamed("스킨보톡스 2부위", names), "국산보톡스 · 스킨보톡스 2부위");            // title put in front
+  assert.equal(Y.renamed("국산 · 스킨보톡스 1부위", names), "스킨보톡스 1부위");                   // title taken off
+  assert.equal(Y.renamed("다른 제목 · 스킨보톡스 2부위", names), "국산보톡스 · 스킨보톡스 2부위"); // title changed
+  assert.equal(Y.renamed("스킨보톡스 1부위", names), null);                                       // still there
+  assert.equal(Y.renamed("제모데이 12회", names), null);                                          // two products: no guess
+  const p = { "男) 팔전체 12회 · 제모데이 12회": [579000], "女) 팔전체 12회 · 제모데이 12회": [499000] };
+  assert.equal(Y.renamed("제모데이 12회", names, 499000, (n) => p[n]), "女) 팔전체 12회 · 제모데이 12회"); // the price tells them apart
+  assert.equal(Y.renamed("물광주사 2cc", names), null);                                            // nothing like it
+  assert.equal(Y.renamed("", names), null);
+});

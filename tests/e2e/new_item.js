@@ -1,5 +1,5 @@
 // A new device or product ('EGF 리젠셀크림 (★신규런칭★)', '덴서티 (알파팁 신규도입)', '탄생주사 신규 런칭') is not a first-visit
-// price: the '가격 확인' sheet does not say '첫 방문(신규) 조건' for it (Spec.dropNewItem, the same words as build2/clean.py NEW_ITEM,
+// price: the '가격 확인' sheet does not say '첫 방문·첫 시술 조건' for it (Spec.dropNewItem, the same words as build2/clean.py NEW_ITEM,
 // C #99), while a name that says a new customer ('신규 고객', '첫 방문') still does. Rows are picked from the data the app was served;
 // a file without such rows prints SKIP.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/new_item.js
@@ -10,7 +10,7 @@ const PIN = process.env.APP_PIN;   // the PIN screen's number: never written in 
 if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주세요'); process.exit(2); }
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${detail}`); };
 const NEW_ITEM = /신규\s*(?:런칭|입고|도입|오픈|출시)/;
-const FIRST = '첫 방문(신규) 조건';
+const FIRST = '첫 방문·첫 시술 조건';
 
 (async () => {
   const D = asRows(await (await fetch(BASE + 'data.json')).json()), S = D.s, td = new Date().toISOString().slice(0, 10);
