@@ -13,7 +13,7 @@
 // 담기 (an outline), the small switch '전에 이 시술을 받아 봤어요' (36×22 to see, 44 to press, a 13/400 grey label), search's ×,
 // every switch on and off (track and knob, ≥ 3:1 on the card and to each other) and its focus ring (2px charcoal, 2px apart),
 // the count on the chosen tab and on the others, 비교함에 있음 on the branch page and in 가격 근거, what has a light green fill on
-// every screen, the grey of the actions that were light green (시술 사전 · 빠른 비교 · 내 견적 고급 설정).
+// every screen, the grey of the six actions that were light green (시술 사전 · 빠른 비교 · 내 견적 고급 설정 · 죠미 소개 · 죠미 대화 답 둘).
 // A list in a butter box (ul.warns) is a price's conditions only — 가격 근거 '조건', the quote's '확인할 조건'; the treatment
 // sheet's side effects · cautions · sources and 고민 '시술 말고 할 수 있는 관리' are grey (ul.notes) — and 빠른 비교's date chip is grey.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/color_roles.js
@@ -171,15 +171,23 @@ const scan = (sel) => {
     ok(`${W} 시험이 볼 것이 있었음(데이터 상태 배지·제품 알약·고른 것·켠/끈 스위치·고른 탭/다른 탭의 배지)`, seen.kw > 0 && seen.prodk > 0 && seen.chosen > 10
       && seen.swOn > 0 && seen.swOff > 0 && seen.badgeOn > 0 && seen.badgeOff > 0 && seen.sage.size >= 2,
       `kw ${seen.kw} · prodk ${seen.prodk} · chosen ${seen.chosen} · 스위치 켬 ${seen.swOn}/끔 ${seen.swOff} · 배지 고른 탭 ${seen.badgeOn}/다른 탭 ${seen.badgeOff} · 연한 초록 ${[...seen.sage].join(' ')}`);
-    // the actions that were light green (.btn.soft) are the grey action button (사용자 결정 2026-10-20): 시술 사전 '가격 비교', 빠른 비교
-    // '지점 추가 (n/4)', 내 견적 고급 비교 설정 '내 위치로 거리 보기'
-    for (const [label, hash, text, open] of [['시술 사전', '#guide', '가격 비교'], ['빠른 비교', '#quick?k=X01', '지점 추가'], ['내 견적 고급 비교 설정', '#cart', '내 위치로 거리 보기', '#main details.advset']]) {
+    // the actions that were light green (.btn.soft) are the grey action button (사용자 결정 2026-10-20), all six on screen: 시술 사전
+    // '가격 비교', 빠른 비교 '지점 추가 (n/4)', 내 견적 고급 비교 설정 '내 위치로 거리 보기', 죠미 소개 '죠미와 대화' (홈 머리의 죠미),
+    // 죠미 대화 답의 '… 가격표' and its way to a screen ('부가세는 어떻게 돼?' → '설정 열기')
+    const ask = (q) => async () => { await p.locator('#main .composer textarea').fill(q); await p.locator('#main .composer button.send').click(); await p.waitForTimeout(900); };
+    const opened = (sel) => async () => { const o = p.locator(sel).first(); if ((await o.count()) && !(await o.evaluate((d) => d.open))) { await o.locator(':scope > summary').click(); await p.waitForTimeout(400); } };
+    // [화면, 주소, 버튼 글자(정규식), 준비, 찾는 곳] — the newest match (a chat's last answer)
+    for (const [label, hash, text, prep, scope] of [['시술 사전', '#guide', '^가격 비교'], ['빠른 비교', '#quick?k=X01', '^지점 추가'],
+      ['내 견적 고급 비교 설정', '#cart', '^내 위치로 거리 보기', opened('#main details.advset')],
+      ['죠미 소개', '#home', '^죠미와 대화$', async () => { await p.click('#jomibtn'); await p.waitForTimeout(600); }, '.sheet .jomi-actions'],
+      ['죠미 대화 답(시술 가격)', '#concern', '\\S 가격표$', ask('강남 리쥬란 얼마야'), '#main .chat'], ['죠미 대화 답(앱 도움말)', '#concern', '^설정 열기$', ask('부가세는 어떻게 돼?'), '#main .chat']]) {
       await p.goto(BASE + hash); await p.waitForTimeout(900);
-      if (open) { const o = p.locator(open).first(); if ((await o.count()) && !(await o.evaluate((d) => d.open))) { await o.locator(':scope > summary').click(); await p.waitForTimeout(400); } }
-      const g = await p.evaluate((text) => { const e = [...document.querySelectorAll('#main button.btn')].find((x) => x.textContent.trim().startsWith(text) && x.checkVisibility()); if (!e) return null;
+      if (prep) await prep();
+      const g = await p.evaluate(([text, scope]) => { const e = [...document.querySelectorAll(`${scope} button.btn`)].reverse().find((x) => new RegExp(text).test(x.textContent.trim()) && x.checkVisibility()); if (!e) return null;
         const cs = getComputedStyle(e), root = getComputedStyle(document.documentElement), rgb = (n) => { const v = parseInt(root.getPropertyValue(n).trim().replace('#', ''), 16); return `rgb(${(v >> 16) & 255}, ${(v >> 8) & 255}, ${v & 255})`; };
-        return { t: e.textContent.trim(), cls: e.className, gray: e.matches('.btn.gray') && cs.backgroundColor === rgb('--fill') && cs.color === rgb('--ink') }; }, text);
-      ok(`${W} ${label} '${text}': 회색 동작 버튼(.btn.gray — 연한 초록 아님)`, !!g && g.gray, JSON.stringify(g)); }
+        return { t: e.textContent.trim(), cls: e.className, gray: e.matches('.btn.gray') && cs.backgroundColor === rgb('--fill') && cs.color === rgb('--ink') }; }, [text, scope || '#main']);
+      ok(`${W} ${label} '${text.replace(/^\^|\$$/g, '').replace('\\S ', '… ')}': 회색 동작 버튼(.btn.gray — 연한 초록 아님)`, !!g && g.gray, JSON.stringify(g));
+      if (scope === '.sheet .jomi-actions') { await p.keyboard.press('Escape'); await p.waitForTimeout(400); } }
     // 비교함에 있음 on the branch page (and 가격 근거's, the same button): pressed = 담김's light green, unpressed = grey (사용자 결정 2026-10-20)
     await p.goto(BASE + `#branch/${bi}`); await p.waitForTimeout(900);
     { const sb = p.locator('#main .shortbtn').first(), was = (await sb.getAttribute('aria-pressed')) === 'true';

@@ -3,7 +3,8 @@
 // order kept (no rank numbers, not cheapest-first). A card's three actions at 320·360·390·414 (사용자 결정 2026-10-20 — in one
 // row they were 60~68px wide at 360·390 and their words stacked a letter a line, main too): the branch head's grid of equal halves
 // (.bbtns), 가격 근거 · 지점 보기 side by side and 비교함 across both under them (2+1); every button 36 high with its words on one
-// line and nothing cut, '비교함에 있음' (pressed) too.
+// line and nothing cut, '비교함에 있음' (pressed) too; 비교함, across both halves, keeps its ✓ / ⊕ at 320 too (검토 2026-10-20 — the
+// halves hide theirs there); on every card the buttons sit 16px or more under its last line, at its foot, at the same height.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/compare_cards.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -57,11 +58,18 @@ const num = (t) => +String(t).replace(/[^\d]/g, '');
       // the lines its words take: the distinct tops of its text's boxes (a word stacked a letter a line has one top per letter)
       const tops = new Set(); for (const t of [...x.childNodes].filter((n) => n.nodeType === 3 && n.textContent.trim())) { const rg = document.createRange(); rg.selectNodeContents(t);
         for (const q of rg.getClientRects()) if (q.width > 0) tops.add(Math.round(q.top)); }
-      return { t: x.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left - ar.left), y: Math.round(r.top - ar.top), lines: tops.size, cut: x.scrollWidth > x.clientWidth + 1 }; });
+      const ic = x.querySelector(':scope > svg.i'), icon = !!ic && getComputedStyle(ic).display !== 'none' && ic.getBoundingClientRect().width > 0;
+      return { t: x.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height), x: Math.round(r.left - ar.left), y: Math.round(r.top - ar.top), lines: tops.size, cut: x.scrollWidth > x.clientWidth + 1, icon }; });
     return { aw: Math.round(ar.width), bs }; });
+  // every card: the gap from its last line to the first button, how far the buttons are from the card's top, and from its inner foot
+  const foot = () => [...document.querySelectorAll('#clinics .ccard')].map((c) => { const a = c.querySelector('.ccard-a'), cr = c.getBoundingClientRect(), ar = a.getBoundingClientRect(), cs = getComputedStyle(c);
+    return { gap: a.firstElementChild.getBoundingClientRect().top - a.previousElementSibling.getBoundingClientRect().bottom, top: ar.top - cr.top,
+      foot: cr.bottom - parseFloat(cs.paddingBottom) - parseFloat(cs.borderBottomWidth) - ar.bottom }; });
+  const footOk = (fs) => fs.length > 1 && fs.every((f) => f.gap >= 15.5 && Math.abs(f.foot) <= 1) && Math.max(...fs.map((f) => f.top)) - Math.min(...fs.map((f) => f.top)) <= 1;
+  const showFoot = (fs) => `${fs.length}장 · 간격 ${Math.round(Math.min(...fs.map((f) => f.gap)))}~${Math.round(Math.max(...fs.map((f) => f.gap)))} · 위에서 ${Math.round(Math.min(...fs.map((f) => f.top)))}~${Math.round(Math.max(...fs.map((f) => f.top)))} · 바닥까지 ${Math.round(Math.max(...fs.map((f) => Math.abs(f.foot))))}`;
   const shapeOk = (c) => { const [g, s, k] = c.bs; return c.bs.length === 3 && c.bs.every((x) => x.h >= 36 && x.h <= 40 && x.lines === 1 && !x.cut)
-    && g.y === s.y && Math.abs(g.w - s.w) <= 1 && g.x === 0 && Math.abs(s.x + s.w - c.aw) <= 1 && k.y >= g.y + g.h && k.x === 0 && Math.abs(k.w - c.aw) <= 1 && /^비교함/.test(k.t); };
-  const show = (cs) => cs.slice(0, 1).map((c) => `판 ${c.aw} · ` + c.bs.map((x) => `${x.t} ${x.w}×${x.h} ${x.lines}줄${x.cut ? ' 잘림' : ''}`).join(' / ')).join('');
+    && g.y === s.y && Math.abs(g.w - s.w) <= 1 && g.x === 0 && Math.abs(s.x + s.w - c.aw) <= 1 && k.y >= g.y + g.h && k.x === 0 && Math.abs(k.w - c.aw) <= 1 && /^비교함/.test(k.t) && k.icon; };
+  const show = (cs) => cs.slice(0, 1).map((c) => `판 ${c.aw} · ` + c.bs.map((x) => `${x.t} ${x.w}×${x.h} ${x.lines}줄${x.cut ? ' 잘림' : ''}${x.icon ? ' 아이콘' : ''}`).join(' / ')).join('');
   for (const W of [320, 360, 390, 414]) {
     const c2 = await b.newContext({ serviceWorkers: 'block', viewport: { width: W, height: 800 } }); const q = await c2.newPage(); q.on('pageerror', (e) => errs.push(e.message));
     await q.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
@@ -70,7 +78,9 @@ const num = (t) => +String(t).replace(/[^\d]/g, '');
     await q.goto(BASE + '#compare?k=X12'); await q.waitForTimeout(500);
     await q.locator('#clinics .seg.vsw button', { hasText: '카드' }).click(); await q.waitForTimeout(400);
     const m = await q.evaluate(acts);
-    ok(`${W}px 카드 버튼: 가격 근거·지점 보기 같은 폭 반반, 비교함은 그 아래 한 줄 전체(2+1), 모두 높이 36·글자 한 줄·잘림 없음`, m.length === 3 && m.every(shapeOk), show(m));
+    ok(`${W}px 카드 버튼: 가격 근거·지점 보기 같은 폭 반반, 비교함은 그 아래 한 줄 전체(2+1, 아이콘 그대로), 모두 높이 36·글자 한 줄·잘림 없음`, m.length === 3 && m.every(shapeOk), show(m));
+    const fs = await q.evaluate(foot);
+    ok(`${W}px 카드 버튼은 모든 카드에서 마지막 줄 아래 16px 이상, 카드 맨 아래, 카드마다 같은 높이`, footOk(fs), fs.length ? showFoot(fs) : '카드 없음');
     await q.locator('#clinics .ccard').first().locator('.shortbtn').click(); await q.waitForTimeout(300);
     const m2 = await q.evaluate(acts);
     ok(`${W}px 카드 '비교함에 있음'(누른 뒤)도 한 줄, 같은 격자`, /비교함에 있음/.test(m2[0].bs[2].t) && shapeOk(m2[0]), show(m2));

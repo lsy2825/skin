@@ -207,7 +207,9 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 .bbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
 .bbtns > .btn { width: 100%; min-width: 0; padding: var(--sp-2); text-align: center; }
 .btn.out > svg.i.xs { color: var(--muted); }   /* ↗: leaves the app */
-@media (max-width: 359px) { .bbtns > .btn > svg.i.sm:first-child { display: none; } }   /* a 320px half keeps its words on one line */
+/* a 320px half keeps its words on one line; the card's 비교함, across both halves (163px at 320), keeps its ✓ / ⊕ like before the
+   2+1 grid (검토 2026-10-20 — the icon tells 비교함에 있음 from 비교함 besides its words and colour) */
+@media (max-width: 359px) { .bbtns > .btn > svg.i.sm:first-child { display: none; } .bbtns.ccard-a > .shortbtn > svg.i.sm:first-child { display: inline; } }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: var(--fs-aux); font-weight: var(--fw-semi); display: inline-flex; align-items: center; gap: var(--sp-1); position: relative; text-decoration: none; }
 /* text-sized buttons keep a 24×24 px touch area (WCAG 2.2 target size) */
 .linkbtn::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 26px); height: max(100%, 26px); transform: translate(-50%, -50%); }
