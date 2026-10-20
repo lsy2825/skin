@@ -123,7 +123,10 @@ const head = (p) => p.evaluate(() => {
           const med = document.querySelector('.cmphead .hmed'), row = document.querySelector('.cmphead .hrow'); if (!med) continue;
           const num = [...med.childNodes].reverse().find((n) => n.nodeType === 3 && /\d/.test(n.textContent)); if (num) { const rg = document.createRange(); rg.selectNodeContents(num);
             if (new Set([...rg.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top))).size > 1) bad.push(`${id} ${med.textContent}`); }
-          if (row.scrollWidth > row.clientWidth + 1) over.push(id); }
+          // the row's boxes stay inside it and none spills its own words; the ⋯'s press ring (.tbtn-i ::before, 2px round its 40 —
+          // 2026-10-20 디자인 통일 U20) takes no room but row.scrollWidth counts it, so the boxes are measured one by one
+          const rr = row.getBoundingClientRect(), kids = [...row.children];
+          if (kids.some((c) => { const r = c.getBoundingClientRect(); return r.right > rr.right + 1 || r.left < rr.left - 1 || (!c.matches('.tbtn-i') && c.scrollWidth > c.clientWidth + 1); })) over.push(id); }
         return { n: ids.length, bad, over }; });
       ok(`19 머리글 중간값 숫자가 갈라지지 않음·줄 넘침 없음 (${W}px, X 키 ${res.n}개)`, res.n > 30 && !res.bad.length && !res.over.length, JSON.stringify(res));
     }

@@ -120,11 +120,16 @@ header.top.scrolled { box-shadow: 0 1px 0 var(--line-soft); }
 .logotype { display: block; height: 21px; width: auto; color: var(--ink); }
 .logotype .lt-dot, .lt-dot { fill: var(--lt-dot); }
 header.top .upd { font-size: var(--fs-aux); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 0; }
-.tbtn-i { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--ink-2);
+/* a button with an icon and no words, in one shape (2026-10-20 디자인 통일 U20, DESIGN_SYSTEM §3 '아이콘 버튼'): a 40px circle with no
+   edge, the icon 22, grey under the finger; pressed over 44 (::before, 2px round it). The top bar's 위치·알림, a sheet's 닫기, ♡
+   (.favbtn), 비교 머리 ⋯, 지점 머리 ‹ ›, 카드 보기 ‹ ›, 빼기 ×, A↔B — the ⋯ was a 44px edged square (14), ‹ › 34px edged squares
+   (10), A↔B a 44px edged circle, 내 견적 × 32 */
+.tbtn-i, .favbtn { position: relative; width: 40px; height: 40px; flex: none; display: grid; place-items: center; border: 0; border-radius: 50%; background: none; color: var(--ink-2);
   transition: background var(--fast), transform var(--fast); }
-.tbtn-i:hover { background: var(--fill); }
+.tbtn-i::before, .favbtn::before { content: ""; position: absolute; inset: -2px; border-radius: 50%; }
+.tbtn-i:hover, .favbtn:hover { background: var(--fill); }
 .tbtn-i:active { transform: scale(.92); }
-.tbtn-i svg.i { width: 22px; height: 22px; }
+.tbtn-i svg.i, .favbtn svg.i { width: 22px; height: 22px; }
 .locbtn.on { color: var(--sage); }
 .locbtn.on::after { content: ""; position: absolute; top: 9px; right: 9px; width: 7px; height: 7px; border-radius: 50%; background: var(--s1); box-shadow: 0 0 0 2px var(--bg); }
 .regbtn { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 999px;
@@ -234,9 +239,11 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 .bbtns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
 .bbtns > .btn { width: 100%; min-width: 0; padding: var(--sp-2); text-align: center; }
 .btn.out > svg.i.xs { color: var(--muted); }   /* ↗: leaves the app */
-/* a 320px half keeps its words on one line; the card's 비교함, across both halves (163px at 320), keeps its ✓ / ⊕ like before the
-   2+1 grid (검토 2026-10-20 — the icon tells 비교함에 있음 from 비교함 besides its words and colour) */
-@media (max-width: 359px) { .bbtns > .btn > svg.i.sm:first-child { display: none; } .bbtns.ccard-a > .shortbtn > svg.i.sm:first-child { display: inline; } }
+/* a 320px half keeps its words on one line: the icons before them go — but not 비교함's ✓ / ⊕, a state (비교함에 있음 / 비교함),
+   not a decoration: it stays wherever 비교함 is, a half of the branch head (119px at 320: ✓ 비교함에 있음 is 109) or across the
+   card (163px) (2026-10-20 디자인 통일 U18 — the branch head hid it, the card showed it; 검토 2026-10-20 — the icon tells 비교함에
+   있음 from 비교함 besides its words and colour) */
+@media (max-width: 359px) { .bbtns > .btn > svg.i.sm:first-child { display: none; } .bbtns > .shortbtn > svg.i.sm:first-child { display: inline; } }
 .linkbtn { border: 0; background: none; padding: 0; color: var(--accent); font-size: var(--fs-aux); font-weight: var(--fw-semi); display: inline-flex; align-items: center; gap: var(--sp-1); position: relative; text-decoration: none; }
 /* text-sized buttons keep a 24×24 px touch area (WCAG 2.2 target size) */
 .linkbtn::after { content: ""; position: absolute; left: 50%; top: 50%; width: max(100%, 26px); height: max(100%, 26px); transform: translate(-50%, -50%); }
@@ -247,8 +254,7 @@ a.src { font-size: var(--fs-aux); }
 .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); border-color: transparent; }
 .addbtn.pop { animation: bump .4s var(--ease); }
 .addbtn > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.favbtn { border: 0; background: none; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: var(--muted); flex: none; transition: transform var(--fast), color var(--fast); }
-.favbtn svg.i { width: 22px; height: 22px; }
+.favbtn { color: var(--muted); transition: transform var(--fast), color var(--fast), background var(--fast); }   /* its shape: .tbtn-i above */
 .favbtn[aria-pressed="true"] { color: var(--coral); }
 .favbtn[aria-pressed="true"] svg.i { fill: currentColor; }
 .favbtn:active { transform: scale(.85); }
@@ -306,6 +312,9 @@ a.src { font-size: var(--fs-aux); }
 .seg button { border: 0; background: none; border-radius: 11px; padding: var(--sp-2) var(--sp-1); font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); transition: background var(--mid) var(--ease), color var(--fast); }
 /* the chosen segment: the charcoal fill of every chosen control (위계 점검 43 — it was a raised white one) */
 .seg button[aria-selected="true"], .seg button[aria-checked="true"], .seg button[aria-pressed="true"] { background: var(--ink); color: var(--on-primary); }
+/* four picks two to a row (가격 변동 '내렸어요 55 · 올랐어요 53 / 새로 생겼어요 60 · 없어졌어요 207' — 2026-10-20 디자인 통일 U22) */
+.seg.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: var(--sp-3); }
+@media (min-width: 640px) { .seg.two { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 .seg.vsw { width: 116px; flex: none; }
 .seg.vsw button { padding: var(--sp-1); min-height: 32px; font-size: var(--fs-aux); }   /* 32 to press, as before the 4px step (검토) */
 /* compare: clinics as swipe cards (same order as the list) */
@@ -577,11 +586,6 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .hero.alt { background: var(--sunken); border-radius: var(--r-md); padding: var(--sp-3); margin-top: var(--sp-2); }
 .hero.alt .hp, .hero.flat .hp, .hero.minor .hp { font-size: var(--fs-title); }
 .hero.flat { background: var(--sunken); border-radius: var(--r-md); padding: var(--sp-3); }
-.qstats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; margin-top: var(--sp-3); border-top: 1px solid var(--line-soft); padding-top: var(--sp-3); }
-.qstats div { display: grid; gap: 0; padding: 0; align-content: start; }
-.qstats div + div { border-left: 1px solid var(--line-soft); padding-left: var(--sp-2); }
-.qstats span { font-size: var(--fs-aux); color: var(--muted); font-weight: var(--fw-semi); }
-.qstats b { font-size: var(--fs-body); font-weight: var(--fw-bold); letter-spacing: -0.02em; }
 /* 조건부 가격 · 확인 필요 초저가 in the price card (위계 점검 31 · CARD-1): a hairline above and the line's badges — the
    butter of a condition is on its badge, not a filled box inside the card */
 .condlow { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); }   /* 8px steps (검토) */
@@ -608,9 +612,6 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .tile .w { font-size: var(--fs-aux); color: var(--muted); }
 .tile.tbtn { text-align: left; transition: transform var(--fast), border-color var(--fast); }
 .tile.tbtn:active { transform: scale(.97); }
-.tile.tbtn[aria-pressed="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-primary); }
-.tile.tbtn[aria-pressed="true"] b { color: inherit; }
-.tile.tbtn[aria-pressed="true"] .k, .tile.tbtn[aria-pressed="true"] .w { color: color-mix(in srgb, var(--on-primary) 75%, transparent); }
 
 /* ---------- charts (one axis, thin marks, tooltip, table view) */
 .lc { margin-top: var(--sp-2); }
@@ -671,7 +672,6 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .cbar .r i { background: var(--s2); border-radius: 0 3px 3px 0; }
 .vpick { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--sp-2); align-items: end; }
 @media (max-width: 560px) { .vpick { grid-template-columns: minmax(0, 1fr); } .swap { justify-self: center; } }
-.swap { width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); display: grid; place-items: center; }
 .vsum { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.03em; line-height: 1.35; }
 .vbar { display: flex; gap: var(--sp-1); height: 12px; margin-top: var(--sp-3); }
 .vbar i { display: block; min-width: 3px; border-radius: 4px; }
@@ -685,10 +685,34 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .pbars i.a { background: var(--s1); } .pbars i.b { background: var(--s2); }
 .pbars i.lo { opacity: 1; }
 .vwin { font-weight: var(--fw-semi); color: var(--ink); }
-.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); margin-top: var(--sp-3); }
-.stats div { background: var(--sunken); border: 1px solid var(--line-soft); border-radius: 14px; padding: var(--sp-2); display: grid; gap: 0; text-align: center; }
-.stats b { font-size: var(--fs-sec); font-weight: var(--fw-bold); }
-.stats span { font-size: var(--fs-aux); color: var(--muted); }
+/* figures in one shape (statRow, 2026-10-20 디자인 통일 U21, DESIGN_SYSTEM §3 '숫자 요약'): the name 13/600 grey over the number
+   17/760 and a note 13 grey, left-aligned, no box; a hairline over the row and between the figures of a row (3 to a row, .two 2).
+   비교 가격 카드 · 마이 · 지점 비교 · 지점 수준 · 할인율 */
+.stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-3) 0; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); }
+.stats.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.stats > div { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 0; min-width: 0; padding-right: var(--sp-2); }
+.stats > div + div { border-left: 1px solid var(--line-soft); padding-left: var(--sp-2); }
+.stats:not(.two) > div:nth-child(3n+1), .stats.two > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+.stats .sk { font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); }
+.stats b { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.025em; }
+.stats .w { font-size: var(--fs-aux); color: var(--muted); }
+/* in the price card the figures are its second line, under the 28px range: 15, as before (.qstats). At 17 a third of the card was too
+   narrow — '1,108,250 / 원', '최대 / 2.5배' (검토 2026-10-20: 4 of 36 cards at 390, all 36 at 320). A figure keeps one line: its
+   column is a third, or more when the figure needs it (min-content, the others give way). Under 375 two to a row (2 + 1): at 15 a
+   third of 320 still split 12 of 36 */
+.pricecard .stats { grid-template-columns: repeat(3, minmax(min-content, 1fr)); }
+.pricecard .stats > div { grid-template-columns: minmax(min-content, 1fr); }
+.pricecard .stats b { font-size: var(--fs-body); white-space: nowrap; }
+@media (max-width: 374px) {
+  .pricecard .stats { grid-template-columns: repeat(2, minmax(min-content, 1fr)); }
+  .pricecard .stats > div:nth-child(odd) { border-left: 0; padding-left: 0; }
+  .pricecard .stats > div:nth-child(even) { border-left: 1px solid var(--line-soft); padding-left: var(--sp-2); }
+}
+/* 가격 이력's four figures are still .tiles > div.tile (keyTrend — app/unify-ab dates those lines; after both are in, statRow): the
+   same shape, two to a row. A .tile that is a button (브랜드별) keeps its box: a box is a thing to press */
+.tiles:has(> div.tile) { gap: var(--sp-3) 0; padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tiles > div.tile { background: none; border: 0; border-radius: 0; padding: 0 var(--sp-2) 0 0; }
+.tiles > div.tile:nth-child(even) { border-left: 1px solid var(--line-soft); padding-left: var(--sp-2); }
 
 /* ---------- facts, tables, misc */
 dl.facts { margin: var(--sp-2) 0 0; display: grid; gap: var(--sp-3); }
@@ -727,7 +751,12 @@ pre.preview { white-space: pre-wrap; font-family: inherit; font-size: var(--fs-a
 .range { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: var(--sp-2); align-items: center; }
 .range .pick { width: 100%; min-width: 0; }
 .sibs { display: inline-flex; align-items: center; gap: var(--sp-1); flex: none; }
-.sibs button { border: 1px solid var(--line); background: var(--surface); width: 34px; height: 34px; border-radius: 10px; color: var(--ink-2); display: grid; place-items: center; }
+/* the branch head's brand line holds ♡ and ‹ n/m › at its right, so the name under it has the card's whole width (검토 2026-10-20 — beside
+   the name the 40px buttons left it 74px at 320). The 40px circles lean 8 into the card's padding above and at the right and 8 into
+   the name's line below, so the line takes the room of its words (24) */
+.brline { flex-wrap: nowrap; margin: -8px -8px -8px 0; }
+.brline > .sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brline > .favbtn { margin-left: auto; }
 /* ---------- folds: one summary line everywhere (위계 점검 30 · FOLD-1 — 8 looks, 3 of them on the compare screen): the words
    (an icon before them when they have one), then one chevron at the line's right end that turns over when open. Two sizes for
    two levels: a fold that is a block of its own is a card with a 15/600 ink line (비교 '가격 종류별…'·'뭐예요? · 규격 확인',
@@ -792,8 +821,8 @@ details.advset > summary b { font-weight: inherit; }
 .ci + .ci { border-top: 1px solid var(--line-soft); }
 .ci .cimg { width: 44px; height: 44px; border-radius: 14px; background: var(--fill); display: grid; place-items: center; color: var(--ink-2); grid-row: span 2; }
 .ci .cn { font-weight: var(--fw-semi); line-height: 1.4; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
-.ci .cx { border: 0; background: none; color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; margin: -8px -8px 0 0; }
-.ci .cx:hover { background: var(--fill); color: var(--ink); }
+.ci .cx { color: var(--muted); margin: -8px -8px 0 0; }   /* .tbtn-i, leaning 8 into the card's padding as when it was 32: its glyph ends 1px inside the line's top-right */
+.ci .cx:hover { color: var(--ink); }
 .ci .cs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
 /* the price beside the − / +: at its narrowest (a range broken at '~') it starts there and fills what is left. When even that is
    wider than what is left (320: '가능한 지점 없음', '…~1,089,000원' ran 7px past the line) it goes under them, at the right */
@@ -1063,7 +1092,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .specs dt { color: var(--muted); }
 .specs dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .specs dd.st-unknown > span:first-child { color: var(--muted); }
-/* own class: '.sibs' is the option prev/next pair (34 px buttons) and must not reach these chips */
+/* own class: '.sibs' is the branch prev/next pair (.tbtn-i) and must not reach these chips */
 .speccard .specsib { display: block; margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px solid var(--line-soft); font-size: var(--fs-aux); }
 .speccard .specsib > b { display: block; }
 .speccard .specsib ul { margin: var(--sp-2) 0 0; }
@@ -1246,7 +1275,6 @@ html.calm .flash { animation: none; outline: 2px solid var(--accent); outline-of
 .cmphead .addbtn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cmphead .addbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); border-color: transparent; }
 @media (max-width: 360px) { .cmphead .addbtn { padding: 0 var(--sp-2); } }   /* narrow phones: the label's room */
-.cmphead .morebtn { min-width: 44px; min-height: 44px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); display: grid; place-items: center; cursor: pointer; flex: none; }
 /* 위계 점검 9 — folded while the list scrolls (html.cmp-fold, set by app.js heads() from the scroll handler; classes only):
    the app bar slides up and the header keeps the path, the basis line (as it is) and 중간값 · 담기 · ⋯. The title row
    goes to the top of the header and the header's sticky top moves up by that row and its padding, out of view; the header's

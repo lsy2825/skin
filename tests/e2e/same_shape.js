@@ -611,5 +611,192 @@ const HELP = () => {
     await ctx.close();
   }
   await b.close();
+  // ---------- 디자인 통일 묶음 C (2026-10-20 · U18~U22, docs/DESIGN_SYSTEM.md): the last five 'one role, two or three shapes' — the
+  // sources first, then the screens at 390 and 320 in a browser of its own
+  {
+    const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
+    const app = fs.readFileSync(path.join(ROOT, 'app/app.js'), 'utf8'), css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+    const lines = app.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => !/^\s*\/\//.test(l));
+    // U21: figures are built by statRow only — no hand-made .stats / .qstats, no .tile that is not a button but 가격 이력's four
+    // (keyTrend: app/unify-ab dates those lines — statRow once both are in; the CSS gives them the same shape meanwhile)
+    const kt0 = app.indexOf('function keyTrend('), kt1 = app.indexOf('\n  }\n', kt0), ktFrom = app.slice(0, kt0).split('\n').length, ktTo = app.slice(0, kt1).split('\n').length;
+    const handStats = lines.filter(([, l]) => /class: "q?stats"|"qstats"/.test(l)).map(([n, l]) => `${n} ${l.trim().slice(0, 60)}`);
+    const plainTile = lines.filter(([n, l]) => /\{ class: "tile" \}/.test(l) && !(n > ktFrom && n < ktTo)).map(([n, l]) => `${n} ${l.trim().slice(0, 60)}`);
+    ok('U21 숫자 요약은 statRow로만(손으로 만든 .stats·.qstats 없음, 누르지 않는 .tile은 가격 이력 4칸뿐)', !handStats.length && !plainTile.length && !/\.qstats\s*\{/.test(css), [...handStats, ...plainTile].slice(0, 3).join(' | '));
+    // U22: a pick of what to list is a .seg — no tile pressed in place (aria-pressed .tile)
+    ok('U22 고르기는 .seg로만(누르는 타일 aria-pressed 없음)', !lines.some(([, l]) => /class: "tile tbtn"[^}]*"aria-pressed"/.test(l)) && !/\.tile\.tbtn\[aria-pressed/.test(css));
+    // U20: no icon button drawn by hand with an edge or another size
+    ok('U20 아이콘 버튼 CSS 하나(.sibs·.swap·⋯에 따로 그린 테두리·크기 없음)', !/(\.sibs button|\.swap|\.morebtn|\.cx)\s*\{[^}]*(border|width|height|radius)/.test(css));
+
+    const b2 = await chromium.launch();
+    const SHORT = ['블리비|강남역점', '쁨|홍대점', '톡스앤필|강남본점'];
+    const open = async (vp) => {
+      const ctx = await b2.newContext({ serviceWorkers: 'block', viewport: vp, isMobile: true, hasTouch: true, colorScheme: 'light' }); await ctx.addInitScript(HELP);
+      const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message));
+      await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
+      await p.goto(BASE); await p.evaluate(([items, short]) => { localStorage.clear(); localStorage.setItem('pc:region', JSON.stringify('수도권'));
+        localStorage.setItem('pc:carts', JSON.stringify([{ id: 's', name: '모양 시험', items }])); localStorage.setItem('pc:ci', '0'); localStorage.setItem('pc:short', JSON.stringify(short)); }, [CART, SHORT]);
+      await p.reload();
+      if (await p.locator('#gate-pad').isVisible().catch(() => false)) for (const d of PIN) await p.click(`#gate-pad button[data-d="${d}"]`);
+      await p.waitForSelector('#main .card'); await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
+      return { ctx, p, errs };
+    };
+    // every button with an icon and no words on the screen (and its sheet): the line's ⓘ (.infob — the line's 36px column, 위계
+    // 점검 47) and a name's ⓘ in its words (.linkbtn — 내 견적 '설명 보기'), the − / + of a count (.qty — one control), the map's
+    // own zoom and a search field's × are other parts
+    // (a sheet open: the sheet's only; the top bar and the sticky compare head measured at the top, before the list scrolls under them)
+    const iconBtns = async (p) => { await p.mouse.move(1, 1); await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300); return p.evaluate(() => {
+      const sh = document.querySelector('.sheet'), all = [...document.querySelectorAll(sh ? '.sheet button' : 'header.top button, #main button')].filter((e) => __vis(e) && !e.textContent.trim() && e.querySelector('svg')
+      && !e.matches('.infob, .linkbtn, .qty button, .leaflet-control *, .search button'));
+      const top = (e) => !!e.closest('header.top, .cmphead');
+      return [...all.filter(top), ...all.filter((e) => !top(e))].map((e) => {
+      if (!top(e)) e.scrollIntoView({ block: 'center' }); const r = e.getBoundingClientRect(), cs = getComputedStyle(e), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      const at = (x, y) => { const t = document.elementFromPoint(x, y); return !!t && (t === e || e.contains(t)); };
+      const sv = e.querySelector('svg').getBoundingClientRect();
+      return { n: e.getAttribute('aria-label') || e.title || e.className, w: Math.round(r.width), h: Math.round(r.height), rad: cs.borderTopLeftRadius,
+        edge: ['Top', 'Right', 'Bottom', 'Left'].some((s) => parseFloat(cs[`border${s}Width`]) > 0) || (cs.boxShadow !== 'none' && /inset/.test(cs.boxShadow)),
+        fill: cs.backgroundColor !== 'rgba(0, 0, 0, 0)' && !e.matches('[aria-expanded="true"]'), ic: Math.round(sv.width),
+        press: at(cx - 21, cy) && at(cx + 21, cy) && at(cx, cy - 21) && at(cx, cy + 21) }; }); }); };
+    const badIcon = (xs) => xs.filter((x) => x.w !== 40 || x.h !== 40 || x.rad !== '50%' || x.edge || x.fill || x.ic !== 22 || !x.press).map((x) => `${x.n} ${x.w}x${x.h} r${x.rad} edge=${x.edge} fill=${x.fill} ic=${x.ic} press=${x.press}`);
+
+    for (const vp of [{ width: 390, height: 844 }, { width: 320, height: 640 }]) {
+      const tag = `${vp.width}`, wide = vp.width === 390;
+      const { ctx, p, errs } = await open(vp);
+      await p.mouse.move(0, 0);
+      const bi = await p.evaluate(() => { const { D } = App.state(); const x = D.branches.findIndex((y) => D.s[y[1]] === '강남역점'); return x >= 0 ? x : 0; });
+
+      // U18: 비교함's ✓ / ⊕ is a state — seen in the branch head's half and across the compare card, at 320 too; the other buttons'
+      // icons before their words go at 320 as before; nothing is cut
+      const cmpBox = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).slice(0, 2).map((e) => { const s = e.querySelector(':scope > svg.i');
+        return { t: e.textContent.trim(), on: e.getAttribute('aria-pressed'), icon: !!s && __vis(s) && s.getBoundingClientRect().width >= 14, cut: e.scrollWidth > e.clientWidth + 1, w: Math.round(e.getBoundingClientRect().width) }; }), sel);
+      await go(p, `#branch/${bi}`, 1300);
+      const hb = await cmpBox('#main .bbtns > .shortbtn');
+      const others = await p.evaluate(() => [...document.querySelectorAll('#main .bbtns > .btn:not(.shortbtn) > svg.i.sm:first-child')].filter(__vis).length);
+      await p.locator('#main .bbtns > .shortbtn').first().click(); await p.waitForTimeout(250);
+      const hb2 = await cmpBox('#main .bbtns > .shortbtn');
+      await p.locator('#main .bbtns > .shortbtn').first().click(); await p.waitForTimeout(250);
+      await go(p, '#compare?k=X01', 1500);
+      await p.locator('#clinics .seg.vsw button', { hasText: '카드' }).click(); await p.waitForTimeout(600);
+      const cb = await cmpBox('#clinics .ccard .shortbtn');
+      const states = [...hb, ...hb2, ...cb];
+      ok(`U18 ${tag} 비교함의 ✓·⊕는 지점 머리 반 칸·비교 카드 어디서나 보임(잘림 없음)`, hb.length === 1 && hb2.length === 1 && cb.length >= 1 && states.every((x) => x.icon && !x.cut)
+        && new Set(states.map((x) => x.on)).size === 2, JSON.stringify(states));
+      ok(`U18 ${tag} 다른 버튼의 꾸밈 아이콘은 ${wide ? '보임' : '320에서 숨김(그대로)'}`, wide ? others >= 3 : others === 0, `${others}개`);
+      // U20: the compare cards' ‹ › and the compare head (♡ ⋯) and the top bar
+      const ib = { cards: await iconBtns(p) };
+      await p.locator('#clinics .seg.vsw button', { hasText: '목록' }).click(); await p.waitForTimeout(400); await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(200);
+      ib.head = await iconBtns(p);
+      const pair = await p.evaluate(() => { const a = document.querySelector('.cmphead .addbtn').getBoundingClientRect(), m = document.querySelector('.cmphead .morebtn').getBoundingClientRect();
+        return { mid: Math.abs((a.top + a.bottom) / 2 - (m.top + m.bottom) / 2), gap: Math.round(m.left - a.right) }; });
+      ok(`U20 ${tag} 비교 머리 ⋯는 담기와 가운데 맞춤, 사이 8px`, pair.mid < 1 && pair.gap === 8, JSON.stringify(pair));
+      await p.locator('.cmphead .morebtn').click(); await p.waitForTimeout(350);
+      ib.sheet = await iconBtns(p); await p.keyboard.press('Escape'); await p.waitForTimeout(250);
+      await go(p, `#branch/${bi}`, 1300); ib.branch = await iconBtns(p);
+      await go(p, '#cart', 1000); ib.cart = await iconBtns(p);
+      await go(p, '#versus', 1300); ib.versus = await iconBtns(p);
+      await go(p, '#quick', 1000); ib.quick = await iconBtns(p);
+      const want = { cards: /이전 지점/, head: /더 보기/, sheet: /닫기/, branch: /같은 브랜드 다음 지점/, cart: /빼기/, versus: /A와 B 바꾸기/, quick: /빼기/ };
+      const miss = Object.entries(want).filter(([k, re]) => !ib[k].some((x) => re.test(x.n))).map(([k]) => k);
+      const bad = Object.entries(ib).flatMap(([k, xs]) => badIcon(xs).map((x) => `${k}: ${x}`));
+      ok(`U20 ${tag} 글자 없는 아이콘 버튼은 한 모양(테두리 없는 40 원, 아이콘 22, 누르는 곳 44) — 위 막대·시트 닫기·♡·⋯·지점 ‹ ›·카드 ‹ ›·빼기 ×·A↔B`,
+        !miss.length && !bad.length, `${Object.values(ib).flat().length}개 · 못 찾음 ${miss.join(',')} · ${bad.slice(0, 3).join(' | ')}`);
+
+      // U21: figures — the name over the number, left-aligned, no box (비교 가격 카드 · 마이 · 지점 비교), and 가격 이력's .tile (CSS, put
+      // on the screen here: it shows from 8 weeks of records); 브랜드별 tiles, buttons, keep their box
+      const figs = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).map((row) => [...row.children].filter(__vis).map((c) => {
+        const k = c.querySelector(':scope > .sk, :scope > .k'), v = c.querySelector(':scope > b'), cr = c.getBoundingClientRect();
+        const kr = k && k.getBoundingClientRect(), vr = v && v.getBoundingClientRect(), cs = getComputedStyle(c);
+        return { k: k && k.textContent.trim(), order: !!k && !!v && kr.bottom <= vr.top + 1, left: !!k && !!v && Math.abs(kr.left - vr.left) < 1 && Math.abs(kr.left - (cr.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft))) < 1,
+          align: cs.textAlign, box: __framed(c), kfs: k && getComputedStyle(k).fontSize, vfs: v && getComputedStyle(v).fontSize, vfw: v && getComputedStyle(v).fontWeight }; })), sel);
+      // the number 17, but 15 in the price card: there the figures are the second line under its 28px range, and at 17 a third of
+      // the card split them ('1,108,250 / 원', '최대 / 2.5배' — 검토 2026-10-20)
+      const goodFig = (rows, vfs = '17px') => rows.length >= 1 && rows.every((r) => r.length >= 1 && r.every((c) => c.order && c.left && c.align !== 'center' && !c.box && c.kfs === '13px' && c.vfs === vfs && c.vfw === '760'));
+      // every figure's name and number on one line (a split number reads as two: '1,108,250' and '원')
+      const figLines = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).flatMap((row) => [...row.children].filter(__vis).flatMap((c) =>
+        [...c.querySelectorAll(':scope > .sk, :scope > b')].map((e) => { const rg = document.createRange(); rg.selectNodeContents(e);
+          return { t: e.textContent.trim(), n: new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size, cut: e.scrollWidth > e.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1 }; }))), sel);
+      await go(p, '#compare?k=X01', 1300); const f1 = await figs('.pricecard .stats');
+      await go(p, '#me', 900); const f2 = await figs('#main .stats'); const l2 = await figLines('#main .stats');
+      await go(p, '#versus', 1300); const f3 = await figs('#main .stats'); const l3 = await figLines('#main .stats');
+      const f4 = await p.evaluate(() => { const c = document.createElement('div'); c.className = 'card'; c.id = '__kt';
+        c.innerHTML = '<div class="tiles">' + ['현재 최저가', '기록 최저 / 최고', '기간 중간 가격', '최저가 변동'].map((k) => `<div class="tile"><span class="k">${k}</span><b class="num">1,000원</b><span class="w">확인 10/19</span></div>`).join('') + '</div>';
+        document.querySelector('#main .view').append(c); return true; }) && await figs('#__kt .tiles');
+      await p.evaluate(() => document.querySelector('#__kt').remove());
+      ok(`U21 ${tag} 숫자 요약 한 모양: 이름 13 위 · 숫자 760 아래(가격 카드 15, 마이·지점 비교·가격 이력 17) · 왼쪽 맞춤 · 상자 없음`, goodFig(f1, '15px') && [f2, f3, f4].every((f) => goodFig(f)),
+        JSON.stringify([f1, f2, f3, f4].map((f) => f[0] && f[0][0])));
+      // every popular procedure's price card (36 X keys), and 마이 · 지점 비교: no figure split over two lines, none cut
+      const pcKeys = await p.evaluate(() => { const K = App.state().KEYS; return (Array.isArray(K) ? K : Object.values(K)).map((k) => k.id).filter((x) => /^X\d+$/.test(x)); });
+      const split = [];
+      for (const k of pcKeys) { await p.evaluate((k) => { location.hash = `#compare?k=${k}`; }, k); await p.waitForTimeout(250);
+        for (const x of await figLines('.pricecard .stats')) if (x.n !== 1 || x.cut) split.push(`${k} ${x.t} ${x.n}줄${x.cut ? ' 잘림' : ''}`); }
+      for (const x of [...l2, ...l3]) if (x.n !== 1 || x.cut) split.push(`마이·지점 비교 ${x.t} ${x.n}줄${x.cut ? ' 잘림' : ''}`);
+      ok(`U21 ${tag} 숫자 요약은 한 줄: 인기 시술 가격 카드 ${pcKeys.length}개 모두 + 마이·지점 비교(갈림·잘림 없음)`, pcKeys.length >= 30 && !split.length && l2.length >= 3 && l3.length >= 3, `${split.length}곳 ${split.slice(0, 4).join(' | ')}`);
+      if (wide) {
+        await go(p, '#compare?k=X12', 1500); await p.evaluate(() => { for (const d of document.querySelectorAll('details.cmpfold')) d.open = true; }); await p.waitForTimeout(400);
+        const bt = await p.evaluate(() => [...document.querySelectorAll('.bcard .tile')].filter(__vis).map((t) => ({ btn: t.tagName === 'BUTTON', box: __framed(t) })));
+        ok('U21 브랜드별 타일은 누르는 칸이라 상자 그대로', bt.length >= 2 && bt.every((x) => x.btn && x.box), JSON.stringify(bt.slice(0, 2)));
+      }
+
+      // U22: 가격 변동's pick is 홈's .seg: the same buttons (size, weight, corner, chosen fill), 'name count', two to a row; the
+      // counts are 홈's; a pick lists that kind, pressed again lists all
+      await go(p, '#home', 1000);
+      const segStyle = (sel) => p.evaluate((sel) => { const s = document.querySelector(sel); if (!s) return null; const bs = [...s.querySelectorAll(':scope > button')];
+        const cs = (e) => { const c = getComputedStyle(e); return [c.fontSize, c.fontWeight, c.borderTopLeftRadius, c.paddingTop, c.backgroundColor, c.color].join(' '); };
+        const on = bs.find((x) => x.matches('[aria-selected="true"], [aria-pressed="true"]')), off = bs.find((x) => !x.matches('[aria-selected="true"], [aria-pressed="true"]'));
+        return { cls: s.className, n: bs.length, t: bs.map((x) => x.textContent.trim()), on: on ? cs(on) : null, off: off ? cs(off) : null, box: cs(s),
+          rows: new Set(bs.map((x) => Math.round(x.getBoundingClientRect().top))).size, cut: bs.some((x) => x.scrollWidth > x.clientWidth + 1),
+          lines: bs.map((x) => Math.round(x.getBoundingClientRect().height)) }; }, sel);
+      const hs = await segStyle('#main .card.flush .seg');
+      await go(p, '#change', 1300);
+      const cs0 = await segStyle('#main .view > .card .seg');
+      const noTile = await p.evaluate(() => !document.querySelector('#main .tile'));
+      const pick = p.locator('#main .view > .card .seg button', { hasText: '새로 생겼어요' }), can = (await pick.count()) === 1;
+      let cs1 = null, cs2 = null, listed = [];
+      if (can) { await pick.click(); await p.waitForTimeout(300); cs1 = await segStyle('#main .view > .card .seg');
+        listed = await p.evaluate(() => [...document.querySelectorAll('#main .card.flush > ul.list > li')].filter(__vis).map((li) => !!li.querySelector('.k.k4') && /새로 생김/.test(li.textContent)));
+        await pick.click(); await p.waitForTimeout(300); cs2 = await segStyle('#main .view > .card .seg'); }
+      const num = (t, w) => { const x = (t.find((y) => y.startsWith(w)) || '').match(/(\d+)$/); return x ? +x[1] : null; };
+      ok(`U22 ${tag} 가격 변동 고르기 = 홈과 같은 .seg(글자 '이름 개수', 버튼 모양·고른 칸 채움 같음)`, !!hs && !!cs0 && !!cs1 && noTile && cs0.n === 4 && cs0.t.every((x) => /^\S.* \d+$/.test(x))
+        && cs0.off === hs.off && cs1.on === hs.on && cs0.box === hs.box, JSON.stringify({ home: hs && [hs.on, hs.off, hs.box], change: cs1 && [cs1.on, cs0.off, cs0.box], t: cs0 && cs0.t }));
+      ok(`U22 ${tag} 4칸은 2칸씩 두 줄, 한 줄 글자, 잘림 없음`, !!cs0 && cs0.rows === 2 && !cs0.cut && new Set(cs0.lines).size === 1, JSON.stringify(cs0 && [cs0.rows, cs0.lines]));
+      ok(`U22 ${tag} 개수는 홈과 같음(내렸어요·올랐어요)`, !!hs && !!cs0 && num(hs.t, '내렸어요') === num(cs0.t, '내렸어요') && num(hs.t, '올랐어요') === num(cs0.t, '올랐어요'), `${hs && hs.t} | ${cs0 && cs0.t}`);
+      ok(`U22 ${tag} 고르면 그 종류만, 다시 누르면 전체`, !!cs1 && cs1.on && listed.length >= 1 && listed.every(Boolean) && !!cs2 && !cs2.on, `${listed.length}줄`);
+
+      // U19: 규격 확인 — 확인 light green; 추정 · 미확인 grey with an icon (both states of the data)
+      if (wide) {
+        await go(p, '#compare?k=X01', 1300); await p.evaluate(() => { for (const d of document.querySelectorAll('details.cmpfold')) d.open = true; }); await p.waitForTimeout(400);
+        const sp = await p.evaluate(() => [...document.querySelectorAll('.speccard .specs dd')].map((dd) => { const k = dd.querySelector('.k'); const cs = getComputedStyle(k);
+          return { t: k.textContent.trim(), cls: k.className, icon: !!k.querySelector('svg.i'), bg: cs.backgroundColor }; }));
+        const by = (t) => sp.filter((x) => x.t === t), fillBg = await p.evaluate(() => { const e = document.createElement('span'); e.className = 'k kw'; document.body.append(e); const c = getComputedStyle(e).backgroundColor; e.remove(); return c; });
+        ok('U19 규격 확인 배지: 확인 = 연한 초록(아이콘 없음), 추정·미확인 = 회색 + 아이콘(.kw)', by('확인').length >= 1 && by('추정').length >= 1 && by('미확인').length >= 1
+          && by('확인').every((x) => /\bok\b/.test(x.cls) && !x.icon) && [...by('추정'), ...by('미확인')].every((x) => /\bkw\b/.test(x.cls) && x.icon && x.bg === fillBg), JSON.stringify(sp));
+      }
+      // U20's 40px ‹ › left the branch name 74px at 320 beside ♡ and them (검토 2026-10-20: 3 lines or more at 133 of 수도권's 289,
+      // 54 before U20; at 390 2). ♡ ‹ n/m › are on the brand line now: every branch's name in this head (a branch with ‹ ›, the
+      // narrowest name), 3 lines or more at 0 at 390, at 320 not over the 54 before; the brand line at its widest (닥터에버스,
+      // '88/88') stays inside the card
+      await go(p, `#branch/${bi}`, 1300);
+      const nm = await p.evaluate(() => { const { D, BR } = App.state(), h2 = document.querySelector('#main .view > .card h2'), keep = h2.textContent, out = { n: 0, two: 0, three: [] };
+        const lines = () => { const rg = document.createRange(); rg.selectNodeContents(h2); return new Set([...rg.getClientRects()].filter((x) => x.width > 0).map((x) => Math.round(x.top))).size; };
+        for (const y of BR) { h2.textContent = `${D.meta.brands[y.brand][0]} ${y.name}`; const n = lines(); out.n++; if (n === 2) out.two++; if (n >= 3) out.three.push(h2.textContent); }
+        h2.textContent = keep;
+        const line = document.querySelector('#main .view > .card .brline'), sub = line && line.querySelector(':scope > .sub'), sb = line && line.querySelector('.sibs > .sub');
+        const long = D.meta.brands.map((x) => x[0]).sort((a, c) => c.length - a.length)[0];
+        if (sub) sub.textContent = long; if (sb) sb.textContent = '88/88';
+        const card = h2.closest('.card').getBoundingClientRect(), last = line && line.lastElementChild.getBoundingClientRect();
+        // (by the boxes: a button's 44px pressing ring, 2px past its circle, is in the line's scrollWidth)
+        const lr = line && line.getBoundingClientRect();
+        out.brand = !!line && !!sb && last.right <= lr.right + 0.5 && lr.right <= card.right - 8 && sub.clientWidth >= 24 && sb.scrollWidth <= sb.clientWidth + 1;
+        out.bd = line && { last: Math.round(last.right), line: Math.round(lr.right), card: Math.round(card.right), sub: sub.clientWidth, sb: [sb.scrollWidth, sb.clientWidth] };
+        out.h2w = Math.round(h2.getBoundingClientRect().width); out.cardw = Math.round(card.width); return out; });
+      await go(p, '#home', 600);
+      ok(`U20 ${tag} 지점 머리: ♡·‹ n/m ›는 브랜드 줄에, 이름이 카드 폭 전체(3줄 이상 ${wide ? '0곳' : '54곳 이하'}, 지점 ${nm.n}곳)`,
+        nm.n >= 289 && nm.h2w >= nm.cardw - 42 && (wide ? !nm.three.length : nm.three.length <= 54), `2줄 ${nm.two} · 3줄+ ${nm.three.length} ${nm.three.slice(0, 3).join(' | ')} · 이름 폭 ${nm.h2w}/${nm.cardw}`);
+      ok(`U20 ${tag} 브랜드 줄(가장 긴 브랜드 이름 + '88/88')이 카드 안에 들어감`, nm.brand, JSON.stringify(nm.bd));
+      ok(`U18~U22 ${tag} 페이지 오류 없음`, !errs.length, errs.join(' | '));
+      await ctx.close();
+    }
+    await b2.close();
+  }
   const pass = R.filter(Boolean).length; console.log(`\n${pass}/${R.length} 통과`); process.exit(pass === R.length ? 0 : 1);
 })();
