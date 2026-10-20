@@ -1359,8 +1359,9 @@
   const WON = { won: true };
   // a price range drawn as a bar — one shape on every screen (2026-10-20 사용자 지시: 홈 '오늘의 발견'과 비교 가격 카드의 막대가
   // 달랐음; docs/DESIGN_SYSTEM.md §3 '범위 막대'): a 6px track with round ends from the lowest to the highest price, the middle
-  // price as a dark 2px line 4px over and under the track, a given price (opts.at, read aloud as opts.atName) as a 12px dot.
-  // opts.label: '중간값 X원' under the line (비교 가격 카드, 가격 종류별 범위). opts.axis [a, b]: a scale shared by several bars
+  // price as a filled 14px dot (같은 날 사용자 지시 "막대기보단 그전에 점으러 하는게 더 낫다" — it was a 2px line), a given price
+  // (opts.at, read aloud as opts.atName) as a hollow 12px ring — another shape, so the two never read as one.
+  // opts.label: '중간값 X원' under the dot (비교 가격 카드, 가격 종류별 범위). opts.axis [a, b]: a scale shared by several bars
   // (가격 종류별·지역별) — each track covers its own part, a hairline the rest. opts.name goes before the words read aloud;
   // opts.hidden when the line's own name already says them. Where the marks sit is Pricing.rangeMarks (unit-tested)
   function rangeBar(lo, hi, med, opts = {}) {
@@ -1501,7 +1502,8 @@
   }
   // where each clinic's lowest price sits: one dot per branch on one price axis (dots stacked where they would overlap),
   // filled = no condition, ring = a conditional price (first visit, trial …), dark = the headline lowest; the middle price is
-  // the range bar's mark — a solid 2px dark grey line (docs/DESIGN_SYSTEM.md §3 '범위 막대')
+  // a solid 2px dark grey line across the chart (docs/DESIGN_SYSTEM.md §3 '범위 막대': a bar's middle is a dot, but a chart's
+  // runs through its dots — and a green middle would read as one more branch)
   function distChart(list, med, bestI, title, onPick) {
     const R = 4.5, PL = 14, PR = 14, TOP = 24, AX = 24;
     const ps = list.map((x) => x.p);
@@ -2238,7 +2240,7 @@
         rangeBar(x.lo, x.hi, x.med),
         // the range in the words every range uses ('10,890~108,900원', Pricing.rangeText — the 가격 종류별 lines beside the same bar)
         h("span", { class: "m" }, h("span", { class: "num" }, rangeEl(x.lo, x.hi)), h("span", {}, `중간값 ${won(x.med)}`), h("span", {}, `${x.n}곳`))))))),
-      h("p", { class: "foot under" }, "같은 용량·회차인데도 병원마다 가격이 이만큼 달라요. 막대는 가장 낮은 값부터 높은 값까지, 세로선은 중간값이에요. 가격 차이의 이유(조건·구성)는 시술 화면에서 확인하세요."),
+      h("p", { class: "foot under" }, "같은 용량·회차인데도 병원마다 가격이 이만큼 달라요. 막대는 가장 낮은 값부터 높은 값까지, 점은 중간값이에요. 가격 차이의 이유(조건·구성)는 시술 화면에서 확인하세요."),
       h("p", { class: "foot under" }, `고르는 기준: 조건 없는 가격이 5곳 이상인 시술 중 '가장 높은 가격 ÷ 가장 낮은 가격'이 큰 순서(1.5~10배, 확인이 필요한 초저가는 뺌). ${D.meta.updated} 데이터로 자동으로 골라요 — 사람이 고르거나 광고로 정하지 않아요.`));
     const finds = FLAGS.discountEmphasis ? lowFinds() : [];
     if (finds.length) box.append(secHead("죠미의 오늘의 발견", "중간값보다 많이 낮은 곳"), h("div", { class: "card flush" }, h("ul", { class: "list" }, finds.map((x) =>
@@ -2247,7 +2249,7 @@
         rangeBar(x.lo, x.hi, x.med, { at: x.top.p, atName: bname(x.top.b) }),
         // the bar's two ends in words as on every range bar's line (its track alone is too light to read them from)
         h("span", { class: "m" }, bdot(x.top.b), h("span", {}, bname(x.top.b)), h("span", { class: "num" }, rangeEl(x.lo, x.hi)), h("span", { class: "down" }, `중간값보다 ${Math.round(x.below * 100)}% ↓`), h("span", {}, `조건 없는 가격 ${x.n}곳`))))))),
-      h("p", { class: "foot under" }, "점은 이 가격, 세로선은 중간값이에요. 첫 방문가·체험가처럼 조건이 붙은 가격과 확인이 필요한 초저가는 빼고 골랐어요."));
+      h("p", { class: "foot under" }, "빈 동그라미는 이 가격, 채운 점은 중간값이에요. 첫 방문가·체험가처럼 조건이 붙은 가격과 확인이 필요한 초저가는 빼고 골랐어요."));
     // 가격 변동 since last week (max 2 per branch); before the second collection: say when it starts, draw nothing
     const ch = changeItems(), dn = ch.filter((x) => x.t === "down").length, up = ch.filter((x) => x.t === "up").length;
     box.append(secHead("가격 변동", D.meta.prev ? `${md(D.meta.prev)} 대비` : "주간 기록"));
@@ -3211,7 +3213,7 @@
       axisEnds(lo, hi));
   }
   // one line of a card whose bars share one scale (가격 종류별 범위 · 지역별 가격 — one look for both): the name (and a badge),
-  // 'N곳 · lo~hi원' on the right, then the range bar on the card's scale with '중간값 X원' under its line. The ends are in
+  // 'N곳 · lo~hi원' on the right, then the range bar on the card's scale with '중간값 X원' under its dot. The ends are in
   // words on every line, so the light track is never the only sign of the range (2026-10-20 review: 지역별 had no ends in
   // words, its range only a 1.3:1 track). The line's own name says it all aloud; the bar is hidden from a screen reader.
   // → { name: the line's aria-label, kids: its children }
@@ -4112,7 +4114,7 @@
     const regs = [...per.entries()].map(([rg, ps]) => { const s = [...ps].sort((a, c) => a - c); return { rg, n: s.length, lo: s[0], hi: s[s.length - 1], med: median(s) }; }).sort((a, c) => c.n - a.n || a.rg.localeCompare(c.rg, "ko"));
     const gl = Math.min(...regs.map((x) => x.lo)), gh = Math.max(...regs.map((x) => x.hi));
     // a line per region, the same line as '가격 종류별 범위' (axisLine): its name, 'N곳 · lo~hi원', then its range bar on the
-    // card's one scale with '중간값 X원' under the line — every bar the card's full width, so the regions are read on the same
+    // card's one scale with '중간값 X원' under the dot — every bar the card's full width, so the regions are read on the same
     // scale (the bar used to share a line with the words, and its width followed the words': 102~110px at 390, 32~40px at 320).
     // The first 8 regions (most branches first), then the shared '더 보기' — 17 lines of a bar and a label made the card
     // 1,072px tall at 390. The scale is every region's, so the lines added later sit on it too; how many are shown stays
