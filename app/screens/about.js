@@ -7,7 +7,7 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { h, fill, icon, won, toast, emptyLine, searchBox, views, FLAGS, fresh, verified, recheckQueue, kbOf, nav, render, adminHost, syncState, liveBrands, moreList, kwBadge,
+    const { h, fill, icon, won, toast, emptyLine, searchBox, backBtn, views, FLAGS, fresh, verified, recheckQueue, kbOf, nav, render, adminHost, syncState, liveBrands, moreList, kwBadge,
       md, mdhm, goLink, hereLink, vatNote, branchCountText, REVISIT_CART, isIOS, standalone, notifySupported, PUSH, pushState, privacyParts, jline, jomiSay, jprefs,
       CMP_CATS, famFind, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, KB_STATE } = App;
     const { SYNC, cacheClear, cacheInfo, canCache } = App.Data;
@@ -92,7 +92,7 @@
       const { D, BR } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
       const br = (D.meta.brands || []).map((b, i) => ({ name: b[0], n: BR.filter((x) => x.brand === i).length, how: b[2] })).filter((x) => x.n);
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"),
+      box.append(backBtn(),
         h("h2", { class: "title" }, "운영 원칙과 수집 범위"),
         h("div", { class: "card" }, h("h3", {}, "약속하는 것"),
           h("ul", { class: "plain" },
@@ -113,7 +113,7 @@
 
     if (privacyParts().length) views.privacy = () => {
       const box = h("div", { class: "view" });
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"),
+      box.append(backBtn(),
         h("h2", { class: "title" }, "개인정보 처리방침"),
         ...privacyParts().map((x) => h("section", { class: "card policy" }, h("h3", {}, x.title), x.paras.map((t) => h("p", {}, t)))));
       return box;
@@ -123,7 +123,7 @@
       const { D, BR, WHEN_COL } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
       const A = D.meta.about || {}, src = A.sources || {};
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
+      box.append(backBtn());
       box.append(dataStatusCard(), installCard(), deviceCard());
       box.append(h("div", { class: "card" }, h("h2", {}, "알아두면 좋은 점"),
         h("div", { class: "note", style: "margin-top:var(--sp-2)" }, "이 앱은 병원 홈페이지에 공개된 가격을 모아 비교만 해요. 의료 상담·진단을 하지 않고 시술 효과나 안전을 보장하지 않아요. 예약·결제·광고·수수료가 없고, 어떤 병원과도 금전 관계가 없어요."),
@@ -169,7 +169,7 @@
       const { FAM, KEYS, byKB, kbFind } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
       const c = params.get("c") || "";
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
+      box.append(backBtn());
       const q = h("input", { type: "search", placeholder: "시술 이름으로 찾기 (예: 보톡스)", "aria-label": "시술 사전에서 찾기", value: params.get("q") || "" });
       const list = h("div", {});
       box.append(h("div", { class: "card" }, h("h2", {}, "시술 사전"),
@@ -209,7 +209,7 @@
 
     views.terms = () => {
       const box = h("div", { class: "view" });
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
+      box.append(backBtn());
       const q = h("input", { type: "search", placeholder: "용어 찾기 (예: 체험가, 샷, U)", "aria-label": "용어 찾기" });
       const list = h("div", {});
       const long = jprefs().detail === "long";
@@ -222,8 +222,11 @@
           shown.length ? null : h("div", { class: "card" }, emptyLine("찾는 용어가 없어요. 시술 이름은 시술 사전에서 찾아보세요.")));
       };
       q.addEventListener("input", paint);
-      box.append(h("div", { class: "card" }, jomiSay("explaining", "가격표에 자주 나오는 말을 쉽게 풀었어. 시술이 나한테 맞는지는 꼭 의료진과 이야기해 줘."),
-        h("h2", { style: "margin-top:var(--sp-2)" }, "쉬운 용어"), searchBox(q, { inset: true, style: "margin-top:var(--sp-2)" }),
+      // the head of every screen outside the tabs (2026-10-20 디자인 통일 U16): 뒤로 · the title 22 first in the card · 죠미 under it
+      // (시술 사전's order) · one line 13 saying what the screen is — 죠미 sat over the title here
+      box.append(h("div", { class: "card" }, h("h2", {}, "쉬운 용어"),
+        jomiSay("explaining", "가격표에 자주 나오는 말을 쉽게 풀었어. 시술이 나한테 맞는지는 꼭 의료진과 이야기해 줘."),
+        h("div", { class: "sub" }, "가격·조건, 단위, 시술 용어를 쉬운 말로 적었어요."), searchBox(q, { inset: true, style: "margin-top:var(--sp-2)" }),
         goLink("시술 이름은 시술 사전에서", "guide", { style: "margin-top:var(--sp-2)" })));
       box.append(list);
       paint();

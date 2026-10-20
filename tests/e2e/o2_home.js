@@ -22,7 +22,7 @@ async function homeNumbers(p) {
   }
   await chips.nth(0).click(); await p.waitForTimeout(150);
   out.finds = await p.locator('.disc-row').allInnerTexts();
-  out.all = await p.locator('.btn.line.block').first().innerText();
+  out.all = await p.locator('#main .morelist.hall').first().innerText();
   out.lede = await p.locator('.lede').innerText();
   return out;
 }

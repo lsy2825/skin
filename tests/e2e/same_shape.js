@@ -233,7 +233,7 @@ const HELP = () => {
 
     // ---------- 홈
     await go(p, '#home', 900);
-    const hm = await p.evaluate(() => { const g = document.querySelector('#main .grid'), btn = [...document.querySelectorAll('#main .btn.line.block')].find((x) => /전체 비교/.test(x.textContent));
+    const hm = await p.evaluate(() => { const g = document.querySelector('#main .grid'), btn = [...document.querySelectorAll('#main .morelist.hall')].find((x) => /전체 비교/.test(x.textContent));
       const ent = document.querySelector('#main .entries'); if (!g || !btn || !ent) return null;
       const prev = ent.previousElementSibling;
       return { under: btn.previousElementSibling === g, gap: Math.round(btn.getBoundingClientRect().top - g.getBoundingClientRect().bottom), next: Math.round(ent.getBoundingClientRect().top - prev.getBoundingClientRect().bottom) }; });
@@ -482,6 +482,133 @@ const HELP = () => {
       over: b.scrollWidth > b.clientWidth + 1 })));
     ok('U03 320 브랜드별 비교 칸: 숫자 중간에서 줄이 바뀌지 않음, 넘침 없음', bt3.length >= 3 && !bt3.some((x) => x.split || x.over), JSON.stringify(bt3.filter((x) => x.split || x.over).slice(0, 3)));
     await n3.ctx.close();
+  }
+
+  // ---------- 디자인 통일 묶음 B (2026-10-20 · U06 U14 U15 U16 U17, docs/DESIGN_SYSTEM.md §3): card heads, price lines, a
+  // treatment's numbers, the heads of the screens outside the tabs, '전체 보기' — the sources first, then the screens
+  {
+    const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
+    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
+    const hits = (re) => SRC.flatMap(([f, s]) => s.split('\n').map((l, i) => [f, i + 1, l]).filter(([, , l]) => !/^\s*\/\//.test(l) && re.test(l)).map(([f, n, l]) => `${f}:${n} ${l.trim().slice(0, 70)}`));
+    // U06: no count written into a card title, no card title said again on the right (용량·종류 바꾸기 · k.label)
+    const countTitle = hits(/h\("h3", \{[^}]*\}, `[^`]*\$\{[^}]+\}\s*(개|곳|가지)[^`]*`\)/);
+    ok('U06 카드 제목 안에 개수 없음(개수는 cardHead의 오른쪽 메타)', !countTitle.length, countTitle.join(' | '));
+    // U15: a treatment's numbers in one order — no 'N곳 · lo~hi원' / '중간 가격 · N곳' / 'N곳 · 중간 X원' written by hand, in the
+    // words of #153 ('중간 X원' on a narrow line, '중간 가격 X원' in a sentence) or the old '중간값' (the 가격 종류별·지역별 line,
+    // axisLine, is kept by range_shape.js and left as it is)
+    const badOrder = hits(/곳 · \$\{Pricing\.rangeText|`중간(값| 가격)? · \$\{|곳 · 중간(값| 가격)? \$\{/).filter((x) => !/kids: \[h\("div", \{ class: "row" \}, h\("b", \{\}, name\)/.test(x));
+    ok("U15 시술 숫자는 한 순서('lo~hi원 · 중간 X원 · N곳'), 'N곳 · 범위'·'중간 가격 · N곳' 없음", !badOrder.length, badOrder.join(' | '));
+    // U17: no outlined button that leads to another screen's whole list
+    ok("U17 '전체 보기'는 .morelist 한 모양(테두리 버튼 .btn.line.block.hall 없음)", !hits(/btn line block hall/).length);
+
+    const { ctx, p, errs } = await page({ width: 390, height: 844 });
+    await p.evaluate(() => { localStorage.setItem('pc:favs', JSON.stringify({ k: ['X01'], b: [] })); localStorage.setItem('pc:alerts', '[]'); });
+    await p.reload(); await p.waitForFunction(() => window.App && App.Data && App.Data.SYNC.have && !App.state().D.meta.partial, null, { timeout: 60000 });
+    const bi = await p.evaluate(() => { const { D } = App.state(); const x = D.branches.findIndex((y) => D.s[y[1]] === '강남역점'); return x >= 0 ? x : 0; });
+    const COUNT = /^\d[\d,]*(곳|개|가지|개 브랜드|개 지역)$|^\d+\/\d+$/;
+    // every card head on a screen: h3 17 · count 13 grey on the same line, right of the title · basis 13 under the title
+    const heads = () => p.evaluate(() => [...document.querySelectorAll('#main .chead')].filter(__vis).map((c) => {
+      const t = c.querySelector(':scope > .row > h3'), m = c.querySelector(':scope > .row > .cmeta'), d = c.querySelector(':scope > .cdesc'), cs = (e) => e && getComputedStyle(e);
+      const tr = t.getBoundingClientRect(), mr = m && m.getBoundingClientRect();
+      return { t: t.textContent, ts: cs(t).fontSize, m: m ? m.textContent : null, ms: m ? cs(m).fontSize : null, mc: m ? cs(m).color : null,
+        right: !m || (mr.left >= tr.right && Math.abs((mr.top + mr.bottom) / 2 - (tr.top + tr.bottom) / 2) < 12), d: d ? d.textContent : null, ds: d ? cs(d).fontSize : null,
+        under: !d || d.getBoundingClientRect().top >= tr.bottom - 1, muted: getComputedStyle(document.documentElement).getPropertyValue('--muted').trim() }; }));
+    const seen = {};
+    await go(p, '#compare?k=X12', 1500); await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(700);
+    seen['비교'] = await heads();
+    await go(p, `#branch/${bi}`, 1300); seen['지점'] = await heads();
+    await go(p, '#cart', 1300); await p.locator('#main button', { hasText: '병원별 비교 보기' }).first().click().catch(() => {}); await p.waitForTimeout(800);
+    seen['내 견적'] = await heads();
+    await go(p, '#saved', 1300); seen['관심'] = await heads();
+    await go(p, '#search/' + encodeURIComponent('리쥬란 2cc'), 1500); seen['검색'] = await heads();
+    await go(p, '#map', 2600); seen['지도'] = await heads();
+    const all = Object.values(seen).flat(), titles = all.map((x) => x.t);
+    const need = ['병원별 가격 분포', '가격 종류별 범위', '지역별 가격', '브랜드별 비교', '지점별 가격', '용량·종류 바꾸기', '가격표', '담은 시술', '방문 계획 비교', '모두 받을 수 있는 곳', '가격 알림', '관심 시술 가격', '관심 지점', '용량·종류별 가격 비교', '지도에 보이는 지점'];
+    const missing = need.filter((t) => !titles.includes(t));
+    const badHead = all.filter((x) => x.ts !== '17px' || /\d+\s*(곳|개|가지)/.test(x.t) || (x.m != null && (!COUNT.test(x.m) || x.ms !== '13px' || !x.right)) || (x.d != null && (x.ds !== '13px' || !x.under || /\d+(곳|개)(?![가-힣])/.test(x.d))));
+    ok('U06 카드 머리 한 틀: 제목 17(개수 없음) · 오른쪽 메타 13 = 개수 · 제목 아래 설명 13 = 기준(비교 접기·지점별 가격·용량·종류 바꾸기·가격표·내 견적·관심·검색·지도)',
+      !missing.length && !badHead.length && all.length >= need.length, `없음 ${missing.join(',')} · 어긋남 ${badHead.slice(0, 3).map((x) => JSON.stringify(x)).join(' | ')}`);
+    const fold = seen['비교'].filter((x) => ['병원별 가격 분포', '가격 종류별 범위', '지역별 가격', '브랜드별 비교'].includes(x.t));
+    ok('U06 비교 접기 네 카드: 모두 오른쪽 메타 = 개수, 아래 설명 = 기준', fold.length === 4 && fold.every((x) => x.m && COUNT.test(x.m) && x.d), JSON.stringify(fold.map((x) => [x.t, x.m, (x.d || '').slice(0, 16)])));
+    const pick = seen['비교'].find((x) => x.t === '용량·종류 바꾸기');
+    ok('U06 용량·종류 바꾸기: 오른쪽에 시술 이름을 다시 쓰지 않음', !!pick && pick.m == null, JSON.stringify(pick));
+
+    // U14: a price line is one frame — name 15/600 · price 15/760 on line 1, the grey words on line 2, the badges on a line of
+    // their own (비교 줄 · 검색 줄 included), the quote's item name 600 too
+    await go(p, '#compare?k=X01', 1500);
+    const rowShape = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).slice(0, 30).map((li) => {
+      const m = li.querySelector('.m'), ks = [...m.querySelectorAll(':scope > .k')].filter(__vis), words = [...m.childNodes].filter((n) => (n.nodeType === 3 && n.textContent.trim()) || (n.nodeType === 1 && !n.matches('.k, .mbr, svg') && __vis(n)));
+      if (!ks.length || !words.length) return null;
+      const rg = document.createRange(); const wb = Math.max(...words.map((n) => { if (n.nodeType === 3) { rg.selectNodeContents(n); return rg.getBoundingClientRect().bottom; } return n.getBoundingClientRect().bottom; }));
+      const kt = Math.min(...ks.map((k) => k.getBoundingClientRect().top));
+      return { own: kt >= wb - 1, after: !!m.querySelector(':scope > .mbr') && ks.every((k) => m.querySelector(':scope > .mbr').compareDocumentPosition(k) & 4), t: li.textContent.slice(0, 24) }; }).filter(Boolean), sel);
+    const cmpRows = await rowShape('#clinics li.rk');
+    const fontsOf = (sel) => p.evaluate((sel) => [...document.querySelectorAll(sel)].filter(__vis).slice(0, 5).map((e) => `${getComputedStyle(e).fontSize}/${getComputedStyle(e).fontWeight}`), sel);
+    const cmpName = await fontsOf('#clinics li.rk .rank .b'), cmpP = await fontsOf('#clinics li.rk .rank .p');
+    await go(p, '#search/' + encodeURIComponent('보톡스') + '?sort=price', 1800);
+    const srRows = await rowShape('#main .results li.rk');
+    const srName = await fontsOf('#main .results li.rk .item .t'), srP = await fontsOf('#main .results li.rk .item .p');
+    await go(p, '#cart', 1300); const cn = await fontsOf('#main .ci .cn');
+    ok('U14 비교 줄·검색 줄: 배지는 회색 글자 줄 아래 자기 줄', cmpRows.length >= 3 && srRows.length >= 3 && [...cmpRows, ...srRows].every((x) => x.own && x.after),
+      `비교 ${cmpRows.length}줄 · 검색 ${srRows.length}줄 ${[...cmpRows, ...srRows].filter((x) => !x.own || !x.after).slice(0, 2).map((x) => x.t).join(' | ')}`);
+    ok('U14 가격 줄 글자: 이름 15/600 · 가격 15/760(비교·검색), 견적 담은 시술 이름도 600', [...cmpName, ...srName].every((x) => x === '15px/600') && [...cmpP, ...srP].every((x) => x === '15px/760') && cn.length >= 3 && cn.every((x) => x === '15px/600'),
+      `${cmpName[0]} ${cmpP[0]} · ${srName[0]} ${srP[0]} · 견적 ${cn.join(',')}`);
+
+    // U15: one order for a treatment's numbers, and the numbers of the comparison it opens (keyNums)
+    const RNG = '[\\d,.]+만?~[\\d,.]+만?원|[\\d,]+원';
+    await go(p, '#home', 1500);
+    const card = await p.evaluate(() => { const c = document.querySelector('#main .grid .pc'), sh = [...document.querySelectorAll('#main .sec-h')].find((x) => /인기 시술/.test(x.textContent));
+      return { pk: c.querySelector('.pk') ? c.querySelector('.pk').textContent : null, p: c.querySelector('.p').textContent, save: c.querySelector('.save').textContent, head: sh ? sh.textContent : '',
+        labels: [...document.querySelectorAll('#main .grid .pc')].filter((x) => /중간/.test(x.textContent)).length }; });
+    const disc = await p.evaluate(() => { const m = document.querySelector('#main .disc-row .m'); return m ? [...m.children].map((x) => x.textContent).join(' · ') : null; });
+    await p.locator('#main .grid .pc').first().click(); await p.waitForTimeout(1300);
+    const hd = await p.evaluate(() => ({ med: document.querySelector('.cmphead .hmed').textContent.replace(/\D/g, ''), n: (/(\d+)곳/.exec(document.querySelector('.cmphead .basis').textContent) || [])[1],
+      hp: document.querySelector('.pricecard .hero .hp').textContent.trim() }));
+    // the words #153's: '중간 가격' once beside the section title, no label on each of the six cards
+    ok("U15 홈 인기 카드: 가격 · 'lo~hi원 · N곳'(비교 머리글·가격 카드와 같은 숫자), '중간 가격'은 구역 제목 옆에 한 번", card.pk == null && !card.labels && /중간 가격/.test(card.head) && new RegExp(`^(${RNG}) · \\d+곳$|^모두 같은 가격 · \\d+곳$`).test(card.save)
+      && card.p.replace(/\D/g, '') === hd.med && card.save.endsWith(` · ${hd.n}곳`) && (card.save.startsWith('모두') || card.save.split(' · ')[0] === hd.hp), `${JSON.stringify(card)} → ${JSON.stringify(hd)}`);
+    ok("U15 홈 발견 줄: 'lo~hi원 · 중간 X원 · N곳'(기준 순서)", !disc || new RegExp(`^(${RNG}) · 중간 [\\d,]+원 · \\d+곳$`).test(disc), disc);
+    await go(p, '#compare?k=X01', 1300);
+    const x01 = await p.evaluate(() => ({ hp: document.querySelector('.pricecard .hero .hp').textContent.trim(), n: (/(\d+)곳/.exec(document.querySelector('.cmphead .basis').textContent) || [])[1],
+      med: document.querySelector('.cmphead .hmed').textContent.replace(/\D/g, '') }));
+    await go(p, '#saved', 1300);
+    const sv = await p.evaluate(() => { const it = document.querySelector('#main section[aria-label="관심 시술 가격"] li .item'); return it ? { p: it.querySelector('.p').textContent.replace(/\D/g, ''), m: it.querySelector('.m > span').textContent } : null; });
+    ok("U15 관심 시술 줄: 가격 = 중간 가격, 'lo~hi원 · N곳'(이름표 없음) = 비교 화면의 숫자", !!sv && sv.p === x01.med && sv.m === `${x01.hp} · ${x01.n}곳`, `${JSON.stringify(sv)} ↔ ${JSON.stringify(x01)}`);
+    await go(p, '#search/' + encodeURIComponent('리쥬란 2cc'), 1500);
+    const kr = await p.evaluate(() => [...document.querySelectorAll('#main .card.keys li .item .m')].map((m) => m.firstElementChild.textContent));
+    ok("U15 검색 바로가기 줄: 숫자 먼저 'lo~hi원 · N곳', 분야는 그 뒤", kr.length > 0 && kr.every((t) => new RegExp(`^(${RNG}) · \\d+곳$|^모두 같은 가격 · \\d+곳$|^\\d+곳$`).test(t)), kr.slice(0, 3).join(' / '));
+    await go(p, '#compare?k=X12', 1300); await p.evaluate(() => { for (const d of document.querySelectorAll('#main details')) d.open = true; }); await p.waitForTimeout(500);
+    const bt = await p.evaluate(() => [...document.querySelectorAll('#main .bcard .tile')].map((t) => t.querySelectorAll('.w')[0].textContent));
+    ok("U15 브랜드별 칸: 큰 범위 아래 '중간 X원 · N곳'", bt.length >= 2 && bt.every((t) => /^중간 [\d,]+원 · \d+곳$/.test(t)), bt.slice(0, 2).join(' / '));
+    await p.evaluate(() => { window.scrollTo(0, 0); document.querySelector('#main .cmphead .morebtn').click(); }); await p.waitForTimeout(500);
+    await p.locator('.sheet button', { hasText: '횟수·다른 옵션으로 담기' }).click(); await p.waitForTimeout(700);
+    const note = await p.evaluate(() => { const n = [...document.querySelectorAll('.sheet .note')].pop(); return n ? n.textContent : ''; });
+    ok("U15 담기 창 안내: '… · lo~hi원 · 중간 가격 X원 · N곳'", new RegExp(`· (${RNG}) · 중간 가격 [\\d,]+원 · (일반가|특가 포함) \\d+곳$`).test(note), note);
+    await p.keyboard.press('Escape'); await p.waitForTimeout(300); await p.keyboard.press('Escape'); await p.waitForTimeout(300);
+
+    // U16: a screen outside the tabs opens with 뒤로, then its title 22 at the top of the first card, 죠미 (if any) under the
+    // title, and one line 13 saying what the screen is
+    const sh = [];
+    for (const hash of ['#guide', '#terms', '#change', '#map', '#quick']) {
+      await go(p, hash, hash === '#map' ? 2400 : 1300);
+      sh.push(await p.evaluate((hash) => { const v = document.querySelector('#main .view') || document.querySelector('#main > *'), first = v.firstElementChild, c = v.querySelector(':scope > .card');
+        const h2 = c && c.querySelector('h2'), say = c && c.querySelector('.jomi-say'), d = c && [...c.querySelectorAll('.sub')].find((x) => __vis(x) && getComputedStyle(x).fontSize === '13px');
+        const top = h2 && [...c.querySelectorAll('*')].filter((e) => __vis(e) && e.getBoundingClientRect().height > 0).every((e) => e.getBoundingClientRect().bottom > h2.getBoundingClientRect().top - 1 || e.contains(h2));
+        return { hash, back: !!first && first.matches('button.back'), h2: h2 ? getComputedStyle(h2).fontSize : null, top, sayUnder: !say || !!(h2.compareDocumentPosition(say) & 4), desc: !!d && !!(h2.compareDocumentPosition(d) & 4) }; }, hash));
+    }
+    ok("U16 탭 밖 화면 머리 한 모양: '뒤로' → 첫 카드 맨 위 제목 22 → 죠미(있으면) → 설명 13(사전·용어·가격 변동·지도·빠른 비교)",
+      sh.every((x) => x.back && x.h2 === '22px' && x.top && x.sayUnder && x.desc), JSON.stringify(sh.filter((x) => !(x.back && x.h2 === '22px' && x.top && x.sayUnder && x.desc))));
+
+    // U17: '시술 N개 전체 비교' is the '가격 변동 전체 ›' line: accent 15/600, '›' after the words, no outline
+    await go(p, '#home', 1500);
+    const mg = await p.evaluate(() => { const st = (e) => { const c = getComputedStyle(e); const last = [...e.childNodes].filter((n) => n.nodeType === 1 || n.textContent.trim()).pop();
+      return { c: c.color, f: `${c.fontSize}/${c.fontWeight}`, bg: c.backgroundColor, sh: c.boxShadow, chev: !!last && last.nodeName === 'svg' && !!last.querySelector('path[d="m9 18 6-6-6-6"]'), cls: e.className }; };
+      const hall = [...document.querySelectorAll('#main button')].find((x) => /전체 비교/.test(x.textContent)), chg = [...document.querySelectorAll('#main button')].find((x) => /가격 변동 전체/.test(x.textContent));
+      return { hall: hall && st(hall), chg: chg && st(chg) }; });
+    ok("U17 홈 '전체 비교' = '가격 변동 전체 ›' 모양(.morelist, 초록 15/600, 뒤 ›, 테두리 없음)", !!mg.hall && !!mg.chg && /\bmorelist\b/.test(mg.hall.cls) && mg.hall.c === mg.chg.c && mg.hall.f === '15px/600' && mg.chg.f === '15px/600'
+      && mg.hall.chev && mg.chg.chev && mg.hall.sh === 'none' && /rgba\(0, 0, 0, 0\)|transparent/.test(mg.hall.bg), JSON.stringify(mg));
+    ok('U06·U14·U15·U16·U17 페이지 오류 없음', !errs.length, errs.join(' | '));
+    await ctx.close();
   }
   await b.close();
   const pass = R.filter(Boolean).length; console.log(`\n${pass}/${R.length} 통과`); process.exit(pass === R.length ? 0 : 1);

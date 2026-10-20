@@ -45,7 +45,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   // shortcut's name has the room it had (review of audit 13: '중간값 209,000원' in the cell folded names into 2~3 lines)
   await p.setViewportSize({ width: 320, height: 800 }); await p.evaluate(() => { location.hash = `#search/${encodeURIComponent('리쥬란 2cc')}?nl=0`; }); await p.waitForTimeout(900);
   const narrow = await p.$$eval('#main .card', (cs) => { const c = cs.find((x) => /용량·종류별 가격 비교/.test((x.querySelector('h3') || {}).textContent || '')); if (!c) return null;
-    return { head: c.querySelector('.row .sub') ? c.querySelector('.row .sub').textContent : '', rows: [...c.querySelectorAll('li .item')].map((it) => { const t = it.querySelector('.t'), pc = it.querySelector('.p');
+    return { head: c.querySelector('.chead .cdesc') ? c.querySelector('.chead .cdesc').textContent : '', rows: [...c.querySelectorAll('li .item')].map((it) => { const t = it.querySelector('.t'), pc = it.querySelector('.p');
       return { name: t.textContent, lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight)), pw: Math.round(pc.getBoundingClientRect().width) }; }) }; });
   // before the median: '110,000원~' 79~89px; with '중간값 ' in the cell ~125px
   ok('320px 바로가기: 가격 칸 폭 ≤ 90px(예전 \'110,000원~\' 폭), 머리에 \'중간 가격\'', !!narrow && narrow.rows.length > 0 && narrow.rows.every((r) => r.pw <= 90) && /중간 가격/.test(narrow.head),
@@ -60,7 +60,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   const seen = [];
   for (const q of ['리쥬란 2cc', '보톡스']) {
     await p.evaluate((x) => { location.hash = `#search/${encodeURIComponent(x)}?nl=0`; }, q); await p.waitForTimeout(1200);
-    seen.push(...await p.$$eval('#main .card', (cs) => cs.filter((c) => /용량·종류별 가격 비교|종류 \d+가지/.test((c.querySelector('h3') || {}).textContent || ''))
+    seen.push(...await p.$$eval('#main .card', (cs) => cs.filter((c) => /용량·종류별 가격 비교|종류\s*\d+가지/.test((c.querySelector('.chead') || {}).textContent || ''))
       .flatMap((c) => [...c.querySelectorAll('li .item')].map((x) => x.innerText.replace(/\n/g, ' | ')))));
   }
   const counts = seen.map((r) => +((/ · (\d+)곳/.exec(r) || [])[1] || 0)).filter(Boolean);
@@ -68,7 +68,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   ok('부산 검색 종류·바로가기: 곳 수 ≤ 지역 지점 수, 한 가격을 범위로 되풀이하지 않음', regN > 0 && counts.length > 0 && counts.every((n) => n <= regN) && !rep.length,
     `지역 ${regN}곳 · 곳 수 ${counts.join(',')}${rep.length ? ` · 되풀이 ${rep.join(' / ')}` : ''}`);
   // a kind with no description: its count = the compare header's for its main key
-  const kind = p.locator('#main .card').filter({ has: p.locator('h3', { hasText: /종류 \d+가지/ }) }).locator('li .item').filter({ hasText: /· \d+곳/ }).first();
+  const kind = p.locator('#main .card').filter({ has: p.locator('.chead', { hasText: /종류\s*\d+가지/ }) }).locator('li .item').filter({ hasText: /· \d+곳/ }).first();
   const kRow = (await kind.innerText().catch(() => '')).replace(/\n/g, ' | '), kN = +((/ · (\d+)곳/.exec(kRow) || [])[1] || 0), kMed = +((/\| (?:중간 가격\s*)?([\d,]+)원 \|/.exec(kRow) || [])[1] || '').replace(/,/g, '');
   if (kRow) { await kind.click().catch(() => {}); await p.waitForTimeout(900); }
   const kBasis = await p.locator('.cmphead .basis').innerText().catch(() => ''), kHmed = +(await p.locator('.cmphead .hmed').innerText().catch(() => '')).replace(/\D/g, '');

@@ -32,10 +32,10 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
   ok('B1 장비가 섞인 묶음(X35): 가격 위에 "제품·장비가 서로 다른 가격" 안내', /제품·장비가 서로 다른 가격/.test(await p.locator('.pricecard .mixnote').innerText().catch(() => '')));
   const chip = p.locator('#clinics .prodmix .chip', { hasText: '아포지 플러스' });
   ok('B2 제품·장비 칩(전체 + 장비별 + 표기 없음)', await p.locator('#clinics .prodmix .chip').count() >= 3 && await chip.count() === 1);
-  const total = +(await p.locator('#clinics h3').innerText()).replace(/\D/g, '');
+  const total = +(await p.locator('#clinics .chead .cmeta').innerText()).replace(/\D/g, '');   // the card head's count (cardHead, U06)
   await chip.click(); await p.waitForTimeout(600);
   const names = await p.$$eval('#clinics li.rk .m', (xs) => xs.map((x) => x.textContent));
-  const n = +(await p.locator('#clinics h3').innerText()).replace(/\D/g, '');
+  const n = +(await p.locator('#clinics .chead .cmeta').innerText()).replace(/\D/g, '');
   ok('B3 아포지 플러스만: 목록 모두 아포지, 지점 수가 줄고 0보다 큼', names.length > 0 && names.every((t) => /아포지/.test(t)) && n > 0 && n < total, `${total} → ${n}`);
   ok('B4 줄마다 제품·장비 표시', await p.locator('#clinics li.rk .k.prodk').count() === names.length);
 
@@ -105,7 +105,7 @@ const branchesNaming = (p) => new Set(ROWS.filter((r) => live(r) && Classify.pro
     const chips = await p.$$eval('#clinics .prodmix .chip', (xs) => xs.map((x) => x.textContent));
     const one = chips.slice(1).sort((a, b) => +(/(\d+)곳$/.exec(a) || [0, 0])[1] - +(/(\d+)곳$/.exec(b) || [0, 0])[1])[0];
     await p.locator('#clinics .prodmix .chip', { hasText: one }).first().click(); await p.waitForTimeout(600);
-    const h3n = +(await p.locator('#clinics h3').innerText()).replace(/\D/g, ''), want = +(/(\d+)곳$/.exec(one) || [0, -1])[1];
+    const h3n = +(await p.locator('#clinics .chead .cmeta').innerText()).replace(/\D/g, ''), want = +(/(\d+)곳$/.exec(one) || [0, -1])[1];
     ok('B16 제품 칩의 곳 수 = 누른 뒤 목록 곳 수(0곳 칩 없음)', h3n === want && h3n > 0 && chips.every((c) => c === '전체' || +(/(\d+)곳$/.exec(c) || [0, 0])[1] > 0), `${one} → ${h3n}곳 · ${chips.join(', ')}`);
     const look = await p.$$eval('#clinics .prodmix .chip', (xs) => xs.map((x) => [x.getAttribute('aria-checked'), getComputedStyle(x).backgroundColor]));
     const on = look.filter((x) => x[0] === 'true'), off = look.filter((x) => x[0] === 'false');

@@ -7,7 +7,7 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { h, fill, icon, won, rangeEl, hereLink, jomiEmpty, views, FLAGS, kbOf, nav, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, kbVisible, chatCtx, jomiImg,
+    const { h, fill, icon, won, rangeEl, hereLink, jomiEmpty, backBtn, views, FLAGS, kbOf, nav, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, kbVisible, chatCtx, jomiImg,
       regionName, st, J, track } = App;
     let pendingChat = "";   // a message from the home box for 죠미와 대화 (memory only); 홈 hands it over with App.chatPending
     App.chatPending = (t) => { pendingChat = t; };
@@ -127,7 +127,7 @@
     views.concern = (arg, params) => {
       const { CONC } = App.state();   // read now: these are replaced when new data arrives
       const box = h("div", { class: "view" });
-      box.append(h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로"));
+      box.append(backBtn());
       if (!FLAGS.concernSearch) { box.append(h("div", { class: "card" }, jomiEmpty("empty", "죠미와 대화는 지금 꺼져 있어요", "시술 가격은 시술별 비교에서 볼 수 있어요."))); return box; }
       if (!chatMemo) chatMemo = JomiChat.memory();
       const picked = params.get("c");   // a concern id from a chip or the search page — never the typed words

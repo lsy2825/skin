@@ -261,6 +261,18 @@ a.src { font-size: var(--fs-aux); }
   border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-md) var(--r-md); background: none; color: var(--accent); font: inherit;
   font-size: var(--fs-body); font-weight: var(--fw-semi); text-align: center; cursor: pointer; }
 .morelist:hover { background: var(--sunken); }
+/* a card's head in one shape (cardHead, 2026-10-20 디자인 통일 U06): title h3 17 · its count on the right 13 grey · the basis under
+   the title 13 grey. In a list card (.flush) the head has the list's inside padding */
+.chead { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--sp-2); align-items: center; }
+.chead > .row { display: contents; }
+.chead > .row > .sp { display: none; }
+.chead > .row > h3 { grid-column: 1; grid-row: 1; }
+.chead .cmeta { grid-column: 2; grid-row: 1; font-size: var(--fs-aux); color: var(--muted); white-space: nowrap; }
+.chead > .row > .cend { grid-column: 3; grid-row: 1; }
+.chead > .cdesc { grid-column: 1 / -1; grid-row: 2; }
+/* 320: the 목록·카드 switch (116px) leaves the title too little room — it goes under the basis, at the right */
+@media (max-width: 359px) { .chead > .row > .seg.vsw.cend { grid-column: 1 / -1; grid-row: 3; justify-self: end; margin-top: var(--sp-2); } }
+.card.flush > .chead { padding: var(--sp-3) 14px 0; }
 .near5 { margin-top: var(--sp-2); }
 /* 지점 가격표 by 분야 (hierarchy audit 6): each 분야's name and count over its first lines, its '모두 보기' under them; one end
    date for the whole list said once above it */
@@ -375,6 +387,8 @@ button.item:active { background: var(--fill); }
 .item > .t, .item > .p { align-self: baseline; }
 .item .p { font-weight: var(--fw-bold); font-size: var(--fs-body); text-align: right; white-space: nowrap; letter-spacing: -0.02em; }
 .item .m { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
+/* the badges' own line under a price line's grey words (mLine — 2026-10-20 디자인 통일 U14): a full-width break, 4 + 4 = 8 under the words */
+.m > .mbr { flex-basis: 100%; height: 0; }
 /* 내 견적 브랜드·지역별 합계: a total range in won ('2,708,640~3,891,580원') breaks at '~' (rangeEl) before it squeezes the name */
 .item.sumr { grid-template-columns: minmax(6em, 1fr) auto; }
 .item.sumr .p { white-space: normal; }
@@ -475,7 +489,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .entry small { display: block; font-size: var(--fs-aux); color: var(--ink-2); margin-top: 0; line-height: 1.45; }
 .entry .go { position: absolute; top: 16px; right: var(--sp-3); color: var(--ink-2); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
-.grid + .btn.hall { margin-top: -16px; }   /* 홈 '전체 비교': 8px under the cards it continues (위계 점검 50) */
+.grid + .morelist.hall { margin-top: -16px; border-top: 0; border-radius: var(--r-md); }   /* 홈 '전체 비교': 8px under the cards it continues (위계 점검 50); no list over it, so no hairline */
 @media (min-width: 640px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pwrap { position: relative; display: grid; min-width: 0; }
 .pc { display: grid; align-content: start; gap: 0; text-align: left; border: 1px solid var(--line-soft); background: var(--surface); border-radius: 18px; padding: var(--sp-3);
@@ -486,7 +500,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .pc .pico { width: 36px; height: 36px; border-radius: 12px; background: var(--fill); display: grid; place-items: center; margin-bottom: var(--sp-2); color: var(--ink-2); }
 .pc .pico svg.i { width: 19px; height: 19px; }
 .pc .l { font-size: var(--fs-body); font-weight: var(--fw-semi); color: var(--ink-2); line-height: 1.4; min-height: 2.8em; }
-.pc .p { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.035em; margin-top: var(--sp-2); white-space: nowrap; }
+.pc .p { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.035em; margin-top: var(--sp-2); }   /* the price itself is one .nw; no label on the card — the section head says '중간 가격' once (#153) */
 .pc .save { font-size: var(--fs-aux); font-weight: var(--fw-bold); color: var(--good); }
 .pc .save.flat { color: var(--muted); font-weight: var(--fw-semi); }
 .pc .basis { font-size: var(--fs-aux); color: var(--muted); line-height: 1.4; }
@@ -777,7 +791,7 @@ details.advset > summary b { font-weight: inherit; }
 .ci { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--sp-2); align-items: start; padding: var(--sp-3) 0; }
 .ci + .ci { border-top: 1px solid var(--line-soft); }
 .ci .cimg { width: 44px; height: 44px; border-radius: 14px; background: var(--fill); display: grid; place-items: center; color: var(--ink-2); grid-row: span 2; }
-.ci .cn { font-weight: var(--fw-bold); line-height: 1.4; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.ci .cn { font-weight: var(--fw-semi); line-height: 1.4; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .ci .cx { border: 0; background: none; color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; margin: -8px -8px 0 0; }
 .ci .cx:hover { background: var(--fill); color: var(--ink); }
 .ci .cs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
@@ -1031,8 +1045,6 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 .chk-b b svg.i { color: var(--ink-2); }
 .chk-b .sub { line-height: 1.55; color: var(--ink-2); }
 .chk-b ul.plain { margin: 0; font-size: var(--fs-aux); gap: 0; }
-.pc .pk { font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); margin-top: var(--sp-2); }
-.pc .pk + .p { margin-top: 0; }
 /* a price range is text that wraps between its two numbers, never the 3-column '.range' grid of the min~max inputs above
    (same class name): in that grid each number got a third of the width and ran over the '~' and the card edge */
 .hp.range { display: block; }

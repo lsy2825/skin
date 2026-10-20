@@ -42,6 +42,16 @@
   // filled without it (an inline background), and a 48px white .field
   const searchBox = (input, { inset = false, style, cls = "" } = {}, ...after) => h("div", { class: `search${inset ? " inset" : ""}${cls ? " " + cls : ""}`, style }, icon("search"), input, ...after);
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
+  // a card's head in one shape (2026-10-20 디자인 통일 U06, DESIGN_SYSTEM §3 '카드 머리'): the title (h3 17) on the left, how many on
+  // the right (13 grey — '182곳', '8개 브랜드', '0/20'), the basis under the title (13 grey — region, VAT, conditions). A control
+  // the card needs at its head (보기 방식, 특가 포함) comes after the count. A count sat in three places before (in the title, on
+  // the right, in the sentence under it), a basis on the right too, and a title said again on the right
+  const cardHead = (title, { count, desc, end, style } = {}) => { if (end) end.classList.add("cend");
+    return h("div", { class: "chead", style },
+      h("div", { class: "row" }, h("h3", {}, title), h("span", { class: "sp" }), count != null && count !== "" ? h("span", { class: "cmeta num" }, count) : null, end || null),
+      desc ? h("div", { class: "sub cdesc" }, desc) : null); };
+  // '뒤로' at the top of every screen outside the tabs (2026-10-20 디자인 통일 U16) — the same button on each
+  const backBtn = () => h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로");
 
   // personal keys live in the space of whoever uses the phone (round-2 R01): "pc:<key>" before sign-in, "pc:u:<id>:<key>" for
   // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
@@ -82,5 +92,5 @@
   }
   async function copyText(text, done = (App.jline && App.jline("copied")) || "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
 
-  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, emptyBox, emptyLine, searchBox, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
+  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, emptyBox, emptyLine, searchBox, cardHead, backBtn, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
 })();

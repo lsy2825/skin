@@ -59,7 +59,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     ok('Q1', "다시 열면 지금 횟수(3회)에서 시작 — '1회로 바꾸기'로 되돌리지 않음", (await p.locator('.sheet .qty b').textContent()) === '3' && await p.locator('.sheet button', { hasText: /^3회로 바꾸기$/ }).count() === 1 && (await carts(p))[0].items[0].q === 3);
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
-    ok('Q1', '장바구니 화면에 같은 개수', /담은 시술 2개/.test(await p.locator('#main').innerText()));
+    ok('Q1', '장바구니 화면에 같은 개수', /담은 시술\s*2개/.test(await p.locator('#main').innerText()));
     ok('Q1', '스크립트 오류 없음', !p.errs.length, p.errs.join(' ')); await ctx.close(); }
 
   // Q1b two 내 견적: the same toast names the cart it went into and only then talks about the other carts; a price row's 담기
@@ -175,7 +175,7 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
     const after = JSON.stringify((await carts(p))[0].items), n2 = await p.locator('#cart-n').textContent();
     ok('Q3', '지역 바꾼 뒤 장바구니 유지', s1 === before && n1 === '2', `${n1}개`);
     ok('Q3', '브랜드·필터·부가세·특가 바꾼 뒤 장바구니 유지', after === before && n2 === '2', after);
-    ok('Q3', '장바구니 화면에 수량 그대로', /담은 시술 2개/.test(await p.locator('#main').innerText()) && (await p.locator('.qty input, .qty .num').first().textContent().catch(() => '')) !== null);
+    ok('Q3', '장바구니 화면에 수량 그대로', /담은 시술\s*2개/.test(await p.locator('#main').innerText()) && (await p.locator('.qty input, .qty .num').first().textContent().catch(() => '')) !== null);
     await p.reload(); await p.waitForSelector('#main .card');
     ok('Q3', '새로고침 후에도 유지', JSON.stringify((await carts(p))[0].items) === before);
     await ctx.close(); }
@@ -226,6 +226,8 @@ const amounts = (s) => [...s.matchAll(UNIT)].map((m) => `${+m[1]}${m[2].toLowerC
   { const { ctx, p } = await page({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
     await p.goto(BASE + '#map'); await p.waitForTimeout(1200);
     await p.selectOption('select[aria-label="지도에 표시할 시술"]', { index: 1 }); await p.waitForTimeout(500);
+    // the map in view (its card has '뒤로' and a line under the title since 2026-10-20 U16 — the pins sat under the tab bar)
+    await p.evaluate(() => document.getElementById('map').scrollIntoView({ block: 'center' })); await p.waitForTimeout(300);
     for (let i = 0; i < 4 && await p.locator('.pin-cluster').count() && !(await p.locator('.pin-price').count()); i++) { await p.locator('.pin-cluster').first().click(); await p.waitForTimeout(700); }
     if (await p.locator('.mapbtn.again').isVisible()) { await p.locator('.mapbtn.again').click(); await p.waitForTimeout(300); }
     const pins = await p.locator('.pin-price').count(); let pass = 0, tried = 0, why = [];
