@@ -65,15 +65,15 @@
   // the phone's alerts → contract rules. What maps:
   //   시술 지켜보기 → watch (+ target when its 목표가 is on, + newmatch when '새 비교 가능 지점' is on)
   //   시술 목표가 → target(max) · 시술 새 최저가 → watch (the nearest kind: a new low is a price change) · 시술 파는 지점 → newmatch
-  //   지점 상품 '이벤트 종료 3일 전' → expiring for each comparison key of that product, in that branch's 시·도
-  // What stays on the phone only (no matching kind): 내 견적 합계(cartdrop), a branch product's 목표가, and any alert made with
-  // 특가 포함 off (a.sp === false) — the Worker always counts special prices, so it would ring on prices this alert leaves out
-  // (chat A's request 2026-10-16).
-  // rowKeys(row) → [{key, region}] is the app's lookup for a branch product; known(key) says the comparison still exists
-  // (an alert on a key that is gone and has no successor never rings in the app either — it is not sent, and counts as
-  // local). Duplicates go; a target keeps the highest max per key and region; more than 20 are cut from the end (the
-  // newest alerts are last).
-  function rulesOf(alerts, rowKeys, known) {
+  // What stays on the phone only (no matching kind): 내 견적 합계(cartdrop), a branch product's alerts (목표가 and '이벤트 종료
+  // 3일 전'), and any alert made with 특가 포함 off (a.sp === false) — the Worker always counts special prices, so it would
+  // ring on prices this alert leaves out (chat A's request 2026-10-16). The Worker's expiring is about a comparison key in a
+  // region (its lowest price ends and nothing as low is left), not one branch's product: sent for a product it would ring
+  // wrongly or not at all (chat A's request, #85 ①) — until the contract has a branch field.
+  // known(key) says the comparison still exists (an alert on a key that is gone and has no successor never rings in the app
+  // either — it is not sent, and counts as local). Duplicates go; a target keeps the highest max per key and region; more
+  // than 20 are cut from the end (the newest alerts are last).
+  function rulesOf(alerts, known) {
     const out = [], seen = new Map();
     let local = 0;
     const add = (r) => {
@@ -97,11 +97,7 @@
         else if (a.type === "newlow") add(rule("watch", a.k, reg));
         else if (a.type === "newmatch") add(rule("newmatch", a.k, reg));
         else local++;
-      } else if (a.row && a.type === "expiring") {
-        const ks = typeof rowKeys === "function" ? rowKeys(a.row) || [] : [];
-        if (!ks.length) local++;
-        for (const x of ks) add(rule("expiring", x.key, regionOf(x.region)));
-      } else local++;
+      } else local++;   // a branch product (a.row: 목표가, 이벤트 종료 3일 전) or 내 견적 합계
     }
     return { rules: out.slice(0, MAX_RULES), cut: Math.max(0, out.length - MAX_RULES), local };
   }
@@ -132,8 +128,25 @@
   // Worker no longer knows it, 400/403 … it never will) — only 408/429 and 5xx (and no answer) are tried again
   const delDone = (status) => (status >= 200 && status < 300) || (status >= 400 && status < 500 && status !== 408 && status !== 429);
 
+  // the bytes of an ArrayBuffer or a typed array (a subscription's options.applicationServerKey), or null
+  function bytesOf(x) {
+    if (!x || typeof x !== "object") return null;
+    if (Object.prototype.toString.call(x) === "[object ArrayBuffer]") return new Uint8Array(x);
+    return ArrayBuffer.isView(x) ? new Uint8Array(x.buffer, x.byteOffset, x.byteLength) : null;
+  }
+  // the browser's subscription was made with a public key other than cfg.pushPublicKey (the VAPID keys were replaced: the
+  // Worker's pushes to it are refused, chat A's request #85 ②). Only a key the browser shows counts — a browser that does
+  // not show one (no options.applicationServerKey) says false, so an unreadable key never makes a new subscription at each start.
+  function otherKey(sub, cfg) {
+    const want = keyBytes(cfg && cfg.pushPublicKey);
+    let have = null;
+    try { have = bytesOf(sub && sub.options && sub.options.applicationServerKey); } catch (e) { return false; }
+    if (!want || !have) return false;
+    return have.length !== want.length || have.some((v, i) => v !== want[i]);
+  }
+
   // what the phone keeps: { id, ep: the subscription's endpoint, h: hash of the rules last sent }, or null
   const cleanState = (s) => (s && typeof s === "object" && ID.test(s.id || "") && typeof s.ep === "string" && typeof s.h === "string" ? { id: s.id, ep: s.ep, h: s.h } : null);
 
-  return { KINDS, MAX_RULES, MAX_DEL, base, keyBytes, enabled, subJSON, rulesOf, hash, subscribeReq, rulesReq, unsubscribeReq, idOf, cleanDel, addDel, delDone, cleanState };
+  return { KINDS, MAX_RULES, MAX_DEL, base, keyBytes, enabled, subJSON, rulesOf, hash, subscribeReq, rulesReq, unsubscribeReq, idOf, cleanDel, addDel, delDone, otherKey, cleanState };
 });
