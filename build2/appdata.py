@@ -73,6 +73,13 @@ data.json (compact, strings interned in `s`):
             one of them. group key = xkeys.comp of the name (not in `s`); only keys of the achg.prev snapshot. Read by the next
             build only. A previous file of the same collection without it: still_listed (the snapshot's prices still sold there)
             and every '새로 생김' of that build (achg_moved — the snapshot cannot tell a row a rule moved in)
+  meta.keymap  {old id: [new id or '', old label] or [new id, old label, 1]} (key_map) — ids an earlier build had: the app moves
+            saved items to the new id and shows the old label where there is none. 1 (2026-10-19): the rename moved no row (carried),
+            so the new id carries the old id's history — its snapshot points in `trend`, its price there in `changes` (carried_before)
+            — except where the new id is regrouped itself (meta.recl / reclBranches). An id merged into one the previous file had
+            always is, at the branches the old id's rows joined it, so a merge restarts its trend and drops those branches' changes
+            (as without the mark: the 10-18 rebuild marked 29, 27 of them merges, and 8 real changes stayed out). Doing better needs
+            the pairs read through the renames kept in data.json (a later build of the collection cannot tell them apart)
   meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9; a chain never collected is left out).
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
@@ -220,23 +227,42 @@ def load_snapshot(path):
     return d
 
 
-def trend(hist, date, rows, since=None):
+def trend(hist, date, rows, since=None, carry=None):
     """weekly price trend per comparison key from the snapshots in data2/history (regular prices only):
-    {"dates": [...], "k": {key: [[median, min, branches] or None per date]}, "disc": {key: median % off the list price now}}"""
+    {"dates": [...], "k": {key: [[median, min, branches] or None per date]}, "disc": {key: median % off the list price now}}
+    carry: {old id: new id} — renames that moved no row (meta.keymap entries marked 1, key_map, carried): the old ids' snapshot
+    points count for the successor (2026-10-19: an auto key whose representative spelling changed started its trend again while
+    the app moved saved items on). A branch in two of them counts once, at the lowest (the successor's rows are theirs together);
+    the history starts from the latest date any of them was regrouped (since). The snapshots stay as they were written"""
     files = sorted(p for p in glob.glob(os.path.join(hist, "*.json")) if os.path.basename(p)[:10] <= date)[-52:]
-    dates, per = [], {}
+    point = lambda vs: [vs[len(vs) // 2], vs[0], len(vs)]
+    fam = defaultdict(set)
+    for o, n in (carry or {}).items():
+        fam[n] |= {o, n}
+    member = {x: n for n, xs in fam.items() for x in xs}
+    dates, per, joined = [], {}, {}
     for i, p in enumerate(files):
         dates.append(os.path.basename(p)[:10])
-        by = {}
+        by, at = {}, defaultdict(dict)
         for kk, v in load_snapshot(p).items():
-            by.setdefault(kk.split("|")[0], []).append(v)
+            k, place = kk.split("|", 1)
+            by.setdefault(k, []).append(v)
+            if k in member:
+                m = at[member[k]]
+                m[place] = min(m.get(place, v), v)
         for k, vs in by.items():
             vs.sort()
-            per.setdefault(k, [None] * len(files))[i] = [vs[len(vs) // 2], vs[0], len(vs)]
+            per.setdefault(k, [None] * len(files))[i] = point(vs)
+        for n, m in at.items():
+            joined.setdefault(n, [None] * len(files))[i] = point(sorted(m.values()))
+    per.update(joined)
     for k in per:
         per[k] += [None] * (len(files) - len(per[k]))
     # since: {key: date} — the rows of the key were regrouped on that date; earlier weeks measured another mix of rows
-    for k, d0 in (since or {}).items():
+    since = dict(since or {})
+    for n, xs in fam.items():
+        since[n] = max(since.get(x, "") for x in xs)
+    for k, d0 in since.items():
         if k in per:
             per[k] = [v if dates[i] >= d0 else None for i, v in enumerate(per[k])]
     offs = {}
@@ -544,12 +570,18 @@ def load_prev(prev_txt):
         return None, []
 
 
-def row_keys_prev(prev, prow):
-    """previous data: (brand, branch, name) → set of comparison ids"""
+def read_ids(text, ren=None):
+    """the comparison ids of a keys field; with ren ({old id: new id}, this build's renames — carried) an id this build renamed
+    reads as its successor"""
+    return {(ren or {}).get(k, k) for k in (text or "").split()}
+
+
+def row_keys_prev(prev, prow, ren=None):
+    """previous data: (brand, branch, name) → set of comparison ids (ren: read_ids)"""
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
     out = {}
     for r in prow:
-        out.setdefault((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set()).update((ps[r[7]] or "").split())
+        out.setdefault((pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]]), set()).update(read_ids(ps[r[7]], ren))
     return out
 
 
@@ -586,13 +618,15 @@ def reclassified(prev, prow, rows):
     return {k for k, _ in recl_pairs(prev, prow, rows)}
 
 
-def recl_pairs(prev, prow, rows):
+def recl_pairs(prev, prow, rows, ren=None):
     """reclassified() per branch: {(id, 'brand|branch')} — the id's rows moved at that branch. A branch's plain lowest comes from
     its own rows only, so the other branches of the id keep their real price changes (2026-10-16: 쁨 울산점's '♥수목 해피아워♥'
-    rows left TA42833F 쥬베룩 스킨 부스터 2cc by a rule, and 7 other 쁨 branches' 149,000 → 250,000 went out of `changes` with it)"""
+    rows left TA42833F 쥬베룩 스킨 부스터 2cc by a rule, and 7 other 쁨 branches' 149,000 → 250,000 went out of `changes` with it).
+    ren ({old id: new id}, carried): the previous rows' ids read as their successors, and a successor counts as an id of both
+    builds — what a rename moved (none: the successor carries the old id's history)"""
     if not prev:
         return set()
-    old = row_keys_prev(prev, prow)
+    old = row_keys_prev(prev, prow, ren)
     # both sides as name → all its ids (a branch can list the same name twice with different prices / ids)
     new = {}
     for r in rows:
@@ -625,7 +659,7 @@ def recl_pairs(prev, prow, rows):
     # name-level sets above were equal and the key read as a rise 190,000 → 290,000)
     wk, nk = defaultdict(set), defaultdict(set)
     for r in prow:
-        wk[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].update((ps[r[7]] or "").split())
+        wk[(pbrand[pb[r[0]][0]], ps[pb[r[0]][1]], ps[r[2]], int(r[3]))].update(read_ids(ps[r[7]], ren))
     for r in rows:
         nk[(r["brand"], r["branch"], r["name"], int(r["sale"]))].update(r["keys"].split())
     for ident in wk.keys() & nk.keys():
@@ -647,12 +681,13 @@ def recl_pairs(prev, prow, rows):
             if ident(r) in back:
                 out |= at(ident(r), [k for k in r["keys"].split()
                                      if G.regular(r) or int(r["sale"]) < rest.get((k, r["brand"], r["branch"]), 10 ** 12)])
-    # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap)
-    before = {k[0] for k in prev.get("keys", [])}
+    # only ids that exist in both builds have a history to protect (a new id starts empty, a gone id is in keymap — its successor
+    # carries it only where the rename moved no row: carried)
+    before = {k[0] for k in prev.get("keys", [])} | set((ren or {}).values())
     return {x for x in out if x[0] in before}
 
 
-def same_collection_moved(prev, prow, best, date):
+def same_collection_moved(prev, prow, best, date, ren=None):
     """a later build of the collection the previous data.json was built from: {(id, 'brand|branch')} whose plain lowest is not
     the earlier build's. That one is counted from the previous rows by the rule they were built with (meta.plainRules), without
     the rows whose event was over by `date` (clean.py drops those the same way). Both builds read the same collection, so the
@@ -660,7 +695,7 @@ def same_collection_moved(prev, prow, best, date):
     title read into the name, two rows merged into one) or drops it and adds it back under another name (검증 2026-10-16: 블리비
     명동점 '[이벤트] 레이저토닝 10회' 149,000, renamed and untagged, read as 190,000 → 149,000 while 유앤아이 구로점 kept
     T6126905 in meta.recl). Only the earlier build's branches (a branch or chain added to the collection later is new, not
-    moved) and ids (recl_pairs). best: this build's 'id|brand|branch' → plain lowest."""
+    moved) and ids (recl_pairs; ren as there). best: this build's 'id|brand|branch' → plain lowest."""
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
     pkey = [f"{pbrand[b[0]]}|{ps[b[1]]}" for b in pb]
     rule, was = prev_rule(prev), {}
@@ -669,10 +704,10 @@ def same_collection_moved(prev, prow, best, date):
         if re.fullmatch(r"\d{4}-\d{2}-\d{2}", until) and until < date:
             continue
         if G.plain(*prev_cond(prev, r), rule=rule):
-            for k in (ps[r[7]] or "").split():
+            for k in read_ids(ps[r[7]], ren):
                 kk = f"{k}|{pkey[r[0]]}"
                 was[kk] = min(was.get(kk, 10 ** 12), int(r[3]))
-    branch, ids = set(pkey), {k[0] for k in prev.get("keys", [])}
+    branch, ids = set(pkey), {k[0] for k in prev.get("keys", [])} | set((ren or {}).values())
     out = set()
     for kk in best.keys() | was.keys():
         k, b = kk.split("|", 1)
@@ -681,13 +716,50 @@ def same_collection_moved(prev, prow, best, date):
     return out
 
 
-def rule_pairs(prev, prow, rows, best, collected, date):
+def rule_pairs(prev, prow, rows, best, collected, date, ren=None):
     """{(id, 'brand|branch')} the rules moved in this build: recl_pairs, and on a later build of the collection the previous
-    data.json was built from (meta.updated) also same_collection_moved"""
-    out = recl_pairs(prev, prow, rows)
+    data.json was built from (meta.updated) also same_collection_moved (ren: as in recl_pairs)"""
+    out = recl_pairs(prev, prow, rows, ren)
     if prev and prev["meta"].get("updated") == collected:
-        out |= same_collection_moved(prev, prow, best, date)
+        out |= same_collection_moved(prev, prow, best, date, ren)
     return out
+
+
+def carried(prev, prow, rows, best, collected, date, keymap):
+    """the ids the previous data.json had that this build renamed (keymap, key_map) without moving a row: rule_pairs with the
+    previous rows' ids read as their successors finds the successor at no branch. Its successor carries its price history
+    (meta.keymap mark 1: trend) unless it is regrouped (meta.recl — a merge into an id the previous file had always is, where the
+    old rows joined it). A rename that moved rows anywhere starts again, as an id whose rows a rule moved does
+    (meta.recl): '바디리니어지 100샷' T0D1AF59 → T11F7B37 (2026-10-19) lost 밴스 여의도's twin rows — the very rows whose going
+    changed the id"""
+    if not prev:
+        return set()
+    had = {k[0] for k in prev.get("keys", [])}
+    ren = {k: v[0] for k, v in keymap.items() if v[0] and k in had}
+    if not ren:
+        return set()
+    moved = {k for k, _ in rule_pairs(prev, prow, rows, best, collected, date, ren)}
+    return {k for k, to in ren.items() if to not in moved}
+
+
+def carried_before(before, carry):
+    """the snapshot `changes` is counted from (and the review queue's and held prices' 'before'), with each carried old id's
+    prices (carry {old id: new id}: meta.keymap marks, carried) under its successor too — at a branch two of them share, the
+    lowest. Without it a renamed id has no 'before': on 10-18 '바디리니어지 500샷' (T2A7857E → T403E6F2) left 닥터에버스 마곡점·인천점·
+    천호점·수원인계점 → 175,000 and 송도점 → 200,000 out of `changes`"""
+    out = dict(before)
+    for kk, v in before.items():
+        k, place = kk.split("|", 1)
+        if k in carry:
+            nk = f"{carry[k]}|{place}"
+            out[nk] = min(out.get(nk, v), v)
+    return out
+
+
+def carried_skip(skip, carry):
+    """regrouped() with what the rules moved for a carried old id (an earlier build of the collection) at its successor too"""
+    ids, pairs = skip
+    return ids | {carry[k] for k in ids if k in carry}, pairs | {(carry[k], b) for k, b in pairs if k in carry}
 
 
 def prev_recl_branches(prev):
@@ -871,11 +943,14 @@ def bare_label(label):
     return re.sub(r"\s+|여성|여자|남성|남자|\((?:여|남)\)|女|男", "", unicodedata.normalize("NFKC", label or ""))
 
 
-def key_map(prev, prow, rows, allk):
+def key_map(prev, prow, rows, allk, kept=()):
     """old comparison id → [new id or "", old label] for ids the previous data.json had and this one doesn't (a taxonomy fix
     or renamed options change an auto key's signature). The app moves saved carts, favourites and alerts with it, and shows
     the old label for an id that has no successor instead of a bare 'T1234567'. Same row (brand, branch, name) decides: the
-    new key that at least half of the old key's rows now carry. Older entries are kept and followed (A → B → C)."""
+    new key that at least half of the old key's rows now carry. Older entries are kept and followed (A → B → C).
+    A third item 1 (2026-10-19): the successor carries the old id's price history (trend) unless it is regrouped (meta.recl) —
+    the old ids in kept (carried: the rename moved no row), and an older entry only while every rename on its way did (A → B
+    marked, B → C not: A → C unmarked)"""
     if not prev:
         return {}
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
@@ -917,15 +992,16 @@ def key_map(prev, prow, rows, allk):
             to = ""
         if to and {"여성", "남성"} == {sex_word(old_l), sex_word(new_l)}:
             to = ""
-        out[k] = [to, plabel.get(k, k)]
-    for k, (to, label) in (prev["meta"].get("keymap") or {}).items():
+        out[k] = [to, plabel.get(k, k)] + ([1] if to and k in kept else [])
+    marked = lambda e: len(e) > 2 and e[2] == 1
+    for k, e in (prev["meta"].get("keymap") or {}).items():
         if k in now or k in out:
             continue
-        hops = 0
+        to, label, keep, hops = e[0], e[1], marked(e), 0
         while to and to not in now and hops < 10:
-            to = out.get(to, (prev["meta"].get("keymap") or {}).get(to, ["", ""]))[0]
-            hops += 1
-        out[k] = [to if to in now else "", label]
+            e = out.get(to, (prev["meta"].get("keymap") or {}).get(to, ["", ""]))
+            to, keep, hops = e[0], keep and marked(e), hops + 1
+        out[k] = [to, label] + ([1] if keep else []) if to in now else ["", label]
     return dict(list(out.items())[-4000:])
 
 
@@ -1016,14 +1092,20 @@ def main():
     bkeys = [f"{BRANDS[b[0]][0]}|{s[b[1]]}" for b in branches]
     # … and at which branches (meta.reclBranches): only those branches' price changes are the rules'
     reclb = recl_branches(prev_data, collected, recl, pairs_now, whole_now, bkeys)
+    # old id → new id (meta.keymap), marked where the successor carries the old id's price history (a rename that moved no row):
+    # the trend, and the snapshot changes are counted from (carried_before)
+    keymap = key_map(prev_data, prev_rows, rows, ALLK)
+    keymap = key_map(prev_data, prev_rows, rows, ALLK, carried(prev_data, prev_rows, rows, best, collected, a.date, keymap))
+    carry = {k: v[0] for k, v in keymap.items() if len(v) > 2 and v[2] == 1}
+    before = carried_before(prev, carry)
     # changes against the previous snapshot (for the review queue; counted again with the held prices after it, hold_back)
     changes, prev_date, skip, kid = [], "", (set(), set()), {k[0]: i for i, k in enumerate(ALLK)}
     if prev_files:
         prev_date = os.path.basename(prev_files[-1])[:10]
         # every id regrouped after that snapshot (this build or an earlier build of a later day / the same day): at the
         # branches where its rows moved, its 'change' since the snapshot is a new mix of rows, not a price change
-        skip = regrouped(recl, reclb, prev_date, bkeys)
-        changes = price_changes(prev, best, *skip, kid, bi)
+        skip = carried_skip(regrouped(recl, reclb, prev_date, bkeys), carry)
+        changes = price_changes(before, best, *skip, kid, bi)
     checks = price_checks(rows, a.date)
     KB, CONCERNS = knowledge.export()   # treatment knowledge base + concern taxonomy (knowledge/)
     vp = os.path.join(ROOT, "data2", "variants.json")
@@ -1041,19 +1123,18 @@ def main():
     achg, anew, agone = achg_keep(achg, anew, agone, moved, bkeys, gkeys)
     agone = agone[:G.GONE_MAX]
     review = review_queue(rows, out_rows, bi, bkeys, gid, achg, changes, s, ALLK, name_was(prev_data), prev_held(prev_data),
-                          (prev, asnap, gkeys))
+                          (before, asnap, gkeys))
     # what the rows waiting for review move is held until approved: those places count with the price before it (or a shown row
     # below it) — in this collection's snapshots and so in changes and achg: the held price is no change, '새로 생김', trend point
     # or next week's baseline. Dated by the collection, not the build: a rebuild without scraping on a later day rewrites that
     # collection's snapshot instead of adding an observation that never happened — and, counted from the same older snapshot,
     # holds the same prices (a second build of the collection gives the same files)
     hk, hg = held(rows, out_rows, gid, best, low_reg)
-    snap, auto = hold_back(best, hk, prev, skip), G.held_back(auto, hg, asnap, gkeys, bkeys, moved)
-    changes = price_changes(prev, snap, *skip, kid, bi)
+    snap, auto = hold_back(best, hk, before, skip), G.held_back(auto, hg, asnap, gkeys, bkeys, moved)
+    changes = price_changes(before, snap, *skip, kid, bi)
     achg, anew = held_achg(achg, anew, hg, auto, moved, gkeys, bkeys)
     save_snapshot(hist, collected, snap)
     G.write_snapshot(hist, collected, auto)
-    keymap = key_map(prev_data, prev_rows, rows, ALLK)
     data = {
         # updated = the collection (the day most branches were read; what the app calls '수집'); built = the build date (expired events and the weekly
         # snapshot are counted from it)
@@ -1065,7 +1146,7 @@ def main():
                  "plainRules": G.rule_marks((prev_data or {}).get("meta", {}).get("plainRules"), collected),
                  "brandFirst": first_seen(days, [b for b, *_ in BRANDS], {r["brand"] for r in rows}, collected)},
         "branches": branches, "cols": columns(out_rows), "colDelta": COL_DELTA, "keys": [list(k) for k in ALLK], "changes": changes, "s": s,
-        "trend": trend(hist, collected, [r for r, o in zip(rows, out_rows) if not o[13]], {k: d for d, ks in recl for k in ks}),
+        "trend": trend(hist, collected, [r for r, o in zip(rows, out_rows) if not o[13]], {k: d for d, ks in recl for k in ks}, carry),
         "groups": [[S(x[0])] + x[1:] for x in groups], "bstat": bstat,
         "achg": {"prev": aprev, "chg": achg, "new": anew, "gone": [[S(x[0]), x[1], x[2]] for x in agone]},
     }

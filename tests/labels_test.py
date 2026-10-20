@@ -2100,6 +2100,133 @@ ok("groups.held_back: 규칙이 옮긴 줄(achg_moved)의 가격인 지난 기�
 ok("datameta.changes: 지난 파일의 was '?'(모름)는 그 이름을 뺌 — 돌아와도·승인돼도 항목 없음",
    _c(_hm(_hw, [("강남점", "점빼기", 1000, 100, "?")]), _hm([("강남점", "점빼기", 1000, "일반", 0)])) == []
    and _c(_hm(_hw, [("강남점", "점빼기", 1000, 100, "?")]), _hm([("강남점", "점빼기", 100, "일반", 0)])) == [])
+# 가격 추이·가격 변동이 meta.keymap을 따라감(2026-10-19): 자동 키 id가 바뀌어도(대표 서명의 띄어쓰기 다수결 등) 규칙이 줄을 하나도 옮기지
+# 않았으면 새 id가 옛 id의 기록을 이어 받음 — keymap 셋째 칸 1(appdata.carried). 옛 id의 기록 점이 새 id의 추이(trend)에, 지난 기록 가격이
+# 새 id의 changes 'before'에 들어감(main: 새 id는 기록 없이 다시 시작하고, 그 수집의 진짜 변동도 빠졌음 — 10-18 '바디리니어지 500샷'
+# T2A7857E → T403E6F2의 닥터에버스 5곳 250,000 → 175,000 등). 규칙이 줄을 옮긴 이름 바꿈은 지금처럼 다시 시작: '바디리니어지 100샷'
+# T0D1AF59 → T11F7B37(10-19)은 밴스 여의도 쌍둥이 줄이 빠진 것이 id가 바뀐 까닭 — 키를 지킨 id라도 meta.recl로 다시 시작하는 경우.
+# 기록 파일(data2/history)은 고치지 않음. 새 id가 그날 다시 묶였으면(meta.recl·reclBranches) 표시 1이어도 다시 시작 — 이미 있는 id로
+# 합쳐진 이름 바꿈은 옛 줄이 들어온 지점에서 늘 그래서, 실제로 이어지는 것은 새로 생긴 id로 간 이름 바꿈(TREATMENT_TAXONOMY §6 '남은 것')
+
+
+def _tk(f, *a):
+    """appdata.<f>(*a), or a string where main lacks it (the check fails instead of stopping the file)"""
+    try:
+        return getattr(appdata, f)(*a)
+    except (AttributeError, TypeError) as e:
+        return f"없음: {e}"
+
+
+with tempfile.TemporaryDirectory() as _th:
+    appdata.save_snapshot(_th, "2026-10-13", {"TOLDAAAA|A|강남점": 100000, "TOLDAAAA|A|역삼점": 120000, "TOLDBBBB|A|역삼점": 110000,
+                                              "TOLDBBBB|A|신촌점": 90000, "TOLDCCCC|A|강남점": 70000, "TGONE000|A|강남점": 50000})
+    appdata.save_snapshot(_th, "2026-10-14", {"TMIDAAAA|A|강남점": 100000, "TMIDAAAA|A|역삼점": 120000, "TOLDBBBB|A|역삼점": 110000,
+                                              "TOLDBBBB|A|신촌점": 90000, "TOLDCCCC|A|강남점": 70000})
+    appdata.save_snapshot(_th, "2026-10-19", {"TNEWAAAA|A|강남점": 95000, "TNEWAAAA|A|역삼점": 110000, "TNEWAAAA|A|신촌점": 90000,
+                                              "TNEWCCCC|A|강남점": 70000})
+    _tf_bytes = {f: open(os.path.join(_th, f), "rb").read() for f in sorted(os.listdir(_th))}
+    # A → MID → NEW (keymap folds a chain to its end), B → NEW (two old ids into one), C → NEW C unmarked (a rename that moved rows), GONE → ''
+    _cy = {"TOLDAAAA": "TNEWAAAA", "TMIDAAAA": "TNEWAAAA", "TOLDBBBB": "TNEWAAAA"}
+    _t0 = appdata.trend(_th, "2026-10-19", [])
+    _t1, _t2, _t3 = (_tk("trend", _th, "2026-10-19", [], sn, _cy) for sn in (None, {"TOLDBBBB": "2026-10-14"}, {"TNEWAAAA": "2026-10-19"}))
+    _tf_same = _tf_bytes == {f: open(os.path.join(_th, f), "rb").read() for f in sorted(os.listdir(_th))}
+_tn = lambda t, k: t["k"].get(k) if isinstance(t, dict) else t
+ok("trend: 표시(keymap 1)된 이름 바꿈은 옛 id의 기록 점을 새 id에 — A → MID → NEW 사슬, 두 옛 id(A·B)가 한 지점(역삼점)에 함께 있으면 "
+   "한 번만(낮은 값 110,000), 표시 없는 이름 바꿈(C)·없어진 id는 지금처럼(main: NEW는 10-19부터)",
+   _tn(_t1, "TNEWAAAA") == [[100000, 90000, 3], [100000, 90000, 3], [95000, 90000, 3]] and _tn(_t0, "TNEWAAAA") == [None, None, [95000, 90000, 3]]
+   and _tn(_t1, "TNEWCCCC") == _tn(_t0, "TNEWCCCC") == [None, None, [70000, 70000, 1]] and _tn(_t1, "TGONE000") == _tn(_t0, "TGONE000")
+   and all(_tn(_t1, k) == _tn(_t0, k) for k in ("TOLDAAAA", "TMIDAAAA", "TOLDBBBB")), (_tn(_t1, "TNEWAAAA"), _tn(_t0, "TNEWAAAA")))
+ok("... 옛 id나 새 id가 다시 묶인 날(meta.recl)부터: B가 10-14면 새 id도 10-14부터, 새 id가 10-19면 10-19부터 — 기록 파일은 그대로",
+   _tn(_t2, "TNEWAAAA") == [None, [100000, 90000, 3], [95000, 90000, 3]] and _tn(_t3, "TNEWAAAA") == [None, None, [95000, 90000, 3]] and _tf_same,
+   (_tn(_t2, "TNEWAAAA"), _tn(_t3, "TNEWAAAA")))
+# key_map: 셋째 칸 1은 이번 빌드에서 줄을 옮기지 않은 이름 바꿈(kept)과, 가는 길의 이름 바꿈이 모두 표시된 예전 칸만. 표시 없는 칸은 지금처럼 두 칸
+_kmp = {"s": ["A", "강남점", "바디리니어지 100샷", "", "T0AAAAAA", ""], "branches": [[0, 1]],
+        "meta": {"brands": [["A"]], "kinds": appdata.KINDS, "keymap": {"T0OLD001": ["T0AAAAAA", "옛 이름 1", 1], "T0OLD002": ["T0AAAAAA", "옛 이름 2"],
+                                                                         "T0GONE01": ["", "없어진 것"]}},
+        "keys": [["T0AAAAAA", 0, "바디리니어지 100샷"]]}
+_kmr = [dict(brand="A", branch="강남점", name="바디리니어지 100샷", keys="TBBBBBBB")]
+_kma = [["TBBBBBBB", 0, "바디 리니어지 100샷"]]
+_km1 = _tk("key_map", _kmp, [[0, 0, 2, 98000, 0, 0, 3, 4]], _kmr, _kma, {"T0AAAAAA"})
+_km0 = _tk("key_map", _kmp, [[0, 0, 2, 98000, 0, 0, 3, 4]], _kmr, _kma, set())
+ok("key_map: 줄을 옮기지 않은 이름 바꿈은 [새 id, 옛 이름, 1], 예전 칸은 가는 길이 모두 표시일 때만 1(A → B 표시, B → C 표시 없음이면 A → C 표시 없음)",
+   _km1 == {"T0AAAAAA": ["TBBBBBBB", "바디리니어지 100샷", 1], "T0OLD001": ["TBBBBBBB", "옛 이름 1", 1], "T0OLD002": ["TBBBBBBB", "옛 이름 2"],
+            "T0GONE01": ["", "없어진 것"]}
+   and _km0 == {"T0AAAAAA": ["TBBBBBBB", "바디리니어지 100샷"], "T0OLD001": ["TBBBBBBB", "옛 이름 1"], "T0OLD002": ["TBBBBBBB", "옛 이름 2"],
+                "T0GONE01": ["", "없어진 것"]}
+   and appdata.key_map(_kmp, [[0, 0, 2, 98000, 0, 0, 3, 4]], _kmr, _kma) == _km0, (_km1, _km0))
+# carried: 이전 줄의 id를 새 id로 읽고 rule_pairs — 새 id가 어느 지점에서든 옮겨졌으면 표시 없음('바디리니어지 100샷': 여의도 줄이 키를 잃음)
+_cbr = ["강남점", "마곡점", "송도점", "인천점", "여의도"]
+_cpv = {"s": ["밴스"] + _cbr + ["바디리니어지 100샷", "", "T0D1AF59"], "branches": [[0, i + 1] for i in range(5)],
+        "meta": {"brands": [["밴스"]], "kinds": appdata.KINDS, "updated": "2026-10-19", "plainRules": [[2, "2026-10-14"]]},
+        "keys": [["T0D1AF59", 0, "바디리니어지 100샷"]]}
+_cpr = [[i, 0, 6, p, 0, 0, 7, 8, 1, -1, 7, 7, 0, 0, 7, 0, 0, 7] for i, p in enumerate([98000, 98000, 89000, 89000, 98000])]
+_cnr = lambda keys5, names=None, prices=None: [dict(brand="밴스", branch=b, name=(names or {}).get(b, "바디리니어지 100샷"),
+                                                    sale=str((prices or {}).get(b, p)), kind="일반", tags="", keys=k, days="0", hours="", addon="0")
+                                               for b, p, k in zip(_cbr, [98000, 98000, 89000, 89000, 98000], keys5)]
+_cbest = lambda rs: {f"{k}|{r['brand']}|{r['branch']}": int(r["sale"]) for r in rs for k in r["keys"].split()}
+_ckm = {"T0D1AF59": ["T11F7B37", "바디리니어지 100샷"]}
+_c_all = _cnr(["T11F7B37"] * 5)
+_c_yeo = _cnr(["T11F7B37"] * 4 + [""])
+_c_ren = _cnr(["T11F7B37"] * 5, {"송도점": "[이벤트] 바디리니어지 100샷"}, {"송도점": 79000})
+ok("carried: 다섯 지점 줄이 모두 새 id로 가면 표시, 여의도 줄이 키를 잃으면(T0D1AF59 → T11F7B37, 10-19) 표시 없음 — 키를 지킨 id라면 meta.recl",
+   _tk("carried", _cpv, _cpr, _c_all, _cbest(_c_all), "2026-10-19", "2026-10-19", _ckm) == {"T0D1AF59"}
+   and _tk("carried", _cpv, _cpr, _c_yeo, _cbest(_c_yeo), "2026-10-19", "2026-10-19", _ckm) == set()
+   and not any(k == "T11F7B37" for k, _ in appdata.recl_pairs(_cpv, _cpr, _c_yeo)),
+   [_tk("carried", _cpv, _cpr, x, _cbest(x), "2026-10-19", "2026-10-19", _ckm) for x in (_c_all, _c_yeo)])
+ok("... 같은 수집 다시 빌드에서 규칙이 이름을 바꾼 줄(송도점 89,000 → '[이벤트] …' 79,000)은 지점 최저가 달라서 표시 없음(same_collection_moved), "
+   "다음 수집이면 진짜 변동과 구별할 수 없어 표시(키를 지킨 id와 같음)",
+   _tk("carried", _cpv, _cpr, _c_ren, _cbest(_c_ren), "2026-10-19", "2026-10-19", _ckm) == set()
+   and _tk("carried", _cpv, _cpr, _c_ren, _cbest(_c_ren), "2026-10-26", "2026-10-26", _ckm) == {"T0D1AF59"},
+   [_tk("carried", _cpv, _cpr, _c_ren, _cbest(_c_ren), d, d, _ckm) for d in ("2026-10-19", "2026-10-26")])
+# changes: 표시된 이름 바꿈의 지난 기록 가격이 새 id의 'before'(carried_before) — 두 옛 id가 함께 있는 지점은 낮은 값, 같은 수집의 앞 빌드가
+# 옛 id의 줄을 옮긴 지점(regrouped)은 새 id에서도 뺌(carried_skip)
+_cb_before = {"TOLD0001|A|강남점": 98000, "TOLD0001|A|송도점": 89000, "TOLD0002|A|송도점": 85000, "TOTHER01|A|강남점": 1000}
+_cb_carry = {"TOLD0001": "TNEW0001", "TOLD0002": "TNEW0001"}
+_cb_best = {"TNEW0001|A|강남점": 95000, "TNEW0001|A|송도점": 85000, "TOTHER01|A|강남점": 1000}
+_cb_kid, _cb_bi = {"TNEW0001": 0, "TOTHER01": 1}, {("A", "강남점"): 0, ("A", "송도점"): 1}
+_cb_b = _tk("carried_before", _cb_before, _cb_carry)
+_cb_s = _tk("carried_skip", (set(), {("TOLD0001", "A|강남점")}), _cb_carry)
+ok("changes: 표시된 이름 바꿈은 옛 id의 지난 기록 가격에서 셈(강남점 98,000 → 95,000, 송도점은 두 옛 id 중 낮은 85,000 → 85,000 변동 없음) — "
+   "main은 0건. 같은 수집의 앞 빌드가 옛 id 줄을 옮긴 지점은 새 id에서도 뺌",
+   isinstance(_cb_b, dict) and appdata.price_changes(_cb_b, _cb_best, set(), set(), _cb_kid, _cb_bi) == [[0, 0, 98000, 95000]]
+   and {k: v for k, v in _cb_b.items() if k.startswith("TNEW")} == {"TNEW0001|A|강남점": 98000, "TNEW0001|A|송도점": 85000}
+   and all(_cb_b[k] == v for k, v in _cb_before.items())
+   and isinstance(_cb_s, tuple) and appdata.price_changes(_cb_b, _cb_best, *_cb_s, _cb_kid, _cb_bi) == []
+   and appdata.price_changes(_cb_before, _cb_best, set(), set(), _cb_kid, _cb_bi) == [], (_cb_b, _cb_s))
+# 끝-끝(clean.main → appdata.main): 한 시술의 띄어 쓴 이름이 다수(3곳)였다가 다음 수집에서 붙여 쓴 이름이 다수(3곳)가 되면 대표 서명이 바뀌어
+# id가 바뀜(T11F7B37 → T0D1AF59, 실제 10-19와 반대 방향). 남은 줄은 그대로라 표시 — 추이가 이어지고 강남점의 진짜 인하(98,000 → 95,000)가
+# changes에 나옴. 같은 수집 다시 빌드도 같은 결과. 쌍둥이 줄(같은 페이지·같은 이름·다른 값)이 생겨 줄이 키를 잃어 바뀐 id는 표시 없이 다시 시작
+_sp, _gl = ("바디", "리니어지", "바디 리니어지 100샷 1회"), ("바디", "리니어지", "바디리니어지 100샷 1회")
+_k1 = [("강남점",) + _sp + (98000,), ("마곡점",) + _sp + (98000,), ("천호점",) + _sp + (99000,), ("송도점",) + _gl + (89000,), ("인천점",) + _gl + (89000,)]
+_k2 = [x if x[0] != "강남점" else x[:4] + (95000,) for x in _k1 if x[0] != "천호점"] + [("잠실점",) + _gl + (90000,)]
+_k3 = _k1 + [("마곡점",) + _sp + (47000,), ("천호점",) + _sp + (55000,)]       # twins at 마곡점·천호점: those rows lose the key
+
+
+def _k_read(d):
+    s, br = d["s"], d["branches"]
+    return (d["meta"]["keymap"], {k: v for k, v in d["trend"]["k"].items() if k.startswith("T")},
+            sorted((d["keys"][k][0], s[br[b][1]], x, y) for k, b, x, y in d["changes"]), d["meta"]["recl"])
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    os.makedirs(os.path.join(tmp, "data2", "raw"))
+    os.makedirs(os.path.join(tmp, "app"))
+    with open(os.path.join(tmp, "data2", "branches.csv"), "w", newline="", encoding="utf-8") as f:
+        f.write("brand,branch,address,lat,lng\n")
+    _k_a = _k_read(_e_build(tmp, _k1, "2026-10-14")[0])
+    _k_b = _k_read(_e_build(tmp, _k2, "2026-10-19")[0])
+    _k_c = _k_read(_e_build(tmp, _k2, "2026-10-19")[0])                    # the same collection again
+    shutil.rmtree(os.path.join(tmp, "data2", "history"))
+    os.remove(os.path.join(tmp, "app", "data.json"))
+    _e_build(tmp, _k1, "2026-10-14")
+    _k_d = _k_read(_e_build(tmp, _k3, "2026-10-19")[0])
+ok("끝-끝: 줄을 옮기지 않은 id 바뀜(T11F7B37 → T0D1AF59)은 keymap 1, 추이가 10-14부터 이어지고 강남점 98,000 → 95,000이 changes에 "
+   "(main: 추이는 10-19부터, changes 0건) — 같은 수집 다시 빌드도 같은 결과",
+   list(_k_a[1]) == ["T11F7B37"] and _k_b[0] == {"T11F7B37": ["T0D1AF59", "바디 리니어지 100샷", 1]}
+   and _k_b[1].get("T0D1AF59") == [[98000, 89000, 5], [90000, 89000, 5]] and _k_b[2] == [("T0D1AF59", "강남점", 98000, 95000)] and _k_b[3] == []
+   and _k_c == _k_b, (_k_a, _k_b, _k_c[:3]))
+ok("... 쌍둥이 줄이 생겨(마곡점·천호점) 줄이 키를 잃으면서 바뀐 id(T11F7B37 → T0D1AF59)는 표시 없음 — 추이는 10-19부터(지금처럼)",
+   _k_d[0] == {"T11F7B37": ["T0D1AF59", "바디 리니어지 100샷"]} and _k_d[1].get("T0D1AF59") == [None, [89000, 89000, 3]], _k_d)
 import homedata  # noqa: E402
 _hd = {"s": ["", "A", "강남점", "리쥬란 2cc", "평일 낮", "X24", "11:00-16:00", "리쥬란 힐러 2cc"], "keys": [["X24", "스킨부스터", "리쥬란 힐러 2cc"]],
        "meta": {"fam": [], "brands": [["A"]], "updated": "2026-10-16"}, "branches": [[0, 2, 0, None, None, 0, 0, 0, 0, 3]], "colDelta": [2], "groups": [],
