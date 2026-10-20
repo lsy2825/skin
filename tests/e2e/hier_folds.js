@@ -54,7 +54,7 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
     const { ctx, p, errs } = await page(vp);
     await p.goto(BASE + '#cart'); await p.waitForSelector('#main .cart-items'); await p.evaluate(() => scrollTo(0, 0)); await p.waitForTimeout(300);
     const f = await p.evaluate((nav) => { const t = document.querySelector('#main .totline'); if (!t) return null; const r = t.getBoundingClientRect();
-      const head = [...document.querySelectorAll('#main .card h3')].find((x) => /^담은 시술 \d+개$/.test(x.textContent));
+      const head = [...document.querySelectorAll('#main .card .chead')].find((x) => /^담은 시술\s*\d+개$/.test(x.textContent));   // cardHead: '담은 시술' · '3개' on the right (U06)
       return { top: r.top, bottom: r.bottom, inFirst: r.top >= 0 && r.bottom <= innerHeight - nav, text: t.innerText.replace(/\s+/g, ' ').trim(),
         underHead: !!head && head.closest('.card') === t.closest('.card') && head.getBoundingClientRect().bottom <= r.top + 1 && !!t.nextElementSibling && t.nextElementSibling.classList.contains('cart-items'),
         hero: (document.querySelector('#main .cartsum .hp') || {}).innerText || '', n: ((document.querySelector('#main .cartsum') || {}).innerText || '').match(/모두 받을 수 있는 지점[^\d]*(\d+)곳/),

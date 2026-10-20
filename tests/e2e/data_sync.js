@@ -69,7 +69,7 @@ const md = (u) => `${+u.slice(5, 7)}/${+u.slice(8, 10)}`;
   await p.reload(); await p.waitForSelector('.pc');
   const during = await p.locator('#netbar').innerText().catch(() => '');
   const upd1 = await p.locator('#upd').textContent();
-  ok('새 버전 받는 동안: 저장된 가격을 먼저 보여줌(PARTIALLY_READY)', /새 가격 받는 중/.test(during) && upd1.includes(`${md(meta.updated)} 기준`), `${during} | ${upd1}`);
+  ok('새 버전 받는 동안: 저장된 가격을 먼저 보여줌(PARTIALLY_READY)', /새 가격 받는 중/.test(during) && upd1.includes(`${md(meta.updated)} 수집`), `${during} | ${upd1}`);
   await p.waitForSelector('#netbar .nb-act', { timeout: 15000 }).catch(() => {});
   const readyTxt = await p.locator('#netbar').innerText().catch(() => '');
   ok('검사 통과 후 "새 가격(2026-10-21)이 준비됐어요"', /새 가격\(2026-10-21\)이 준비됐어요/.test(readyTxt), readyTxt);

@@ -354,7 +354,8 @@
   // ends the same: that price ('19,690원').
   // rangeParts gives the two ends as shown (the unit '원' on the high end) so a screen can keep each end on one line and let
   // the line break only at '~'. opts.won: full won at both ends whatever the size — a screen whose other totals are in won
-  // (내 견적: the summary '2,022,680원 ~ 4,936,800원', plans B·C·D) shows the same total the same way in its plan A.
+  // (내 견적: the summary '2,022,680~4,936,800원', plans B·C·D) shows the same total the same way in its plan A. Every range on
+  // a screen is these words, the compare card's 28px one too (2026-10-20 디자인 통일 U02 — it was '11,000원 ~ 275,000원').
   const MAN_FROM = 100000;
   const commas = (n) => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
   const manTxt = (n) => { const v = Math.round(n / 1000) / 10, int = Math.trunc(v), dec = Math.round((v - int) * 10);

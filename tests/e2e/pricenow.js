@@ -121,14 +121,14 @@ const CAPITAL = ['서울', '경기', '인천'];
 
   // 12) brand overview: counts add up, median shown, no branch named by default; the brand sheet = the clinic list prices
   await go(p, 'compare?k=X12', 1000);
-  const total = num(await p.locator('#clinics h3').first().textContent());
+  const total = num(await p.locator('#clinics .chead .cmeta').first().textContent());   // the card head's count (cardHead, U06)
   // 6.0: the brand overview is folded ('가격 종류별·브랜드별·지역별 보기') and the list shows its first rows; the shared
   // '20곳 더 보기 (N곳 남음)' (2026-10-16 hierarchy audit 11) adds 20 a tap — tapped until every branch is listed
   await p.locator('#cmpmore > summary').click(); await p.waitForTimeout(200);
   for (let k = 0; k < 30 && await p.locator('#clinics .morelist').count(); k++) { await p.locator('#clinics .morelist').first().click(); await p.waitForTimeout(400); }
   const tiles = await p.$$eval('.bcard .tile', (ts) => ts.map((t) => t.innerText));
-  const sumN = tiles.reduce((s, t) => s + num((/(\d+)곳 · 중간 /.exec(t) || [, 0])[1]), 0);
-  ok('S12 브랜드별: 지점 수 합 = 지점별 가격 수, 중간 가격·확인일, 기본은 지점명 강조 없음', tiles.length >= 2 && sumN === total && tiles.every((t) => /중간 [\d,]+원/.test(t) && /확인 \d{4}-/.test(t)) && !tiles.some((t) => /브랜드 중 최저/.test(t)), `${tiles.length}개 브랜드 · ${sumN}/${total}곳`);
+  const sumN = tiles.reduce((s, t) => s + num((/중간 [\d,]+원 · (\d+)곳/.exec(t) || [, 0])[1]), 0);   // '중간 X원 · N곳' (U15)
+  ok('S12 브랜드별: 지점 수 합 = 지점별 가격 수, 중간 가격·확인일, 기본은 지점명 강조 없음', tiles.length >= 2 && sumN === total && tiles.every((t) => /중간 [\d,]+원/.test(t) && /확인 \d{1,2}\/\d{1,2}/.test(t)) && !tiles.some((t) => /브랜드 중 최저/.test(t)), `${tiles.length}개 브랜드 · ${sumN}/${total}곳`);
   await p.locator('.bcard .tile').first().click(); await p.waitForTimeout(400);
   const sheetRows = await p.$$eval('.sheet .list li .item', (it) => it.map((x) => [x.querySelector('.t').textContent.trim(), x.querySelector('.p').textContent]));
   await p.keyboard.press('Escape'); await p.waitForTimeout(200);
@@ -192,7 +192,7 @@ const CAPITAL = ['서울', '경기', '인천'];
   await go(p, 'saved', 700);
   const hist = p.locator('.notes li[data-type="lowbranch"]').first();
   const ht = await hist.innerText().catch(() => '');
-  ok('S18 알림 기록: 종류·시술·실제 지점·이전→새 가격·수집일', /최저가 지점 변경/.test(ht) && /→/.test(ht) && /\d{4}-\d{2}-\d{2} 수집/.test(ht) && ht.includes(lb ? lb.b.split('|')[1] : '???'), ht.replace(/\n/g, ' '));
+  ok('S18 알림 기록: 종류·시술·실제 지점·이전→새 가격·수집일', /최저가 지점 변경/.test(ht) && /→/.test(ht) && /\d{1,2}\/\d{1,2} 수집/.test(ht) && ht.includes(lb ? lb.b.split('|')[1] : '???'), ht.replace(/\n/g, ' '));
   await hist.locator('button', { hasText: '가격 보기' }).click(); await p.waitForTimeout(500);
   ok('S18 가격 보기 → 그 시술 비교 화면', /#compare\?k=X12/.test(p.url()));
   await go(p, 'saved', 500);

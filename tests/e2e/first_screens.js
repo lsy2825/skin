@@ -34,7 +34,7 @@ const NAV_H = 64;   // the tab bar covers the bottom of the screen
     await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(200);
     const first = await p.evaluate((nav) => { const vis = (sel) => { const e = document.querySelector(sel); if (!e) return false; const r = e.getBoundingClientRect(); return r.width > 0 && r.top >= 0 && r.bottom <= innerHeight - nav; };
       return { name: vis('.cmphead .cmpt'), range: vis('.pricecard .hp'), add: vis('.cmphead .addbtn'), rangeTxt: (document.querySelector('.pricecard .hp') || {}).innerText || '' }; }, NAV_H);
-    ok(`${tag} 비교 첫 화면에 시술명·가격 범위·담기`, first.name && first.range && first.add && /[\d,]+원/.test(first.rangeTxt), JSON.stringify(first));
+    ok(`${tag} 비교 첫 화면에 시술명·가격 범위·담기`, first.name && first.range && first.add && /^[\d,.]+만?(~[\d,.]+만?)?원$/.test(first.rangeTxt.trim()), JSON.stringify(first));   // the range in the words every range uses (U02)
 
     // the header stays when the list is scrolled — folded (위계 점검 9: the title row moves out of view above, so the header's
     // own top is above the screen): the path (시술 › 규격), 중간값 and 담기 stay on top of the screen

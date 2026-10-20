@@ -24,7 +24,8 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
   { const { ctx, p } = await page();
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);
     const head = await p.locator('.pricecard').innerText();
-    ok('요약에 특정 병원 이름 없음(가격 범위·중간 가격)', !/블리비|쁨|톡스앤필|리엔장|포에버/.test(head) && /가격 범위/.test(head) && /원\s*~\s*[\d,]+원/.test(head) && /중간 가격/.test(head), head.split('\n').slice(0, 4).join(' / '));
+    // the range in the words every range uses (Pricing.rangeText — U02: '11,000~275,000원' or '11만~44.5만원', never '11,000원 ~ 275,000원')
+    ok('요약에 특정 병원 이름 없음(가격 범위·중간 가격)', !/블리비|쁨|톡스앤필|리엔장|포에버/.test(head) && /가격 범위/.test(head) && /^[\d,.]+만?~[\d,.]+만?원$/.test((await p.locator('.pricecard .hero .hp').textContent()).trim()) && /중간 가격/.test(head), head.split('\n').slice(0, 4).join(' / '));
     const chips = await p.locator('#clinics .sortchips .chip').allTextContents();
     ok('정렬 여러 개(지역·거리·확인일·가격 낮은/높은)', ['지역·이름순', '가까운순', '최근 확인순', '낮은 가격순', '높은 가격순'].every((c) => chips.some((x) => x.includes(c))), chips.join(','));
     ok('리뷰·추천 정렬은 만들지 않음(근거 데이터 없음)', !chips.some((c) => /리뷰|추천/.test(c)));
@@ -64,7 +65,8 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     ok('지점 화면: 순위·"제일 싼 시술" 없음', !/곳 중 \d+위|제일 싼 시술/.test(await p.locator('#main').innerText()));
     await p.goto(BASE + '#cart'); await p.waitForTimeout(400);
     const cart = await p.locator('.cartsum').innerText();
-    ok('장바구니 요약: 범위, 최저가 지점 이름 없음', /원\s*~\s*[\d,]+원/.test(await p.locator('.cartsum .hp').textContent()) && !/최저가 지점/.test(cart), cart.split('\n').slice(0, 2).join(' / '));
+    // 내 견적 is in won at both ends (사용자 결정), in the same words as every range ('2,022,680~4,936,800원' — U02)
+    ok('장바구니 요약: 범위(양 끝 원, 한 모양), 최저가 지점 이름 없음', /^[\d,]+~[\d,]+원$/.test((await p.locator('.cartsum .hp').textContent()).trim()) && !/최저가 지점/.test(cart), cart.split('\n').slice(0, 2).join(' / '));
     await p.click('.cartsum .btn'); await p.waitForTimeout(300);
     for (let n = 0; n < 8; n++) { const btn = p.locator('li.qrow > button[aria-expanded="false"]').first(); if (!(await btn.count())) break; await btn.click(); await p.waitForTimeout(150); }   // open the clinics' quotes
     const ql = await p.locator('.qline').count();
@@ -74,7 +76,8 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     await p.goto(BASE + '#home'); await p.waitForTimeout(400); await p.locator('#main .addbtn').first().click(); await p.waitForTimeout(300);
     if (!(await p.locator('.sheet').count())) { await p.locator('#main .addbtn').first().click(); await p.waitForTimeout(300); }
     const add = await p.locator('.sheet').innerText();
-    ok('담기 창: "가장 싼 곳"·병원 이름 대신 지점 수·범위·중간 가격', !/가장 싼 곳/.test(add) && /\d+곳 · [\d,]+원~[\d,]+원 · 중간 가격/.test(add), add.split('\n').filter((x) => /중간 가격|가장 싼/.test(x)).join(' / '));
+    // one order for a treatment's numbers (2026-10-20 디자인 통일 U15): 'lo~hi원 · 중간 가격 X원 · N곳'
+    ok('담기 창: "가장 싼 곳"·병원 이름 대신 범위·중간 가격·지점 수', !/가장 싼 곳/.test(add) && /[\d,.]+만?~[\d,.]+만?원 · 중간 가격 [\d,]+원 · (일반가|특가 포함) \d+곳/.test(add) && !/원~/.test(add), add.split('\n').filter((x) => /중간 가격|가장 싼/.test(x)).join(' / '));
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     // one '중간값' per key (2026-10-16 hierarchy audit M1·T7): the 담기 sheet's option and line, the range bar's label and the
     // compare header give the same number on the same basis and branch count; ranges keep one unit at both ends
@@ -108,7 +111,7 @@ const sorted = (a, dir = 1) => a.every((v, i) => !i || (a[i - 1] - v) * dir <= 0
     // the sheet's numbers are read once per sheet (repaint on '+' keeps them)
     await p.goto(BASE + `#search/${encodeURIComponent('보톡스')}?nl=0`); await p.waitForTimeout(900);
     // (a card the search page folds — '보톡스' opens on its kinds, the specs folded under them — keeps its head in the fold)
-    const sheads = await p.$$eval('#main .card > .row .sub, #main .card > .fambody > .row .sub', (xs) => xs.map((x) => x.textContent).filter((t) => /최저가|중간 가격/.test(t)));
+    const sheads = await p.$$eval('#main .card > .chead > .cdesc, #main .card > .fambody > .row .sub', (xs) => xs.map((x) => x.textContent).filter((t) => /최저가|중간 가격/.test(t)));
     { const fold = p.locator('#main details.keys:not([open]) > summary'); if (await fold.count()) { await fold.first().click(); await p.waitForTimeout(150); } }   // opened as a person would
     const srow = await p.locator('#main .card', { hasText: '용량·종류별 가격 비교' }).locator('li .item').first().innerText().catch(() => '');
     ok('플래그 켜면: 검색 종류·바로가기 카드는 최저가(원~·지점)', sheads.length >= 2 && sheads.every((t) => /최저가/.test(t)) && /원~/.test(srow) && /최저 /.test(srow), `${sheads.join(' / ')} · ${srow.replace(/\n/g, ' | ')}`);

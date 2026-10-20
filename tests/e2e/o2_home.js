@@ -22,7 +22,7 @@ async function homeNumbers(p) {
   }
   await chips.nth(0).click(); await p.waitForTimeout(150);
   out.finds = await p.locator('.disc-row').allInnerTexts();
-  out.all = await p.locator('.btn.line.block').first().innerText();
+  out.all = await p.locator('#main .morelist.hall').first().innerText();
   out.lede = await p.locator('.lede').innerText();
   return out;
 }
@@ -65,7 +65,7 @@ async function firstVisit(b, { prefs = {}, breakHome = false } = {}) {
     const after = await homeNumbers(p);
     const d = diff(before, after);
     ok(`홈 숫자가 전체 파일과 같음 (탭 ${Object.keys(before).filter((k) => k.startsWith('tab:')).length}개·발견·개수·범위)`, !d.length, d.map((k) => `${k}: ${String(before[k]).slice(0, 60)} ≠ ${String(after[k]).slice(0, 60)}`).join(' / '));
-    ok('머리말이 날짜·지점 수로 돌아옴', /기준 · \d+곳/.test(await p.locator('#upd').innerText()), await p.locator('#upd').innerText());
+    ok('머리말이 날짜·지점 수로 돌아옴(M/D 수집 — U04)', /^\d{1,2}\/\d{1,2} 수집 · \d+곳/.test(await p.locator('#upd').innerText()), await p.locator('#upd').innerText());
     ok('페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
 

@@ -8,20 +8,21 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { $, h, icon, won, km, views, FLAGS, nav, render, moreList, bdot, bname, st, ranking, brandOn, brandOf, dist, regionCmp,
+    const { $, h, icon, won, km, emptyBox, emptyLine, cardHead, backBtn, views, FLAGS, nav, render, moreList, bdot, bname, st, ranking, brandOn, brandOf, dist, regionCmp,
       locate, savePlace, usePlace, areaSearch, brandChips } = App;
     // ---------------- map
     let map, layer, meMarker;
     App.mapNow = () => map;   // for app.js: the map as it is now (undefined until the map screen first opens)
     views.map = () => {
       const { KEYS } = App.state();   // read now: replaced when new data arrives
-      const box = h("div", { class: "view" });
+      const box = h("div", { class: "view" }, backBtn());
       // the map opens on the treatment just compared (its prices on the pins) until the user picks something else
       if (st.mapKey == null && !st.mapKeyChosen && st.key != null && KEYS[st.key]) st.mapKey = st.key;
       const keySel = h("select", { class: "pick", "aria-label": "지도에 표시할 시술", onchange: (e) => { st.mapKeyChosen = true; st.mapKey = e.target.value === "" ? null : +e.target.value; st.mapSel = null; drawMap(); paintNear(); } },
         h("option", { value: "" }, "지점 위치만 보기"), KEYS.map((x) => h("option", { value: x.i, selected: x.i === st.mapKey }, `${x.cat} · ${x.label}`)));
       box.append(h("div", { class: "card" }, h("div", { class: "row" }, h("h2", {}, "지도"), h("span", { class: "sp" }),
         h("button", { class: "btn sm gray", type: "button", onclick: () => locate(() => { if (map && st.loc) map.setView([st.loc.lat, st.loc.lng], 13); }) }, icon("locate-fixed", "sm"), "내 위치로")),
+        h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, "지점 위치와, 고른 시술의 지점별 가격이에요."),
         h("div", { style: "margin-top:var(--sp-2)" }, areaSearch()),
         h("div", { class: "row", style: "margin-top:var(--sp-2)" }, ["집", "직장"].map((n) => h("button", { class: "btn sm gray", type: "button", onclick: () => { if (!map) return; const c = map.getCenter(); savePlace(n, c.lat, c.lng); usePlace(n); } }, icon(n === "집" ? "house" : "building-2", "sm"), `지도 가운데를 ${n}으로`))),
         h("div", { style: "margin-top:var(--sp-2)" }, keySel), brandChips()));
@@ -53,8 +54,8 @@
     }
     function initMap(again) {
       if (typeof L === "undefined") {
-        if (leafletFailed) { $("#map").replaceWith(h("div", { class: "card empty" }, "지도를 불러오지 못했어요(인터넷 연결 확인).")); return; }
-        const el = $("#map"); if (el) el.replaceChildren(h("div", { class: "empty" }, "지도를 불러오는 중…"));
+        if (leafletFailed) { $("#map").replaceWith(h("div", { class: "card" }, emptyBox("map", "지도를 불러오지 못했어요", "인터넷 연결을 확인해 주세요. 아래 목록은 그대로 볼 수 있어요."))); return; }
+        const el = $("#map"); if (el) el.replaceChildren(emptyLine("지도를 불러오는 중…"));
         loadLeaflet().then(() => { leafletFailed = false; if (App.state().current === "map") render(); }).catch(() => { if (App.state().current === "map") render(); });
         return;
       }
@@ -169,9 +170,9 @@
           h("span", { class: "t row" }, bdot(x.b.i), bname(x.b.i)), h("span", { class: "p num" }, x.p != null ? won(x.p) : km(x.d)),
           h("span", { class: "m" }, x.b.addr, x.p != null && x.d != null ? h("b", {}, km(x.d)) : null)),
         h("button", { class: "infob", type: "button", "aria-label": `${bname(x.b.i)} 지도에서 보기`, onclick: () => focusBranch(x.b.i) }, icon("map-pin"))), { first: sel >= 40 ? 41 : 40, unit: "곳" }) : null;
-      el.replaceChildren(h("div", { style: "padding:var(--sp-3) 14px 0" }, h("h3", {}, st.loc ? `가까운 지점${st.locName ? ` · ${st.locName} 기준` : ""}` : "지도에 보이는 지점"),
-        h("div", { class: "sub" }, `${list.length}곳${st.mapKm && st.loc ? ` · ${st.mapKm}km 안` : ""}`), kmChips()),
-        list.length ? ul : h("div", { class: "empty" }, "이 지역에 표시할 지점이 없어요. 지도를 넓히거나 동네 이름으로 찾아보세요."), ...(mb ? [mb] : []));
+      el.replaceChildren(h("div", { style: "padding:var(--sp-3) 14px 0" }, cardHead(st.loc ? "가까운 지점" : "지도에 보이는 지점", { count: `${list.length}곳`,
+          desc: [st.loc && st.locName ? `${st.locName} 기준` : "", st.loc && st.mapKm ? `${st.mapKm}km 안` : ""].filter(Boolean).join(" · ") }), kmChips()),
+        list.length ? ul : emptyLine("이 지역에 표시할 지점이 없어요. 지도를 넓히거나 동네 이름으로 찾아보세요."), ...(mb ? [mb] : []));
     }
   });
 })();

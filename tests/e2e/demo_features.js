@@ -149,7 +149,9 @@ const non = D.branches.map((_, b) => b).find((b) => !sells.has(b) && cap.include
     await p.goto(BASE + '#saved'); await p.waitForTimeout(500);
     const sv = await p.locator('#main').innerText();
     ok('관심: 요청 상태 "서버 접수 아님"', /서버 접수 아님/.test(sv));
-    ok('관심 시술 가격: 중간 가격·범위·지점 수·확인일, 최저가 병원 없음', /중간 가격 · [\d,]+원 ~ [\d,]+원 · \d+곳/.test(sv) && /확인 \d{4}-\d{2}-\d{2}/.test(sv) && !/최저 ·/.test(sv));
+    // the range in the words every range uses and '확인 M/D' (U02 · U04); the card's sub line names the right-hand price 중간 가격;
+    // the numbers in one order, 'lo~hi원 · N곳' (U15)
+    ok('관심 시술 가격: 중간 가격·범위·지점 수·확인일, 최저가 병원 없음', /일반가의 중간 가격/.test(sv) && /[\d,.]+만?~\s*[\d,.]+만?원 · \d+곳/.test(sv) && !/원 ~ /.test(sv) && /확인 \d{1,2}\/\d{1,2}/.test(sv) && !/\d{4}-\d{2}-\d{2}/.test(sv) && !/최저 ·/.test(sv));
     ok('관심 시술 가격: 기록 1회면 변화 "아직 몰라요"', D.meta.prev ? true : /기록이 한 번뿐이라 아직 몰라요/.test(sv));
     const feed = await p.locator('section[aria-label="관심 시술 업데이트"]').innerText();
     ok('관심 시술 가격 변동: 실제 기록만(첫 기록이면 빈 상태, 지어내지 않음)', D.changes.length ? true : /다음 수집부터 보여요/.test(feed));

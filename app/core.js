@@ -31,7 +31,27 @@
     return e;
   };
   const won = (n) => Math.round(n).toLocaleString("ko-KR") + "원";
+  // empty states (2026-10-20 디자인 통일 U01, DESIGN_SYSTEM §3 '빈 상태'): a card or one block with nothing in it → emptyBox (an
+  // icon in a grey circle, a title, one sentence, maybe a next step); a list that filters or sorts down to no line → emptyLine
+  // (one grey line). The whole screen empty (빈 내 견적, 검색 결과 없음, 오류) is app.js jomiEmpty — 죠미 instead of the icon
+  const emptyBox = (ic, title, ...kids) => h("div", { class: "empty" }, h("div", { class: "ei" }, icon(ic)), h("b", {}, title), ...kids);
+  const emptyLine = (text, tag = "div") => h(tag, { class: "empty one" }, text);
+  // a search field in one shape (2026-10-20 디자인 통일 U11, DESIGN_SYSTEM §3 '찾기 칸'): one height (59), radius 18, the magnifier first. The app's
+  // own search (홈·탐색·검색) is white (.search); a field that narrows this screen's list or finds within it is filled (.search.inset —
+  // 가격 변동·전체 가격표·지점·지점 비교·쉬운 용어·시술 사전·지도·비교 '다른 시술 찾기'). There were three: white with the magnifier,
+  // filled without it (an inline background), and a 48px white .field
+  const searchBox = (input, { inset = false, style, cls = "" } = {}, ...after) => h("div", { class: `search${inset ? " inset" : ""}${cls ? " " + cls : ""}`, style }, icon("search"), input, ...after);
   const km = (d) => d == null ? "" : d < 1 ? Math.round(d * 1000) + "m" : (d < 10 ? d.toFixed(1) : Math.round(d)) + "km";
+  // a card's head in one shape (2026-10-20 디자인 통일 U06, DESIGN_SYSTEM §3 '카드 머리'): the title (h3 17) on the left, how many on
+  // the right (13 grey — '182곳', '8개 브랜드', '0/20'), the basis under the title (13 grey — region, VAT, conditions). A control
+  // the card needs at its head (보기 방식, 특가 포함) comes after the count. A count sat in three places before (in the title, on
+  // the right, in the sentence under it), a basis on the right too, and a title said again on the right
+  const cardHead = (title, { count, desc, end, style } = {}) => { if (end) end.classList.add("cend");
+    return h("div", { class: "chead", style },
+      h("div", { class: "row" }, h("h3", {}, title), h("span", { class: "sp" }), count != null && count !== "" ? h("span", { class: "cmeta num" }, count) : null, end || null),
+      desc ? h("div", { class: "sub cdesc" }, desc) : null); };
+  // '뒤로' at the top of every screen outside the tabs (2026-10-20 디자인 통일 U16) — the same button on each
+  const backBtn = () => h("button", { class: "back", type: "button", onclick: () => history.back() }, icon("arrow-left", "sm"), "뒤로");
 
   // personal keys live in the space of whoever uses the phone (round-2 R01): "pc:<key>" before sign-in, "pc:u:<id>:<key>" for
   // an account — so a second account on the same phone never sees, merges or uploads the first one's data. Device settings
@@ -72,5 +92,5 @@
   }
   async function copyText(text, done = (App.jline && App.jline("copied")) || "복사했어요") { try { await navigator.clipboard.writeText(text); toast(done); } catch (e) { toast("복사하지 못했어요"); } }
 
-  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
+  Object.assign(App, { $, h, safeUrl, fill, icon, won, km, emptyBox, emptyLine, searchBox, cardHead, backBtn, PERSONAL, store, scope, setScope, toast, toastStop, toastTimer, undoToast, actToast, copyText });
 })();

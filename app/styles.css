@@ -3,7 +3,7 @@
    (checked with a contrast script; chart colors with the dataviz palette validator, light and dark). */
 :root {
   --bg: #f7f3ea; --surface: #fffdf9; --sunken: #fbf8f1; --fill: #f0eadd; --fill-2: #e8e1d2;
-  --line: #e4dccd; --line-soft: #eee8dd;
+  --line: #e4dccd; --line-soft: #eee8dd; --line-btn: #cfc4af;   /* a grey button's edge: 1.44:1 on --fill (--line is 1.14) */
   --ink: #1f1d1a; --ink-2: #48443d; --muted: #6b6457; --faint: #bdb5a6; --track: #9a9282;
   --primary: #1f1d1a; --on-primary: #fffdf9;
   --accent: #2f6043;                                     /* links, active text: deep sage */
@@ -42,7 +42,7 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #141311; --surface: #1d1b18; --sunken: #191815; --fill: #2a2723; --fill-2: #34302a;
-  --line: #3a352e; --line-soft: #2b2824;
+  --line: #3a352e; --line-soft: #2b2824; --line-btn: #4f483f;
   --ink: #f4efe6; --ink-2: #c6beb0; --muted: #a09889; --faint: #5b554b; --track: #8a8274;   /* ink/ink-2 1.61 · ink-2/muted 1.55 · muted >= 4.59 on fill-2 (위계 점검 45) */
   --primary: #f4efe6; --on-primary: #141311;
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
@@ -53,7 +53,7 @@
   color-scheme: dark; } }
 :root[data-theme="dark"] {
   --bg: #141311; --surface: #1d1b18; --sunken: #191815; --fill: #2a2723; --fill-2: #34302a;
-  --line: #3a352e; --line-soft: #2b2824;
+  --line: #3a352e; --line-soft: #2b2824; --line-btn: #4f483f;
   --ink: #f4efe6; --ink-2: #c6beb0; --muted: #a09889; --faint: #5b554b; --track: #8a8274;
   --primary: #f4efe6; --on-primary: #141311;
   --accent: #a6cbae; --sage: #a6cbae; --sage-soft: #22302a; --coral: #f19a83; --coral-soft: #3b231c;
@@ -75,6 +75,9 @@ input, select, textarea { font-size: var(--fs-input); }   /* every field 16px or
 b, strong, th, h1, h4 { font-weight: var(--fw-bold); }
 small { font-size: var(--fs-aux); }   /* the browser's 'smaller' would make 10.8px in a 13px table (검토: 지점별 제공 시술 표) */
 button { cursor: pointer; }
+/* every checkbox: what is chosen is charcoal, like a chosen chip (2026-10-20 디자인 통일 U05 — 가격 알림 '알려줄 변화' and 검색 상세 필터
+   were sage green, the colour of what is put in a list) */
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, a:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--ink); outline-offset: 2px; }
 #main:focus { outline: none; }
@@ -201,7 +204,11 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 /* a caution in a form (GitHub 신고는 공개 글): ink-2 with the alert icon — not an error, so not coral */
 .warnline { display: flex; gap: var(--sp-2); align-items: flex-start; color: var(--ink-2); font-weight: var(--fw-semi); }
 .warnline > svg.i { margin-top: 2px; }
+/* empty states: two shapes and a line (2026-10-20 디자인 통일 U01, DESIGN_SYSTEM §3 '빈 상태') — a block with nothing in it is .empty
+   (emptyBox: an icon in a grey circle, a title, one sentence); the whole screen empty is .empty.jomi-empty (jomiEmpty: 죠미 in the
+   circle's place); a list filtered down to no line is .empty.one (emptyLine: one grey line, no icon, no title) */
 .empty { padding: var(--sp-5) var(--sp-3); text-align: center; color: var(--muted); font-size: var(--fs-body); line-height: 1.6; }
+.empty.one { padding: var(--sp-3) 14px; }
 .empty .ei { width: 56px; height: 56px; margin: 0 auto var(--sp-3); border-radius: 50%; display: grid; place-items: center; background: var(--fill); color: var(--ink-2); }
 .empty .ei svg.i { width: 26px; height: 26px; }
 .empty b { display: block; color: var(--ink); font-size: var(--fs-sec); margin-bottom: var(--sp-2); }
@@ -214,10 +221,12 @@ h3 { font-size: var(--fs-sec); font-weight: var(--fw-bold); line-height: 1.4; }
 /* an action that is not the screen's main one: grey (가격 비교, 지점 추가 (n/4), 내 위치로 거리 보기, 죠미와 대화 …). The light
    green is kept for what is put in a list (담김 · 비교함에 있음) — 사용자 결정 2026-10-20: there was a light green action button
    (.btn.soft) that looked like a button already pressed */
-.btn.gray { background: var(--fill); color: var(--ink); }
+/* its 1px inner edge (2026-10-20 디자인 통일 U09) tells a grey button from a grey badge (.k4 · .kw, the same --fill and no edge) — 지점 머리
+   버튼 바로 밑의 '~10/31까지' looked like one more button */
+.btn.gray { background: var(--fill); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line-btn); }
 .btn.line { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
 /* 비교함에 있음: a list the branch is in, like 담김 — the same light green (사용자 결정 2026-10-20: the same state, the same look) */
-.btn.shortbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); }
+.btn.shortbtn[aria-pressed="true"] { background: var(--sage-soft); color: var(--sage); box-shadow: none; }
 .btn.sm { min-height: 36px; padding: var(--sp-2) 12px; font-size: var(--fs-aux); border-radius: 11px; }
 .btn.block { width: 100%; }
 /* a row of actions as equal halves (위계 점검 35 · BTN-1: 지점 머리, 견적 펼침 끝) — no button wider than its neighbour, none
@@ -252,6 +261,18 @@ a.src { font-size: var(--fs-aux); }
   border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-md) var(--r-md); background: none; color: var(--accent); font: inherit;
   font-size: var(--fs-body); font-weight: var(--fw-semi); text-align: center; cursor: pointer; }
 .morelist:hover { background: var(--sunken); }
+/* a card's head in one shape (cardHead, 2026-10-20 디자인 통일 U06): title h3 17 · its count on the right 13 grey · the basis under
+   the title 13 grey. In a list card (.flush) the head has the list's inside padding */
+.chead { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; column-gap: var(--sp-2); align-items: center; }
+.chead > .row { display: contents; }
+.chead > .row > .sp { display: none; }
+.chead > .row > h3 { grid-column: 1; grid-row: 1; }
+.chead .cmeta { grid-column: 2; grid-row: 1; font-size: var(--fs-aux); color: var(--muted); white-space: nowrap; }
+.chead > .row > .cend { grid-column: 3; grid-row: 1; }
+.chead > .cdesc { grid-column: 1 / -1; grid-row: 2; }
+/* 320: the 목록·카드 switch (116px) leaves the title too little room — it goes under the basis, at the right */
+@media (max-width: 359px) { .chead > .row > .seg.vsw.cend { grid-column: 1 / -1; grid-row: 3; justify-self: end; margin-top: var(--sp-2); } }
+.card.flush > .chead { padding: var(--sp-3) 14px 0; }
 .near5 { margin-top: var(--sp-2); }
 /* 지점 가격표 by 분야 (hierarchy audit 6): each 분야's name and count over its first lines, its '모두 보기' under them; one end
    date for the whole list said once above it */
@@ -366,6 +387,8 @@ button.item:active { background: var(--fill); }
 .item > .t, .item > .p { align-self: baseline; }
 .item .p { font-weight: var(--fw-bold); font-size: var(--fs-body); text-align: right; white-space: nowrap; letter-spacing: -0.02em; }
 .item .m { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-1) var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
+/* the badges' own line under a price line's grey words (mLine — 2026-10-20 디자인 통일 U14): a full-width break, 4 + 4 = 8 under the words */
+.m > .mbr { flex-basis: 100%; height: 0; }
 /* 내 견적 브랜드·지역별 합계: a total range in won ('2,708,640~3,891,580원') breaks at '~' (rangeEl) before it squeezes the name */
 .item.sumr { grid-template-columns: minmax(6em, 1fr) auto; }
 .item.sumr .p { white-space: normal; }
@@ -450,7 +473,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .hero-home { padding: var(--sp-2) 0 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }
 .hero-home .display { margin-top: 0; }
 .hero-home .lede { color: var(--ink-2); font-size: var(--fs-body); margin: 0; }
-.hsearch { border-radius: 20px; padding: 0 var(--sp-2) 0 var(--sp-3); box-shadow: var(--shadow-1); margin-top: var(--sp-2); }
+.hsearch { box-shadow: var(--shadow-1); margin-top: var(--sp-2); }   /* the .search corner (18) like every search field (U11 — it was 20) */
 .hsearch input { font-size: var(--fs-input); padding: var(--sp-3) 0; }
 .entries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
 .entry { display: grid; align-content: space-between; gap: var(--sp-3); min-height: 132px; text-align: left; border: 1px solid var(--line-soft); border-radius: var(--r-lg);
@@ -466,7 +489,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .entry small { display: block; font-size: var(--fs-aux); color: var(--ink-2); margin-top: 0; line-height: 1.45; }
 .entry .go { position: absolute; top: 16px; right: var(--sp-3); color: var(--ink-2); }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-2); }
-.grid + .btn.hall { margin-top: -16px; }   /* 홈 '전체 비교': 8px under the cards it continues (위계 점검 50) */
+.grid + .morelist.hall { margin-top: -16px; border-top: 0; border-radius: var(--r-md); }   /* 홈 '전체 비교': 8px under the cards it continues (위계 점검 50); no list over it, so no hairline */
 @media (min-width: 640px) { .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 .pwrap { position: relative; display: grid; min-width: 0; }
 .pc { display: grid; align-content: start; gap: 0; text-align: left; border: 1px solid var(--line-soft); background: var(--surface); border-radius: 18px; padding: var(--sp-3);
@@ -477,7 +500,7 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .pc .pico { width: 36px; height: 36px; border-radius: 12px; background: var(--fill); display: grid; place-items: center; margin-bottom: var(--sp-2); color: var(--ink-2); }
 .pc .pico svg.i { width: 19px; height: 19px; }
 .pc .l { font-size: var(--fs-body); font-weight: var(--fw-semi); color: var(--ink-2); line-height: 1.4; min-height: 2.8em; }
-.pc .p { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.035em; margin-top: var(--sp-2); white-space: nowrap; }
+.pc .p { font-size: var(--fs-sec); font-weight: var(--fw-bold); letter-spacing: -0.035em; margin-top: var(--sp-2); }   /* the price itself is one .nw; no label on the card — the section head says '중간 가격' once (#153) */
 .pc .save { font-size: var(--fs-aux); font-weight: var(--fw-bold); color: var(--good); }
 .pc .save.flat { color: var(--muted); font-weight: var(--fw-semi); }
 .pc .basis { font-size: var(--fs-aux); color: var(--muted); line-height: 1.4; }
@@ -534,11 +557,9 @@ li.rk > .rank:not(:last-child), li.rk > .item:not(:last-child) { padding-right: 
 .vrow { min-width: 0; }
 .vg { display: block; font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); margin-bottom: var(--sp-2); }
 .vchips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-.vchip { display: grid; gap: 0; padding: var(--sp-1) 12px; min-height: 48px; min-width: 72px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); text-align: left; transition: transform var(--fast), border-color var(--fast); }
-.vchip:active { transform: scale(.97); }
-.vchip b { font-size: var(--fs-aux); font-weight: var(--fw-semi); } .vchip span { font-size: var(--fs-aux); color: var(--muted); }
-.vchip[aria-pressed="true"], .vchip[aria-checked="true"] { border-color: var(--ink); background: var(--ink); color: var(--on-primary); }
-.vchip[aria-pressed="true"] span, .vchip[aria-checked="true"] span { color: color-mix(in srgb, var(--on-primary) 75%, transparent); }
+/* a spec choice is a chip (쉬운 보기, one line: .chip) or, with its price on a second line (자세히), an option tile (.opt) — the 14px-corner
+   .vchip in between is gone (2026-10-20 디자인 통일 U12) */
+.vchips > .opt { min-width: 72px; }
 .guide { margin-top: var(--sp-3); padding: var(--sp-3); border-radius: var(--r-md); background: var(--sunken); border: 1px solid var(--line-soft); }
 .guide p, .gitem p { margin: var(--sp-2) 0 0; line-height: 1.6; }
 .gitem { padding: var(--sp-3) 0; border-top: 1px solid var(--line-soft); }
@@ -631,7 +652,6 @@ html.calm .lcsvg .ln.draw { stroke-dashoffset: 0; }
 .lctable th, .lctable td { text-align: right; padding: var(--sp-2); border-bottom: 1px solid var(--line-soft); }
 .lctable th:first-child, .lctable td:first-child { text-align: left; }
 .lctable th { color: var(--muted); font-weight: var(--fw-semi); font-size: var(--fs-aux); }
-.chartempty { display: grid; gap: var(--sp-2); justify-items: center; text-align: center; padding: var(--sp-3) var(--sp-2) var(--sp-2); color: var(--muted); font-size: var(--fs-aux); }
 .spark path { fill: none; stroke: var(--ink-2); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }   /* the middle price's weeks: its colour */
 .dbar { position: relative; display: inline-block; width: 90px; height: 6px; flex: none; border-radius: 3px; background: var(--fill-2); }
 .dbar::before { content: ""; position: absolute; left: 50%; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--ink-2); transform: translateX(-50%); z-index: 1; }   /* the middle: the zero of a bar that grows both ways, a line (not the range bar's dot — green is its cheaper side) */
@@ -771,7 +791,7 @@ details.advset > summary b { font-weight: inherit; }
 .ci { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: var(--sp-2); align-items: start; padding: var(--sp-3) 0; }
 .ci + .ci { border-top: 1px solid var(--line-soft); }
 .ci .cimg { width: 44px; height: 44px; border-radius: 14px; background: var(--fill); display: grid; place-items: center; color: var(--ink-2); grid-row: span 2; }
-.ci .cn { font-weight: var(--fw-bold); line-height: 1.4; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
+.ci .cn { font-weight: var(--fw-semi); line-height: 1.4; display: flex; align-items: center; gap: var(--sp-2); min-width: 0; }
 .ci .cx { border: 0; background: none; color: var(--muted); width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; margin: -8px -8px 0 0; }
 .ci .cx:hover { background: var(--fill); color: var(--ink); }
 .ci .cs { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--muted); }
@@ -937,11 +957,11 @@ html:not(.locked) .gate { display: none; }
 .card.flush .chips { margin: 0 -14px; padding: var(--sp-1) 14px; }
 .vchips.scroll { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -20px; padding: var(--sp-1) 20px; }
 .vchips.scroll::-webkit-scrollbar { display: none; }
-.vchips.scroll .vchip { flex: none; }
+.vchips.scroll > * { flex: none; }
 .card > .guide:only-child { margin-top: 0; background: none; border: 0; padding: 0; }
 .qty button:disabled { color: var(--faint); cursor: default; background: none; }
 /* grid containers whose children hold long or intrinsic-width content: one flexible column, never wider than the screen */
-.chat, .composer, .cartsum, .hero, .cout, .msg.bot .answers, .cart-items, .entry, .pc, .hub button, .keyhead, .card.concern, .tile, .qstats div, .advgrid, dl.facts, .opt, .vchip, .disc-row .m { grid-template-columns: minmax(0, 1fr); }
+.chat, .composer, .cartsum, .hero, .cout, .msg.bot .answers, .cart-items, .entry, .pc, .hub button, .keyhead, .card.concern, .tile, .qstats div, .advgrid, dl.facts, .opt, .disc-row .m { grid-template-columns: minmax(0, 1fr); }
 .msg > .bub, .msg > .answers { min-width: 0; }
 /* list separators: inset hairlines between rows (rows keep their rounded hover) */
 .list > li { position: relative; }
@@ -1017,7 +1037,6 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 
 /* ---------- price + what to check (docs/OBJECTIVE_DISPLAY_POLICY.md) */
 .hero .hp.range { white-space: normal; letter-spacing: -0.04em; line-height: 1.2; }
-.hero .hp.range .to { color: var(--muted); font-weight: var(--fw-semi); }
 .sortchips .chip[aria-checked="true"] { background: var(--ink); border-color: var(--ink); color: var(--on-primary); }
 .card.flush .sortchips { margin: 0 -14px; padding: var(--sp-1) 14px; }
 /* the five rows use the card's full width: the icon sits in the title line, no 32px column (hierarchy audit 17) */
@@ -1026,14 +1045,11 @@ body.has-fcart .toast, body.has-bar .toast { bottom: calc(var(--nav-h) + 96px + 
 .chk-b b svg.i { color: var(--ink-2); }
 .chk-b .sub { line-height: 1.55; color: var(--ink-2); }
 .chk-b ul.plain { margin: 0; font-size: var(--fs-aux); gap: 0; }
-.pc .pk { font-size: var(--fs-aux); font-weight: var(--fw-semi); color: var(--muted); margin-top: var(--sp-2); }
-.pc .pk + .p { margin-top: 0; }
 /* a price range is text that wraps between its two numbers, never the 3-column '.range' grid of the min~max inputs above
    (same class name): in that grid each number got a third of the width and ran over the '~' and the card edge */
 .hp.range { display: block; }
 .hp.range .nw { white-space: nowrap; display: inline-block; }
 .cartsum .hp.range { white-space: normal; letter-spacing: -0.04em; }
-.cartsum .hp.range .to { color: var(--muted); font-weight: var(--fw-semi); }
 .rank.nonum { grid-template-columns: minmax(0, 1fr) auto; }
 .rank.nonum .n { display: none; }
 .rank.nonum .m { grid-column: 1 / -1; }
@@ -1096,7 +1112,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 .prog i { display: block; height: 100%; background: var(--s1); }
 .chk-list { list-style: none; margin: var(--sp-2) 0 0; padding: 0; display: grid; gap: 0; }
 .chkrow { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: var(--sp-2); align-items: start; padding: var(--sp-2) 0; min-height: 44px; cursor: pointer; }
-.chkrow input { width: 20px; height: 20px; margin: 2px 0 0; accent-color: var(--primary); }
+.chkrow input { width: 20px; height: 20px; margin: 2px 0 0; }
 .chkrow small { display: block; font-size: var(--fs-aux); color: var(--muted); }
 /* 지역별 가격 and 가격 종류별 범위: one line shape — the name (bold) and its numbers (13 grey) on a line, its range bar under it on
    the card's one scale, the scale's two ends under the list */
@@ -1116,7 +1132,7 @@ html.calm *, html.calm *::before, html.calm *::after { animation: none !importan
 details.fmore { margin-top: var(--sp-2); border-top: 1px solid var(--line-soft); padding-top: var(--sp-2); }
 details.fmore > summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); min-height: 44px; font-size: var(--fs-body); font-weight: var(--fw-semi); color: var(--ink); }
 .pcgrp .opts { grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); }
-.pctog input { width: 22px; height: 22px; flex: none; accent-color: var(--accent); margin-top: 2px; }
+.pctog input { width: 22px; height: 22px; flex: none; margin-top: 2px; }
 .pctog { align-items: flex-start; min-height: 32px; cursor: pointer; }
 .qcard .chip { min-height: 30px; }
 .qk-not { text-decoration: line-through; text-decoration-thickness: 1px; }
@@ -1170,7 +1186,6 @@ ol.steps { margin: var(--sp-2) 0 0; padding-left: var(--sp-4); display: grid; ga
 .vstep { min-width: 0; }
 .vstep .vg { display: flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-aux); color: var(--ink-2); margin-bottom: var(--sp-2); }
 .vstep .stepn { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: var(--accent-soft, var(--sunken)); color: var(--ink); font-size: var(--fs-aux); font-weight: var(--fw-semi); }
-.vstep .vchip { min-height: 36px; }
 /* 규격 낱말 뜻 (meta.kb.specs): small, under the spec choice; long words wrap instead of widening the card at 320px */
 .specnotes { margin-top: var(--sp-3); padding: var(--sp-2) var(--sp-3); border-radius: var(--r-md); background: var(--fill); font-size: var(--fs-aux); line-height: 1.55; color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 .specnotes ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-2); }
@@ -1250,10 +1265,9 @@ html.cmp-fold .cmphead .tline .favbtn { visibility: hidden; }
   font-size: var(--fs-aux); font-weight: var(--fw-reg); color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: color var(--fast), border-color var(--fast); }
 .subnav button:hover { color: var(--ink); }
 .subnav button[aria-selected="true"] { color: var(--ink); font-weight: var(--fw-bold); border-bottom-color: var(--ink); }
-/* 위계 점검 20 — 규격 바꾸기 in steps under its card title (17): the treatment 15/760 · its spec chips 15/600 · 분야 chips 13
-   (2026-10-19: the treatment was 17 under a 16 title — the order upside down) */
+/* 위계 점검 20 — 규격 바꾸기 in steps under its card title (17): the treatment 15/760 · its spec chips and the 분야 chips, the app's
+   one chip 13/600 (2026-10-20 디자인 통일 U12 — the spec chips were 15). 2026-10-19: the treatment was 17 under a 16 title */
 #cmppick .famname { display: block; font-size: var(--fs-body); font-weight: var(--fw-bold); line-height: 1.4; color: var(--ink); }
-#cmppick .vchip b { font-size: var(--fs-body); }
 #cmppick details.cmpother > .chips > .chip { font-size: var(--fs-aux); }
 /* 위계 점검 38 — the branch price list's small sticky header: the branch and its 분야 chips (the table's, same state), shown by
    heads() once the list is under the app bar. 56px laid over the list's top (negative margin): showing it moves nothing.

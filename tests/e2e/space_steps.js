@@ -26,7 +26,7 @@ ok('간격 토큰 5개가 :root에 정한 값으로 있음', !tokBad.length, tok
 // own element — the last compound of each selector, or for a bare element (`.seg button`, `.shortl li`) the one it sits in —
 // never on an ancestor anywhere in the selector (검토: '.row'·'.m' anywhere let any rule through). A badge row (.m, .row) may
 // use 4 only between its lines (row-gap, or gap's first value).
-const CHIP_CLS = new Set(['k', 'kw', 'badge', 'chip', 'chips', 'mini-chip', 'pchip', 'seg', 'vchip', 'vchips', 'addbtn', 'linkbtn', 'regbtn', 'mapbtn', 'infotag', 'pin-cluster',
+const CHIP_CLS = new Set(['k', 'kw', 'badge', 'chip', 'chips', 'mini-chip', 'pchip', 'seg', 'vchips', 'addbtn', 'linkbtn', 'regbtn', 'mapbtn', 'infotag', 'pin-cluster',
   'jomi-hello', 'nb-act', 'qty', 'termb', 'sibs', 'chev', 'back', 'opt', 'shortl', 'crumb', 'subnav', 'sortchips', 'mini', 'lat', 'qbr', 'cbar', 'pbars', 'vbar', 'bdate', 'specnotes',
   'toast', 'upd']);
 const CHIP_SEL = new Set(['.cbar .side']);   // the two halves of a little bar chart's line

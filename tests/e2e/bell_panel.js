@@ -81,8 +81,9 @@ const bell = async (p) => { await p.click('#notibtn'); await p.waitForTimeout(30
     ok('2 펼치면 읽음: 종의 숫자 없어짐, 저장된 기록 모두 읽음, 종 이름에서 안 읽은 수 빠짐', s1.badge === '' && s1.unreadStored === 0 && s1.nStored === 7 && s1.label === '가격 알림', JSON.stringify(s1));
     ok('2 이번에 새것이던 3줄만 \'새 알림\' 점', s1.dots === '11100', s1.dots);
     const rows = await p.evaluate(() => [...document.querySelectorAll('#notip ul.notes > li')].map((li) => ({ t: li.innerText.replace(/\s+/g, ' ').trim(), go: (li.querySelector('.linkbtn') || {}).ariaLabel || '', hist: !!li.querySelector('svg.i'), kind: (li.querySelector('.k.k4') || {}).textContent || '' })));
+    // the data date 'M/D 수집' like every screen date (U04)
     ok('3 첫 줄: 종류·시술·지점·이전 → 이후·수집일·가격 보기', /가격 하락/.test(rows[0].t) && /국산 사각턱 보톡스 50U/.test(rows[0].t) && /블리비 강남역점/.test(rows[0].t) && /39,000원 → 29,000원/.test(rows[0].t)
-      && /2026-10-19 수집/.test(rows[0].t) && /가격 보기/.test(rows[0].t) && rows[0].go === '국산 사각턱 보톡스 50U 가격 보기', JSON.stringify(rows[0]));
+      && /(^| )10\/19 수집/.test(rows[0].t) && !/\d{4}-\d{2}-\d{2}/.test(rows[0].t) && /가격 보기/.test(rows[0].t) && rows[0].go === '국산 사각턱 보톡스 50U 가격 보기', JSON.stringify(rows[0]));
     ok('3 종류 배지: 가격 하락·최저가 지점 변경·목표가 이하·지난 기록·새 비교 가능 지점, 지난 기록은 시계 아이콘', rows.map((r) => r.kind).join('|') === '가격 하락|최저가 지점 변경|목표가 이하|지난 기록|새 비교 가능 지점' && rows[3].hist, rows.map((r) => r.kind + (r.hist ? '*' : '')).join('|'));
     // keyboard: the next Tab from the panel's title is its first line's '가격 보기'
     await p.keyboard.press('Tab'); const tab1 = await p.evaluate(() => { const a = document.activeElement; return !!a.closest('#notip') && a.textContent === '가격 보기'; });
@@ -185,7 +186,7 @@ const bell = async (p) => { await p.click('#notibtn'); await p.waitForTimeout(30
   { const { ctx, p, errs } = await open(b, { notes: [] });
     await bell(p); const s = await state(p), txt = await p.evaluate(() => (document.querySelector('#notip > .notip-b') || {}).innerText || '');
     await p.locator('#notip .morelist').click(); await p.waitForTimeout(600);
-    const savedTxt = await p.evaluate(() => [...document.querySelectorAll('#main .card .sub')].map((e) => e.textContent).find((t) => t.startsWith('아직 기록이')) || '');
+    const savedTxt = await p.evaluate(() => [...document.querySelectorAll('#main .card .empty.one')].map((e) => e.textContent).find((t) => t.startsWith('아직 기록이')) || '');   // emptyLine (U01)
     ok('6 기록이 없을 때: 관심 탭 빈 문구 그대로(패널 = 관심 탭), 줄·개수 없음', s.open && s.rows === 0 && s.count === '' && txt.trim() === EMPTY && savedTxt === EMPTY, `${JSON.stringify(txt)} / ${JSON.stringify(savedTxt)}`);
     ok('오류 없음(빈 기록)', !errs.length, errs.join(' | '));
     await ctx.close(); }

@@ -51,12 +51,14 @@ const CLINIC = /블리비|쁨 |톡스앤필|리엔장|\d{1,3}(,\d{3})+원/;
     // treatment names and prices (the report: '카프리' found nothing)
     await ask(p, '카프리');
     const cap = await last(p).innerText();
-    ok("'카프리' → 카프리 레이저와 모은 가격(최저·중간·지점 수)", /카프리 레이저/.test(cap) && /최저\s*[\d,]+원/.test(cap) && /중간\s*[\d,]+원/.test(cap) && /\d+곳/.test(cap), cap.split('\n').slice(0, 3).join(' / '));
+    // the price line every range has (U07: 'lo~hi원 · 중간 X원 · N곳' — it was '최저 · 중간 · 최고', the lowest first; the words #153's)
+    ok("'카프리' → 카프리 레이저와 모은 가격(범위·중간 가격·지점 수)", /카프리 레이저/.test(cap) && /[\d,.]+만?~\s*[\d,.]+만?원/.test(cap) && /중간\s*[\d,]+원/.test(cap) && /\d+곳/.test(cap)
+      && !/최저\s*[\d,]+원|최고\s*[\d,]+원/.test(cap), cap.split('\n').slice(0, 3).join(' / '));
     ok('가격 답에도 병원 이름은 없음(지점별 줄은 비교 화면에서)', !/블리비|쁨 |톡스앤필|리엔장|밴스|유앤아이|데이뷰|닥터에버스|셀린/.test(cap));
     await ask(p, '리쥬란 가격');
     await ask(p, '그럼 4cc는?');
     const fu = await last(p).innerText();
-    ok("이어 묻기: '리쥬란 가격' 다음 '그럼 4cc는?' → 리쥬란 4cc", /리쥬란/.test(fu) && /4cc/.test(fu) && /최저/.test(fu), fu.split('\n').slice(0, 2).join(' / '));
+    ok("이어 묻기: '리쥬란 가격' 다음 '그럼 4cc는?' → 리쥬란 4cc", /리쥬란/.test(fu) && /4cc/.test(fu) && /중간\s*[\d,]+원/.test(fu), fu.split('\n').slice(0, 2).join(' / '));
     await p.fill(BOX, '부가세 포함이야?'); await p.press(BOX, 'Enter'); await p.waitForTimeout(350);
     ok('Enter로 보내기 + 앱 도움말(부가세)', (await p.inputValue(BOX)) === '' && /부가세/.test(await last(p).innerText()) && /설정 열기/.test(await last(p).innerText()));
     await ask(p, '슈링크랑 울쎄라 차이');

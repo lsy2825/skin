@@ -40,7 +40,7 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     // cart-only
     await p.locator('label.switch', { hasText: '내 견적 시술만' }).click(); await p.waitForTimeout(500);
     const txt = await p.locator('#main').innerText();
-    ok('장바구니 A/B: 담은 시술 수로 비교', /'내 장바구니' 3개 시술로 비교/.test(txt));
+    ok('장바구니 A/B: 담은 시술 수로 비교', /'내 장바구니' 시술로 비교\s*3개/.test(txt));
     const totals = await p.$$eval('#main dl.kv dd', (d) => d.map((x) => +x.textContent.replace(/[^\d]/g, '')));
     const rows = await p.$$eval('#main .card.flush .list li', (ls) => ls.map((l) => [...l.querySelectorAll('.m b')].map((b) => +b.textContent.replace(/[^\d]/g, ''))));
     const both = rows.filter((r) => r.length === 2);
@@ -99,9 +99,9 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     await p.goto(BASE + '#map'); await p.waitForTimeout(1200);
     const chips = p.locator('#near [aria-label="거리"] .chip');
     if (await chips.count()) {
-      const n0 = num((await p.locator('#near .sub').first().textContent()).split('곳')[0]);
+      const n0 = num(await p.locator('#near .chead .cmeta').first().textContent());   // the list head's count (cardHead, U06)
       await chips.filter({ hasText: '1km' }).click(); await p.waitForTimeout(500);
-      const n1 = num((await p.locator('#near .sub').first().textContent()).split('곳')[0]);
+      const n1 = num(await p.locator('#near .chead .cmeta').first().textContent());
       const far = await p.$$eval('#near li .m b', (bs) => bs.map((b) => b.textContent).filter((t) => /km/.test(t) && parseFloat(t) > 1).length);
       ok('지도: 1km를 고르면 목록이 1km 안으로 줄어듦', n1 <= n0 && far === 0, `${n0} → ${n1}곳`);
     } else ok('지도: 위치를 정하면 거리 칩', false, '위치 설정 흐름을 찾지 못했어요');
