@@ -148,6 +148,8 @@
 | 조건 낱말: 유앤아이 '데이타임'·'첫경험' | 해결(lsy2825/skin#122) | 단위·빌드 비교 | `clean.TIME_WORDS`·`TAGS` | labels_test | '첫체험'은 읽지 않음(데이뷰 '[재진]' 칸) |
 | E4 합치기: 조건이 서로 다른 두 페이지 | 해결(lsy2825/skin#130) | 단위·빌드 비교·검증 에이전트(3차) | `clean.apart`·합친 뒤 다시 나누기(성별·추가 옵션 지킴) | labels_test | '언제' 조건끼리는 매일이 아니어도 합침(주말 + 해피아워) |
 | 손규격 크기·개수 실수(X33·X34·X12·X20·X02·X08) | 해결(lsy2825/skin#132) | 단위·빌드 비교·검증 에이전트(3차) | `xkeys.mole_size`·`MM_EXTRA`·`AMOUNT_NOTE`·`bad_raw`, `taxonomy` 점 빼기 크기 | labels_test, xkeys 224, taxonomy 80 | 염증주사 개수 범위(T09603A8), X02 데이뷰 수원 다섯 부위 |
+| 염증주사 개수·이름 규칙 '+' 묶음 줄 | 해결(lsy2825/skin#142) | 단위·빌드 비교·검증 에이전트(3차) | `taxonomy._acne_count`, `_exact` '+ …'·'택 N' 서명 | labels_test | 제품 규칙 규격 안 '+' 줄 3,357줄, keymap이 같은 이름 단품보다 줄 많은 키로 감(10-19 판 id 7개) |
+| 가격 추이 이음(keymap) | 해결(lsy2825/skin#143) | 단위·빌드 비교·검증 에이전트 | `appdata.trend`가 keymap 따라감 | labels_test | 이미 있던 id로 합쳐진 이름 바꿈 8건은 안 이어짐 |
 
 ## 회귀 결과(2026-10-14)
 
