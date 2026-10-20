@@ -133,6 +133,21 @@ header.top .upd { font-size: var(--fs-aux); color: var(--muted); white-space: no
   line-height: 20px; text-align: center; padding: 0 var(--sp-1); box-shadow: 0 0 0 2px var(--bg); font-variant-numeric: tabular-nums; }
 .badge.bump { animation: bump .45s var(--ease); }
 @keyframes bump { 0% { transform: scale(1); } 35% { transform: scale(1.35); } 100% { transform: scale(1); } }
+/* the bell's panel (#notip, 2026-10-20 사용자 요청): the latest 알림 기록 right under the top bar — a list card (.card.flush, the
+   lines as on 관심 탭) that floats like a sheet (--shadow-2). It stays inside the screen from 320px (8 each side, under the bell
+   from 416px up) and clear of the tab bar and the cart bar; when the lines do not fit, they scroll between the title and
+   '전체 보기', which stay in view */
+.notip { position: absolute; top: 100%; right: var(--sp-2); width: min(400px, calc(100% - var(--sp-3))); display: flex; flex-direction: column; overflow: hidden;
+  max-height: calc(100vh - var(--top-h) - var(--nav-h) - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  max-height: calc(100dvh - var(--top-h) - var(--nav-h) - 72px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  box-shadow: var(--shadow-2); animation: sheetin .18s var(--ease) both; }
+.notip > * { flex: none; }
+.notip > .notip-b { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.notip > .morelist { margin-top: var(--sp-2); }
+/* its title takes focus when it opens (where a screen reader starts) but is not a control and not in the Tab order — no ring,
+   as #main: opened from the bell or from a phone notification's address (focus given before any tap) it looks the same */
+#notip-t:focus { outline: none; }
+.tbtn-i[aria-expanded="true"] { background: var(--fill); color: var(--ink); }   /* the bell while its panel is open */
 
 /* ---------- bottom tab bar (phone) / side rail (wide) */
 nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 50; display: grid; grid-template-columns: repeat(5, 1fr);
