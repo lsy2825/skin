@@ -76,6 +76,10 @@ data.json (compact, strings interned in `s`):
   meta.keymap  {old id: [new id or '', old label] or [new id, old label, 1]} (key_map) — ids an earlier build had: the app moves
             saved items to the new id and shows the old label where there is none. 1 (2026-10-19): the rename moved no row (carried),
             so the new id carries the old id's history — its snapshot points in `trend`, its price there in `changes` (carried_before)
+            — except where the new id is regrouped itself (meta.recl / reclBranches). An id merged into one the previous file had
+            always is, at the branches the old id's rows joined it, so a merge restarts its trend and drops those branches' changes
+            (as without the mark: the 10-18 rebuild marked 29, 27 of them merges, and 8 real changes stayed out). Doing better needs
+            the pairs read through the renames kept in data.json (a later build of the collection cannot tell them apart)
   meta.brandFirst  {brand: YYYY-MM-DD} the first collection in data2/history (개선 보고서 E9; a chain never collected is left out).
             A chain the previous snapshot did not have (new, or back after a gap) is new as a whole — its prices are not listed in
             achg.new ('새로 생김'). home.json carries the same meta.brandFirst
@@ -724,7 +728,8 @@ def rule_pairs(prev, prow, rows, best, collected, date, ren=None):
 def carried(prev, prow, rows, best, collected, date, keymap):
     """the ids the previous data.json had that this build renamed (keymap, key_map) without moving a row: rule_pairs with the
     previous rows' ids read as their successors finds the successor at no branch. Its successor carries its price history
-    (meta.keymap mark 1: trend). A rename that moved rows anywhere starts again, as an id whose rows a rule moved does
+    (meta.keymap mark 1: trend) unless it is regrouped (meta.recl — a merge into an id the previous file had always is, where the
+    old rows joined it). A rename that moved rows anywhere starts again, as an id whose rows a rule moved does
     (meta.recl): '바디리니어지 100샷' T0D1AF59 → T11F7B37 (2026-10-19) lost 밴스 여의도's twin rows — the very rows whose going
     changed the id"""
     if not prev:
@@ -943,8 +948,9 @@ def key_map(prev, prow, rows, allk, kept=()):
     or renamed options change an auto key's signature). The app moves saved carts, favourites and alerts with it, and shows
     the old label for an id that has no successor instead of a bare 'T1234567'. Same row (brand, branch, name) decides: the
     new key that at least half of the old key's rows now carry. Older entries are kept and followed (A → B → C).
-    A third item 1 (2026-10-19): the successor carries the old id's price history (trend) — the old ids in kept (carried: the
-    rename moved no row), and an older entry only while every rename on its way did (A → B marked, B → C not: A → C unmarked)"""
+    A third item 1 (2026-10-19): the successor carries the old id's price history (trend) unless it is regrouped (meta.recl) —
+    the old ids in kept (carried: the rename moved no row), and an older entry only while every rename on its way did (A → B
+    marked, B → C not: A → C unmarked)"""
     if not prev:
         return {}
     ps, pb, pbrand = prev["s"], prev["branches"], [b[0] for b in prev["meta"]["brands"]]
