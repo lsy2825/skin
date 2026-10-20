@@ -2203,7 +2203,7 @@
       pic.addEventListener("click", () => { const L = J.lines.easter || []; const t = jline("quip") || L[taps++ % (L.length || 1)]; if (!t) return; quip.textContent = t; pic.classList.remove("hop"); void pic.offsetWidth; pic.classList.add("hop"); });
       const go = (route) => () => { close(); nav(route); };
       const actions = h("div", { class: "jomi-actions" },
-        FLAGS.concernSearch ? h("button", { class: "btn soft", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "죠미와 대화") : null,
+        FLAGS.concernSearch ? h("button", { class: "btn gray", type: "button", onclick: go("concern") }, icon("message-circle", "sm"), "죠미와 대화") : null,
         h("button", { class: "btn", type: "button", onclick: go("compare") }, icon("chart-column", "sm"), "시술 가격비교"));
       const id = h("div", { class: "jomi-id" }, h("b", {}, J.name), h("span", { class: "en" }, J.en), h("span", { class: "infotag" }, J.role));
       return h("div", { class: `jomi-intro${first ? " first" : ""}` }, pic, quip, id,
@@ -3437,7 +3437,9 @@
           infoBtn(x.i, bname(x.b))));
       });
       return more ? h("div", {}, list, more) : list; };
-      // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date)
+      // the same clinics, same order, as cards to swipe through (one clinic per card: price, conditions, checked date). Its three
+      // actions are the branch head's grid of equal halves (.bbtns): 가격 근거 · 지점 보기, then 비교함 across the card (2+1) —
+      // in one row they were 60~68px each at 360·390 and their words stacked a letter a line
       const buildCards = () => { const cards = h("ul", { class: "ccards", "aria-label": "지점별 가격 카드" });
       inBatches(cards, rows, (x, n) => {
         const r = ROWS[x.i], low = rk.length >= 3 && medAll && x.p <= medAll * LOW_SHARE;
@@ -3448,7 +3450,7 @@
           h("div", { class: "m" }, kindBadge(r, { warn: [low ? (checkedOk(x.i) ? h("span", { class: "k ok" }, `초저가·원본 확인 ${CHK.get(x.i).d.slice(5)}`) : kwBadge("초저가·조건 확인")) : null,
             fresh(x.b).stale ? kwBadge("지난 자료", {}, "history") : null], info: [prodTag(x.i)] }), x.d != null ? h("b", {}, km(x.d)) : null),
           h("div", { class: "tiny" }, `${BR[x.b].region || ""} · 가격 확인 ${verified(x.b)}`),
-          h("div", { class: "row ccard-a" }, h("button", { class: "btn sm gray", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info", "sm"), "가격 근거"),
+          h("div", { class: "bbtns ccard-a" }, h("button", { class: "btn sm gray", type: "button", "aria-label": `${bname(x.b)} 가격 근거 보기`, onclick: () => priceSheet(x.i) }, icon("info", "sm"), "가격 근거"),
             h("button", { class: "btn sm gray", type: "button", onclick: () => nav(`branch/${x.b}`) }, "지점 보기"), shortBtn(x.b))));
       });
       const step = (d) => { const c = cards.querySelector(".ccard"); if (c) cards.scrollBy({ left: d * (c.offsetWidth + 10), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); };
@@ -3815,7 +3817,8 @@
   // it opens elsewhere (위계 점검 35)
   const outLink = (href, ic, label) => h("a", { class: "btn sm gray out", href, target: "_blank", rel: "noopener" }, icon(ic, "sm"), label,
     icon("arrow-up-right", "xs"), h("span", { class: "sr" }, " — 새 창에서 열려요"));
-  // 비교함에 있음 is a list the branch is in (like 담김), not one choice among others: the icon and words change, the grey stays
+  // 비교함에 있음 is a list the branch is in (like 담김), not one choice among others: the icon and words change and it turns 담김's
+  // light green (.shortbtn[aria-pressed=true], 사용자 결정 2026-10-20 — the same state, the same look)
   const shortBtn = (b, cls = "btn sm gray") => { const el = h("button", { class: `${cls} shortbtn`, type: "button" });
     const paint = () => { const on = inShort(b); el.setAttribute("aria-pressed", on ? "true" : "false"); fill(el, icon(on ? "check" : "circle-plus", "sm"), on ? "비교함에 있음" : "비교함"); };
     el.addEventListener("click", (e) => { e.stopPropagation(); toggleShort(b); paint(); }); paint(); return el; };
@@ -3834,7 +3837,7 @@
       h("ul", { class: "shortl" }, bs.map((b, n) => h("li", {}, bdot(b), h("b", {}, bname(b)), h("span", { class: "sp" }),
         h("button", { class: "linkbtn", type: "button", onclick: () => pickBranchSheet(`${bname(b)} 대신`, bs, (v) => { const L = [...bs]; L[n] = v; setL(L); }) }, "바꾸기"),
         h("button", { class: "tbtn-i", type: "button", "aria-label": `${bname(b)} 빼기`, onclick: () => { const before = bs; setL(bs.filter((x) => x !== b)); undoToast("비교함에서 뺐어요", () => setL(before)); } }, icon("x", "sm"))))),
-      bs.length < SHORT_MAX ? h("button", { class: "btn sm soft", type: "button", onclick: () => pickBranchSheet("비교함에 지점 추가", bs, (v) => setL([...bs, v])) }, icon("circle-plus", "sm"), `지점 추가 (${bs.length}/${SHORT_MAX})`) : null));
+      bs.length < SHORT_MAX ? h("button", { class: "btn sm gray", type: "button", onclick: () => pickBranchSheet("비교함에 지점 추가", bs, (v) => setL([...bs, v])) }, icon("circle-plus", "sm"), `지점 추가 (${bs.length}/${SHORT_MAX})`) : null));
     if (bs.length < 2) {
       const F = favs(), sug = [...new Set([...F.b.map((x) => BK.get(x)), ...store.get("recent", []).filter((x) => x.startsWith("b:")).map((x) => BK.get(x.slice(2)))])].filter((b) => b != null && BR[b] && !bs.includes(b)).slice(0, 6);
       box.append(h("div", { class: "card" }, jomiEmpty("cart", "비교할 지점을 2곳 이상 담아 줘",
@@ -4488,7 +4491,7 @@
           h("button", { class: "chip", type: "button", "aria-pressed": st.maxPlaces === v ? "true" : "false", onclick: () => { st.maxPlaces = v; st.cartTab = "mix"; st.cartCmp = true; render(); } }, l)))),
         h("div", {}, h("div", { class: "flabel" }, "거리"), st.loc ? h("select", { class: "mini", "aria-label": "거리", onchange: (ev) => { st.maxKm = +ev.target.value; render(); } },
           [[0, "거리 제한 없음"], [3, "3km 안"], [5, "5km 안"], [10, "10km 안"], [20, "20km 안"], [50, "50km 안"]].map(([v, l]) => h("option", { value: v, selected: v === st.maxKm }, l)))
-          : h("button", { class: "btn sm soft", type: "button", onclick: () => locate("keep") }, "내 위치로 거리 보기")),
+          : h("button", { class: "btn sm gray", type: "button", onclick: () => locate("keep") }, "내 위치로 거리 보기")),
         h("div", {}, h("div", { class: "flabel" }, "브랜드"), brandChips()),
         h("div", { class: "sub" }, `지역: ${regionName()} (화면 위 지역 버튼에서 바꿔요)`)));
     adv.addEventListener("toggle", () => { st.cartAdv = adv.open; });
@@ -4681,7 +4684,7 @@
       h("div", { class: "sub" }, "이름에 '+'로 묶인 상품만 찾아요. 스펙(샷 수·용량)이 모두 같고 다른 구성이 없을 때만 '따로 사는 것보다 얼마' 를 계산해요.")));
     if (!found.length) { res.append(h("div", { class: "empty" }, "담은 시술을 2개 이상 묶은 패키지를 찾지 못했어요.")); return res; }
     const stateTxt = { match: "같은 시술", spec: "용량·부위·제품 다름", check: "구성 확인 필요" };
-    res.append(h("ul", { class: "list" }, found.slice(0, 30).map((y) => { const r = ROWS[y.i];
+    res.append(h("ul", { class: "list pkgs" }, found.slice(0, 30).map((y) => { const r = ROWS[y.i];
       return h("li", {}, h("div", { class: "item ra" }, h("span", { class: "t" }, S[r[2]]), h("span", { class: "p num" }, won(r[3])),
         h("span", { class: "m" }, h("button", { class: "linkbtn", type: "button", onclick: () => nav(`branch/${y.b}`) }, bdot(y.b), bname(y.b)), kindBadge(r),
           ...y.m.matched.map((z) => z.state === "match" ? h("span", { class: "k ok" }, `${itemLabel(items[z.j])}: ${stateTxt[z.state]}`) : kwBadge(`${itemLabel(items[z.j])}: ${stateTxt[z.state]}`)),

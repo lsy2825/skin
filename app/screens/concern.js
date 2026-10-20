@@ -76,7 +76,7 @@
         e ? h("div", { class: "row", style: "gap:var(--sp-1);margin-top:var(--sp-2)" }, reviewBadge(e), h("button", { class: "linkbtn", type: "button", onclick: () => kbSheet(e, f.src) }, "부작용·주의사항 보기")) : null,
         h("div", { class: "row", style: "margin-top:var(--sp-2);flex-wrap:wrap" },
           h("button", { class: "btn sm", type: "button", onclick: () => nav(`compare?k=${key.id}`) }, icon("chart-column", "sm"), "지점별 가격 비교"),
-          Object.keys(r.where).length ? h("button", { class: "btn sm soft", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
+          Object.keys(r.where).length ? h("button", { class: "btn sm gray", type: "button", onclick: () => nav(tq(r.where)) }, `${whereText(r.where)} 가격표`) : null),
         ks.length ? h("div", { style: "margin-top:var(--sp-2)" }, h("div", { class: "tiny" }, "다른 규격도 물어볼 수 있어요"),
           h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, ks.map((k) => h("button", { class: "chip", type: "button", onclick: () => chatSend(`${k.label} 얼마야`) }, k.label)))) : null);
     }
@@ -90,7 +90,7 @@
       if (r.guess) parts.push(h("p", { class: "jomi-line" }, `혹시 '${r.fams[0].name}' 말하는 거야? (${r.guess.join(", ")})`));
       if (r.kind === "help" || r.kind === "chit") {
         parts.push(h("p", {}, r.say));
-        if (r.go) parts.push(h("button", { class: "btn sm soft", type: "button", onclick: () => nav(r.go[0]) }, r.go[1], icon("chevron-right", "sm")));
+        if (r.go) parts.push(h("button", { class: "btn sm gray", type: "button", onclick: () => nav(r.go[0]) }, r.go[1], icon("chevron-right", "sm")));
         return { face: r.kind === "chit" ? "happy" : "explaining", parts };
       }
       if (r.kind === "compare2") {
