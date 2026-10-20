@@ -98,5 +98,18 @@
   // the versions to keep in the phone's cache: the one in use and at most one more (the last good one)
   function prune(versions, keep) { return versions.filter((v) => !keep.includes(v)); }
 
-  return { SCHEMA, STALE_DAYS, RETRY_MS, checkMeta, checkData, checkHome, stateOf, label, prune, days };
+  // a saved option name (a cart line, a branch's pick, a price alert) that a new data file no longer has at that branch because
+  // the build put a section title in front of it or took one off (build2/clean.py title_words: '제목 · 이름', C #126). names: the
+  // option names of that branch now; price and pricesOf (name → prices there), when given, choose among several. Returns the one
+  // new name, or null (still there, nothing like it, or more than one and the price does not tell them apart).
+  function renamed(old, names, price, pricesOf) {
+    if (typeof old !== "string" || !old || names.includes(old)) return null;
+    const tail = (n) => n.split(" · ").pop();
+    let c = [...new Set(names)].filter((n) => n.endsWith(` · ${old}`) || old.endsWith(` · ${n}`) ||
+      (n.includes(" · ") && old.includes(" · ") && tail(n) === tail(old)));
+    if (c.length > 1 && price != null && pricesOf) c = c.filter((n) => (pricesOf(n) || []).includes(price));
+    return c.length === 1 ? c[0] : null;
+  }
+
+  return { SCHEMA, STALE_DAYS, RETRY_MS, checkMeta, checkData, checkHome, stateOf, label, prune, days, renamed };
 });
