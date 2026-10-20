@@ -1,7 +1,7 @@
 // 종 버튼 알림 패널 (사용자 요청 2026-10-20): the bell in the top bar opens the latest 알림 기록 right under it — what fired
 // (kind, treatment, before → after, observed day, '가격 보기') — instead of only going to the 관심 tab. Opening reads the new
-// records (the badge goes, as on the tab); the panel closes on the bell again, a tap outside, Esc (focus back on the bell) and
-// any screen change; '알림 관리·전체 보기' goes to the 관심 tab; it stays inside the screen on a phone and on a desktop.
+// records (the badge goes, as on the tab); the panel closes on the bell again, a tap outside, Esc (focus back on the bell), Tab
+// past its end and any screen change; '알림 관리·전체 보기' goes to the 관심 tab; it stays inside the screen on a phone and on a desktop.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/notipanel.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
 const BASE = process.env.BASE || 'http://localhost:8766/';
@@ -51,6 +51,14 @@ const panel = (p) => p.locator('#notipanel');
 
     await p.click('#notibtn'); await p.waitForTimeout(150); await p.click('#notibtn'); await p.waitForTimeout(150);
     ok(`${tag}: 종을 다시 누르면 닫힘`, (await panel(p).count()) === 0);
+
+    if (!mobile) {   // keyboard: Enter on the bell, Tab through every button, then past the end — the panel must not stay over the page
+      await p.focus('#notibtn'); await p.keyboard.press('Enter'); await p.waitForTimeout(150);
+      const nb = await panel(p).locator('button').count(); for (let i = 0; i < nb; i++) await p.keyboard.press('Tab');
+      const last = await p.evaluate(() => document.activeElement && document.activeElement.textContent);
+      await p.keyboard.press('Tab'); await p.keyboard.press('Tab'); await p.waitForTimeout(150);
+      ok(`${tag}: 키보드 — Enter로 열고 Tab으로 마지막 버튼까지, 그 밖으로 Tab하면 닫힘`, last === '알림 관리·전체 보기' && (await panel(p).count()) === 0, `${nb} buttons, last=${last}`);
+    }
 
     await p.click('#notibtn'); await p.waitForTimeout(150);
     await p.mouse.click(Math.round(viewport.width / 2), Math.round(viewport.height * 0.8)); await p.waitForTimeout(250);

@@ -1969,7 +1969,7 @@
   // 종 버튼(#notibtn): the latest 알림 기록 opens right under the bell (사용자 요청 2026-10-20 — before, the bell only went to the
   // 관심 tab, where the records sit under the alerts list). '알림 관리·전체 보기' still goes there (every record, the alerts
   // themselves). The panel is outside #main and built once per opening — no render(); it closes on the bell again, a tap
-  // outside, Esc, focus leaving it, and any screen change. Opening it reads the new records (the badge goes, as on the tab).
+  // outside, Esc, focus going anywhere else (Tab past its end too), and any screen change. Opening it reads the new records (the badge goes, as on the tab).
   let notiClose = null;
   function notiPanel() {
     if (notiClose) { notiClose(); return; }
@@ -1979,21 +1979,23 @@
     const close = (back) => {
       if (notiClose !== close) return;
       notiClose = null; pnl.remove(); btn.setAttribute("aria-expanded", "false");
-      document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", key);
+      document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", key); document.removeEventListener("focusin", fin);
       ["popstate", "hashchange"].forEach((ev) => window.removeEventListener(ev, gone)); window.removeEventListener("resize", place);
       if (back === true) btn.focus();
     };
     const gone = () => close();
     const outside = (e) => { if (!pnl.contains(e.target) && !btn.contains(e.target)) close(); };
     const key = (e) => { if (e.key === "Escape") close(true); };
-    pnl.addEventListener("focusout", (e) => { if (e.relatedTarget && !pnl.contains(e.relatedTarget) && !btn.contains(e.relatedTarget)) close(); });
+    // focus anywhere else closes it — focusin on the document, not focusout on the panel: tabbing past its last button leaves
+    // the document first (relatedTarget null), and the next Tab lands on the tabs while the panel would stay over the page
+    const fin = (e) => { if (!pnl.contains(e.target) && !btn.contains(e.target)) close(); };
     pnl.append(h("div", { class: "row" }, h("h3", { class: "t-body" }, "알림 기록"), h("span", { class: "sp" }), unread.length ? h("span", { class: "sub" }, `새 알림 ${unread.length}개`) : null),
       st.notes.length ? h("ul", { class: "list notes" }, st.notes.slice(0, N).map((x) => noteLi(x, close))) : h("div", { class: "sub" }, NOTES_EMPTY),
       h("div", { class: "foot" }, st.notes.length > N ? h("span", { class: "sub" }, `최근 ${N}개 · 전체 ${st.notes.length}개`) : null, h("span", { class: "sp" }),
         h("button", { class: "linkbtn", type: "button", onclick: () => { close(); nav("saved"); } }, "알림 관리·전체 보기")));
     place(); document.body.append(pnl);
     notiClose = close; btn.setAttribute("aria-expanded", "true");
-    document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", key);
+    document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", key); document.addEventListener("focusin", fin);
     ["popstate", "hashchange"].forEach((ev) => window.addEventListener(ev, gone)); window.addEventListener("resize", place);
     pnl.focus();
     if (unread.length) setTimeout(() => { for (const x of unread) x.read = true; saveAlerts(); }, 1500);
