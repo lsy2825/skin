@@ -3565,11 +3565,11 @@
           h("div", { class: "row", style: "gap:var(--sp-3);margin-top:var(--sp-2)" },
             h("button", { class: "linkbtn", type: "button", onclick: () => basisSheet(k, rk, plain) }, icon("circle-help", "xs"), "계산 기준"),
             h("button", { class: "linkbtn", type: "button", onclick: () => { const el = $("#clinics"); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); } }, icon("list", "xs"), "지점별 가격 보기"))),
-        // the default card: the spread alone — its middle price is the sticky head's and the bar's label, its branch count the
-        // head's '일반가 N곳' (2026-10-21 글 줄이기 2차); with lowestHighlight the hero is one clinic's price, so all three stay
+        // the default card: no '비교 지점 N곳' — the sticky head says '일반가 N곳' (2026-10-21 글 줄이기 2차); '중간 가격' stays,
+        // the card's one word for the bar's dot. With lowestHighlight the hero is one clinic's price, so all three stay
         HL ? statRow([["중간 가격", won(med)], ["가장 비싼 곳", won(prices[prices.length - 1])],
           ["비교 지점", `${prices.length}곳`, spread >= 1.05 ? `최대 ${spread.toFixed(1)}배 차이` : "차이 거의 없음"]])
-          : statRow([["가격 차이", spread >= 1.05 ? `최대 ${spread.toFixed(1)}배` : "거의 없음"]]));
+          : statRow([["중간 가격", won(med)], ["가격 차이", spread >= 1.05 ? `최대 ${spread.toFixed(1)}배` : "거의 없음"]]));
       // 조건부 가격 and 확인 필요 초저가 under a hairline, each with its badges (위계 점검 31 · CARD-1 — they were butter boxes inside
       // the card): the price's own kind / condition badges (kindBadge ①, butter) or '조건부'; the list's '초저가·조건 확인'
       const cb = ctop ? kindBadge(ROWS[ctop.i], { group: 0 }) : [];
@@ -3878,7 +3878,9 @@
     box.append(backBtn());
     const bs = shortList();
     const setL = (L) => { store.set("short", L.map((b) => bkey(b))); render(); };
+    // the screen's one line (U16 head) without '(이 휴대폰에만 저장)' — 마이 says where everything is kept (2026-10-21 글 줄이기 2차)
     box.append(h("div", { class: "card" }, h("h2", {}, "빠른 비교"),
+      h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, `지점 2~${SHORT_MAX}곳을 나란히 봐요.`),
       h("ul", { class: "shortl" }, bs.map((b, n) => h("li", {}, bdot(b), h("b", {}, bname(b)), h("span", { class: "sp" }),
         h("button", { class: "linkbtn", type: "button", onclick: () => pickBranchSheet(`${bname(b)} 대신`, bs, (v) => { const L = [...bs]; L[n] = v; setL(L); }) }, "바꾸기"),
         h("button", { class: "tbtn-i", type: "button", "aria-label": `${bname(b)} 빼기`, onclick: () => { const before = bs; setL(bs.filter((x) => x !== b)); undoToast("비교함에서 뺐어요", () => setL(before)); } }, icon("x", "sm"))))),
