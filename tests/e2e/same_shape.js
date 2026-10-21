@@ -98,8 +98,10 @@ const HELP = () => {
     ok(`29 ${tag} 비교 줄 배지 순서: 종류·조건 → 경고 → 정보`, cmp.n >= 5 && !cmp.bad.length, `${cmp.n}줄 · 어긋난 줄 ${cmp.bad.length} ${cmp.bad.slice(0, 2).join(' | ')}`);
     if (wide) ok('29 비교: 조건 배지와 날짜 배지가 같이 있는 줄이 있음(순서가 시험됨)', cmp.both > 0, `${cmp.both}줄`);
     ok(`31 ${tag} 가격 카드 안에 테두리·채움 상자 없음`, !cmp.boxes.length, cmp.boxes.join(', '));
-    ok(`31 ${tag} 특가·초저가: 위 선 + 배지, 채움 없음, 문장 그대로`, cmp.cl.length >= 1 && cmp.cl.every((c) => c.line && !c.fill && c.badges.length >= 1)
-      && cmp.cl.some((c) => /조건이 맞을 때만 이 가격이에요\.$/.test(c.sub)), JSON.stringify(cmp.cl).slice(0, 240));
+    // the line under each: its conditions (특가) or the share of the middle price (초저가) — no sentence repeating the badge
+    // (2026-10-21 글 줄이기 2차: ' — 조건이 맞을 때만 이 가격이에요.' went)
+    ok(`31 ${tag} 특가·초저가: 위 선 + 배지, 채움 없음, 아래 줄은 조건 목록`, cmp.cl.length >= 1 && cmp.cl.every((c) => c.line && !c.fill && c.badges.length >= 1 && c.sub.trim().length > 0)
+      && !cmp.cl.some((c) => /조건이 맞을 때만/.test(c.sub)), JSON.stringify(cmp.cl).slice(0, 240));
     ok(`30 ${tag} 비교 덩어리 접기 2개는 카드, 위 간격은 화면 간격(덩어리 사이) 24px`, cmp.cf.length === 2 && cmp.cf.every((c) => c.card && c.gap === 24), JSON.stringify(cmp.cf));
     ok(`47 ${tag} 비교 줄: ⓘ 하나(가격 정보)`, cmp.infob === cmp.n, `${cmp.infob}/${cmp.n}`);
     ok(`47 ${tag} 비교 줄 ⓘ: 보이는 칸 36, 누르는 곳 44(오른쪽으로만 넓힘)`, cmp.hits.length === 3 && cmp.hits.every(__hitOkN), JSON.stringify(cmp.hits[0]));

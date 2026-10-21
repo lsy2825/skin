@@ -56,7 +56,11 @@ const CART = [{ id: 'a', name: '내 장바구니', items: [{ t: 'k', k: 'X12', q
     await p.locator('#main .sec-h .infob[aria-label="순서 기준"]').click(); await p.waitForTimeout(300);
     ok('홈: "인기" 기준 설명(파는 지점 수, 검색량 아님) — ⓘ 순서 기준', /파는 지점이 많은 순이에요\(검색·예약 수가 아니에요\)/.test(await p.locator('.sheet').last().textContent().catch(() => '')));
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
-    ok('홈: 죠미의 발견 고르는 기준 설명', /고르는 기준: 일반가가 5곳 이상/.test(home) && /사람이 고르거나 광고로 정하지 않아요/.test(home));
+    // the same way for 죠미의 발견: '고르는 기준' behind the ⓘ in its head (2026-10-21 글 줄이기 2차 — it was a paragraph under the list)
+    await p.locator('#main .sec-h .infob[aria-label="고르는 기준"]').click(); await p.waitForTimeout(300);
+    const pick = await p.locator('.sheet').last().textContent().catch(() => '');
+    ok('홈: 죠미의 발견 고르는 기준 설명 — ⓘ 고르는 기준', /일반가가 5곳 이상/.test(pick) && /사람이 고르거나 광고로 정하지 않아요/.test(pick) && !/고르는 기준: 일반가/.test(home), pick.slice(0, 80));
+    await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     await p.goto(BASE + '#compare?k=X12'); await p.waitForTimeout(500);   // → 최근 본 것
     await p.goto(BASE + '#branch/3'); await p.waitForTimeout(400);         // → 이어서 보기
     const keys = () => p.evaluate(() => ['recent', 'recentQ', 'lastRoute'].map((k) => localStorage.getItem('pc:' + k) != null));

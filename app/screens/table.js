@@ -87,16 +87,15 @@
         const tog = (label, key, help) => h("label", { class: "row pctog", style: "margin-top:var(--sp-2);flex-wrap:nowrap" }, h("input", { type: "checkbox", checked: !!s[key], onchange: (e) => { s[key] = e.target.checked; } }),
           h("span", {}, h("b", {}, label), help ? h("span", { class: "tiny", style: "display:block" }, help) : null));
         const paint = () => fill(box,
-          h("div", { class: "sub" }, "숫자는 지금 다른 조건에서의 가격 수예요."),
           opts("특가(체험가·한정가·첫 방문·요일·시간)", "cond", [["", "모두", null], ["plain", "일반가만", cnt.cond.plain || 0], ["special", "특가만", cnt.cond.special || 0]]),
           opts("가격 종류", "kind", [[-1, "전체", null], ...App.state().D.meta.kinds.map((k, i) => [i, k, cnt.kind[i] || 0])]),
-          opts("첫 방문 가격", "fv", [["", "상관없음", null], ["only", "첫 방문가만", cnt.fv.only || 0], ["no", "첫 방문가 빼기", cnt.fv.no || 0]], "병원이 '첫 방문·신규·첫 시술'이라고 적은 가격이에요. 두 번째부터는 보통 일반가예요."),
-          opts("패키지(A+B처럼 여러 시술을 한 값에)", "bun", [["", "포함", null], ["only", "패키지만", cnt.bun.only || 0], ["no", "패키지 빼기", cnt.bun.no || 0]], "패키지는 구성이 지점마다 달라 시술별 비교에 쓰지 않아요."),
+          opts("첫 방문 가격", "fv", [["", "상관없음", null], ["only", "첫 방문가만", cnt.fv.only || 0], ["no", "첫 방문가 빼기", cnt.fv.no || 0]], "'첫 방문·신규·첫 시술' 가격이에요. 두 번째부터는 보통 일반가예요."),
+          opts("패키지(A+B처럼 여러 시술을 한 값에)", "bun", [["", "포함", null], ["only", "패키지만", cnt.bun.only || 0], ["no", "패키지 빼기", cnt.bun.no || 0]], "시술별 비교에는 안 써요."),
           opts("횟수", "sess", [["", "전체", null], ...Object.entries(SESS_L).map(([k, l]) => [k, l, cnt.sess[k] || 0])], "횟수가 안 적힌 가격은 1회로 봐요."),
           opts("부가세 표시(앱 전체)", "vat", [["incl", "부가세 포함가", null], ["listed", "병원 표시가", null]], "'부가세 별도' 가격에만 10%를 더해요. 표기를 못 찾은 가격은 그대로 둬요."),
           h("div", { class: "sub", style: "margin:var(--sp-3) 0 0" }, "그 밖의 설정"),
-          tog("특가 포함(앱 전체)", "special", "끄면 특가(체험가·한정가·첫 방문·요일·시간)가 모든 화면에서 빠져요."),
-          tog("지난 이벤트·확인 중 가격도 보기", "old", "이벤트가 끝났거나 급변해서 확인 중인 가격이에요. 가격표에서만 보이고 비교·내 견적에는 쓰지 않아요."),
+          tog("특가 포함(앱 전체)", "special", "끄면 모든 화면에서 특가가 빠져요."),
+          tog("지난 이벤트·확인 중 가격도 보기", "old", "가격표에서만 보여요(비교·내 견적엔 안 써요)."),
           tog("부가세 표기를 못 찾은 가격 빼기", "vu", null),
           h("div", { class: "row", style: "margin-top:var(--sp-3)" },
             h("button", { class: "btn gray", type: "button", onclick: () => { Object.assign(s, { cond: "", kind: -1, fv: "", bun: "", sess: "", old: false, vu: "" }); paint(); } }, "초기화"),
@@ -314,10 +313,10 @@
       const oneSpec = !!f.q && hits.length > 0 && !!Stats.sharedKey && Stats.sharedKey((function* () { for (const i of hits) yield (S[ROWS[i][7]] || "").split(" "); })()) != null;
       resHead.append(h("div", { class: "searchstat", role: "status" }, hits.length ? (FLAGS.lowestHighlight ? `가격 ${hits.length.toLocaleString()}개 · 가장 싼 ${won(minP)} (${new Set(hits.filter((i) => ROWS[i][3] === minP).map((i) => ROWS[i][0])).size}개 지점)`
         : `가격 ${hits.length.toLocaleString()}개 · ${f.q ? (oneSpec ? `${Pricing.rangeText(minP, maxP)} · ` : "여러 용량 · ") : ""}${(SORTS().find(([v]) => v === f.sort) || [, ""])[1]}`) : "조건에 맞는 가격이 없어요"));   // no words: a range over every procedure means nothing (E12)
-      if (hits.length && f.q && !oneSpec && !FLAGS.lowestHighlight) resHead.append(h("p", { class: "tiny mixstat" }, "용량·횟수가 섞여 있어 범위를 적지 않아요.", opt.mixHint ? ` ${opt.mixHint}` : ""));
+      if (hits.length && f.q && !oneSpec && !FLAGS.lowestHighlight) resHead.append(h("p", { class: "tiny mixstat" }, opt.mixHint || "용량·횟수가 섞여 있어 범위를 적지 않아요."));   // '여러 용량' above says the first half
       if (unitInfo && unitInfo.units.length > 1) resHead.append(h("div", { class: "chips" }, unitInfo.units.map(([u, n]) => h("button", { class: "chip", type: "button", "aria-pressed": u === unitInfo.unit ? "true" : "false", onclick: () => go({ unit: u, sort: "unit" }) }, `${u === "샷" ? "100샷" : u === "U" ? "10U" : "1" + u}당 · ${n}개`))));
       for (const n of notes) resHead.append(h("p", { class: "tiny" }, n));
-      if (hits.length) resHead.append(h("p", { class: "tiny" }, "가격만으로 고르지 마세요. 이름이 같아도 용량·조건·정품 여부·의료진이 다를 수 있어요. 조건·부작용은 각 가격의 ⓘ에서 봐요."));
+      if (hits.length) resHead.append(h("p", { class: "tiny" }, "가격만으로 고르지 마세요. 조건·부작용은 각 가격의 ⓘ에서 봐요."));
       if (!hits.length) { const nr = noResults(f, cq, go, route); nr.prepend(resHead); box.append(nr); return box; }
       // the first rows (전체 가격표 100, search 20), then the shared '20개 더 보기 (N개 남음)': rows added in place (what was typed
       // in the boxes above stays), the count kept in the address (?n=) so a later redraw shows as many

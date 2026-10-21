@@ -1,6 +1,6 @@
 // 규격 낱말 뜻 (data.json meta.kb.specs, chat C's C7) in a real browser at 320 px: on the compare screen the chosen spec's
-// words ('국산', '사각턱' …) get one plain line each under '규격 바꾸기', and the '같은 시술로' choice of the add sheet shows the
-// same lines. Not medically reviewed lines say '의료진 검수 전' and go away when flags.showDraftKnowledge is off.
+// words ('국산', '사각턱' …) get one plain line each under '규격 바꾸기' — folded under one line '낱말 뜻 · 국산·사각턱' that stays
+// open across redraws (2026-10-21 글 줄이기 2차) — and the '같은 시술로' choice of the add sheet shows the same lines, open. Not medically reviewed lines say '의료진 검수 전' and go away when flags.showDraftKnowledge is off.
 // Data without meta.kb.specs (before C7): nothing new on screen.
 // Usage: python3 -m http.server 8766 --directory app &  then  APP_PIN=<pin> node tests/e2e/spec_notes.js
 const { chromium } = require(process.env.PLAYWRIGHT || 'playwright');
@@ -28,6 +28,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   console.log(`# data: ${NEW ? `meta.kb.specs ${specs.length}개` : 'meta.kb.specs 없음(예전 자료)'}`);
   ok('비교 화면과 규격 바꾸기가 그려짐', await p.locator('#cmppick .vsteps').count() === 1);
   const box = p.locator('#cmppick .specnotes');
+  const fold = p.locator('#cmppick details.minifold', { has: p.locator('.specnotes') });
+  const openNotes = async () => { if (await fold.count() && !(await fold.evaluate((e) => e.open))) { await fold.locator(':scope > summary').click(); await p.waitForTimeout(250); } };
   if (!NEW) {
     ok('예전 자료: 규격 낱말 설명이 없음', await p.locator('.specnotes').count() === 0);
     await p.locator('#cmppick .vstep .chip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(500);
@@ -37,11 +39,15 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   } else {
     const kr = line('국산');
     ok("자료에 보톡스 › '국산' 설명이 있음", !!kr, kr ? kr.one_liner : '');
+    const sum = (await fold.count()) === 1 ? (await fold.locator(':scope > summary').innerText()).trim() : '';
+    ok("처음엔 접힌 한 줄 '낱말 뜻 · 국산…'(설명 글은 안 보임)", (await fold.count()) === 1 && !(await fold.evaluate((e) => e.open)) && /^낱말 뜻 · .*국산/.test(sum) && !(await box.isVisible()), sum);
+    await openNotes();
+    ok("요약 줄을 누르면 설명이 보임", await box.isVisible());
     const txt = (await box.count()) === 1 ? await box.innerText() : '';
     ok("'국산' 한 줄 설명이 규격 고르는 곳에 보임", !!kr && txt.includes(kr.one_liner), txt.replace(/\n/g, ' / ').slice(0, 120));
     ok("검수 전 설명엔 '의료진 검수 전' 표시", !!kr && (kr.review.status === 'approved' || /의료진 검수 전/.test(txt)));
     ok("시술 이름의 낱말('사각턱')도 함께, 3줄까지", (!line('사각턱') || txt.includes(line('사각턱').one_liner)) && await box.locator('li').count() <= 3, `${await box.locator('li').count()}줄`);
-    ok('규격 단계 바로 아래에 있음', await p.evaluate(() => { const s = document.querySelector('#cmppick .vsteps'); return !!s && !!s.nextElementSibling && s.nextElementSibling.classList.contains('specnotes'); }));
+    ok('규격 단계 바로 아래에 있음(접기 안)', await p.evaluate(() => { const s = document.querySelector('#cmppick .vsteps'), n = s && s.nextElementSibling; return !!n && n.matches('details.minifold') && !!n.querySelector(':scope > .specnotes'); }));
     ok('글자는 텍스트로만(낱말 b·표시 span 말고 다른 태그 없음)', await box.evaluate((e) => [...e.querySelectorAll('li *')].every((x) => x.tagName === 'B' || x.tagName === 'SPAN')));
     const fs = await box.evaluate((e) => Math.min(...[...e.querySelectorAll('li, .tiny, .k')].map((x) => parseFloat(getComputedStyle(x).fontSize))));
     ok('글자 13px 이상', fs >= 13, `${fs}px`);
@@ -49,6 +55,8 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     ok('320px에서 넘치지 않음', wide <= 0 && inner <= 1, `page ${wide}px · box ${inner}px`);
     // another spec: the lines follow the chosen spec
     await p.locator('#cmppick .vstep .chip', { hasText: /^미국산$/ }).first().click(); await p.waitForTimeout(600);
+    ok('규격을 바꿔 다시 그려도 펼친 채', (await fold.count()) === 1 && await fold.evaluate((e) => e.open));
+    await openNotes();
     const us = line('미국산'), t2 = (await box.count()) ? await box.innerText() : '';
     ok("규격을 '미국산'으로 바꾸면 그 설명으로 바뀜", !!us && t2.includes(us.one_liner) && !t2.includes(kr.one_liner), t2.replace(/\n/g, ' / ').slice(0, 100));
     await p.locator('#cmppick .modesw button', { hasText: '자세히' }).click(); await p.waitForTimeout(400);
@@ -56,6 +64,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
     await p.locator('#cmppick .modesw button', { hasText: '쉬운 보기' }).click(); await p.waitForTimeout(300);
     // '스킨보톡스': the word '스킨' is glued to the base name (Spec.famWords), not a separate word
     await p.evaluate(() => { location.hash = '#compare?k=X03'; }); await p.waitForTimeout(700);   // 국산 얼굴전체 스킨보톡스
+    await openNotes();
     const sk = line('스킨'), t5 = (await box.count()) ? await box.innerText() : '';
     ok("'스킨보톡스'엔 '스킨' 설명도 보임", !!sk && t5.includes(sk.one_liner) && t5.includes(kr.one_liner), t5.replace(/\n/g, ' / ').slice(0, 120));
   }
@@ -84,7 +93,7 @@ const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.lo
   await q.p.goto(BASE + '#compare?k=X01'); await q.p.waitForTimeout(700);
   await q.p.waitForFunction(() => window.App.data() && !window.App.data().meta.partial, null, { timeout: 60000 });
   ok('초안 숨김 설정이 적용됨(config.js flags)', await q.p.evaluate(() => window.APP_CONFIG.flags.showDraftKnowledge === false));
-  const t4 = (await q.p.locator('#cmppick .specnotes').count()) ? await q.p.locator('#cmppick .specnotes').innerText() : '';
+  const t4 = (await q.p.locator('#cmppick .specnotes').count()) ? (await q.p.locator('#cmppick .specnotes').textContent()).trim() : '';   // folded: the text, open or not
   const anyOk = specs.some((e) => e.fid === 'toxin' && (e.review || {}).status === 'approved');
   ok('초안 숨김 설정: 검수 전 설명은 안 보임', !/의료진 검수 전/.test(t4) && (anyOk || t4 === ''), t4.slice(0, 80));
   ok('초안 숨김 설정: 화면은 그대로 그려짐', await q.p.locator('#cmppick .vsteps').count() === 1 && !q.errs.length, q.errs.join(' '));

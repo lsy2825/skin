@@ -24,8 +24,9 @@
       box.append(backBtn());
       const bs = shortList();
       const setL = (L) => { store.set("short", L.map((b) => bkey(b))); render(); };
+      // the screen's one line (U16 head) without '(이 휴대폰에만 저장)' — 마이 says where everything is kept (2026-10-21 글 줄이기 2차)
       box.append(h("div", { class: "card" }, h("h2", {}, "빠른 비교"),
-        h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, `지점 2~${SHORT_MAX}곳을 나란히 봐요(이 휴대폰에만 저장).`),
+        h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, `지점 2~${SHORT_MAX}곳을 나란히 봐요.`),
         h("ul", { class: "shortl" }, bs.map((b, n) => h("li", {}, bdot(b), h("b", {}, bname(b)), h("span", { class: "sp" }),
           h("button", { class: "linkbtn", type: "button", onclick: () => pickBranchSheet(`${bname(b)} 대신`, bs, (v) => { const L = [...bs]; L[n] = v; setL(L); }) }, "바꾸기"),
           h("button", { class: "tbtn-i", type: "button", "aria-label": `${bname(b)} 빼기`, onclick: () => { const before = bs; setL(bs.filter((x) => x !== b)); undoToast("비교함에서 뺐어요", () => setL(before)); } }, icon("x", "sm"))))),

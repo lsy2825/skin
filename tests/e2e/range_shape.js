@@ -193,9 +193,10 @@ const HELP = () => {
     ok(`${tag} 홈 발견 막대: 트랙 6·--fill-2, 중간값 = 채운 점 14 --s1-mark(카드 색 고리), 라벨 없음`, hm.length && !badOf(hm).length && hm.every((x) => !x.label && !x.axis), badOf(hm).slice(0, 4).join(' | '));
     const crs = hm.map((x) => x.cr).filter((c) => c && c.dotTrack), lo2 = (k) => Math.min(...crs.map((c) => c[k])).toFixed(2);
     console.log(`INFO | ${tag} 중간값 점 대비(가장 낮은 것): 트랙 ${lo2('dotTrack')}:1 · 카드 ${lo2('dotCard')}:1`);
-    // the captions under the list name the marks as they are drawn (a dot, not a line)
-    const caps = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간 가격이에요/.test(t)));
-    ok(`${tag} 홈 발견 설명: '점은 중간 가격'(세로선이라고 하지 않음)`, caps.length === 1 && /점은 중간 가격이에요/.test(caps[0]) && !/세로선/.test(caps[0]), caps.join(' | '));
+    // no caption under the list (2026-10-21 글 줄이기 2차): each row names its dot ('중간 X원'); nothing calls it a line
+    const caps = await p.evaluate(() => [...document.querySelectorAll('#main .foot.under')].map((e) => e.textContent).filter((t) => /중간 가격|세로선/.test(t)));
+    const rowMed = await p.$$eval('#main .disc-row .m', (xs) => xs.filter((x) => /중간 [\d,]+원/.test(x.textContent)).length);
+    ok(`${tag} 홈 발견: 막대 설명 문장 없음, 줄마다 '중간 X원'(세로선이라고 하지 않음)`, !caps.length && rowMed === nRows, `${caps.join(' | ')} · 중간 ${rowMed}/${nRows}줄`);
     const hs = await p.evaluate(() => __stray());
     ok(`${tag} 홈: 다른 모양의 범위 막대 없음`, !hs.length, hs.slice(0, 5).join(' | '));
     ok(`${tag} 홈: 가로 넘침 없음`, (await wide(p)) <= 0, `${await wide(p)}px`);

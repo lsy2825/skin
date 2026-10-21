@@ -36,7 +36,7 @@
         sec("제품·장비", prods.map(([p, bs]) => h("button", { class: "chip", type: "button", onclick: () => nav(`table?q=${encodeURIComponent(p)}`) }, icon("tag", "sm"), `${p} · ${bs.size}곳`))),
         sec("병원", clinics.map((b) => h("button", { class: "chip", type: "button", onclick: () => nav(`branch/${b.i}`) }, bdot(b.i), bname(b.i)))),
         sec("지역", areas.map((a) => h("button", { class: "chip", type: "button", onclick: () => { useArea(a); nav("map"); } }, icon("map-pin", "sm"), `${a.name} · ${a.bs.length}곳`))),
-        h("p", { class: "tiny", style: "margin:var(--sp-2) 0 0" }, "제품·장비는 상품명에 적힌 것만 찾아요. 지역을 누르면 지도가 열려요."));
+        h("p", { class: "tiny", style: "margin:var(--sp-2) 0 0" }, "제품·장비는 상품명에 적힌 것만 찾아요."));
     }
     views.search = (arg, params) => {
       const { D, CONC, KEYS, byKB, famOf, famsByName } = App.state();   // read now: replaced when new data arrives
@@ -94,7 +94,7 @@
       // the price is the region's median of the kind's main key, and the count next to it (no description) is that median's
       // branch count — not f.n, every branch and every size in the country (review of hierarchy audit 13: '패키지 · 204곳'
       // under a 15-branch 부산)
-      const keys = KEYS.filter((k) => tokens.length && qc.test(Search.norm(`${k.label} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`)))
+      const keys = KEYS.filter((k) => tokens.length && qc.test(Search.norm(`${k.label} ${k.full !== k.label ? k.full : ""} ${k.cat} ${famOf[k.i] ? famOf[k.i].f.name : ""}`)))
         .sort((a, b) => byKB[b.i].size - byKB[a.i].size).slice(0, 8);
       // decision material first (hierarchy audit 5): what the page opens on depends on the words —
       //  · a spec in them ('리쥬란 2cc', '사각턱 50U'): the matching specs ('같은 조건 가격 비교', each with the region's median,
@@ -121,7 +121,7 @@
             kp.p, h("span", { class: "m" }, e ? e.purpose : `${f.cat} · ${kp.n ? `${kp.n}곳` : `${regionName()} 가격 없음`}`)),
             e ? h("button", { class: "infob", type: "button", "aria-label": `${f.name} 설명 보기`, onclick: () => kbSheet(e, f) }, icon("info")) : null); }, { first: 5, unit: "가지", name: `‘${qs}’ 종류` });
         const basisT = `${regionName()} · ${FLAGS.lowestHighlight ? "최저가" : "중간 가격"}`, basis = h("span", { class: "sub" }, basisT);
-        const body = [h("div", { class: "sub" }, "이름이 비슷해도 놓는 곳과 목적이 달라요."), ul, more,
+        const body = [ul, more,   // each line says its own purpose
           h("button", { class: "linkbtn", type: "button", style: "margin-top:var(--sp-2)", onclick: () => nav(`guide?q=${encodeURIComponent(qs)}`) }, fams.length > 12 ? `시술 사전에서 ${fams.length}가지 모두 보기` : "시술 사전에서 자세히 보기", icon("chevron-right", "xs"))];
         return !specFirst ? h("div", { class: "card fams" }, cardHead(`‘${qs}’ 종류`, { count: `${fams.length}가지`, desc: basisT }), body)
           : h("details", { class: "card fold sfold fams" }, h("summary", {}, `‘${qs}’ 비슷한 종류 ${fams.length}가지`), h("div", { class: "fambody" }, h("div", { class: "row" }, basis), body)); })();

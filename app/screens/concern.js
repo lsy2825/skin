@@ -140,7 +140,7 @@
       const intro = h("div", { class: "msg bot" }, mascotImg(32), h("div", { class: "bub" },
         h("p", {}, "안녕, 나는 죠미야! 시술 이름, 가격(용량·횟수·지역), 피부 고민, 앱 쓰는 법을 물어봐 줘."),
         h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, ex.map((t) => h("button", { class: "chip", type: "button", onclick: () => chatSend(t) }, t))),
-        h("p", { class: "tiny" }, "진단이나 상담이 아니고 어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 정해 둔 규칙으로 알아듣고, 가격은 모은 가격, 의학 설명은 미리 정리해 둔 문장만 보여줘요."),
+        h("p", { class: "tiny" }, "어떤 시술이 맞는지 정하거나 권하지 않아요. 생성형 AI가 아니라 정해 둔 규칙과 문장으로만 답해요."),
         visible.length ? h("details", { class: "fold small", style: "margin-top:var(--sp-2)" }, h("summary", {}, "피부 고민 고르기"),
           h("div", { class: "chips wrapc", style: "margin-top:var(--sp-2)" }, visible.map((c) => h("button", { class: "chip", type: "button", "aria-pressed": picked === c.id ? "true" : "false", onclick: () => chatSend(c.name) }, c.name)))) : null));
       const paint = () => {
