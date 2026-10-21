@@ -38,8 +38,8 @@ const ROOT = path.join(__dirname, '..', '..');
 const CART = [{ t: 'k', k: 'X14', q: 3 }, { t: 'k', k: 'X01', q: 2 }, { t: 'k', k: 'X12', q: 1 }];
 
 // ---- the source: one part, the old ones gone; the charts' middle
-// app.js and the screen files split from it (docs/APP_JS_SPLIT_PLAN.md 3-2~3-6), read as one text
-const app = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js'].map((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')).join('\n'), css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+// app.js and the screen files split from it (docs/APP_JS_SPLIT_PLAN.md 3-2~3-8), read as one text
+const app = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js', 'screens/explore.js', 'screens/change.js', 'screens/quick.js', 'screens/table.js', 'screens/search.js'].map((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')).join('\n'), css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 const old = ['mrange', 'rangebar', 'rbar', 'pcl-track', 'pcl-bar', 'pcl-med', 'midl'].filter((c) => new RegExp(`["' .]${c}["' {]`).test(app) || new RegExp(`\\.${c}\\b`).test(css));
 ok('옛 범위 막대 이름(.mrange·.rangebar·.pcl-track·.rbar)이 app.js·styles.css에 없음', !old.length, old.join(', '));
 ok('범위 막대를 그리는 함수는 rangeBar 하나(class "prange"는 그 안에서만)', (app.match(/class: `prange/g) || []).length === 1 && (app.match(/function rangeBar\(/g) || []).length === 1 && !/class: "prange/.test(app));
