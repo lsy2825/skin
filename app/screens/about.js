@@ -7,7 +7,7 @@
   "use strict";
   const App = (window.App = window.App || {});
   (App.screens = App.screens || []).push(() => {
-    const { h, fill, icon, won, toast, emptyLine, searchBox, backBtn, views, FLAGS, fresh, verified, recheckQueue, kbOf, nav, render, adminHost, syncState, liveBrands, moreList, kwBadge,
+    const { h, fill, icon, won, toast, emptyLine, searchBox, backBtn, views, FLAGS, fresh, verified, recheckQueue, kbOf, nav, render, adminHost, syncState, liveBrands, moreList, kwBadge, keptFold,
       md, mdhm, goLink, hereLink, vatNote, branchCountText, REVISIT_CART, isIOS, standalone, notifySupported, PUSH, pushState, privacyParts, jline, jomiSay, jprefs,
       CMP_CATS, famFind, kbSheet, reviewBadge, evidenceBadge, DISCLAIM, KB_STATE } = App;
     const { SYNC, cacheClear, cacheInfo, canCache } = App.Data;
@@ -149,16 +149,21 @@
           h("li", {}, "가격 동향·변동은 매주 실제로 모은 기록만 써요. 빈 주를 채우지 않아요.")),
         h("h3", { style: "margin-top:var(--sp-3)" }, "부가세"),
         h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, vatNote()),
-        h("ul", { class: "list" }, Object.entries(A.vat || {}).map(([b, v]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, b), h("span", { class: "sub" }, v.default === "excl" ? "별도" : v.default === "incl" ? "포함" : "-"),
-          h("span", { class: "m" }, `“${v.evidence}” (확인 ${md(v.checked)})`, v.url ? h("a", { class: "linkbtn src", href: v.url, target: "_blank", rel: "noopener noreferrer" }, "원문") : null))))),
+        // the brands' own words (their sources), the collection manners and the clean-up counts: folded under one line each,
+        // the line above each stays in view (2026-10-21 글 줄이기 2차 — 2,000 characters of lists on one screen)
+        keptFold("aboutVat", "minifold", h("summary", {}, `브랜드별 부가세 문구 · ${Object.keys(A.vat || {}).length}개`),
+          h("ul", { class: "list" }, Object.entries(A.vat || {}).map(([b, v]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, b), h("span", { class: "sub" }, v.default === "excl" ? "별도" : v.default === "incl" ? "포함" : "-"),
+            h("span", { class: "m" }, `“${v.evidence}” (확인 ${md(v.checked)})`, v.url ? h("a", { class: "linkbtn src", href: v.url, target: "_blank", rel: "noopener noreferrer" }, "원문") : null)))))),
         h("h3", { style: "margin-top:var(--sp-3)" }, "어디서 어떻게 모으나요"),
         h("div", { class: "sub", style: "margin-top:var(--sp-2)" }, `각 병원 사이트의 공개 페이지만 읽어요. 로그인·차단 우회는 하지 않고, 수집 전에 robots.txt를 확인해요${src.checked_at ? ` (마지막 확인 ${md(src.checked_at)})` : ""}.`),
-        h("ul", { class: "list" }, D.meta.brands.map((b, i) => { const s = (src.brands || {})[b[0]]; if (!BR.some((x) => x.brand === i)) return null;
-          return h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
-            h("span", { class: "sub" }, s ? (s.allowed ? "수집 허용" : "수집 막힘") : "-"),
-            h("span", { class: "m" }, b[2], s && s.rate ? ` · ${s.rate}` : ""))); })),
+        keptFold("aboutSrc", "minifold", h("summary", {}, `브랜드별 수집 방법 · ${D.meta.brands.filter((b, i) => BR.some((x) => x.brand === i)).length}개`),
+          h("ul", { class: "list" }, D.meta.brands.map((b, i) => { const s = (src.brands || {})[b[0]]; if (!BR.some((x) => x.brand === i)) return null;
+            return h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
+              h("span", { class: "sub" }, s ? (s.allowed ? "수집 허용" : "수집 막힘") : "-"),
+              h("span", { class: "m" }, b[2], s && s.rate ? ` · ${s.rate}` : ""))); }))),
         h("h3", { style: "margin-top:var(--sp-3)" }, "자동으로 정리한 것"),
-        h("ul", { class: "list" }, Object.entries(A.issues || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, k), h("span", { class: "sub num" }, `${n}개`))))),
+        keptFold("aboutFix", "minifold", h("summary", {}, `정리 목록 · ${Object.keys(A.issues || {}).length}가지`),
+          h("ul", { class: "list" }, Object.entries(A.issues || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => h("li", {}, h("div", { class: "item" }, h("span", { class: "t" }, k), h("span", { class: "sub num" }, `${n}개`)))))),
         h("div", { class: "sub", style: "margin-top:var(--sp-3)" }, `${md(D.meta.updated)} 수집 · 가격 ${D.meta.rows.toLocaleString()}개 · ${branchCountText()}. 지도 © OpenStreetMap 기여자.`)));
       return box;
     };

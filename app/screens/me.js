@@ -83,7 +83,7 @@
         st.recs.length ? h("ul", { class: "list" }, st.recs.slice(0, st.allRecs ? 500 : 8).map((r) => h("li", {}, h("button", { class: "item", type: "button", onclick: () => recordSheet(r) },
           h("span", { class: "t" }, r.n), h("span", { class: "p num" }, r.p ? won(r.p) : "-"),
           h("span", { class: "m" }, h("span", {}, r.date), h("span", {}, brLabel(r.br) || "지점 미입력"), r.memo ? h("span", {}, r.memo) : null)))))
-          : emptyBox("receipt", "아직 기록이 없어요", "받은 시술을 기록하면 언제·어디서·얼마에 받았는지 한눈에 볼 수 있어요. 내 견적에서 '받았어요'를 눌러도 기록돼요."),
+          : emptyBox("receipt", "아직 기록이 없어요", "받은 시술을 기록하면 여기서 한눈에 봐요."),
         st.recs.length > 8 ? h("button", { class: "morelist", type: "button", onclick: () => { st.allRecs = !st.allRecs; render(); } }, st.allRecs ? "접기" : `전체 ${st.recs.length}개 보기`) : null));
       // visited branches
       if (visits.size) box.append(h("div", { class: "card flush" }, h("div", { style: "padding:var(--sp-3) 14px 0" }, h("h3", {}, "방문한 지점")),
@@ -101,7 +101,7 @@
       // one line per setting — '이름 · 지금: 값' — that opens to its controls (hierarchy audit 49, L15); a row stays open after a
       // change redraws the screen (keptFold), so the new value shows where it was picked
       const setRow = (id, name, now, ...body) => keptFold(`set:${id}`, "setrow", h("summary", { class: "flabel" }, h("span", {}, name), h("b", { class: "now" }, now)), h("div", { class: "setbody" }, ...body));
-      box.append(h("div", { class: "card settings" }, h("h2", { class: "t-sec" }, "내 설정"), h("div", { class: "sub" }, "이 휴대폰에서 보이는 방식을 바꿔요."),
+      box.append(h("div", { class: "card settings" }, h("h2", { class: "t-sec" }, "내 설정"),
         setRow("vat", "가격 표시", st.vat === "incl" ? "지금: 부가세 포함가" : "지금: 병원 표시가",
           radios("가격 표시", [["incl", "부가세 포함가"], ["listed", "병원 표시가"]], st.vat, (v) => { st.vat = v; store.set("vat", v); applyVat(); render(); toast(v === "incl" ? "부가세 포함가로 보여요" : "병원이 적은 가격 그대로 보여요"); }),
           h("div", { class: "sub" }, st.vat === "incl" ? `병원이 '부가세 별도'라고 적은 가격에 10%를 더해 보여줘요. ${vatBrandsNote()}` : "병원 사이트에 적힌 숫자 그대로예요. 실제 결제는 부가세 10%가 더해질 수 있어요.")),
@@ -146,8 +146,10 @@
       box.append(h("div", { class: "card info" }, h("h2", { class: "t-sec" }, "데이터 안내"),
         h("dl", { class: "kv", style: "margin-top:var(--sp-2)" }, h("dt", {}, "수집일"), h("dd", {}, `${md(D.meta.updated)} (매주 월요일 자동 갱신)`),
           h("dt", {}, "지점"), h("dd", {}, branchCountText()), h("dt", {}, "가격 수"), h("dd", {}, `${D.meta.rows.toLocaleString()}개 (전국)`)),
-        h("ul", { class: "list", style: "margin-top:var(--sp-2)" }, D.meta.brands.map((b, i) => !counts[i][0] ? null : h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
-          h("span", { class: "sub" }, `${counts[i][0]}곳 · ${counts[i][1].toLocaleString()}개`), h("span", { class: "m" }, b[2]))))),
+        // the brands' collection range folded (2026-10-21 글 줄이기 2차): 운영 원칙 and 데이터 상태 list the same
+        keptFold("meBrands", "minifold", h("summary", {}, `브랜드별 수집 범위 · ${counts.filter((x) => x[0]).length}개`),
+          h("ul", { class: "list" }, D.meta.brands.map((b, i) => !counts[i][0] ? null : h("li", {}, h("div", { class: "item" }, h("span", { class: "t row" }, h("span", { class: "dot bdot", style: `background:${b[1]}` }), b[0]),
+            h("span", { class: "sub" }, `${counts[i][0]}곳 · ${counts[i][1].toLocaleString()}개`), h("span", { class: "m" }, b[2])))))),
         // how to read the prices: the same sentences, one per line — the first two in view, the rest under '자세히' (hierarchy audit 49)
         (() => { const pts = ["체험가·한정가는 보통 1인 1회예요. 일반가와 특가는 따로 보여줘요.",
           `'${Pricing.condLabel("평일 낮")}'(평일 낮·화수목·평일 해피아워 등), '${Pricing.condLabel("시간대")}'(점심·해피아워 등), '일요일'${WHEN_COL ? `·'${Pricing.whenBadge(32, 0)}'` : ""} 같은 표시는 그 요일·시간에만 되는 가격이에요.`, vatNote(),

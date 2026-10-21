@@ -65,11 +65,15 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
     }, [name_, label]);
   };
   // the price sheet of that line (its ⓘ — 위계 점검 47): its whole text
+  let lastLim = '';
   const sheetOf = async (name_, label) => {
     await p.locator('#main .card.flush li', { has: p.locator('.item .k.kt', { hasText: label }) }).filter({ has: p.locator('.item > .t', { hasText: name_ }) }).first()
       .locator(':scope > .infob').click();
     await p.waitForSelector('.sheet[aria-label="가격 정보"]');
     const t = await p.locator('.sheet[aria-label="가격 정보"]').textContent();
+    // the 가격 적용 조건 lines that state a limit (조건 있음): a conditional price says so there (2026-10-21 글 줄이기 2차 — the
+    // '가격 종류' line '특가 — … 조건이 맞을 때만' that said it again went)
+    lastLim = (await p.$$eval('.sheet[aria-label="가격 정보"] ul.elig li.el-limit', (xs) => xs.map((x) => x.textContent))).join('\n');
     await p.keyboard.press('Escape'); await p.waitForTimeout(200);
     return t;
   };
@@ -182,7 +186,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
       ok('화수목 가격: 배지 설명에 \'되는 요일: 화·수·목\'', !!bad && bad.some(([x, ti]) => x === lb && ti.includes('되는 요일: 화·수·목')), bad ? (bad.find(([x]) => x === lb) || [])[1] : '');
       const st = await sheetOf(n, lb);
       ok('가격 확인: 조건에 \'되는 요일: 화·수·목\'', st.includes('되는 요일: 화·수·목'), n);
-      ok('가격 확인: 가격 종류는 조건부', st.includes('특가 — 첫 방문·요일·시간 조건이 맞을 때만') || /체험가 —|한정가 —/.test(st), n);
+      ok('가격 확인: 조건부 가격(가격 적용 조건에 \'조건 있음\' 줄로 되는 요일)', lastLim.includes('되는 요일: 화·수·목'), lastLim.replace(/\n/g, ' / '));
     }
     // a price with hours, valid on Wednesdays: outside the window no, inside yes; the sheet lists the hours
     const wbit = bit(3);
@@ -226,7 +230,7 @@ const hm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 6
       bad = await rowBadges(r[0], n, lb);
       ok(`태그 없는 요일 가격: '${lb}' 배지`, !!bad, `${n} | ${names(bad)}`);
       const st = await sheetOf(n, lb);
-      ok('태그 없는 요일 가격: 가격 확인은 조건부, 되는 요일 줄', st.includes('특가 — 첫 방문·요일·시간 조건이 맞을 때만') && st.includes(P.whenLines(daysOf(r), '')[0]), n);
+      ok('태그 없는 요일 가격: 가격 확인은 조건부(되는 요일이 \'조건 있음\' 줄)', st.includes(P.whenLines(daysOf(r), '')[0]) && lastLim.includes(P.whenLines(daysOf(r), '')[0]), `${n} | ${lastLim.replace(/\n/g, ' / ')}`);
       // 특가 off (the branch page's switch): a price for some weekdays only is not a plain price, so it is not listed
       const special = async (on_) => { const sw = p.locator('#main label.switch', { hasText: '특가 포함' }).first();
         if ((await sw.locator('input').isChecked()) !== on_) await sw.click(); await p.waitForTimeout(400); };

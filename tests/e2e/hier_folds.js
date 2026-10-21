@@ -24,7 +24,7 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${String(detail).slice(0, 240)}`); };
 const D = asRows(require(path.join(__dirname, '../../app/data.json')));
 const CART = [{ t: 'k', k: 'X14', q: 3 }, { t: 'k', k: 'X01', q: 2 }, { t: 'k', k: 'X12', q: 1 }];
-const WARN = '가격만으로 고르지 마세요. 용량·조건·정품 여부·의료진·부작용은 담은 시술의 ⓘ에서 봐요.';
+const WARN = '가격만으로 고르지 마세요. 조건·부작용은 담은 시술의 ⓘ에서 봐요.';   // 2026-10-21 글 줄이기 2차
 const CALC = ['체험가·한정가·첫 방문가는 첫 1회만, 2회째부터는 그 지점의 다른 가격으로 계산해요. 요일·시간 조건 가격은 조건이 맞을 때 매번 그 가격으로 계산해요.',
   '지점 이름을 누르면 시술별 견적이 펼쳐지고 옵션을 바꿀 수 있어요. 3회·5회 묶음을 고르면 횟수에 맞춰 계산해요.'];
 const NAV_H = 64;
@@ -188,7 +188,7 @@ const apart = (() => { const ks = D.keys.map(([id]) => [id, branchesOf(id)]).fil
         after: document.querySelector('.pricecard') && document.querySelector('.pricecard').nextElementSibling === card, folds: card.querySelectorAll('details').length,
         allShown: [...card.querySelectorAll('li, .sub, p')].every((e) => e.checkVisibility()), text: card.innerText }; });
     ok('17 확인 카드: 아이콘 칸 없음(아이콘은 제목 줄), 줄이 카드 폭을 다 씀', c.col === 0 && c.icons && c.wide, JSON.stringify({ col: c.col, icons: c.icons, wide: c.wide }));
-    ok('17 확인 카드: 접은 글자 없음(C 답 전), 가격 카드 바로 다음', c.folds === 0 && c.allShown && c.after && ['시술 조건', '장비·약제 정품 여부', '시술 의료진', '주요 부작용', '가격이 낮다는 것만으로 고르지 마세요'].every((w) => c.text.includes(w)));
+    ok('17 확인 카드: 접은 글자 없음(C 답 전), 가격 카드 바로 다음', c.folds === 0 && c.allShown && c.after && ['시술 조건', '장비·약제 정품 여부', '시술 의료진', '주요 부작용', '가격만으로 고르지 마세요'].every((w) => c.text.includes(w)));
     ok('17 페이지 오류 없음', !errs.length, errs.join(' | '));
     await ctx.close(); }
 

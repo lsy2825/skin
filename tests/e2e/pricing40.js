@@ -48,9 +48,11 @@ const timeLimited = (r) => WHEN && Pricing.whenLimited(r[16], S[r[17]]);
   // 2) price sheet order with the price class
   await p.locator('#clinics li.rk .infob').first().click(); await p.waitForTimeout(500);
   const dts = await p.$$eval('.sheet dl.facts dt', (xs) => xs.map((x) => x.textContent));
-  const order = ['가격과 부가세', '가격 종류', '조건', '횟수', '유효기간', '비교 기준', '정가(병원 표기)', '확인일', '원본'];
-  const idx = order.map((t) => dts.indexOf(t));
-  ok('C4 가격 정보 순서: 가격·부가세 → 가격 종류 → 조건 → 횟수 → 기간 → 비교 기준 → 정가 → 확인일 → 원본', idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])), dts.slice(0, 10).join(' > '));
+  // 가격 종류 · 조건 · 유효기간 show only when they say what the 가격 적용 조건 list above does not (재방문 · a condition the list
+  // leaves out · an event that has ended — 2026-10-21 글 줄이기 2차): the rows always there keep their order, the others their place
+  const order = ['가격과 부가세', '가격 종류', '조건', '횟수', '유효기간', '비교 기준', '정가(병원 표기)', '확인일', '원본'], always = ['가격과 부가세', '횟수', '비교 기준', '정가(병원 표기)', '확인일', '원본'];
+  const idx = order.map((t) => dts.indexOf(t)).filter((v) => v >= 0);
+  ok('C4 가격 정보 순서: 가격·부가세 → (가격 종류 → 조건) → 횟수 → (기간) → 비교 기준 → 정가 → 확인일 → 원본', always.every((t) => dts.includes(t)) && idx.every((v, i) => v >= 0 && (i === 0 || v > idx[i - 1])), dts.slice(0, 10).join(' > '));
   ok('C5 비교 판정이 맨 위(사실 목록보다 먼저)', await p.evaluate(() => { const a = document.querySelector('.sheet .clsbox'), b = document.querySelector('.sheet dl.facts'); return !!a && !!b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING); }));
   await p.keyboard.press('Escape'); await p.waitForTimeout(300);
 

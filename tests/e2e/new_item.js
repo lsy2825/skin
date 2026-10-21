@@ -11,6 +11,10 @@ if (!PIN) { console.error('APP_PIN 환경 변수에 비밀번호를 넣어 주�
 const R = []; const ok = (name, pass, detail = '') => { R.push(pass); console.log(`${pass ? 'PASS' : 'FAIL'} | ${name} | ${detail}`); };
 const NEW_ITEM = /신규\s*(?:런칭|입고|도입|오픈|출시)/;
 const FIRST = '첫 방문·첫 시술 조건';
+// the 가격 적용 조건 list's first-visit line: when it reads the name as a first-visit price, the sheet's '조건' line no longer
+// says '첫 방문·첫 시술 조건' again (2026-10-21 글 줄이기 2차) — either one means the sheet calls it a first-visit price
+const FIRST_EL = '첫 방문·첫 시술만';
+const saysFirst = (t) => t.includes(FIRST) || t.includes(FIRST_EL);
 
 (async () => {
   const D = asRows(await (await fetch(BASE + 'data.json')).json()), S = D.s, td = new Date().toISOString().slice(0, 10);
@@ -48,13 +52,13 @@ const FIRST = '첫 방문·첫 시술 조건';
     const t = await sheetOf(r);
     if (t == null) { console.log(`SKIP | 지점 가격표에서 줄을 찾지 못함 | ${S[r[2]]}`); continue; }
     seen++;
-    ok(`새 장비·제품 줄: '${FIRST}' 없음`, !t.includes(FIRST), S[r[2]]);
+    ok(`새 장비·제품 줄: '${FIRST}'·'${FIRST_EL}' 없음`, !saysFirst(t), S[r[2]]);
   }
   ok('새 장비·제품 줄을 하나 이상 확인함', seen > 0, `${seen}/${Math.min(3, rows.length)}`);
   if (cust) {
     const t = await sheetOf(cust);
     if (t == null) console.log(`SKIP | 신규 고객 줄을 지점 가격표에서 찾지 못함 | ${S[cust[2]]}`);
-    else ok(`'신규 고객'·'첫 방문' 이름은 그대로 '${FIRST}'`, t.includes(FIRST), S[cust[2]]);
+    else ok(`'신규 고객'·'첫 방문' 이름은 그대로 첫 방문 가격('${FIRST_EL}' 또는 '${FIRST}')`, saysFirst(t), S[cust[2]]);
   } else console.log('SKIP | 이름에 \'신규 고객\'·\'첫 방문\'이 든 줄이 이 자료엔 없음');
   ok('스크립트 오류 없음', !errs.length, errs.join(' | '));
   console.log(`TOTAL ${R.filter(Boolean).length}/${R.length} PASS`); await br.close(); process.exitCode = R.every(Boolean) ? 0 : 1;
