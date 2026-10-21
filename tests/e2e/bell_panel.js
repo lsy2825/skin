@@ -45,7 +45,11 @@ async function open(b, { vp = { width: 390, height: 844 }, scheme = 'light', not
   const ctx = await b.newContext({ serviceWorkers: 'block', viewport: vp, isMobile: true, hasTouch: true, colorScheme: scheme, bypassCSP: axe });
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(e.message));
   await p.route(/tile\.openstreetmap\.org/, (r) => r.fulfill({ status: 204, body: '' }));
-  await p.goto(base); await p.evaluate(([n, a]) => { localStorage.clear(); localStorage.setItem('pc:region', JSON.stringify('수도권')); localStorage.setItem('pc:notes', JSON.stringify(n));
+  // the first page must be done before the records go in: its own saveAlerts (once the full price file is in) would
+  // otherwise write its empty list over them, and the page that is checked starts with no records (flaky under load)
+  await p.goto(base); await p.waitForLoadState('networkidle').catch(() => {});
+  await p.waitForFunction(() => localStorage.getItem('pc:notes') !== null, null, { timeout: 20000 }).catch(() => {});   // checkAlerts ends in saveAlerts
+  await p.evaluate(([n, a]) => { localStorage.clear(); localStorage.setItem('pc:region', JSON.stringify('수도권')); localStorage.setItem('pc:notes', JSON.stringify(n));
     if (a) localStorage.setItem('pc:alerts', JSON.stringify(a)); }, [notes, alerts]);
   // a cold start on the address (as a tapped notification's openWindow): a new document, not a hash change
   if (hash) { await p.goto('about:blank'); await p.goto(base + hash); } else await p.reload();
