@@ -57,8 +57,8 @@ const SAGE_OK = /^(\.btn\.shortbtn\[aria-pressed="true"\]|(\.actions |\.cmphead 
 const sageAt = usedBy(/var\(--sage-soft\)/), sageBad = sageAt.filter((s) => !SAGE_OK.test(s));
 ok('연한 초록 바탕은 넣어 둔 상태(aria-pressed=true·담김)·확인됨 배지·입구 카드에만 — 연한 초록 동작 버튼(.btn.soft) 없음', !sageBad.length && sageAt.length >= 3, sageBad.length ? sageBad.join(' | ') : sageAt.join(' | '));
 ok('검색창 ×: 브라우저 기본(파랑) 대신 회색 24px 버튼', /input\[type="search"\]::-webkit-search-cancel-button\s*\{[^}]*-webkit-appearance:\s*none[^}]*width:\s*24px[^}]*height:\s*24px[^}]*background:\s*var\(--muted\)/.test(css));
-// screens/about.js, screens/concern.js and screens/map.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-4): checked the same way
-const SRC = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js'];
+// screens/about.js, concern.js, map.js, branch.js and me.js hold code split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-6): checked the same way
+const SRC = ['app.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js'];
 const srcLines = (re) => SRC.flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [i + 1, l])
   .filter(([, l]) => re.test(l)).map(([n]) => `${f}:${n}`));
 const inl = srcLines(/style:\s*["`][^"`]*color:\s*var\(--(pricey|coral|butter|butter-ink|butter-soft)\)/);

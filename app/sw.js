@@ -1,10 +1,10 @@
 // Offline cache: the app shell (code network-first, images cache-first) and map tiles. data.json / data-meta.json / home.json are not
 // handled here: app.js saves a checked copy of the price file itself and says when it shows that saved copy offline.
-const VER = "pc-v31";   // v31: screens/about.js, screens/concern.js and screens/map.js join the install list (app.js split 3-2~3-4)
+const VER = "pc-v32";   // v32: screens/branch.js and screens/me.js join the install list (app.js split 3-5·3-6; v31: about.js, concern.js, map.js — 3-2~3-4)
 // Pretendard's subset files are cached the first time a page needs them (the font CSS loads only the ranges in use).
 // round-2 O5: the install list is what the app needs to START and to run offline. Code loaded later (commerce screens, the
 // map library, large Jomi portraits) is cached the first time it is used — installing it up front undid the lazy loading.
-const SHELL = ["./", "index.html", "styles.css", "icons.js", "core.js", "state/data.js", "screens/ops.js", "screens/about.js", "screens/concern.js", "screens/map.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "domain/stats.js", "domain/jomichat.js", "domain/jomilines.js", "domain/spec.js", "domain/sync.js", "domain/classify.js", "domain/metrics.js", "domain/push.js", "terms.js",
+const SHELL = ["./", "index.html", "styles.css", "icons.js", "core.js", "state/data.js", "screens/ops.js", "screens/about.js", "screens/concern.js", "screens/map.js", "screens/branch.js", "screens/me.js", "app.js", "gate.js", "auth.js", "config.js", "domain/pricing.js", "domain/search.js", "domain/intel.js", "domain/concern.js", "domain/stats.js", "domain/jomichat.js", "domain/jomilines.js", "domain/spec.js", "domain/sync.js", "domain/classify.js", "domain/metrics.js", "domain/push.js", "terms.js",
   "vendor/fonts/pretendard/pretendard.css", "manifest.webmanifest",
   "icons/icon-192.png", "jomi.js", "assets/jomi/expr-default-160.png",
   "assets/jomi/expr-default-96.webp", "assets/jomi/expr-welcome-96.webp", "assets/jomi/expr-curious-96.webp", "assets/jomi/expr-thinking-96.webp", "assets/jomi/expr-happy-96.webp", "assets/jomi/expr-wink-96.webp", "assets/jomi/expr-empty-96.webp", "assets/jomi/expr-sleeping-96.webp", "icons/favicon-32.png", "icons/apple-touch-icon.png"];

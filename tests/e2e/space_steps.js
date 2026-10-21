@@ -77,7 +77,7 @@ for (const m of css.matchAll(PROPS)) {
 ok('styles.css의 margin·padding·gap은 모두 단계 위(8의 배수, 배지·칩 안 4, 정한 예외는 옆에만)', !bad.length, bad.length ? `${bad.length}곳: ${bad.slice(0, 5).join(' | ')}` : `${nDecl}곳`);
 ok('styles.css 간격 값 중 8의 배수 70% 이상(위계 점검 51: 19%였음)', n8 / nVal >= 0.7, `${n8}/${nVal} = ${(100 * n8 / nVal).toFixed(0)}%`);
 
-const js = ['app/app.js', 'app/screens/about.js', 'app/screens/concern.js', 'app/screens/map.js', 'app/commerce.js'].filter((f) => fs.existsSync(path.join(ROOT, f))).map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
+const js = ['app/app.js', 'app/screens/about.js', 'app/screens/concern.js', 'app/screens/map.js', 'app/screens/branch.js', 'app/screens/me.js', 'app/commerce.js'].filter((f) => fs.existsSync(path.join(ROOT, f))).map((f) => [f, fs.readFileSync(path.join(ROOT, f), 'utf8')]);
 const jsBad = []; let jsN = 0;
 for (const [f, s] of js) for (const m of s.matchAll(/style: "([^"]*)"/g)) {
   for (const d of m[1].split(';')) { const [prop, v] = d.split(':').map((x) => (x || '').trim());
