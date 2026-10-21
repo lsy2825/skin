@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const Spec = require("../app/domain/spec.js");
+const fs = require("fs");
+const path = require("path");
 const get = (out, k) => out.find((x) => x.k === k);
 
 test("parse: product, origin, grade, dose, sessions, area from the name", () => {
@@ -214,4 +216,61 @@ test("shortLabel: a bracket that gives the dose is the spec and stays (검토 �
   // the amount inside a package's parts goes with the parts
   assert.equal(Spec.shortLabel("콜라겐 하이드로 콤플렉스(엘라비에 리투오(6cc) + 물광주사 2cc) 3회"), "콜라겐 하이드로 콤플렉스 3회");
   assert.equal(Spec.shortLabel("리쥬란 HB 플러스 2cc + LDM 수분관리(6분) + 촉촉팩 (구성품 포함)"), "리쥬란 HB 플러스 2cc + LDM 수분관리(6분) + 촉촉팩");
+});
+
+test("pkgLabel: a package says its parts, not the clinic's name for it (사용자 요청 2026-10-20)", () => {
+  assert.equal(Spec.pkgLabel("리쥬베룩 패키지(리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀)"), "리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀");
+  assert.equal(Spec.pkgLabel("잔주름 지우개(스킨보톡스 1부위 + 주름보톡스 3부위)"), "스킨보톡스 1부위 + 주름보톡스 3부위");
+  assert.equal(Spec.pkgLabel("듀얼토닝(제네시스 토닝 + 레이저토닝) 5회"), "제네시스 토닝 + 레이저토닝 5회");   // the session count stays
+  assert.equal(Spec.pkgLabel("코조각 주사패키지 (콧볼보톡스+코조각주사)"), "콧볼보톡스 + 코조각주사");          // '+' spaced the same way
+  assert.equal(Spec.pkgLabel("울써마지 : 울쎄라피 프라임 300샷 + 써마지 FLX 600샷"), "울쎄라피 프라임 300샷 + 써마지 FLX 600샷");   // '이름 : …'
+  assert.equal(Spec.pkgLabel("물광리쥬란 : 리쥬란힐러(2cc)+물광주사(2.5cc)+크라이오+모델링팩 1회"), "리쥬란힐러(2cc) + 물광주사(2.5cc) + 크라이오 + 모델링팩 1회");
+  assert.equal(Spec.pkgLabel("바디블랙필:블랙필-압출+염증주사-모델링팩 1회"), "바디블랙필:블랙필-압출+염증주사-모델링팩 1회");   // steps joined by '-': as it is
+  // left as they are: a note in the bracket, a '+' in the name itself, more after the bracket, no list, already parts
+  for (const s of ["블랙필+인퓨즈드마스크+초음파관리+압출 (압출+염증주사 포함/필요 시 여드름약 처방 포함) 1회",
+    "NMN(NAD+ 활성화 스킨부스터) 2.5cc + MTS + 크라이오셀", "듀얼토닝(제네시스 토닝 + 레이저토닝) 5회 + 진정관리 5회",
+    "쥬베룩 펌핑모드(쥬베룩 스킨 2cc + 포텐자 펌핑모드 + 팁 별도) 1회", "프리미엄 필러(독일 벨로테로) 1cc + 얼굴전체 주름보톡스",
+    "피코토닝+피코프락셀 5회", "국산 사각턱 보톡스 50U", "", null]) assert.equal(Spec.pkgLabel(s), String(s == null ? "" : s).replace(/\s+/g, " ").trim(), String(s));
+});
+
+test("pkgShort: the parts on a small button — whole when short, else the first part and how many more", () => {
+  assert.equal(Spec.pkgShort("필러 2cc + 주름보톡스 1부위"), "필러 2cc + 주름보톡스 1부위");
+  assert.equal(Spec.pkgShort("리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀"), "리쥬란힐러 2cc 외 2");
+  assert.equal(Spec.pkgShort("아쿠아필 1/2/3제 + 크라이오셀 + 물광앰플 + LED 레이저 + 모델링마스크 10회"), "아쿠아필 1/2/3제 외 4");
+  assert.equal(Spec.pkgShort("가나다라마바사아자차카타파하 가나다라마바사"), "가나다라마바사아자차카타파하 가나다라마바사");   // no parts: as it is
+});
+
+test("pkgNames: nothing the full name said is lost — 남성, the device, a dose — and no two keys look alike", () => {
+  const Search = require("../app/domain/search.js");
+  const keys = [
+    { cat: "패키지", label: "리쥬베룩 패키지(리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀)" },
+    { cat: "패키지", label: "남성 인기 패키지 (얼굴전체 + 아래턱) 5회" },                                    // 남성 is only in the name
+    { cat: "패키지", label: "슈링크 유니버스 풀 리프팅 패키지(울트라F 300샷 + 울트라 부스터 300샷) 1회" },   // the device is only in the name
+    { cat: "패키지", label: "풀페이스 리쥬란 3cc 1회 (리쥬란힐러 2cc + 아이리쥬란 1cc)" },                    // 3cc → 2cc would change the dose
+    { cat: "패키지", label: "울써마지 : 울쎄라피 프라임 300샷 + 써마지 FLX 600샷" },
+    { cat: "패키지", label: "울쎄라피 프라임 300샷+써마지FLX 600샷" },                                         // differs from the line above in spaces only
+    { cat: "리프팅", label: "인모드 얼굴전체 2가지 모드 (FX+FORMA)" },                                         // not a package
+  ];
+  assert.deepEqual(Spec.pkgNames(keys, Search.attrsOf), ["리쥬란힐러 2cc + 쥬베룩 스킨 2cc + 크라이오셀", ...keys.slice(1).map((k) => k.label)]);
+});
+
+test("pkgNames on the real data: only packages change, as parts of their own name, with the same facts, and no new look-alike pair", () => {
+  const Search = require("../app/domain/search.js");
+  const D = JSON.parse(fs.readFileSync(path.join(__dirname, "../app/data.json"), "utf8"));
+  const K = D.keys.map(([id, cat, label]) => ({ id, cat, label }));
+  const L = Spec.pkgNames(K, Search.attrsOf);
+  const changed = K.map((k, j) => ({ ...k, short: L[j] })).filter((k) => k.short !== k.label);
+  assert.ok(changed.length >= 30, `packages that say their parts: ${changed.length}`);
+  const flat = (x) => x.replace(/\s+/g, "");
+  assert.ok(changed.every((k) => k.cat === "패키지" && k.short.includes(" + ") && k.short.replace(/\s*[\d,]+\s*회$/, "").split(" + ").every((p) => flat(k.label).includes(flat(p)))),
+    "only packages, each a list of parts taken from its own name");
+  const known = (x) => JSON.stringify(Spec.parse(x).filter((f) => f.state === "known" && f.k !== "시술").map((f) => [f.k, f.v]));
+  for (const k of changed) {
+    const a = new Map(JSON.parse(known(k.label))), b = new Map(JSON.parse(known(k.short)));
+    for (const [f, v] of a) assert.equal(b.get(f), v, `${k.label}: ${f}`);
+    for (const t of Search.attrsOf(k.label)) assert.ok(Search.attrsOf(k.short).includes(t), `${k.label}: ${t}`);
+  }
+  const nk = (x) => x.replace(/\s+/g, " ").trim().replace(/\s*1회$/, "").replace(/[\s()]/g, "");
+  const pairs = (names) => { const m = new Map(); for (const n of names) m.set(nk(n), (m.get(nk(n)) || 0) + 1); return [...m.values()].filter((n) => n > 1).length; };
+  assert.equal(pairs(L), pairs(K.map((k) => k.label)), "no new pair of keys reads the same (spaces, brackets, a trailing 1회 aside)");
 });
