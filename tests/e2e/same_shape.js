@@ -278,7 +278,7 @@ const HELP = () => {
   // screens at 390 (and the brand tiles at 320)
   {
     const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
-    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
+    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js', 'screens/explore.js', 'screens/change.js', 'screens/quick.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
     const hits = (re) => SRC.flatMap(([f, s]) => s.split('\n').map((l, i) => [f, i + 1, l]).filter(([, , l]) => !/^\s*\/\//.test(l) && re.test(l)).map(([f, n, l]) => `${f}:${n} ${l.trim().slice(0, 70)}`));
     const css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
     // U01: an empty state is built by emptyBox / emptyLine / jomiEmpty only — no hand-made .empty, no .chartempty, no 'card empty'
@@ -488,7 +488,7 @@ const HELP = () => {
   // treatment's numbers, the heads of the screens outside the tabs, '전체 보기' — the sources first, then the screens
   {
     const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
-    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
+    const SRC = ['app.js', 'core.js', 'screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js', 'screens/explore.js', 'screens/change.js', 'screens/quick.js'].map((f) => [f, fs.readFileSync(path.join(ROOT, 'app', f), 'utf8')]);
     const hits = (re) => SRC.flatMap(([f, s]) => s.split('\n').map((l, i) => [f, i + 1, l]).filter(([, , l]) => !/^\s*\/\//.test(l) && re.test(l)).map(([f, n, l]) => `${f}:${n} ${l.trim().slice(0, 70)}`));
     // U06: no count written into a card title, no card title said again on the right (용량·종류 바꾸기 · k.label)
     const countTitle = hits(/h\("h3", \{[^}]*\}, `[^`]*\$\{[^}]+\}\s*(개|곳|가지)[^`]*`\)/);
@@ -616,8 +616,8 @@ const HELP = () => {
   {
     const fs = require('fs'), path = require('path'), ROOT = path.join(__dirname, '..', '..');
     const app = fs.readFileSync(path.join(ROOT, 'app/app.js'), 'utf8'), css = fs.readFileSync(path.join(ROOT, 'app/styles.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-    // the screen files split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-6) are looked at the same way; their lines are 'file:n'
-    const scr = ['screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [`${f}:${i + 1}`, l]));
+    // the screen files split from app.js (docs/APP_JS_SPLIT_PLAN.md 3-2~3-7) are looked at the same way; their lines are 'file:n'
+    const scr = ['screens/about.js', 'screens/concern.js', 'screens/map.js', 'screens/branch.js', 'screens/me.js', 'screens/explore.js', 'screens/change.js', 'screens/quick.js'].flatMap((f) => fs.readFileSync(path.join(ROOT, 'app', f), 'utf8').split('\n').map((l, i) => [`${f}:${i + 1}`, l]));
     const lines = [...app.split('\n').map((l, i) => [i + 1, l]), ...scr].filter(([, l]) => !/^\s*\/\//.test(l));
     // U21: figures are built by statRow only — no hand-made .stats / .qstats, no .tile that is not a button but 가격 이력's four
     // (keyTrend: app/unify-ab dates those lines — statRow once both are in; the CSS gives them the same shape meanwhile)
