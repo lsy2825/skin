@@ -576,8 +576,10 @@ const RV_WARN = '재방문 가격 1개 — 그 병원에 다시 오는 손님만
       if (await tap(item.locator('xpath=..').locator(':scope > .infob'), 'G10e 가격 근거')) {   // the line's ⓘ (위계 점검 47)
         await p.waitForSelector('.sheet[aria-label="가격 정보"]');
         const st_ = await p.locator('.sheet[aria-label="가격 정보"]').textContent();
-        ok(`G10e 가격 확인: 조건 '재방문(다시 오는 손님)만', 가격 종류에 '${RV_CART}', 적용 조건 '다시 오는 손님만'`, st_.includes('재방문(다시 오는 손님)만') && st_.includes(`다시 오는 손님(재방문)만 받는 행사 가격 · ${RV_CART}`)
-          && (r[5] !== 2 || st_.includes('한정가(기간·수량·첫 방문·재방문 등 조건)')) && st_.includes('다시 오는 손님만') && !st_.includes('재방문도 되는지 확인') && !st_.includes(DONE), st_.slice(0, 200));
+        // the 가격 적용 조건 list says '재방문 — 다시 오는 손님만' and the kind (체험가 — 보통 1인 1회 · 한정가 — 기간·수량·조건이 붙어요);
+        // the '조건' line no longer says them again (2026-10-21 글 줄이기 2차)
+        ok(`G10e 가격 확인: 적용 조건 '재방문 — 다시 오는 손님만', 가격 종류에 '${RV_CART}'`, st_.includes('다시 오는 손님만 — 처음 가면 못 받을 수 있어요') && st_.includes(`다시 오는 손님(재방문)만 받는 행사 가격 · ${RV_CART}`)
+          && (r[5] !== 2 || st_.includes('한정가 — 기간·수량·조건이 붙어요')) && !st_.includes('재방문도 되는지 확인') && !st_.includes(DONE), st_.slice(0, 200));
         await p.keyboard.press('Escape'); await p.waitForTimeout(200);
       }
       // G10f: a revisit 체험가 ('[재진] 1회 체험', user decision 2026-10-19) is priced only at a clinic marked visited AND for a
